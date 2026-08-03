@@ -1,0 +1,6 @@
+version: 1
+combinations:
+  - browser: "Firefox ESR"
+    assistive_technology: "NVDA"
+    platform: "Windows"
+    status: "release-version-pin-required"

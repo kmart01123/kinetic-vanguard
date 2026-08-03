@@ -1,0 +1,3412 @@
+audits:
+  - assertion: All current entity origins trace to the pinned master; human dispositions and attestations remain required.
+    id: source_migration_provisional
+    subject_ids:
+      - how_to_play
+      - subclass_feature_reference
+      - common_psionic_discipline
+      - common_discipline_signature_save
+      - common_psi_reservoir
+      - common_psionic_link
+      - common_manifested_strike
+      - common_overload
+      - common_signature_rider
+      - common_kinetic_mastery
+      - common_empathic_sense
+      - common_vanguard_training
+      - advanced_training_progression
+      - glacial_spike
+      - snow_chains
+      - frozen_ground
+      - arctic_tempest
+      - absolute_zero
+      - ember_bolt
+      - thermal_fracture
+      - cinder_lance
+      - flare
+      - furnace_strike
+      - telekinetic_shove
+      - vectored_thrust
+      - explosion_implosion
+      - telekinetic_slam
+      - mass_levitation
+      - static_discharge
+      - branching_bolt
+      - electron_burst
+      - forked_lightning
+      - ball_lightning
+      - advanced_deflection_screen
+      - advanced_phase_step
+      - advanced_mind_shred
+      - advanced_beguile
+      - advanced_mind_lock
+      - advanced_gravitic_press
+      - advanced_barrier
+      - advanced_improved_phase_step
+      - advanced_overload_mastery_ii
+      - advanced_inner_reserve
+entities:
+  - classifications:
+      entity_kind: system
+      rules_area:
+        - common_features
+    content:
+      - inlines:
+          - source_unit_id: u_l0030_c001_paragraph_8f9cbf2e6b
+            text: On your turn, when you attack with Manifested Strike, your Discipline’s 3rd-level rider is your Signature Rider and costs 0 Psi on every use, even if Overloaded; Blood Tax still applies. Higher-level riders cost their listed Psi. Before each attack roll, declare the rider and its Overload tier. Each hit can carry one rider, and different hits can carry different riders. Any Psi cost and Blood Tax are spent on declaration. On a hit, the declared package resolves; on a miss, the rider does not resolve, but the committed costs remain spent. Manifested Strike itself uses the die set by your Fighter level and is never Overloaded.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0032_c001_paragraph_6b59f5947c
+            text: Resolve attacks one at a time. Immediately before each attack roll, choose its target and declare that attack’s complete package, including any rider, Overload tier, and damage-type option. Pay all associated Psi and Blood Tax at that time, then roll and fully resolve the attack before declaring the next attack. You do not declare or pay for later attacks in the Attack action in advance. Any unused attacks may target different creatures and use different legal packages based on the battlefield after earlier attacks resolve. Per-Attack-action limits remain spent once used.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0036_c001_paragraph_275ba8755a
+            text: "Short Disruption Timing: Unless a feature says otherwise, reaction denial and attack-roll disadvantage imposed by an instantaneous Kinetic Vanguard feature last until the start of your next turn. Hard control conditions use the duration stated by the feature. Zones and recurring-save effects use their own timing."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0038_c001_paragraph_d1577dc5ad
+            text: A rider is an on-hit feature declared as part of a Manifested Strike. Passive and triggered features are not riders unless their text says otherwise. Advanced Training riders include Mind Shred and Mind Lock. A hit can carry either one Discipline rider or one Advanced Training rider, never both. Any rider that uses Manifested Strike dice uses the base die for your Fighter level.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0040_c001_paragraph_ba4033413d
+            text: "Rider Target Parity: When a rider creates a chain, arc, burst, Sphere, or other multi-creature effect centered on or originating from the creature struck by Manifested Strike, the struck creature is included among the rider's affected creatures unless the feature's geometry makes a particular effect impossible. Every affected creature resolves the same rider damage, saving throw, conditions, and other applicable effects. A feature may limit how many additional creatures are affected, but the struck creature does not receive a stronger or weaker version of the rider package merely because it was struck."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0042_c001_paragraph_d00db9a79f
+            text: "Attack Riders and Standalone Actions: You may mix weapon attacks and Manifested Strikes in any order within the Attack action. Each Manifested Strike can carry one rider. Your Signature Rider costs 0 Psi and can be used on any number of Manifested Strike hits in an Attack action; every other attack rider can be used once per Attack action and costs its listed Psi. Different riders may be attached to different hits. Only one rider in each Attack action may be Overloaded to Tier 2. Action Surge creates a new Attack action and refreshes these per-Attack-action limits. You may activate only one standalone psionic feature whose activation requires an Action on each of your turns; Action Surge can still grant another Attack action, but cannot be used to activate a second standalone psionic Action feature. Unless a feature says otherwise, damage from a hit resolves before any saving throw rider tied to that hit."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0044_c001_paragraph_28247fa42a
+            text: Your Discipline defines your identity across five features. Deflection Screen (5th) and Phase Step (10th) are universal psionic tools granted to every Vanguard. Advanced Training III, IV, and V (15th, 18th, and 20th) let you pick three of eight high-tier techniques regardless of discipline.
+            type: text
+        type: paragraph
+    id: how_to_play
+    kind: system
+    origins:
+      - source_unit_ids:
+          - u_l0030_c001_paragraph_8f9cbf2e6b
+          - u_l0032_c001_paragraph_6b59f5947c
+          - u_l0036_c001_paragraph_275ba8755a
+          - u_l0038_c001_paragraph_d1577dc5ad
+          - u_l0040_c001_paragraph_ba4033413d
+          - u_l0042_c001_paragraph_d00db9a79f
+          - u_l0044_c001_paragraph_28247fa42a
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    progression_section: foundation
+    publishable: true
+    title: How to Play This Subclass
+  - classifications:
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - common_features
+    content:
+      - inlines:
+          - source_unit_id: u_l0202_c001_paragraph_d86ad8e4be
+            text: Declare that you are Overloading a rider or standalone feature when you declare that feature — for a rider, before the Manifested Strike attack roll. Manifested Strike itself can never be Overloaded and never generates Blood Tax.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0048_c001_paragraph_656828983b
+            text: "Overload is a deliberate escalation that trades hit points for power. It applies to your techniques — riders and standalone psionic features — and never to Manifested Strike itself: the strike cannot be Overloaded and never generates Blood Tax. An Overload is declared when you declare the feature it escalates — for a rider, before the attack roll. Two tiers exist, both gated by Fighter level. As a general principle, Overload tiers are cumulative: Tier 2 includes every effect of Tier 1 unless it explicitly replaces it (some riders say “instead” to swap an effect rather than stack it). Each tier’s text states whether it adds to or replaces the lower tier’s effect."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0050_c003_blockquote_paragraph_e1df9b9bd5
+            text: The Blood Tax
+            type: text
+        kind: note
+        type: note
+      - body:
+          - inlines:
+              - source_unit_id: u_l0052_c003_blockquote_paragraph_fce5d5e549
+                text: (3rd level) You may Overload a rider or standalone feature to Tier 1, gaining the effect listed in its text. You take psychic self-damage equal to your Proficiency Bonus (Blood Tax), paid when you declare the Overload, whether or not the attack hits.
+                type: text
+            type: paragraph
+        heading:
+          - source_unit_id: u_l0052_c003_blockquote_paragraph_fce5d5e549
+            text: Overload
+            type: text
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - source_unit_id: u_l0054_c003_blockquote_paragraph_bdcb2ee9c3
+                text: (10th level) You may Overload a rider or standalone feature to Tier 2, gaining the effects listed in its text. Within each Attack action, only one rider can be Tier 2. Action Surge creates a new Attack action and a fresh Tier 2 rider window. This rider limit does not restrict standalone features.
+                type: text
+            type: paragraph
+        heading:
+          - source_unit_id: u_l0054_c003_blockquote_paragraph_bdcb2ee9c3
+            text: Overload
+            type: text
+        tier: 2
+        type: tier
+      - inlines:
+          - source_unit_id: u_l0056_c003_blockquote_paragraph_7159b18e60
+            text: The full attack package — rider activation and rider Overload tier — is declared before the roll. One rider per hit (discipline or Advanced Training). A hit resolves the whole package. A miss cancels rider effects, but Psi and Blood Tax are still spent — Blood Tax is paid immediately on declaration, never after the attack resolves. If you Overload more than one feature in the same turn (a rider and a standalone feature, say), you pay Blood Tax once per Overload declared.
+            type: text
+        kind: note
+        type: note
+      - inlines:
+          - source_unit_id: u_l0058_c003_blockquote_paragraph_af298ac506
+            text: "⚠ Declare the full package before the roll — one rider and its Overload tier. Hit: everything resolves. Miss: Psi AND Blood Tax are still spent; no effects. (Exception: effects that explicitly trigger on a miss, such as the Graze mastery, still resolve.)"
+            type: text
+        kind: note
+        type: note
+      - inlines:
+          - source_unit_id: u_l0060_c003_blockquote_paragraph_afd181f073
+            text: ⚠ Blood Tax is psychic damage. Resistance to psychic damage halves it normally. Immunity to psychic damage treats it as Resistance against Blood Tax instead of preventing it. Regardless of the source of reduction, you take at least half the declared Blood Tax, rounded down, unless Overload Mastery specifically says otherwise.
+            type: text
+        kind: note
+        type: note
+      - inlines:
+          - source_unit_id: u_l0062_c001_paragraph_dc110a3444
+            text: Attack Declaration Costs
+            type: text
+        type: paragraph
+      - headers:
+          - - source_unit_id: u_l0064_c003_table_cell_7609342dc4
+              text: Declaration
+              type: text
+          - - source_unit_id: u_l0064_c042_table_cell_6538d1e9ff
+              text: Psi
+              type: text
+          - - source_unit_id: u_l0064_c080_table_cell_41917f65e6
+              text: Blood Tax
+              type: text
+          - - source_unit_id: u_l0064_c097_table_cell_8a7525b149
+              text: Notes
+              type: text
+        rows:
+          - - - source_unit_id: u_l0066_c003_table_cell_d9a5b7f349
+                text: MS (no rider)
+                type: text
+            - - source_unit_id: u_l0066_c042_table_cell_5feceb66ff
+                text: "0"
+                type: text
+            - - source_unit_id: u_l0066_c080_table_cell_dc937b5989
+                text: None
+                type: text
+            - - source_unit_id: u_l0066_c097_table_cell_0fda37724c
+                text: Always available
+                type: text
+          - - - source_unit_id: u_l0067_c003_table_cell_27487805c6
+                text: MS + Tier 0 rider
+                type: text
+            - - source_unit_id: u_l0067_c042_table_cell_d94d098803
+                text: Listed cost (0 for Signature Rider)
+                type: text
+            - - source_unit_id: u_l0067_c080_table_cell_dc937b5989
+                text: None
+                type: text
+            - - source_unit_id: u_l0067_c097_table_cell_dced781603
+                text: Signature Rider is unlimited; other attack riders are once per Attack action
+                type: text
+          - - - source_unit_id: u_l0068_c003_table_cell_d0318aa6e1
+                text: MS + T1 rider
+                type: text
+            - - source_unit_id: u_l0068_c042_table_cell_d94d098803
+                text: Listed cost (0 for Signature Rider)
+                type: text
+            - - source_unit_id: u_l0068_c080_table_cell_f9085bf3a4
+                text: PB
+                type: text
+            - - source_unit_id: u_l0068_c097_table_cell_51be4ae09a
+                text: Paid on declaration, hit or miss
+                type: text
+          - - - source_unit_id: u_l0069_c003_table_cell_3d7a56a174
+                text: MS + T2 rider
+                type: text
+            - - source_unit_id: u_l0069_c042_table_cell_d94d098803
+                text: Listed cost (0 for Signature Rider)
+                type: text
+            - - source_unit_id: u_l0069_c080_table_cell_8a9d39249e
+                text: 2×PB
+                type: text
+          - - - source_unit_id: u_l0070_c003_table_cell_9b94dab6e6
+                text: Overloaded standalone feature
+                type: text
+            - - source_unit_id: u_l0070_c042_table_cell_6c94bfcbcf
+                text: Feature cost
+                type: text
+            - - source_unit_id: u_l0070_c080_table_cell_49f78be009
+                text: Per its tier*
+                type: text
+          - - - source_unit_id: u_l0071_c003_table_cell_e3fc8f211e
+                text: Rider OL + standalone OL (same turn)
+                type: text
+            - - source_unit_id: u_l0071_c042_table_cell_430453c620
+                text: Rider cost + feature cost
+                type: text
+            - - source_unit_id: u_l0071_c080_table_cell_321c5462d0
+                text: Sum both*
+                type: text
+            - - source_unit_id: u_l0071_c097_table_cell_a61927dd40
+                text: Two Blood Taxes
+                type: text
+        type: table
+      - inlines:
+          - source_unit_id: u_l0073_c001_paragraph_252e4faab7
+            text: "*Blood Tax per tier: PB at Tier 1, 2×PB at Tier 2. Each Overload declared pays independently — an Overloaded rider plus an Overloaded standalone feature in the same turn means two separate Blood Taxes. Any Psi cost and Blood Tax are spent on declaration (hit or miss). Tier 0 riders cost their listed Psi but no HP; Signature Riders cost 0 Psi at every tier. Only T1+ Overloads incur Blood Tax. Manifested Strike itself never appears in this math — it cannot be Overloaded."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0075_c001_paragraph_e61e01f161
+            text: "Blood Tax per Overload declared: Tier 1 = PB. Tier 2 = 2×PB. Sum all Overloads in the sequence."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0077_c001_paragraph_2bc2c645b4
+            text: Tier 2 costs 2×PB because it includes Tier 1’s PB plus PB more. Tier 0 riders cost 0 HP. A double-Overload turn (e.g., a Tier 1 Vectored Thrust plus a Tier 2 rider) pays each Overload separately.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0088_c001_paragraph_6e6ece1d13
+            text: "Critical Hits and Riders: On a critical hit with Manifested Strike, double only the Manifested Strike's damage dice. Damage dice dealt by a rider are never doubled by a critical hit, regardless of whether the rider damages the struck creature, another creature, or multiple creatures. Flat damage, saving throws, conditions, forced movement, and all other rider effects resolve normally. Standalone features are not riders and are unaffected by this rule."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0090_c001_paragraph_41ad9afbb7
+            text: "Using Overload: For a rider, declare the rider and its tier before the attack roll. A hit resolves the declared package; a miss does not resolve the rider, but Psi and Blood Tax remain spent. Standalone features are declared and paid for when activated."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0092_c001_paragraph_eb1ee6fe8c
+            text: "Damage Immunity and Riders: Discipline riders deal your Discipline’s damage type unless stated otherwise. Advanced Training riders deal the damage type listed in their text. Damage immunity prevents only the matching damage; it does not skip the rider’s saving throw or other effects. For example, a cold-immune creature can still be Restrained by Snow Chains, and a fire-immune creature can still be Blinded by Flare."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0094_c003_blockquote_paragraph_1eb389a220
+            text: "Concentration Startup Exception: The Blood Tax from the activation that starts a concentration feature does not trigger a concentration check. Only subsequent Blood Tax and other damage sources require checks as normal. Standard concentration rules still apply — you can only concentrate on one feature at a time."
+            type: text
+        kind: note
+        type: note
+      - inlines:
+          - source_unit_id: u_l0096_c003_blockquote_paragraph_0632b4f975
+            text: "Blood Tax and Temporary Hit Points: Blood Tax bypasses Temporary Hit Points and is deducted directly from your current Hit Points. Temporary Hit Points cannot absorb, reduce, or pay Blood Tax. Blood Tax remains psychic damage for Resistance, concentration checks, and effects that trigger when you take damage."
+            type: text
+        kind: note
+        type: note
+      - inlines:
+          - source_unit_id: u_l0098_c003_blockquote_paragraph_a7fbb0d442
+            text: "Blood Tax at 0 Hit Points: Blood Tax is paid before the declared attack or feature resolves. If it reduces you to 0 hit points, you fall Unconscious immediately and the declared attack or feature does not resolve. Any Psi spent and Blood Tax paid remain spent."
+            type: text
+        kind: note
+        type: note
+    example_turns:
+      - title:
+          - source_unit_id: u_l0100_c003_blockquote_paragraph_9486363841
+            text: Glacial Spike Tier 2 Lockdown — Level 11 Cryokinesis
+            type: text
+        setup:
+          - source_unit_id: u_l0102_c003_blockquote_paragraph_e441f239d1
+            text: "Example assumptions: The level 11 Cryokinetic begins 30 feet from one hostile creature (AC 16) with three attacks available, one free hand, 10 Psi, PB 4, Int +3, and enough hit points to pay Blood Tax. They are not concentrating and use no bonus action or reaction this turn."
+            type: text
+        activation:
+          - source_unit_id: u_l0108_c003_blockquote_paragraph_b0a8492967
+            text: "The character takes the Attack action. Before attack 1, they target the creature and declare “Manifested Strike with Glacial Spike Tier 2.” Glacial Spike is the 0-Psi Signature Rider; Tier 2 costs 2 × PB = 2 × 4 = 8 Blood Tax, paid immediately and retained even if the attack misses. Manifested Strike itself costs 0 Psi, uses its level-set 1d10 die, and is not Overloaded. Attacks 2 and 3 are plain Manifested Strikes with no rider or additional cost."
+            type: text
+        rolls_or_saves:
+          - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
+            text: "The Manifested Strike attack bonus is +9 (+3 Int, +4 PB, +2 Psionic Focus). Attack 1 rolls 12 + 9 = 21 and hits AC 16. The target then rolls 9 against Psionic save DC 15 (8 + 4 + 3) and fails its Constitution save. Attack 2 rolls 8 + 9 = 17 and hits. Attack 3 rolls 4 + 9 = 13 and misses."
+            type: text
+        damage:
+          - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
+            text: "Attack 1 rolls 7 on the 1d10: 7 + 3 Int + 2 from Glacial Spike = 12 cold damage. Attack 2 rolls 4: 4 + 3 = 7 cold damage. Attack 3 deals no damage. Total for the turn: 12 + 7 = 19 cold damage."
+            type: text
+        effects:
+          - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
+            text: The failed Constitution save applies Glacial Spike Tier 2, so the target is Restrained until the end of the character’s next turn. No movement or other secondary effect occurs.
+            type: text
+        result:
+          - source_unit_id: u_l0110_c003_blockquote_paragraph_fae2c7872a
+            text: "The character ends the turn 30 feet from the target with all 10 Psi, having taken 8 psychic damage from Blood Tax. The target has taken 19 cold damage and is Restrained for the stated duration. The Attack action is complete; the missed third attack had no rider costs to lose."
+            type: text
+      - title:
+          - source_unit_id: u_l0112_c003_blockquote_paragraph_1948bc17f9
+            text: Focused Fire — Full Attack Turn, Level 11 Pyrokinesis
+            type: text
+        setup:
+          - source_unit_id: u_l0114_c003_blockquote_paragraph_00faccb56f
+            text: "Example assumptions: The level 11 Pyrokinetic begins 40 feet from one hostile creature (AC 16) with three attacks available, one free hand, 10 Psi, PB 4, Cha +4, and enough hit points for Blood Tax. The target has no fire resistance or immunity. The character does not move, concentrate, or use a bonus action or reaction."
+            type: text
+        activation:
+          - source_unit_id: u_l0116_c003_blockquote_paragraph_01f5d0059a
+            text: "The character takes the Attack action and targets the same creature three times. Before attack 1, they declare Manifested Strike with Ember Bolt Tier 2: 0 Psi and 8 Blood Tax (2 × PB), paid before the roll. Before attack 2, they declare Manifested Strike with Cinder Lance Tier 0: 3 Psi and no Blood Tax. Before attack 3, they declare Manifested Strike with Ember Bolt Tier 0: 0 Psi and no Blood Tax. Each declared Psi cost and Blood Tax remains spent even if that attack misses."
+            type: text
+        rolls_or_saves:
+          - source_unit_id: u_l0118_c003_blockquote_paragraph_2752e68da9
+            text: "The Manifested Strike attack bonus is +10 (+4 Cha, +4 PB, +2 Psionic Focus). The attacks roll 9 + 10 = 19, 13 + 10 = 23, and 7 + 10 = 17; all three hit AC 16. None of these Ember Bolt or Cinder Lance tiers calls for a saving throw."
+            type: text
+        damage:
+          - source_unit_id: u_l0120_c003_blockquote_paragraph_5bcd08e236
+            text: "Attack 1 rolls 8 on its 1d10, for 8 + 4 + 6 from Ember Bolt Tier 2 = 18 fire damage. Attack 2 rolls 6 for the strike and 7 and 4 for Cinder Lance’s two additional base Manifested Strike dice, for 6 + 7 + 4 + 4 = 21 fire damage. Attack 3 rolls 5, for 5 + 4 + 2 from Ember Bolt Tier 0 = 11 fire damage. Total: 18 + 21 + 11 = 50 fire damage."
+            type: text
+        effects:
+          - source_unit_id: u_l0120_c003_blockquote_paragraph_5bcd08e236
+            text: These tiers add focused damage only in this turn; they cause no movement, area, or condition effect.
+            type: text
+        result:
+          - source_unit_id: u_l0122_c003_blockquote_paragraph_7c82271c6b
+            text: "The character ends 40 feet from the target with 7 of 10 Psi remaining and 8 fewer hit points from Blood Tax. The primary target has taken 50 fire damage. All three attacks and their separately declared packages are resolved, so the turn ends."
+            type: text
+      - title:
+          - source_unit_id: u_l0124_c003_blockquote_paragraph_a4872a5636
+            text: Aerial Repositioning — Sustained Turn, Level 11 Psychokinesis
+            type: text
+        setup:
+          - source_unit_id: u_l0126_c003_blockquote_paragraph_c4607cec5d
+            text: "Example assumptions: The level 11 Psychokinetic begins within 5 feet of one hostile creature (AC 16) with three attacks available, one free hand, 10 Psi, PB 4, Int +4, and enough hit points for Blood Tax. Their concentration slot is free, and they want to leave melee range before making ranged Manifested Strikes."
+            type: text
+        activation:
+          - source_unit_id: u_l0128_c003_blockquote_paragraph_5a3fd893c7
+            text: "As a bonus action, the character activates standalone Vectored Thrust Tier 1, spends 2 Psi, takes 4 Blood Tax (1 × PB), and begins concentrating for up to 10 minutes. This activation needs no roll, and its startup Blood Tax causes no concentration check. They use the 30-foot fly speed to move to a point 30 feet from the creature without provoking opportunity attacks. They then take the Attack action: attack 1 targets that creature with Manifested Strike and Telekinetic Shove Tier 0 for 0 Psi; attacks 2 and 3 target it with plain Manifested Strikes."
+            type: text
+        rolls_or_saves:
+          - source_unit_id: u_l0130_c003_blockquote_paragraph_37af8865a3
+            text: "The Manifested Strike attack bonus is +10 (+4 Int, +4 PB, +2 Psionic Focus). The attacks roll 9 + 10 = 19, 12 + 10 = 22, and 7 + 10 = 17; all hit AC 16. After attack 1 deals damage, the target rolls 12 against Psionic save DC 16 (8 + 4 + 4) and fails its Strength save."
+            type: text
+        damage:
+          - source_unit_id: u_l0132_c003_blockquote_paragraph_a8389e68cc
+            text: "Attack 1 rolls 7 on its 1d10, for 7 + 4 Int + 2 from Telekinetic Shove = 13 force damage. Attack 2 rolls 6, for 6 + 4 = 10 force damage. Attack 3 rolls 4, for 4 + 4 = 8 force damage. Total: 13 + 10 + 8 = 31 force damage."
+            type: text
+        effects:
+          - source_unit_id: u_l0134_c003_blockquote_paragraph_ca035bee04
+            text: The failed Strength save lets the character push the target 10 feet horizontally in a chosen direction. Vectored Thrust remains active through concentration, and the character’s flight did not provoke opportunity attacks.
+            type: text
+        result:
+          - source_unit_id: u_l0136_c003_blockquote_paragraph_a618462ba0
+            text: "The character ends in the chosen flying position, 30 feet from where the target began, with 8 of 10 Psi remaining, 4 fewer hit points from Blood Tax, and concentration on Vectored Thrust. The target has taken 31 force damage and ends 10 feet from its pre-push position. The bonus action, movement, and all three attacks are complete; no reaction was used."
+            type: text
+      - title:
+          - source_unit_id: u_l0138_c003_blockquote_paragraph_c3eaa6f391
+            text: Frozen-Ground Lockdown — Level 11 Cryokinesis
+            type: text
+        setup:
+          - source_unit_id: u_l0140_c003_blockquote_paragraph_750364f9e7
+            text: "Example assumptions: The level 11 Cryokinetic begins 20 feet from one hostile creature (AC 16) inside the 15-foot-radius Frozen Ground Cylinder. The character has three attacks, one free hand, PB 4, Int +4, and 8 Psi remaining from a 10-Psi reservoir after spending 2 Psi to activate Frozen Ground on the previous turn. They are still concentrating on that difficult-terrain area and have enough hit points for Blood Tax."
+            type: text
+        activation:
+          - source_unit_id: u_l0142_c003_blockquote_paragraph_9ce9acb851
+            text: "The character takes the Attack action and remains in place. Before attack 1, they target the creature and declare Manifested Strike with Glacial Spike Tier 0: 0 Psi and no Blood Tax. Before attack 2, they target the same creature and declare Manifested Strike with Glacial Spike Tier 1: 0 Psi and 4 Blood Tax (1 × PB), paid before the roll and retained even if the attack misses. Attack 3 is a plain Manifested Strike with no rider or cost. They use no bonus action or reaction."
+            type: text
+        rolls_or_saves:
+          - source_unit_id: u_l0144_c003_blockquote_paragraph_accd416349
+            text: "The Manifested Strike attack bonus is +10 (+4 Int, +4 PB, +2 Psionic Focus). The attacks roll 10 + 10 = 20, 8 + 10 = 18, and 12 + 10 = 22; all hit AC 16. After attack 2 deals damage, the target rolls 11 against Psionic save DC 16 (8 + 4 + 4) and fails its Constitution save."
+            type: text
+        damage:
+          - source_unit_id: u_l0146_c003_blockquote_paragraph_b4480594be
+            text: "Attack 1 rolls 6 on its 1d10, for 6 + 4 Int + 2 from Glacial Spike = 12 cold damage. Attack 2 rolls 8, for 8 + 4 + 2 = 14 cold damage. Attack 3 rolls 5, for 5 + 4 = 9 cold damage. Total: 12 + 14 + 9 = 35 cold damage."
+            type: text
+        effects:
+          - source_unit_id: u_l0144_c003_blockquote_paragraph_accd416349
+            text: "Attack 1 reduces the target’s Speed by 10 feet. On attack 2, the failed Constitution save makes the target’s Speed 0 until the end of the character’s next turn, replacing that reduction. Frozen Ground remains difficult terrain; when the target starts its upcoming turn in the Cylinder, it must make Frozen Ground’s separate Constitution save."
+            type: text
+        result:
+          - source_unit_id: u_l0148_c003_blockquote_paragraph_e5c8d77618
+            text: "The character ends 20 feet from the target with 8 Psi, 4 fewer hit points from Blood Tax, and concentration on Frozen Ground. The target has taken 35 cold damage and has Speed 0 in the difficult-terrain area for the stated duration. The three attacks are complete, and no Psi was spent during this turn."
+            type: text
+    id: common_overload
+    kind: feature
+    level: 3
+    origins:
+      - source_unit_ids:
+          - u_l0200_c001_paragraph_530c337beb
+          - u_l0202_c001_paragraph_d86ad8e4be
+          - u_l0048_c001_paragraph_656828983b
+          - u_l0050_c003_blockquote_paragraph_e1df9b9bd5
+          - u_l0052_c003_blockquote_paragraph_fce5d5e549
+          - u_l0054_c003_blockquote_paragraph_bdcb2ee9c3
+          - u_l0056_c003_blockquote_paragraph_7159b18e60
+          - u_l0058_c003_blockquote_paragraph_af298ac506
+          - u_l0060_c003_blockquote_paragraph_afd181f073
+          - u_l0062_c001_paragraph_dc110a3444
+          - u_l0064_c003_table_cell_7609342dc4
+          - u_l0064_c042_table_cell_6538d1e9ff
+          - u_l0064_c080_table_cell_41917f65e6
+          - u_l0064_c097_table_cell_8a7525b149
+          - u_l0066_c003_table_cell_d9a5b7f349
+          - u_l0066_c042_table_cell_5feceb66ff
+          - u_l0066_c080_table_cell_dc937b5989
+          - u_l0066_c097_table_cell_0fda37724c
+          - u_l0067_c003_table_cell_27487805c6
+          - u_l0067_c042_table_cell_d94d098803
+          - u_l0067_c080_table_cell_dc937b5989
+          - u_l0067_c097_table_cell_dced781603
+          - u_l0068_c003_table_cell_d0318aa6e1
+          - u_l0068_c042_table_cell_d94d098803
+          - u_l0068_c080_table_cell_f9085bf3a4
+          - u_l0068_c097_table_cell_51be4ae09a
+          - u_l0069_c003_table_cell_3d7a56a174
+          - u_l0069_c042_table_cell_d94d098803
+          - u_l0069_c080_table_cell_8a9d39249e
+          - u_l0070_c003_table_cell_9b94dab6e6
+          - u_l0070_c042_table_cell_6c94bfcbcf
+          - u_l0070_c080_table_cell_49f78be009
+          - u_l0071_c003_table_cell_e3fc8f211e
+          - u_l0071_c042_table_cell_430453c620
+          - u_l0071_c080_table_cell_321c5462d0
+          - u_l0071_c097_table_cell_a61927dd40
+          - u_l0073_c001_paragraph_252e4faab7
+          - u_l0075_c001_paragraph_e61e01f161
+          - u_l0077_c001_paragraph_2bc2c645b4
+          - u_l0088_c001_paragraph_6e6ece1d13
+          - u_l0090_c001_paragraph_41ad9afbb7
+          - u_l0092_c001_paragraph_eb1ee6fe8c
+          - u_l0094_c003_blockquote_paragraph_1eb389a220
+          - u_l0096_c003_blockquote_paragraph_0632b4f975
+          - u_l0098_c003_blockquote_paragraph_a7fbb0d442
+          - u_l0100_c003_blockquote_paragraph_9486363841
+          - u_l0102_c003_blockquote_paragraph_e441f239d1
+          - u_l0104_c003_blockquote_paragraph_7b15436ca6
+          - u_l0106_c003_blockquote_paragraph_216ebde730
+          - u_l0108_c003_blockquote_paragraph_b0a8492967
+          - u_l0110_c003_blockquote_paragraph_fae2c7872a
+          - u_l0112_c003_blockquote_paragraph_1948bc17f9
+          - u_l0114_c003_blockquote_paragraph_00faccb56f
+          - u_l0116_c003_blockquote_paragraph_01f5d0059a
+          - u_l0118_c003_blockquote_paragraph_2752e68da9
+          - u_l0120_c003_blockquote_paragraph_5bcd08e236
+          - u_l0122_c003_blockquote_paragraph_7c82271c6b
+          - u_l0124_c003_blockquote_paragraph_a4872a5636
+          - u_l0126_c003_blockquote_paragraph_c4607cec5d
+          - u_l0128_c003_blockquote_paragraph_5a3fd893c7
+          - u_l0130_c003_blockquote_paragraph_37af8865a3
+          - u_l0132_c003_blockquote_paragraph_a8389e68cc
+          - u_l0134_c003_blockquote_paragraph_ca035bee04
+          - u_l0136_c003_blockquote_paragraph_a618462ba0
+          - u_l0138_c003_blockquote_paragraph_c3eaa6f391
+          - u_l0140_c003_blockquote_paragraph_750364f9e7
+          - u_l0142_c003_blockquote_paragraph_9ce9acb851
+          - u_l0144_c003_blockquote_paragraph_accd416349
+          - u_l0146_c003_blockquote_paragraph_b4480594be
+          - u_l0148_c003_blockquote_paragraph_e5c8d77618
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    publishable: true
+    title: Overload
+  - classifications:
+      entity_kind: progression
+      rules_area:
+        - common_features
+    content:
+      - headers:
+          - - source_unit_id: u_l0274_c003_table_cell_1709305c9f
+              text: Level
+              type: text
+          - - source_unit_id: u_l0274_c011_table_cell_3d377ae910
+              text: Feature
+              type: text
+        rows:
+          - - - source_unit_id: u_l0276_c003_table_cell_c0d751710c
+                text: 3rd
+                type: text
+            - - source_unit_id: u_l0276_c011_table_cell_f00e70eacf
+                text: Psionic Discipline, Discipline Signature Save, Psi Reservoir, Psionic Link, Manifested Strike, Overload, Signature Rider, Kinetic Mastery, Discipline 3rd Feature
+                type: text
+          - - - source_unit_id: u_l0277_c003_table_cell_a2dc69ccc8
+                text: 5th
+                type: text
+            - - source_unit_id: u_l0277_c011_table_cell_22e17bd74f
+                text: "Advanced Training I: Deflection Screen"
+                type: text
+          - - - source_unit_id: u_l0278_c003_table_cell_afdd55851b
+                text: 7th
+                type: text
+            - - source_unit_id: u_l0278_c011_table_cell_17a2d0f901
+                text: Empathic Sense, Vanguard Training, Discipline 7th Feature
+                type: text
+          - - - source_unit_id: u_l0279_c003_table_cell_3d303171e2
+                text: 10th
+                type: text
+            - - source_unit_id: u_l0279_c011_table_cell_d01f665577
+                text: Discipline 10th Feature, Advanced Training II (Phase Step), Tier 2 Overload
+                type: text
+          - - - source_unit_id: u_l0280_c003_table_cell_464b0c8c3c
+                text: 15th
+                type: text
+            - - source_unit_id: u_l0280_c011_table_cell_24697199c5
+                text: Discipline 15th Feature, Advanced Training III (1 high-tier pick)
+                type: text
+          - - - source_unit_id: u_l0281_c003_table_cell_a0a54ea574
+                text: 18th
+                type: text
+            - - source_unit_id: u_l0281_c011_table_cell_876951a187
+                text: Advanced Training IV (1 high-tier pick), Psionic Apex
+                type: text
+          - - - source_unit_id: u_l0282_c003_table_cell_7bf7bb2ac6
+                text: 20th
+                type: text
+            - - source_unit_id: u_l0282_c011_table_cell_2bf886d5bc
+                text: Discipline 20th Feature, Advanced Training V (pool pick)
+                type: text
+        type: table
+      - inlines:
+          - source_unit_id: u_l0284_c001_paragraph_753b29f33c
+            text: Psi Cost Reference
+            type: text
+        type: paragraph
+      - headers:
+          - - source_unit_id: u_l0286_c003_table_cell_1709305c9f
+              text: Level
+              type: text
+          - - source_unit_id: u_l0286_c011_table_cell_3d377ae910
+              text: Feature
+              type: text
+          - - source_unit_id: u_l0286_c033_table_cell_a1b14db944
+              text: Discipline
+              type: text
+          - - source_unit_id: u_l0286_c057_table_cell_6538d1e9ff
+              text: Psi
+              type: text
+          - - source_unit_id: u_l0286_c070_table_cell_baaddf70fb
+              text: Type
+              type: text
+        rows:
+          - - - source_unit_id: u_l0288_c003_table_cell_c0d751710c
+                text: 3rd
+                type: text
+            - - source_unit_id: u_l0288_c011_table_cell_e3efe2cb77
+                text: Glacial Spike
+                type: text
+            - - source_unit_id: u_l0288_c033_table_cell_9e22eace20
+                text: Cryokinesis
+                type: text
+            - - source_unit_id: u_l0288_c057_table_cell_5feceb66ff
+                text: "0"
+                type: text
+            - - source_unit_id: u_l0288_c070_table_cell_8eb9369aed
+                text: Rider
+                type: text
+          - - - source_unit_id: u_l0289_c003_table_cell_c0d751710c
+                text: 3rd
+                type: text
+            - - source_unit_id: u_l0289_c011_table_cell_12f16f89e4
+                text: Ember Bolt
+                type: text
+            - - source_unit_id: u_l0289_c033_table_cell_83397592f9
+                text: Pyrokinesis
+                type: text
+            - - source_unit_id: u_l0289_c057_table_cell_5feceb66ff
+                text: "0"
+                type: text
+            - - source_unit_id: u_l0289_c070_table_cell_8eb9369aed
+                text: Rider
+                type: text
+          - - - source_unit_id: u_l0290_c003_table_cell_c0d751710c
+                text: 3rd
+                type: text
+            - - source_unit_id: u_l0290_c011_table_cell_868875b2d7
+                text: Telekinetic Shove
+                type: text
+            - - source_unit_id: u_l0290_c033_table_cell_8342f97f56
+                text: Psychokinesis
+                type: text
+            - - source_unit_id: u_l0290_c057_table_cell_5feceb66ff
+                text: "0"
+                type: text
+            - - source_unit_id: u_l0290_c070_table_cell_8eb9369aed
+                text: Rider
+                type: text
+          - - - source_unit_id: u_l0291_c003_table_cell_c0d751710c
+                text: 3rd
+                type: text
+            - - source_unit_id: u_l0291_c011_table_cell_f9b02fd2f9
+                text: Static Discharge
+                type: text
+            - - source_unit_id: u_l0291_c033_table_cell_cffd22b9c2
+                text: Electrokinesis
+                type: text
+            - - source_unit_id: u_l0291_c057_table_cell_5feceb66ff
+                text: "0"
+                type: text
+            - - source_unit_id: u_l0291_c070_table_cell_8eb9369aed
+                text: Rider
+                type: text
+          - - - source_unit_id: u_l0292_c003_table_cell_a2dc69ccc8
+                text: 5th
+                type: text
+            - - source_unit_id: u_l0292_c011_table_cell_255712ed93
+                text: Deflection Screen
+                type: text
+            - - source_unit_id: u_l0292_c033_table_cell_c1c6b76f68
+                text: Universal (AT I)
+                type: text
+            - - source_unit_id: u_l0292_c057_table_cell_ef96a0ac74
+                text: "1"
+                type: text
+            - - source_unit_id: u_l0292_c070_table_cell_d8be728bfd
+                text: Reaction
+                type: text
+          - - - source_unit_id: u_l0293_c003_table_cell_afdd55851b
+                text: 7th
+                type: text
+            - - source_unit_id: u_l0293_c011_table_cell_5d943b0255
+                text: Empathic Sense
+                type: text
+            - - source_unit_id: u_l0293_c033_table_cell_e21148c0aa
+                text: Universal
+                type: text
+            - - source_unit_id: u_l0293_c057_table_cell_230424f20a
+                text: "0"
+                type: text
+            - - source_unit_id: u_l0293_c070_table_cell_0d6b975da4
+                text: Bonus Action · Limited Uses
+                type: text
+          - - - source_unit_id: u_l0294_c003_table_cell_afdd55851b
+                text: 7th
+                type: text
+            - - source_unit_id: u_l0294_c011_table_cell_b37d023ded
+                text: Snow Chains
+                type: text
+            - - source_unit_id: u_l0294_c033_table_cell_9e22eace20
+                text: Cryokinesis
+                type: text
+            - - source_unit_id: u_l0294_c057_table_cell_ac37d81031
+                text: "2"
+                type: text
+            - - source_unit_id: u_l0294_c070_table_cell_2e6defc065
+                text: Rider (1×/action)
+                type: text
+          - - - source_unit_id: u_l0295_c003_table_cell_afdd55851b
+                text: 7th
+                type: text
+            - - source_unit_id: u_l0295_c011_table_cell_5290b565d1
+                text: Thermal Fracture
+                type: text
+            - - source_unit_id: u_l0295_c033_table_cell_83397592f9
+                text: Pyrokinesis
+                type: text
+            - - source_unit_id: u_l0295_c057_table_cell_6b86b273ff
+                text: "1"
+                type: text
+            - - source_unit_id: u_l0295_c070_table_cell_2e6defc065
+                text: Rider (1×/action)
+                type: text
+          - - - source_unit_id: u_l0296_c003_table_cell_afdd55851b
+                text: 7th
+                type: text
+            - - source_unit_id: u_l0296_c011_table_cell_96b1649940
+                text: Vectored Thrust
+                type: text
+            - - source_unit_id: u_l0296_c033_table_cell_8342f97f56
+                text: Psychokinesis
+                type: text
+            - - source_unit_id: u_l0296_c057_table_cell_ac37d81031
+                text: "2"
+                type: text
+            - - source_unit_id: u_l0296_c070_table_cell_b0da6c3e1a
+                text: Bonus Action · Conc
+                type: text
+          - - - source_unit_id: u_l0297_c003_table_cell_afdd55851b
+                text: 7th
+                type: text
+            - - source_unit_id: u_l0297_c011_table_cell_f77acbb990
+                text: Branching Bolt
+                type: text
+            - - source_unit_id: u_l0297_c033_table_cell_cffd22b9c2
+                text: Electrokinesis
+                type: text
+            - - source_unit_id: u_l0297_c057_table_cell_d4735e3a26
+                text: "2"
+                type: text
+            - - source_unit_id: u_l0297_c070_table_cell_2e6defc065
+                text: Rider (1×/action)
+                type: text
+          - - - source_unit_id: u_l0298_c003_table_cell_3d303171e2
+                text: 10th
+                type: text
+            - - source_unit_id: u_l0298_c011_table_cell_6e7ee10fd8
+                text: Frozen Ground
+                type: text
+            - - source_unit_id: u_l0298_c033_table_cell_9e22eace20
+                text: Cryokinesis
+                type: text
+            - - source_unit_id: u_l0298_c057_table_cell_ac37d81031
+                text: "2"
+                type: text
+            - - source_unit_id: u_l0298_c070_table_cell_0d93a356ed
+                text: Action · Concentration
+                type: text
+          - - - source_unit_id: u_l0299_c003_table_cell_3d303171e2
+                text: 10th
+                type: text
+            - - source_unit_id: u_l0299_c011_table_cell_d4053a30b7
+                text: Cinder Lance
+                type: text
+            - - source_unit_id: u_l0299_c033_table_cell_83397592f9
+                text: Pyrokinesis
+                type: text
+            - - source_unit_id: u_l0299_c057_table_cell_4e07408562
+                text: "3"
+                type: text
+            - - source_unit_id: u_l0299_c070_table_cell_2e6defc065
+                text: Rider (1×/action)
+                type: text
+          - - - source_unit_id: u_l0300_c003_table_cell_3d303171e2
+                text: 10th
+                type: text
+            - - source_unit_id: u_l0300_c011_table_cell_8f76c3b885
+                text: Explosion/Implosion
+                type: text
+            - - source_unit_id: u_l0300_c033_table_cell_8342f97f56
+                text: Psychokinesis
+                type: text
+            - - source_unit_id: u_l0300_c057_table_cell_ac37d81031
+                text: "2"
+                type: text
+            - - source_unit_id: u_l0300_c070_table_cell_2e6defc065
+                text: Rider (1×/action)
+                type: text
+          - - - source_unit_id: u_l0301_c003_table_cell_3d303171e2
+                text: 10th
+                type: text
+            - - source_unit_id: u_l0301_c011_table_cell_8cbd3dc35d
+                text: Electron Burst
+                type: text
+            - - source_unit_id: u_l0301_c033_table_cell_cffd22b9c2
+                text: Electrokinesis
+                type: text
+            - - source_unit_id: u_l0301_c057_table_cell_ac37d81031
+                text: "2"
+                type: text
+            - - source_unit_id: u_l0301_c070_table_cell_2e6defc065
+                text: Rider (1×/action)
+                type: text
+          - - - source_unit_id: u_l0302_c003_table_cell_3d303171e2
+                text: 10th
+                type: text
+            - - source_unit_id: u_l0302_c011_table_cell_21acbb6f16
+                text: Phase Step
+                type: text
+            - - source_unit_id: u_l0302_c033_table_cell_cb0cd0f8a0
+                text: Universal (AT II)
+                type: text
+            - - source_unit_id: u_l0302_c057_table_cell_ef96a0ac74
+                text: "1"
+                type: text
+            - - source_unit_id: u_l0302_c070_table_cell_e5c4be166d
+                text: Bonus Action
+                type: text
+          - - - source_unit_id: u_l0303_c003_table_cell_464b0c8c3c
+                text: 15th
+                type: text
+            - - source_unit_id: u_l0303_c011_table_cell_a79f060635
+                text: Arctic Tempest
+                type: text
+            - - source_unit_id: u_l0303_c033_table_cell_9e22eace20
+                text: Cryokinesis
+                type: text
+            - - source_unit_id: u_l0303_c057_table_cell_3addd72c31
+                text: "3"
+                type: text
+            - - source_unit_id: u_l0303_c070_table_cell_64cff1319d
+                text: Action
+                type: text
+          - - - source_unit_id: u_l0304_c003_table_cell_464b0c8c3c
+                text: 15th
+                type: text
+            - - source_unit_id: u_l0304_c011_table_cell_38e9b86f2b
+                text: Flare
+                type: text
+            - - source_unit_id: u_l0304_c033_table_cell_83397592f9
+                text: Pyrokinesis
+                type: text
+            - - source_unit_id: u_l0304_c057_table_cell_4e07408562
+                text: "3"
+                type: text
+            - - source_unit_id: u_l0304_c070_table_cell_2e6defc065
+                text: Rider (1×/action)
+                type: text
+          - - - source_unit_id: u_l0305_c003_table_cell_464b0c8c3c
+                text: 15th
+                type: text
+            - - source_unit_id: u_l0305_c011_table_cell_55ddd66462
+                text: Telekinetic Slam
+                type: text
+            - - source_unit_id: u_l0305_c033_table_cell_8342f97f56
+                text: Psychokinesis
+                type: text
+            - - source_unit_id: u_l0305_c057_table_cell_3addd72c31
+                text: "3"
+                type: text
+            - - source_unit_id: u_l0305_c070_table_cell_64cff1319d
+                text: Action
+                type: text
+          - - - source_unit_id: u_l0306_c003_table_cell_464b0c8c3c
+                text: 15th
+                type: text
+            - - source_unit_id: u_l0306_c011_table_cell_6b62864608
+                text: Forked Lightning
+                type: text
+            - - source_unit_id: u_l0306_c033_table_cell_cffd22b9c2
+                text: Electrokinesis
+                type: text
+            - - source_unit_id: u_l0306_c057_table_cell_4e07408562
+                text: "3"
+                type: text
+            - - source_unit_id: u_l0306_c070_table_cell_64cff1319d
+                text: Action
+                type: text
+          - - - source_unit_id: u_l0307_c003_table_cell_464b0c8c3c
+                text: 15th
+                type: text
+            - - source_unit_id: u_l0307_c011_table_cell_955dd7a19d
+                text: AT III pick
+                type: text
+            - - source_unit_id: u_l0307_c033_table_cell_e21148c0aa
+                text: Universal
+                type: text
+            - - source_unit_id: u_l0307_c057_table_cell_8b7b5fc097
+                text: Varies
+                type: text
+            - - source_unit_id: u_l0307_c070_table_cell_6ac55b6ca2
+                text: Varies
+                type: text
+          - - - source_unit_id: u_l0308_c003_table_cell_a0a54ea574
+                text: 18th
+                type: text
+            - - source_unit_id: u_l0308_c011_table_cell_65618f1ba8
+                text: AT IV pick
+                type: text
+            - - source_unit_id: u_l0308_c033_table_cell_e21148c0aa
+                text: Universal
+                type: text
+            - - source_unit_id: u_l0308_c057_table_cell_8b7b5fc097
+                text: Varies
+                type: text
+            - - source_unit_id: u_l0308_c070_table_cell_6ac55b6ca2
+                text: Varies
+                type: text
+          - - - source_unit_id: u_l0309_c003_table_cell_7bf7bb2ac6
+                text: 20th
+                type: text
+            - - source_unit_id: u_l0309_c011_table_cell_6188c3e04a
+                text: AT V pick
+                type: text
+            - - source_unit_id: u_l0309_c033_table_cell_e21148c0aa
+                text: Universal
+                type: text
+            - - source_unit_id: u_l0309_c057_table_cell_8b7b5fc097
+                text: Varies
+                type: text
+            - - source_unit_id: u_l0309_c070_table_cell_6ac55b6ca2
+                text: Varies
+                type: text
+          - - - source_unit_id: u_l0310_c003_table_cell_365085e202
+                text: 15th+
+                type: text
+            - - source_unit_id: u_l0310_c011_table_cell_fa772acceb
+                text: Mind Shred
+                type: text
+            - - source_unit_id: u_l0310_c033_table_cell_f2e2492722
+                text: Universal (AT pool)
+                type: text
+            - - source_unit_id: u_l0310_c057_table_cell_4e07408562
+                text: "3"
+                type: text
+            - - source_unit_id: u_l0310_c070_table_cell_2e6defc065
+                text: Rider (1×/action)
+                type: text
+          - - - source_unit_id: u_l0311_c003_table_cell_365085e202
+                text: 15th+
+                type: text
+            - - source_unit_id: u_l0311_c011_table_cell_7d8c86ecd6
+                text: Beguile
+                type: text
+            - - source_unit_id: u_l0311_c033_table_cell_f2e2492722
+                text: Universal (AT pool)
+                type: text
+            - - source_unit_id: u_l0311_c057_table_cell_3addd72c31
+                text: "3"
+                type: text
+            - - source_unit_id: u_l0311_c070_table_cell_0d93a356ed
+                text: Action · Concentration
+                type: text
+          - - - source_unit_id: u_l0312_c003_table_cell_365085e202
+                text: 15th+
+                type: text
+            - - source_unit_id: u_l0312_c011_table_cell_3357cd00ed
+                text: Mind Lock
+                type: text
+            - - source_unit_id: u_l0312_c033_table_cell_f2e2492722
+                text: Universal (AT pool)
+                type: text
+            - - source_unit_id: u_l0312_c057_table_cell_4e07408562
+                text: "3"
+                type: text
+            - - source_unit_id: u_l0312_c070_table_cell_2e6defc065
+                text: Rider (1×/action)
+                type: text
+          - - - source_unit_id: u_l0313_c003_table_cell_365085e202
+                text: 15th+
+                type: text
+            - - source_unit_id: u_l0313_c011_table_cell_c3011d3013
+                text: Gravitic Press
+                type: text
+            - - source_unit_id: u_l0313_c033_table_cell_f2e2492722
+                text: Universal (AT pool)
+                type: text
+            - - source_unit_id: u_l0313_c057_table_cell_3addd72c31
+                text: "3"
+                type: text
+            - - source_unit_id: u_l0313_c070_table_cell_0d93a356ed
+                text: Action · Concentration
+                type: text
+          - - - source_unit_id: u_l0314_c003_table_cell_365085e202
+                text: 15th+
+                type: text
+            - - source_unit_id: u_l0314_c011_table_cell_fb6b9f00b2
+                text: Barrier
+                type: text
+            - - source_unit_id: u_l0314_c033_table_cell_f2e2492722
+                text: Universal (AT pool)
+                type: text
+            - - source_unit_id: u_l0314_c057_table_cell_3addd72c31
+                text: "3"
+                type: text
+            - - source_unit_id: u_l0314_c070_table_cell_e5c4be166d
+                text: Bonus Action
+                type: text
+          - - - source_unit_id: u_l0315_c003_table_cell_365085e202
+                text: 15th+
+                type: text
+            - - source_unit_id: u_l0315_c011_table_cell_457a96681d
+                text: Improved Phase Step
+                type: text
+            - - source_unit_id: u_l0315_c033_table_cell_f2e2492722
+                text: Universal (AT pool)
+                type: text
+            - - source_unit_id: u_l0315_c057_table_cell_3addd72c31
+                text: "3"
+                type: text
+            - - source_unit_id: u_l0315_c070_table_cell_e5c4be166d
+                text: Bonus Action
+                type: text
+          - - - source_unit_id: u_l0316_c003_table_cell_277bbe803d
+                text: 18th+
+                type: text
+            - - source_unit_id: u_l0316_c011_table_cell_5cf5bd9589
+                text: Overload Mastery II
+                type: text
+            - - source_unit_id: u_l0316_c033_table_cell_f2e2492722
+                text: Universal (AT pool)
+                type: text
+            - - source_unit_id: u_l0316_c057_table_cell_230424f20a
+                text: "0"
+                type: text
+            - - source_unit_id: u_l0316_c070_table_cell_18f41f5869
+                text: Passive · Requires Psionic Apex
+                type: text
+          - - - source_unit_id: u_l0317_c003_table_cell_365085e202
+                text: 15th+
+                type: text
+            - - source_unit_id: u_l0317_c011_table_cell_a2bbb61a5a
+                text: Inner Reserve
+                type: text
+            - - source_unit_id: u_l0317_c033_table_cell_f2e2492722
+                text: Universal (AT pool)
+                type: text
+            - - source_unit_id: u_l0317_c057_table_cell_230424f20a
+                text: "0"
+                type: text
+            - - source_unit_id: u_l0317_c070_table_cell_78c04330e9
+                text: Passive
+                type: text
+          - - - source_unit_id: u_l0318_c003_table_cell_7bf7bb2ac6
+                text: 20th
+                type: text
+            - - source_unit_id: u_l0318_c011_table_cell_20edba2c34
+                text: Absolute Zero
+                type: text
+            - - source_unit_id: u_l0318_c033_table_cell_9e22eace20
+                text: Cryokinesis
+                type: text
+            - - source_unit_id: u_l0318_c057_table_cell_12d9579328
+                text: "5"
+                type: text
+            - - source_unit_id: u_l0318_c070_table_cell_64cff1319d
+                text: Action
+                type: text
+          - - - source_unit_id: u_l0319_c003_table_cell_7bf7bb2ac6
+                text: 20th
+                type: text
+            - - source_unit_id: u_l0319_c011_table_cell_f024f26709
+                text: Furnace Strike
+                type: text
+            - - source_unit_id: u_l0319_c033_table_cell_83397592f9
+                text: Pyrokinesis
+                type: text
+            - - source_unit_id: u_l0319_c057_table_cell_ef2d127de3
+                text: "5"
+                type: text
+            - - source_unit_id: u_l0319_c070_table_cell_2e6defc065
+                text: Rider (1×/action)
+                type: text
+          - - - source_unit_id: u_l0320_c003_table_cell_7bf7bb2ac6
+                text: 20th
+                type: text
+            - - source_unit_id: u_l0320_c011_table_cell_984693c331
+                text: Mass Levitation
+                type: text
+            - - source_unit_id: u_l0320_c033_table_cell_8342f97f56
+                text: Psychokinesis
+                type: text
+            - - source_unit_id: u_l0320_c057_table_cell_12d9579328
+                text: "5"
+                type: text
+            - - source_unit_id: u_l0320_c070_table_cell_0d93a356ed
+                text: Action · Concentration
+                type: text
+          - - - source_unit_id: u_l0321_c003_table_cell_7bf7bb2ac6
+                text: 20th
+                type: text
+            - - source_unit_id: u_l0321_c011_table_cell_e8f494ec93
+                text: Ball Lightning
+                type: text
+            - - source_unit_id: u_l0321_c033_table_cell_cffd22b9c2
+                text: Electrokinesis
+                type: text
+            - - source_unit_id: u_l0321_c057_table_cell_12d9579328
+                text: "5"
+                type: text
+            - - source_unit_id: u_l0321_c070_table_cell_0d93a356ed
+                text: Action · Concentration
+                type: text
+        type: table
+    id: subclass_feature_reference
+    kind: progression
+    origins:
+      - source_unit_ids:
+          - u_l0274_c003_table_cell_1709305c9f
+          - u_l0274_c011_table_cell_3d377ae910
+          - u_l0276_c003_table_cell_c0d751710c
+          - u_l0276_c011_table_cell_f00e70eacf
+          - u_l0277_c003_table_cell_a2dc69ccc8
+          - u_l0277_c011_table_cell_22e17bd74f
+          - u_l0278_c003_table_cell_afdd55851b
+          - u_l0278_c011_table_cell_17a2d0f901
+          - u_l0279_c003_table_cell_3d303171e2
+          - u_l0279_c011_table_cell_d01f665577
+          - u_l0280_c003_table_cell_464b0c8c3c
+          - u_l0280_c011_table_cell_24697199c5
+          - u_l0281_c003_table_cell_a0a54ea574
+          - u_l0281_c011_table_cell_876951a187
+          - u_l0282_c003_table_cell_7bf7bb2ac6
+          - u_l0282_c011_table_cell_2bf886d5bc
+          - u_l0284_c001_paragraph_753b29f33c
+          - u_l0286_c003_table_cell_1709305c9f
+          - u_l0286_c011_table_cell_3d377ae910
+          - u_l0286_c033_table_cell_a1b14db944
+          - u_l0286_c057_table_cell_6538d1e9ff
+          - u_l0286_c070_table_cell_baaddf70fb
+          - u_l0288_c003_table_cell_c0d751710c
+          - u_l0288_c011_table_cell_e3efe2cb77
+          - u_l0288_c033_table_cell_9e22eace20
+          - u_l0288_c057_table_cell_5feceb66ff
+          - u_l0288_c070_table_cell_8eb9369aed
+          - u_l0289_c003_table_cell_c0d751710c
+          - u_l0289_c011_table_cell_12f16f89e4
+          - u_l0289_c033_table_cell_83397592f9
+          - u_l0289_c057_table_cell_5feceb66ff
+          - u_l0289_c070_table_cell_8eb9369aed
+          - u_l0290_c003_table_cell_c0d751710c
+          - u_l0290_c011_table_cell_868875b2d7
+          - u_l0290_c033_table_cell_8342f97f56
+          - u_l0290_c057_table_cell_5feceb66ff
+          - u_l0290_c070_table_cell_8eb9369aed
+          - u_l0291_c003_table_cell_c0d751710c
+          - u_l0291_c011_table_cell_f9b02fd2f9
+          - u_l0291_c033_table_cell_cffd22b9c2
+          - u_l0291_c057_table_cell_5feceb66ff
+          - u_l0291_c070_table_cell_8eb9369aed
+          - u_l0292_c003_table_cell_a2dc69ccc8
+          - u_l0292_c011_table_cell_255712ed93
+          - u_l0292_c033_table_cell_c1c6b76f68
+          - u_l0292_c057_table_cell_ef96a0ac74
+          - u_l0292_c070_table_cell_d8be728bfd
+          - u_l0293_c003_table_cell_afdd55851b
+          - u_l0293_c011_table_cell_5d943b0255
+          - u_l0293_c033_table_cell_e21148c0aa
+          - u_l0293_c057_table_cell_230424f20a
+          - u_l0293_c070_table_cell_0d6b975da4
+          - u_l0294_c003_table_cell_afdd55851b
+          - u_l0294_c011_table_cell_b37d023ded
+          - u_l0294_c033_table_cell_9e22eace20
+          - u_l0294_c057_table_cell_ac37d81031
+          - u_l0294_c070_table_cell_2e6defc065
+          - u_l0295_c003_table_cell_afdd55851b
+          - u_l0295_c011_table_cell_5290b565d1
+          - u_l0295_c033_table_cell_83397592f9
+          - u_l0295_c057_table_cell_6b86b273ff
+          - u_l0295_c070_table_cell_2e6defc065
+          - u_l0296_c003_table_cell_afdd55851b
+          - u_l0296_c011_table_cell_96b1649940
+          - u_l0296_c033_table_cell_8342f97f56
+          - u_l0296_c057_table_cell_ac37d81031
+          - u_l0296_c070_table_cell_b0da6c3e1a
+          - u_l0297_c003_table_cell_afdd55851b
+          - u_l0297_c011_table_cell_f77acbb990
+          - u_l0297_c033_table_cell_cffd22b9c2
+          - u_l0297_c057_table_cell_d4735e3a26
+          - u_l0297_c070_table_cell_2e6defc065
+          - u_l0298_c003_table_cell_3d303171e2
+          - u_l0298_c011_table_cell_6e7ee10fd8
+          - u_l0298_c033_table_cell_9e22eace20
+          - u_l0298_c057_table_cell_ac37d81031
+          - u_l0298_c070_table_cell_0d93a356ed
+          - u_l0299_c003_table_cell_3d303171e2
+          - u_l0299_c011_table_cell_d4053a30b7
+          - u_l0299_c033_table_cell_83397592f9
+          - u_l0299_c057_table_cell_4e07408562
+          - u_l0299_c070_table_cell_2e6defc065
+          - u_l0300_c003_table_cell_3d303171e2
+          - u_l0300_c011_table_cell_8f76c3b885
+          - u_l0300_c033_table_cell_8342f97f56
+          - u_l0300_c057_table_cell_ac37d81031
+          - u_l0300_c070_table_cell_2e6defc065
+          - u_l0301_c003_table_cell_3d303171e2
+          - u_l0301_c011_table_cell_8cbd3dc35d
+          - u_l0301_c033_table_cell_cffd22b9c2
+          - u_l0301_c057_table_cell_ac37d81031
+          - u_l0301_c070_table_cell_2e6defc065
+          - u_l0302_c003_table_cell_3d303171e2
+          - u_l0302_c011_table_cell_21acbb6f16
+          - u_l0302_c033_table_cell_cb0cd0f8a0
+          - u_l0302_c057_table_cell_ef96a0ac74
+          - u_l0302_c070_table_cell_e5c4be166d
+          - u_l0303_c003_table_cell_464b0c8c3c
+          - u_l0303_c011_table_cell_a79f060635
+          - u_l0303_c033_table_cell_9e22eace20
+          - u_l0303_c057_table_cell_3addd72c31
+          - u_l0303_c070_table_cell_64cff1319d
+          - u_l0304_c003_table_cell_464b0c8c3c
+          - u_l0304_c011_table_cell_38e9b86f2b
+          - u_l0304_c033_table_cell_83397592f9
+          - u_l0304_c057_table_cell_4e07408562
+          - u_l0304_c070_table_cell_2e6defc065
+          - u_l0305_c003_table_cell_464b0c8c3c
+          - u_l0305_c011_table_cell_55ddd66462
+          - u_l0305_c033_table_cell_8342f97f56
+          - u_l0305_c057_table_cell_3addd72c31
+          - u_l0305_c070_table_cell_64cff1319d
+          - u_l0306_c003_table_cell_464b0c8c3c
+          - u_l0306_c011_table_cell_6b62864608
+          - u_l0306_c033_table_cell_cffd22b9c2
+          - u_l0306_c057_table_cell_4e07408562
+          - u_l0306_c070_table_cell_64cff1319d
+          - u_l0307_c003_table_cell_464b0c8c3c
+          - u_l0307_c011_table_cell_955dd7a19d
+          - u_l0307_c033_table_cell_e21148c0aa
+          - u_l0307_c057_table_cell_8b7b5fc097
+          - u_l0307_c070_table_cell_6ac55b6ca2
+          - u_l0308_c003_table_cell_a0a54ea574
+          - u_l0308_c011_table_cell_65618f1ba8
+          - u_l0308_c033_table_cell_e21148c0aa
+          - u_l0308_c057_table_cell_8b7b5fc097
+          - u_l0308_c070_table_cell_6ac55b6ca2
+          - u_l0309_c003_table_cell_7bf7bb2ac6
+          - u_l0309_c011_table_cell_6188c3e04a
+          - u_l0309_c033_table_cell_e21148c0aa
+          - u_l0309_c057_table_cell_8b7b5fc097
+          - u_l0309_c070_table_cell_6ac55b6ca2
+          - u_l0310_c003_table_cell_365085e202
+          - u_l0310_c011_table_cell_fa772acceb
+          - u_l0310_c033_table_cell_f2e2492722
+          - u_l0310_c057_table_cell_4e07408562
+          - u_l0310_c070_table_cell_2e6defc065
+          - u_l0311_c003_table_cell_365085e202
+          - u_l0311_c011_table_cell_7d8c86ecd6
+          - u_l0311_c033_table_cell_f2e2492722
+          - u_l0311_c057_table_cell_3addd72c31
+          - u_l0311_c070_table_cell_0d93a356ed
+          - u_l0312_c003_table_cell_365085e202
+          - u_l0312_c011_table_cell_3357cd00ed
+          - u_l0312_c033_table_cell_f2e2492722
+          - u_l0312_c057_table_cell_4e07408562
+          - u_l0312_c070_table_cell_2e6defc065
+          - u_l0313_c003_table_cell_365085e202
+          - u_l0313_c011_table_cell_c3011d3013
+          - u_l0313_c033_table_cell_f2e2492722
+          - u_l0313_c057_table_cell_3addd72c31
+          - u_l0313_c070_table_cell_0d93a356ed
+          - u_l0314_c003_table_cell_365085e202
+          - u_l0314_c011_table_cell_fb6b9f00b2
+          - u_l0314_c033_table_cell_f2e2492722
+          - u_l0314_c057_table_cell_3addd72c31
+          - u_l0314_c070_table_cell_e5c4be166d
+          - u_l0315_c003_table_cell_365085e202
+          - u_l0315_c011_table_cell_457a96681d
+          - u_l0315_c033_table_cell_f2e2492722
+          - u_l0315_c057_table_cell_3addd72c31
+          - u_l0315_c070_table_cell_e5c4be166d
+          - u_l0316_c003_table_cell_277bbe803d
+          - u_l0316_c011_table_cell_5cf5bd9589
+          - u_l0316_c033_table_cell_f2e2492722
+          - u_l0316_c057_table_cell_230424f20a
+          - u_l0316_c070_table_cell_18f41f5869
+          - u_l0317_c003_table_cell_365085e202
+          - u_l0317_c011_table_cell_a2bbb61a5a
+          - u_l0317_c033_table_cell_f2e2492722
+          - u_l0317_c057_table_cell_230424f20a
+          - u_l0317_c070_table_cell_78c04330e9
+          - u_l0318_c003_table_cell_7bf7bb2ac6
+          - u_l0318_c011_table_cell_20edba2c34
+          - u_l0318_c033_table_cell_9e22eace20
+          - u_l0318_c057_table_cell_12d9579328
+          - u_l0318_c070_table_cell_64cff1319d
+          - u_l0319_c003_table_cell_7bf7bb2ac6
+          - u_l0319_c011_table_cell_f024f26709
+          - u_l0319_c033_table_cell_83397592f9
+          - u_l0319_c057_table_cell_ef2d127de3
+          - u_l0319_c070_table_cell_2e6defc065
+          - u_l0320_c003_table_cell_7bf7bb2ac6
+          - u_l0320_c011_table_cell_984693c331
+          - u_l0320_c033_table_cell_8342f97f56
+          - u_l0320_c057_table_cell_12d9579328
+          - u_l0320_c070_table_cell_0d93a356ed
+          - u_l0321_c003_table_cell_7bf7bb2ac6
+          - u_l0321_c011_table_cell_e8f494ec93
+          - u_l0321_c033_table_cell_cffd22b9c2
+          - u_l0321_c057_table_cell_12d9579328
+          - u_l0321_c070_table_cell_0d93a356ed
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    progression_section: reference
+    publishable: true
+    title: Subclass Feature Reference
+  - activation: passive
+    classifications:
+      entity_kind: feature
+      feature_role: passive
+      rules_area:
+        - common_features
+    content:
+      - inlines:
+          - source_unit_id: u_l0154_c001_paragraph_18baee9e9c
+            text: "Choose one of the following as your Psionic Ability: Intelligence, Wisdom, or Charisma. You use your Psionic Ability for Manifested Strike attack and damage rolls, saving throw DCs, and all subclass features that reference your Psionic Ability."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0156_c001_paragraph_f4e7df8aa8
+            text: Psionic save DC = 8 + Proficiency Bonus + Psionic Ability modifier
+            type: text
+        type: paragraph
+    id: common_psionic_discipline
+    kind: feature
+    level: 3
+    origins:
+      - source_unit_ids:
+          - u_l0152_c001_paragraph_67f10876d5
+          - u_l0154_c001_paragraph_18baee9e9c
+          - u_l0156_c001_paragraph_f4e7df8aa8
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    publishable: true
+    title: Psionic Discipline
+  - activation: passive
+    classifications:
+      entity_kind: feature
+      feature_role: passive
+      rules_area:
+        - common_features
+    content:
+      - inlines:
+          - source_unit_id: u_l0160_c001_paragraph_4a8d58aa96
+            text: Each Discipline has one signature saving throw, used by any feature that calls for your “signature save” (such as Improved Phase Step). Pyrokinesis uses Dexterity, Cryokinesis uses Constitution, Psychokinesis uses Strength, and Electrokinesis uses Charisma. This is the saving throw the target makes against those features; it does not change any save another feature already specifies.
+            type: text
+        type: paragraph
+    id: common_discipline_signature_save
+    kind: feature
+    level: 3
+    origins:
+      - source_unit_ids:
+          - u_l0158_c001_paragraph_a0af3fd4f6
+          - u_l0160_c001_paragraph_4a8d58aa96
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    publishable: true
+    title: Discipline Signature Save
+  - classifications:
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - common_features
+    content:
+      - inlines:
+          - source_unit_id: u_l0164_c001_paragraph_bdba401b61
+            text: Your Psi Points equal half your Fighter level (rounded up) + your Proficiency Bonus. You regain all expended Psi Points on a short or long rest.
+            type: text
+        type: paragraph
+      - headers:
+          - - source_unit_id: u_l0166_c003_table_cell_9badec117b
+              text: Fighter Level
+              type: text
+          - - source_unit_id: u_l0166_c019_table_cell_d50ff7e46d
+              text: Proficiency Bonus
+              type: text
+          - - source_unit_id: u_l0166_c039_table_cell_990a8e8bac
+              text: Psi Points
+              type: text
+        rows:
+          - - - source_unit_id: u_l0168_c003_table_cell_2ddace8cf2
+                text: 3–4
+                type: text
+            - - source_unit_id: u_l0168_c019_table_cell_3117117954
+                text: "+2"
+                type: text
+            - - source_unit_id: u_l0168_c039_table_cell_4b227777d4
+                text: "4"
+                type: text
+          - - - source_unit_id: u_l0169_c003_table_cell_a23735d453
+                text: 5–6
+                type: text
+            - - source_unit_id: u_l0169_c019_table_cell_25330787f7
+                text: "+3"
+                type: text
+            - - source_unit_id: u_l0169_c039_table_cell_e7f6c01177
+                text: "6"
+                type: text
+          - - - source_unit_id: u_l0170_c003_table_cell_6fd464df0e
+                text: 7–8
+                type: text
+            - - source_unit_id: u_l0170_c019_table_cell_25330787f7
+                text: "+3"
+                type: text
+            - - source_unit_id: u_l0170_c039_table_cell_7902699be4
+                text: "7"
+                type: text
+          - - - source_unit_id: u_l0171_c003_table_cell_af1d71f4c3
+                text: 9–10
+                type: text
+            - - source_unit_id: u_l0171_c019_table_cell_978ab57557
+                text: "+4"
+                type: text
+            - - source_unit_id: u_l0171_c039_table_cell_19581e27de
+                text: "9"
+                type: text
+          - - - source_unit_id: u_l0172_c003_table_cell_456a967562
+                text: 11–12
+                type: text
+            - - source_unit_id: u_l0172_c019_table_cell_978ab57557
+                text: "+4"
+                type: text
+            - - source_unit_id: u_l0172_c039_table_cell_4a44dc1536
+                text: "10"
+                type: text
+          - - - source_unit_id: u_l0173_c003_table_cell_e7b481c3ed
+                text: 13–14
+                type: text
+            - - source_unit_id: u_l0173_c019_table_cell_03dec1b637
+                text: "+5"
+                type: text
+            - - source_unit_id: u_l0173_c039_table_cell_6b51d431df
+                text: "12"
+                type: text
+          - - - source_unit_id: u_l0174_c003_table_cell_9978455d31
+                text: 15–16
+                type: text
+            - - source_unit_id: u_l0174_c019_table_cell_03dec1b637
+                text: "+5"
+                type: text
+            - - source_unit_id: u_l0174_c039_table_cell_3fdba35f04
+                text: "13"
+                type: text
+          - - - source_unit_id: u_l0175_c003_table_cell_856067b7f8
+                text: 17–18
+                type: text
+            - - source_unit_id: u_l0175_c019_table_cell_6f86ac1fd7
+                text: "+6"
+                type: text
+            - - source_unit_id: u_l0175_c039_table_cell_e629fa6598
+                text: "15"
+                type: text
+          - - - source_unit_id: u_l0176_c003_table_cell_9ccb8c7a3b
+                text: 19–20
+                type: text
+            - - source_unit_id: u_l0176_c019_table_cell_6f86ac1fd7
+                text: "+6"
+                type: text
+            - - source_unit_id: u_l0176_c039_table_cell_b17ef6d19c
+                text: "16"
+                type: text
+        type: table
+    id: common_psi_reservoir
+    kind: feature
+    level: 3
+    origins:
+      - source_unit_ids:
+          - u_l0162_c001_paragraph_939cd346da
+          - u_l0164_c001_paragraph_bdba401b61
+          - u_l0166_c003_table_cell_9badec117b
+          - u_l0166_c019_table_cell_d50ff7e46d
+          - u_l0166_c039_table_cell_990a8e8bac
+          - u_l0168_c003_table_cell_2ddace8cf2
+          - u_l0168_c019_table_cell_3117117954
+          - u_l0168_c039_table_cell_4b227777d4
+          - u_l0169_c003_table_cell_a23735d453
+          - u_l0169_c019_table_cell_25330787f7
+          - u_l0169_c039_table_cell_e7f6c01177
+          - u_l0170_c003_table_cell_6fd464df0e
+          - u_l0170_c019_table_cell_25330787f7
+          - u_l0170_c039_table_cell_7902699be4
+          - u_l0171_c003_table_cell_af1d71f4c3
+          - u_l0171_c019_table_cell_978ab57557
+          - u_l0171_c039_table_cell_19581e27de
+          - u_l0172_c003_table_cell_456a967562
+          - u_l0172_c019_table_cell_978ab57557
+          - u_l0172_c039_table_cell_4a44dc1536
+          - u_l0173_c003_table_cell_e7b481c3ed
+          - u_l0173_c019_table_cell_03dec1b637
+          - u_l0173_c039_table_cell_6b51d431df
+          - u_l0174_c003_table_cell_9978455d31
+          - u_l0174_c019_table_cell_03dec1b637
+          - u_l0174_c039_table_cell_3fdba35f04
+          - u_l0175_c003_table_cell_856067b7f8
+          - u_l0175_c019_table_cell_6f86ac1fd7
+          - u_l0175_c039_table_cell_e629fa6598
+          - u_l0176_c003_table_cell_9ccb8c7a3b
+          - u_l0176_c019_table_cell_6f86ac1fd7
+          - u_l0176_c039_table_cell_b17ef6d19c
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    publishable: true
+    title: Psi Reservoir
+  - activation: passive
+    classifications:
+      entity_kind: feature
+      feature_role: passive
+      rules_area:
+        - common_features
+    content:
+      - inlines:
+          - source_unit_id: u_l0180_c001_paragraph_72a0b78bba
+            text: You can communicate telepathically with one or more creatures you can see within 60 feet, provided you share a common language with each creature. When you address multiple creatures, each receives the same message. A recipient can reply telepathically to you, but recipients cannot communicate directly with one another through this feature. This communication does not grant mind reading.
+            type: text
+        type: paragraph
+    id: common_psionic_link
+    kind: feature
+    level: 3
+    origins:
+      - source_unit_ids:
+          - u_l0178_c001_paragraph_c433c08993
+          - u_l0180_c001_paragraph_72a0b78bba
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    publishable: true
+    title: Psionic Link
+  - activation: action
+    classifications:
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - common_features
+    content:
+      - inlines:
+          - source_unit_id: u_l0184_c001_paragraph_b2ad0dc5f9
+            text: "When you take the Attack action, you can replace any number of your weapon attacks with a Manifested Strike. A Manifested Strike is a special ranged psionic attack with a range of 60 feet, formed from psionic force. Your Discipline determines its damage type. Add your Psionic Ability modifier to Manifested Strike damage. Your Manifested Strike attack bonus is your Psionic Ability modifier + your Proficiency Bonus + your Psionic Focus bonus. Your Psionic Focus bonus is +1 at Fighter levels 3–8, +2 at levels 9–16, and +3 at levels 17–20. On a critical hit, double only the Manifested Strike's damage dice; rider damage dice never double. The damage die scales with Fighter level per the table in Section 01. For the purposes of feats, Fighting Styles, and other features that reference ranged weapons or attacks made with them, treat Manifested Strike as an attack made with a ranged weapon with which you are proficient. It is not a weapon, spell, or object for any other purpose. Manifested Strike is, however, a magical effect: creatures with Magic Resistance (or a similar trait) have advantage on saving throws forced by your riders, though the strike’s attack roll and damage are unaffected. Manifested Strike itself costs no Psi — you can always attack."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0079_c001_paragraph_fee08637a9
+            text: "Manifested Strike die by level: 1d6 (3rd–4th) → 1d8 (5th–10th) → 1d10 (11th–16th) → 1d12 (17th–20th)"
+            type: text
+        type: paragraph
+      - headers:
+          - - source_unit_id: u_l0081_c003_table_cell_9badec117b
+              text: Fighter Level
+              type: text
+          - - source_unit_id: u_l0081_c019_table_cell_33739f9c45
+              text: MS Die
+              type: text
+        rows:
+          - - - source_unit_id: u_l0083_c003_table_cell_2ddace8cf2
+                text: 3–4
+                type: text
+            - - source_unit_id: u_l0083_c019_table_cell_44868e6ec0
+                text: 1d6
+                type: text
+          - - - source_unit_id: u_l0084_c003_table_cell_e64785a46b
+                text: 5–10
+                type: text
+            - - source_unit_id: u_l0084_c019_table_cell_2409c213e8
+                text: 1d8
+                type: text
+          - - - source_unit_id: u_l0085_c003_table_cell_9c98fb2a8d
+                text: 11–16
+                type: text
+            - - source_unit_id: u_l0085_c019_table_cell_d814910798
+                text: 1d10
+                type: text
+          - - - source_unit_id: u_l0086_c003_table_cell_a7c2a40e21
+                text: 17–20
+                type: text
+            - - source_unit_id: u_l0086_c019_table_cell_41af4746c0
+                text: 1d12
+                type: text
+        type: table
+      - inlines:
+          - source_unit_id: u_l0186_c001_paragraph_b335028209
+            text: "Somatic Requirement: You project Manifested Strike from one of your hands. To make the attack, you must have the free use of that hand to perform the psionic gesture and release the strike. A hand is free for this purpose if it is not holding or manipulating a weapon, Shield, object, or creature. You can release one hand from a Two-Handed weapon, make the Manifested Strike, and re-grip the weapon before a later attack in the same Attack action; releasing or replacing a hand on a weapon you continue to hold requires no action and does not equip or unequip that weapon. Features delivered through Manifested Strike inherit this requirement unless their text says otherwise. The exact gesture is yours to describe, but the manifested force visibly originates from the gesturing hand. This is a psionic Somatic requirement; Manifested Strike remains a special psionic attack, not a spell."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0188_c001_paragraph_4edbafa0e5
+            text: "Sneak Attack: Manifested Strike qualifies for the Rogue’s Sneak Attack feature as an attack made with a ranged weapon, provided all other Sneak Attack requirements are met. Sneak Attack damage dice double normally on a critical hit; they are not rider dice."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0190_c001_paragraph_7398d977dc
+            text: "Magical Effects: For the purpose of Magic Resistance and similar effects, all Kinetic Vanguard features — Manifested Strike, every rider, and every standalone psionic feature — are magical effects. However, none is a spell and none is a Magic action: they cannot be Counterspelled, are unaffected by features that key off spellcasting, and Beguile in particular is a magical effect whose save is always Charisma but which is not a spell."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0192_c001_paragraph_302df59f1b
+            text: "Manifested Strike in Melee: Manifested Strike is a ranged attack. If a hostile creature that can see you and is not Incapacitated is within 5 feet of you, you have Disadvantage on the attack roll. Use Phase Step, Disengage, movement, a weapon attack, or another effect whose own text explicitly removes that ranged-attack pressure."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0194_c001_paragraph_0bc26b87d0
+            text: "The Holdout Option — Force Damage: When you declare a Manifested Strike, you may have it deal force damage instead of your Discipline’s damage type. The strike then deals half damage, rounded down. Declare this before the attack roll with the rest of the attack package. Riders are unchanged: Discipline riders use the Discipline’s damage type unless stated otherwise, and Advanced Training riders use the type specified in their text. The Holdout Option is useful against damage immunity, not Resistance. Psychokinesis already deals force damage and gains no benefit from it."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0196_c003_blockquote_paragraph_f8c9de90f4
+            text: "Design Note — Attack Bonus: Psionic Focus mirrors the expected accuracy progression of magic weapons without making Manifested Strike an item."
+            type: text
+        kind: note
+        type: note
+      - inlines:
+          - source_unit_id: u_l0198_c003_blockquote_paragraph_c468866ca8
+            text: "Design Note — Melee Pressure: Manifested Strike follows the normal disadvantage rule for ranged attacks made while threatened. Because Psi and Blood Tax are committed before the roll, Overloading from a bad position is especially risky. Reposition rather than treating the subclass as a melee striker."
+            type: text
+        kind: note
+        type: note
+    id: common_manifested_strike
+    kind: feature
+    level: 3
+    origins:
+      - source_unit_ids:
+          - u_l0079_c001_paragraph_fee08637a9
+          - u_l0081_c003_table_cell_9badec117b
+          - u_l0081_c019_table_cell_33739f9c45
+          - u_l0083_c003_table_cell_2ddace8cf2
+          - u_l0083_c019_table_cell_44868e6ec0
+          - u_l0084_c003_table_cell_e64785a46b
+          - u_l0084_c019_table_cell_2409c213e8
+          - u_l0085_c003_table_cell_9c98fb2a8d
+          - u_l0085_c019_table_cell_d814910798
+          - u_l0086_c003_table_cell_a7c2a40e21
+          - u_l0086_c019_table_cell_41af4746c0
+          - u_l0182_c001_paragraph_40ac9a18c5
+          - u_l0184_c001_paragraph_b2ad0dc5f9
+          - u_l0186_c001_paragraph_b335028209
+          - u_l0188_c001_paragraph_4edbafa0e5
+          - u_l0190_c001_paragraph_7398d977dc
+          - u_l0192_c001_paragraph_302df59f1b
+          - u_l0194_c001_paragraph_0bc26b87d0
+          - u_l0196_c003_blockquote_paragraph_f8c9de90f4
+          - u_l0198_c003_blockquote_paragraph_c468866ca8
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    publishable: true
+    title: Manifested Strike
+  - activation: passive
+    classifications:
+      entity_kind: feature
+      feature_role: passive
+      rules_area:
+        - common_features
+    content:
+      - inlines:
+          - source_unit_id: u_l0206_c001_paragraph_f1ddd895ea
+            text: Your Discipline’s 3rd-level rider costs 0 Psi on every use, at every tier. You can apply it to any number of your Manifested Strike hits, subject to the normal limit of one rider per hit. You can Overload it normally without spending Psi, but you still pay its Blood Tax on declaration. Only one rider in each Attack action can be Overloaded to Tier 2. The four Signature Riders are Ember Bolt, Glacial Spike, Telekinetic Shove, and Static Discharge.
+            type: text
+        type: paragraph
+    id: common_signature_rider
+    kind: feature
+    level: 3
+    origins:
+      - source_unit_ids:
+          - u_l0204_c001_paragraph_0619ec6597
+          - u_l0206_c001_paragraph_f1ddd895ea
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    publishable: true
+    title: Signature Rider
+  - activation: passive
+    classifications:
+      entity_kind: feature
+      feature_role: passive
+      rules_area:
+        - common_features
+    content:
+      - inlines:
+          - source_unit_id: u_l0210_c001_paragraph_cfd2f38a95
+            text: Your Manifested Strike has a mastery property determined by your Discipline. You can use that property, and it does not count against the number of weapons you can have mastery with from your Weapon Mastery feature.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0212_c001_paragraph_d3c695afc3
+            text: "Tactical Master: Beginning at Fighter level 9, when you make a Manifested Strike, you can use Tactical Master to replace its Kinetic Mastery property with Push, Sap, or Slow for that attack. The chosen property replaces Kinetic Mastery for that attack rather than stacking with it."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0214_c001_paragraph_437f537897
+            text: "Pyrokinesis — Graze: If your Manifested Strike attack roll misses, the target still takes damage equal to your Psionic Ability modifier, of your Manifested Strike’s damage type."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0216_c001_paragraph_e49a42d1dc
+            text: "Cryokinesis — Slow: If you hit a creature and deal damage to it, you can reduce its Speed by 10 feet until the start of your next turn."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0218_c001_paragraph_8b903219b9
+            text: "Psychokinesis — Push: If you hit a creature that is Large or smaller, you can push it up to 10 feet straight away from you. If you also apply Telekinetic Shove on that hit, Telekinetic Shove replaces this movement (you move the target once, not twice)."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0220_c001_paragraph_601a6909af
+            text: "Electrokinesis — Sap: If you hit a creature, it has disadvantage on its next attack roll before the start of your next turn."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0222_c001_paragraph_e3c3935b58
+            text: "Graze and the Holdout Option: Graze deals Manifested Strike damage, so it follows the strike. If you declare the Holdout Option, Graze deals force damage equal to half your Psionic Ability modifier (rounded down), exactly as the strike itself is halved."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0224_c001_paragraph_e28bcdcfb1
+            text: Masteries coexist with your riders. Slow adds to Glacial Spike. On a hit where you apply Telekinetic Shove, Shove replaces the Push mastery’s movement — you move the target once, using Shove’s direction and distance. The replacement happens when you declare Shove, not when it lands, so a successful save leaves you with neither movement. Your mastery remains free and automatic; a Signature Rider also costs no Psi but occupies the hit’s one rider slot.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0226_c001_paragraph_28b95ebec2
+            text: "Slow + Glacial Spike timing: Slow and Glacial Spike are separate Speed reductions and stack with each other. A target affected by both is reduced by 20 feet until the start of your next turn; when Slow expires, Glacial Spike’s remaining 10-foot reduction continues until the end of that turn. Neither effect stacks with additional applications of itself."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0228_c001_paragraph_05ae79fd07
+            text: "Masteries and Damage Immunity: Sap and Push trigger on a hit, so damage immunity does not prevent them. Graze and Slow require damage; against an immune creature, they work only if the Holdout Option allows the strike to deal force damage."
+            type: text
+        type: paragraph
+    id: common_kinetic_mastery
+    kind: feature
+    level: 3
+    origins:
+      - source_unit_ids:
+          - u_l0208_c001_paragraph_a969ab2f7f
+          - u_l0210_c001_paragraph_cfd2f38a95
+          - u_l0212_c001_paragraph_d3c695afc3
+          - u_l0214_c001_paragraph_437f537897
+          - u_l0216_c001_paragraph_e49a42d1dc
+          - u_l0218_c001_paragraph_8b903219b9
+          - u_l0220_c001_paragraph_601a6909af
+          - u_l0222_c001_paragraph_e3c3935b58
+          - u_l0224_c001_paragraph_e28bcdcfb1
+          - u_l0226_c001_paragraph_28b95ebec2
+          - u_l0228_c001_paragraph_05ae79fd07
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    publishable: true
+    title: Kinetic Mastery
+  - activation: passive
+    classifications:
+      entity_kind: feature
+      feature_role: passive
+      rules_area:
+        - common_features
+    content:
+      - inlines:
+          - source_unit_id: u_l0232_c001_paragraph_0cad6885e7
+            text: "Passive: Your passive Insight (Wisdom) score increases by your Psionic Ability modifier. (If your table does not track a passive Insight score, treat it as 10 + your Wisdom modifier + your Proficiency Bonus if proficient, then add your Psionic Ability modifier from this feature.) Active Scan: As a bonus action, you project a momentary telepathic pulse. At the instant you activate it, you sense the number and direction of creatures within range that harbor hostile intent toward you or a creature you regard as an ally, provided each has a discernible mind and emotions you can read. The scan is instantaneous and does not update if a creature moves, enters or leaves the range, or its intent changes. It does not reveal identity, exact location, thoughts, motive, or intended action. This is a standalone feature; Blood Tax applies on activation if Overloaded. You can use the scan a number of times equal to half your Proficiency Bonus (rounded down), regaining all expended uses on a short or long rest. T0 Base: 15-foot range. T1 Overload: Changes from Tier 0: Range increases to 30 feet. T2 Overload: Changes from Tier 1: Range increases to 60 feet."
+            type: text
+        type: paragraph
+    id: common_empathic_sense
+    kind: feature
+    level: 7
+    origins:
+      - source_unit_ids:
+          - u_l0230_c001_paragraph_e77b4fabb0
+          - u_l0232_c001_paragraph_0cad6885e7
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    publishable: true
+    title: Empathic Sense
+  - activation: passive
+    classifications:
+      entity_kind: feature
+      feature_role: passive
+      rules_area:
+        - common_features
+    content:
+      - inlines:
+          - source_unit_id: u_l0236_c001_paragraph_9cc45c3eb3
+            text: "You gain proficiency in one of the following skills of your choice: Arcana, Insight, Intimidation, Investigation, Perception, or Persuasion. You also add your Psionic Ability modifier to checks using that skill."
+            type: text
+        type: paragraph
+    id: common_vanguard_training
+    kind: feature
+    level: 7
+    origins:
+      - source_unit_ids:
+          - u_l0234_c001_paragraph_77d352f34a
+          - u_l0236_c001_paragraph_9cc45c3eb3
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    publishable: true
+    title: Vanguard Training
+  - classifications:
+      entity_kind: system
+      rules_area:
+        - common_features
+    content:
+      - inlines:
+          - source_unit_id: u_l0238_c001_paragraph_e3f28b3d28
+            text: "Advanced Training I: Deflection Screen · 5th Level · 1 Psi · Reaction"
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0240_c001_paragraph_f47781914b
+            text: Your psionic instincts develop a reflexive shield. When you take damage, you may use your reaction and spend 1 Psi to reduce it by 3d8 + your Psionic Ability modifier. Deflection Screen can reduce only damage from a source other than yourself; it cannot reduce Blood Tax or any other damage this subclass inflicts on you.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0242_c001_paragraph_46a6b87307
+            text: "Advanced Training II: Phase Step · 10th Level · 1 Psi · Bonus Action"
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0244_c001_paragraph_44fa28505c
+            text: Your psionic control extends to spatial displacement. Teleport up to 15 feet to an unoccupied space you can see. This movement does not provoke opportunity attacks.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0246_c001_paragraph_3017374ced
+            text: Advanced Training III · 15th Level · Passive
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0248_c001_paragraph_ab8ec1279f
+            text: Your psionic mastery deepens. Choose one feature from the Advanced Training pool (Section 05).
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0250_c001_paragraph_9912fa6db0
+            text: "Swapping: You may replace your chosen feature whenever you gain a Fighter level. There is no Psi cost to swap."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0252_c001_paragraph_d7d5b0a0d0
+            text: Advanced Training IV · 18th Level · Passive
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0254_c001_paragraph_0670e13d76
+            text: Choose a second feature from the Advanced Training pool (Section 05). You cannot choose the same feature twice.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0256_c001_paragraph_9912fa6db0
+            text: "Swapping: You may replace your chosen feature whenever you gain a Fighter level. There is no Psi cost to swap."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0258_c001_paragraph_2c90101137
+            text: At 18th level a Vanguard holds two Advanced Training picks (2 of 8). At 20th a third pick is added, bringing the total to 3 of 8 alongside Deflection Screen, Phase Step, and the full five-feature discipline progression.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0260_c001_paragraph_402810c198
+            text: Psionic Apex · 18th Level · Passive
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0262_c001_paragraph_e25c7fbb44
+            text: "Your psionic mastery reaches its zenith. You gain the following benefit:"
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0264_c001_paragraph_754b180e03
+            text: "Overload Mastery: Once per Short or Long Rest, when you declare your first Overload of a turn, you can activate this feature before paying Blood Tax. Until the end of that turn, including during any additional Attack action from Action Surge, halve the Blood Tax you pay after applying Resistance or any other reduction, rounding down. Overload Mastery can reduce Blood Tax below its normal minimum, but never below 1 damage for an individual Overload."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0266_c001_paragraph_b5c753dfbd
+            text: Advanced Training V · 20th Level · Passive
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0268_c001_paragraph_105b3235a3
+            text: Choose a third feature from the Advanced Training pool (Section 05). You cannot choose the same feature more than once.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0270_c001_paragraph_9912fa6db0
+            text: "Swapping: You may replace your chosen feature whenever you gain a Fighter level. There is no Psi cost to swap."
+            type: text
+        type: paragraph
+    id: advanced_training_progression
+    kind: system
+    origins:
+      - source_unit_ids:
+          - u_l0238_c001_paragraph_e3f28b3d28
+          - u_l0240_c001_paragraph_f47781914b
+          - u_l0242_c001_paragraph_46a6b87307
+          - u_l0244_c001_paragraph_44fa28505c
+          - u_l0246_c001_paragraph_3017374ced
+          - u_l0248_c001_paragraph_ab8ec1279f
+          - u_l0250_c001_paragraph_9912fa6db0
+          - u_l0252_c001_paragraph_d7d5b0a0d0
+          - u_l0254_c001_paragraph_0670e13d76
+          - u_l0256_c001_paragraph_9912fa6db0
+          - u_l0258_c001_paragraph_2c90101137
+          - u_l0260_c001_paragraph_402810c198
+          - u_l0262_c001_paragraph_e25c7fbb44
+          - u_l0264_c001_paragraph_754b180e03
+          - u_l0266_c001_paragraph_b5c753dfbd
+          - u_l0268_c001_paragraph_105b3235a3
+          - u_l0270_c001_paragraph_9912fa6db0
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    progression_section: reference
+    publishable: true
+    title: Advanced Training Progression
+  - activation: on_hit
+    classifications:
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - cryokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0333_c001_paragraph_9d36f4b0d6
+            text: "T0 Base: The target takes 2 cold damage on hit (fixed, does not scale), and its Speed is reduced by 10 feet until the end of your next turn. This reduction does not stack with itself."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0335_c001_paragraph_d2f0113cac
+            text: "T1 Overload: Changes from Tier 0: The target must make a Constitution saving throw. On a failed save, Tier 1’s effect that makes its Speed 0 until the end of your next turn replaces the Tier 0 Speed reduction. On a successful save, the Tier 0 Speed reduction remains."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0337_c001_paragraph_a14a2e0347
+            text: "T2 Overload: Changes from Tier 1: On a failed save, the Restrained condition until the end of your next turn replaces Tier 1’s effect that makes its Speed 0 for that duration. On a successful save, the Tier 0 Speed reduction remains."
+            type: text
+        type: paragraph
+    id: glacial_spike
+    kind: feature
+    level: 3
+    origins:
+      - source_unit_ids:
+          - u_l0331_c001_paragraph_d18133025f
+          - u_l0333_c001_paragraph_9d36f4b0d6
+          - u_l0335_c001_paragraph_d2f0113cac
+          - u_l0337_c001_paragraph_a14a2e0347
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: cryokinesis
+    psi_cost: 0
+    publishable: true
+    title: Glacial Spike
+  - activation: on_hit
+    classifications:
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - cryokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0341_c001_paragraph_bb1722a296
+            text: "T0 Base: The target’s speed becomes 0 until the end of your next turn (no save). The target must then make a Con save; on a failed save, it is also Restrained until the end of your next turn."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0343_c001_paragraph_20358bd9ac
+            text: "T1 Overload: Changes from Tier 0: On a failed save, the target also cannot take reactions until the start of your next turn."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0345_c001_paragraph_97383f6813
+            text: "T2 Overload: Changes from Tier 1: On a failed save, the Stunned condition until the end of your next turn replaces the Restrained condition retained by Tier 1."
+            type: text
+        type: paragraph
+    id: snow_chains
+    kind: feature
+    level: 7
+    origins:
+      - source_unit_ids:
+          - u_l0339_c001_paragraph_a4348cebac
+          - u_l0341_c001_paragraph_bb1722a296
+          - u_l0343_c001_paragraph_20358bd9ac
+          - u_l0345_c001_paragraph_97383f6813
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: cryokinesis
+    psi_cost: 2
+    publishable: true
+    title: Snow Chains
+  - activation: action
+    classifications:
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - cryokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0349_c001_paragraph_8bf024d822
+            text: "T0 Base: Create a 15-ft-radius, 20-ft-high Cylinder of icy difficult terrain centered on a point within 60 ft. When a creature enters the Cylinder for the first time on a turn or starts its turn there, it must make a Con save. On a failed save, its Speed becomes 0 until the end of the current turn."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0351_c001_paragraph_99945487bf
+            text: "T1 Overload: Changes from Tier 0: Expand the radius to 25 ft."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0353_c001_paragraph_456c11d278
+            text: "T2 Overload: Changes from Tier 1: On a failed save, the Restrained condition until the end of your next turn replaces Tier 1’s effect that makes its Speed 0 until the end of the current turn."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0355_c001_paragraph_2937f8649f
+            text: "Ribbon: While Frozen Ground is active, you ignore difficult terrain created by your own ice."
+            type: text
+        type: paragraph
+    id: frozen_ground
+    kind: feature
+    level: 10
+    origins:
+      - source_unit_ids:
+          - u_l0347_c001_paragraph_8643ebd9e4
+          - u_l0349_c001_paragraph_8bf024d822
+          - u_l0351_c001_paragraph_99945487bf
+          - u_l0353_c001_paragraph_456c11d278
+          - u_l0355_c001_paragraph_2937f8649f
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: cryokinesis
+    psi_cost: 2
+    publishable: true
+    requires_concentration: true
+    title: Frozen Ground
+  - activation: action
+    classifications:
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - cryokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0359_c001_paragraph_0b30529a5b
+            text: "T0 Base: Up to 3 creatures within 60 ft take 8d10 cold damage (Con save for half) and are Restrained until the end of your next turn on a failed save."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0361_c001_paragraph_157199c940
+            text: "T1 Overload: Changes from Tier 0: +2d10 damage."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0363_c001_paragraph_b8e0ff89ea
+            text: "T2 Overload: Changes from Tier 1: Damage increases to 12d10. On a failed save, the Stunned condition until the end of your next turn replaces the Restrained condition from Tier 1."
+            type: text
+        type: paragraph
+    id: arctic_tempest
+    kind: feature
+    level: 15
+    origins:
+      - source_unit_ids:
+          - u_l0357_c001_paragraph_f80e304711
+          - u_l0359_c001_paragraph_0b30529a5b
+          - u_l0361_c001_paragraph_157199c940
+          - u_l0363_c001_paragraph_b8e0ff89ea
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: cryokinesis
+    psi_cost: 3
+    publishable: true
+    title: Arctic Tempest
+  - activation: action
+    classifications:
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - cryokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0367_c001_paragraph_edd7da4749
+            text: "T0 Base: Choose one creature within 60 ft. The target must make a Constitution saving throw, taking 10d10 cold damage on a failed save, or half on a successful one. On a failed save, the target’s speed becomes 0 until the end of your next turn."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0369_c001_paragraph_1a56004df7
+            text: "T1 Overload: Changes from Tier 0: Damage increases to 12d10. On a failed save, the target is also Restrained until the end of your next turn."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0371_c001_paragraph_b0d817ba7e
+            text: "T2 Overload: Changes from Tier 1: Damage increases to 14d10. On a failed save, the Stunned condition until the end of your next turn replaces the Restrained condition from Tier 1. The target’s speed becomes 0 even on a successful save."
+            type: text
+        type: paragraph
+    id: absolute_zero
+    kind: feature
+    level: 20
+    origins:
+      - source_unit_ids:
+          - u_l0365_c001_paragraph_c8eee106e7
+          - u_l0367_c001_paragraph_edd7da4749
+          - u_l0369_c001_paragraph_1a56004df7
+          - u_l0371_c001_paragraph_b0d817ba7e
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: cryokinesis
+    psi_cost: 5
+    publishable: true
+    title: Absolute Zero
+  - activation: on_hit
+    classifications:
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - pyrokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0379_c001_paragraph_e6f85d7081
+            text: "T0 Base: The target takes an additional 2 fire damage on hit. This bonus is fixed and there is no per-Attack-action cap."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0381_c001_paragraph_1d98cd9560
+            text: "T1 Overload: Changes from Tier 0: The additional fire damage increases to 4."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0383_c001_paragraph_511790913b
+            text: "T2 Overload: Changes from Tier 1: The additional fire damage increases to 6."
+            type: text
+        type: paragraph
+    id: ember_bolt
+    kind: feature
+    level: 3
+    origins:
+      - source_unit_ids:
+          - u_l0377_c001_paragraph_57f5e2e8f6
+          - u_l0379_c001_paragraph_e6f85d7081
+          - u_l0381_c001_paragraph_1d98cd9560
+          - u_l0383_c001_paragraph_511790913b
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: pyrokinesis
+    psi_cost: 0
+    publishable: true
+    title: Ember Bolt
+  - activation: on_hit
+    classifications:
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - pyrokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0387_c001_paragraph_858cca8c2b
+            text: "T0 Base: After the triggering hit resolves, the target’s AC is reduced by 1 until the start of your next turn. Thermal Fracture deals no added damage."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0389_c001_paragraph_f71d08728d
+            text: "T1 Overload: Changes from Tier 0: The AC reduction increases to 2."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0391_c001_paragraph_e77734924f
+            text: "T2 Overload: Changes from Tier 1: The AC reduction increases to 3. Thermal Fracture does not stack; use the stronger reduction, or refresh an equal reduction. The triggering hit does not benefit, but subsequent attacks by you or your allies do."
+            type: text
+        type: paragraph
+    id: thermal_fracture
+    kind: feature
+    level: 7
+    origins:
+      - source_unit_ids:
+          - u_l0385_c001_paragraph_e7dcf27748
+          - u_l0387_c001_paragraph_858cca8c2b
+          - u_l0389_c001_paragraph_f71d08728d
+          - u_l0391_c001_paragraph_e77734924f
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: pyrokinesis
+    psi_cost: 1
+    publishable: true
+    title: Thermal Fracture
+  - activation: on_hit
+    classifications:
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - pyrokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0395_c001_paragraph_34f0f92a17
+            text: "T0 Base: The target takes additional fire damage equal to 2 Manifested Strike dice, always using the base die for your Fighter level."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0397_c001_paragraph_de6a8a10a5
+            text: "T1 Overload: Changes from Tier 0: The additional damage increases to 3 Manifested Strike dice."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0399_c001_paragraph_5732b2f0f8
+            text: "T2 Overload: Changes from Tier 1: The additional damage increases to 4 Manifested Strike dice, and this added damage ignores Resistance to fire damage."
+            type: text
+        type: paragraph
+    id: cinder_lance
+    kind: feature
+    level: 10
+    origins:
+      - source_unit_ids:
+          - u_l0393_c001_paragraph_0ffe6ea9c8
+          - u_l0395_c001_paragraph_34f0f92a17
+          - u_l0397_c001_paragraph_de6a8a10a5
+          - u_l0399_c001_paragraph_5732b2f0f8
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: pyrokinesis
+    psi_cost: 3
+    publishable: true
+    title: Cinder Lance
+  - activation: on_hit
+    classifications:
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - pyrokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0403_c001_paragraph_0c9364f446
+            text: "T0 Base: The target takes an additional 3d10 fire damage and must make a Dexterity saving throw. On a failed save, it is Blinded until the end of your next turn. On a successful save, it is not Blinded by this feature."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0405_c001_paragraph_1f7fb275b6
+            text: "T1 Overload: Changes from Tier 0: The additional damage increases to 4d10, and the target is Blinded until the end of your next turn with no saving throw."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0407_c001_paragraph_6744d667d4
+            text: "T2 Overload: Changes from Tier 1: The additional damage increases to 5d10. The target is Blinded with no saving throw, and the added damage ignores Resistance to fire damage."
+            type: text
+        type: paragraph
+    id: flare
+    kind: feature
+    level: 15
+    origins:
+      - source_unit_ids:
+          - u_l0401_c001_paragraph_3b1ad60527
+          - u_l0403_c001_paragraph_0c9364f446
+          - u_l0405_c001_paragraph_1f7fb275b6
+          - u_l0407_c001_paragraph_6744d667d4
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: pyrokinesis
+    psi_cost: 3
+    publishable: true
+    title: Flare
+  - activation: on_hit
+    classifications:
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - pyrokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0411_c001_paragraph_7034255dab
+            text: "T0 Base: The target takes an additional 5d10 fire damage."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0413_c001_paragraph_f60750fed9
+            text: "T1 Overload: Changes from Tier 0: The additional damage increases to 7d10."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0415_c001_paragraph_d12c6c20e0
+            text: "T2 Overload: Changes from Tier 1: The additional damage increases to 9d10, and this added damage ignores Resistance to fire damage."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0417_c001_paragraph_020bb4dd56
+            text: Furnace Strike has no saving throw, condition, area, persistent effect, mark, or kill trigger. It is immediate focused damage attached to a Manifested Strike hit.
+            type: text
+        type: paragraph
+    id: furnace_strike
+    kind: feature
+    level: 20
+    origins:
+      - source_unit_ids:
+          - u_l0409_c001_paragraph_a047d38f62
+          - u_l0411_c001_paragraph_7034255dab
+          - u_l0413_c001_paragraph_f60750fed9
+          - u_l0415_c001_paragraph_d12c6c20e0
+          - u_l0417_c001_paragraph_020bb4dd56
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: pyrokinesis
+    psi_cost: 5
+    publishable: true
+    title: Furnace Strike
+  - activation: on_hit
+    classifications:
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - psychokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0425_c001_paragraph_d794e31aba
+            text: "T0 Base: When a Manifested Strike hits, the target takes 2 force damage, then makes a Strength saving throw. On a failed save, push it 10 feet in any horizontal direction. Applying Telekinetic Shove replaces Push mastery for that hit, whether the save succeeds or fails; the target is moved only once, and a successful save leaves it unmoved."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0427_c001_paragraph_b45ddc8b96
+            text: "T1 Overload: Changes from Tier 0: The push distance increases to 15 ft on this hit."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0429_c001_paragraph_05e2f73352
+            text: "T2 Overload: Changes from Tier 1: The push distance increases to 20 ft, and on a failed save the target’s Speed becomes 0 until the end of your next turn."
+            type: text
+        type: paragraph
+    id: telekinetic_shove
+    kind: feature
+    level: 3
+    origins:
+      - source_unit_ids:
+          - u_l0423_c001_paragraph_fdf2697974
+          - u_l0425_c001_paragraph_d794e31aba
+          - u_l0427_c001_paragraph_b45ddc8b96
+          - u_l0429_c001_paragraph_05e2f73352
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: psychokinesis
+    psi_cost: 0
+    publishable: true
+    title: Telekinetic Shove
+  - activation: bonus_action
+    classifications:
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - psychokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0433_c001_paragraph_f247f7558e
+            text: "T0 Base: You gain a fly speed of 30 feet for the duration. The effect ends early if you are incapacitated."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0435_c001_paragraph_d0fa9546cc
+            text: Vectored Thrust is a standalone Bonus Action; Blood Tax is paid when it is activated.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0437_c001_paragraph_19096d70c2
+            text: "T1 Overload: Changes from Tier 0: Flying does not provoke opportunity attacks."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0439_c001_paragraph_4093d38404
+            text: "T2 Overload: Changes from Tier 1: Your fly speed increases by 5 × your Proficiency Bonus in feet."
+            type: text
+        type: paragraph
+    id: vectored_thrust
+    kind: feature
+    level: 7
+    origins:
+      - source_unit_ids:
+          - u_l0431_c001_paragraph_fe2b9d35e4
+          - u_l0433_c001_paragraph_f247f7558e
+          - u_l0435_c001_paragraph_d0fa9546cc
+          - u_l0437_c001_paragraph_19096d70c2
+          - u_l0439_c001_paragraph_4093d38404
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: psychokinesis
+    psi_cost: 2
+    publishable: true
+    requires_concentration: true
+    title: Vectored Thrust
+  - activation: on_hit
+    classifications:
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - psychokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0443_c001_paragraph_6999691e0f
+            text: "T0 Base: Release a telekinetic shockwave in a 15-ft-radius Sphere centered on the target. You choose Explosion (outward) or Implosion (inward) when you activate. Each creature in the Sphere, including the struck target, must make a Strength saving throw. On a failed save, a creature is Restrained until the end of your next turn; each creature other than the struck target that fails is also pushed 15 ft away from or pulled 15 ft toward the target, matching your choice. The struck target is never moved by this effect. Because the struck target is the Sphere's center, it has no inward or outward line of movement; that movement is geometrically impossible under Rider Target Parity, not an exception to its saving throw, Restrained condition, or Tier 2 damage. On a successful save, a creature is neither moved nor Restrained. Creatures cannot be moved into occupied spaces. Resolve the creatures’ movement in an order you choose. A creature whose path is fully blocked stops in the nearest unoccupied space along its line of movement."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0445_c001_paragraph_d49fcb1b0e
+            text: "T1 Overload: Changes from Tier 0: The Sphere’s radius increases to 20 ft, and the push or pull distance increases to 30 ft."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0447_c001_paragraph_9e1da508bd
+            text: "T2 Overload: Changes from Tier 1: Creatures that fail the save also take force damage equal to your Psionic Ability modifier from the impact."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0449_c001_paragraph_98c461ab48
+            text: Use Telekinetic Shove on another hit to position the primary target, then Explosion to scatter a cluster or Implosion to collapse it inward.
+            type: text
+        type: paragraph
+    id: explosion_implosion
+    kind: feature
+    level: 10
+    origins:
+      - source_unit_ids:
+          - u_l0441_c001_paragraph_ad861c8fa9
+          - u_l0443_c001_paragraph_6999691e0f
+          - u_l0445_c001_paragraph_d49fcb1b0e
+          - u_l0447_c001_paragraph_9e1da508bd
+          - u_l0449_c001_paragraph_98c461ab48
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: psychokinesis
+    psi_cost: 2
+    publishable: true
+    title: Explosion/Implosion
+  - activation: action
+    classifications:
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - psychokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0453_c001_paragraph_e36a40e007
+            text: You seize a foe with overwhelming telekinetic force and slam it violently into the ground with crushing power.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0455_c001_paragraph_960d9077e9
+            text: "T0 Base: Choose one creature you can see within 60 feet. The target must make a Strength saving throw, taking 8d10 force damage on a failed save, or half as much on a successful one. On a failed save, the target is also pushed 10 ft in any horizontal direction you choose."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0457_c001_paragraph_7751d1b34e
+            text: "T1 Overload: Changes from Tier 0: The damage increases to 10d10. On a failed save, the push distance increases to 20 ft."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0459_c001_paragraph_41d64539ba
+            text: "T2 Overload: Changes from Tier 1: The damage increases to 12d10. On a failed save, the push distance increases to 30 ft, provided the target travels along an unobstructed path to an unoccupied space you can see, and its Speed becomes 0 until the end of your next turn. On a successful save, the target is still pushed up to 10 ft in a horizontal direction of your choice."
+            type: text
+        type: paragraph
+    id: telekinetic_slam
+    kind: feature
+    level: 15
+    origins:
+      - source_unit_ids:
+          - u_l0451_c001_paragraph_60d6df887c
+          - u_l0453_c001_paragraph_e36a40e007
+          - u_l0455_c001_paragraph_960d9077e9
+          - u_l0457_c001_paragraph_7751d1b34e
+          - u_l0459_c001_paragraph_41d64539ba
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: psychokinesis
+    psi_cost: 3
+    publishable: true
+    title: Telekinetic Slam
+  - activation: action
+    classifications:
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - psychokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0463_c001_paragraph_9be9c71d92
+            text: "T0 Base: Choose up to five Medium or smaller creatures within 60 ft, or up to two Large creatures. Huge or larger creatures are immune. Each target must make a Str save. On a failed save, it is lifted 30 ft into the air and Restrained (hovering). On a successful save, it is unaffected. At the start of each affected creature’s turn, it must repeat the Str save; on a successful save, it descends safely and the effect ends for that creature. While concentration is maintained, creatures that remain Restrained continue to hover. If concentration ends, all affected creatures fall."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0466_c001_paragraph_6a14256b75
+            text: "T1 Overload: Changes from Tier 0: Levitated creatures have disadvantage on the repeat Str save against this feature. At the start of each of your turns, you may move each creature still levitated by this feature up to 15 ft in any direction to an unoccupied space you can see. This is forced movement; the creature remains lifted and Restrained throughout."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0468_c001_paragraph_fdc8e1b49d
+            text: "T2 Overload: Changes from Tier 1: At the start of each levitated creature’s turn, it first repeats the Strength saving throw from Tier 0. On a successful save, it descends safely and takes no damage from this tier. On a failed save, it remains levitated and takes force damage equal to 2× your Psionic Ability modifier."
+            type: text
+        type: paragraph
+    id: mass_levitation
+    kind: feature
+    level: 20
+    origins:
+      - source_unit_ids:
+          - u_l0461_c001_paragraph_7aaaf667e0
+          - u_l0463_c001_paragraph_9be9c71d92
+          - u_l0466_c001_paragraph_6a14256b75
+          - u_l0468_c001_paragraph_fdc8e1b49d
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: psychokinesis
+    psi_cost: 5
+    publishable: true
+    requires_concentration: true
+    title: Mass Levitation
+  - activation: on_hit
+    classifications:
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - electrokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0476_c001_paragraph_6683fa9a39
+            text: "T0 Base: The struck target and up to one other creature of your choice within 5 feet of it each take 2 lightning damage, with no saving throw."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0478_c001_paragraph_a75615645c
+            text: "T1 Overload: Changes from Tier 0: Tier 1 replaces Tier 0’s limit of one other creature with a number of other creatures equal to your Proficiency Bonus within 5 feet of the struck target. Each affected creature takes 2 lightning damage."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0480_c001_paragraph_2a8e852537
+            text: "T2 Overload: Changes from Tier 1: Retains the Tier 1 targets and damage. Each affected creature must make a Charisma saving throw. On a failed save, it is unable to take reactions until the start of your next turn. On a successful save, it suffers no additional effect. This save applies even if the creature takes no lightning damage because of immunity."
+            type: text
+        type: paragraph
+    id: static_discharge
+    kind: feature
+    level: 3
+    origins:
+      - source_unit_ids:
+          - u_l0474_c001_paragraph_85a2469bed
+          - u_l0476_c001_paragraph_6683fa9a39
+          - u_l0478_c001_paragraph_a75615645c
+          - u_l0480_c001_paragraph_2a8e852537
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: electrokinesis
+    psi_cost: 0
+    publishable: true
+    title: Static Discharge
+  - activation: on_hit
+    classifications:
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - electrokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0484_c001_paragraph_2a14bcb2ab
+            text: When you declare this rider, choose up to the tier's maximum number of additional creatures. You may choose no additional creature; any unused branches are forfeited. The struck creature is always included.
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0486_c001_paragraph_d221e89cb8
+            text: "T0 Base: The struck target and up to one other creature of your choice within 15 feet of it each take lightning damage equal to 1 Manifested Strike die, with no saving throw."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0488_c001_paragraph_c3a66d2993
+            text: "T1 Overload: Changes from Tier 0: Tier 1 replaces Tier 0’s limit of one other creature with up to two other creatures within 15 feet of the struck target."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0490_c001_paragraph_043d6b18cf
+            text: "T2 Overload: Changes from Tier 1: Tier 2 replaces Tier 1’s limit of two other creatures with up to three other creatures within 15 feet of the struck target. Each additional creature can be selected only once, and the current does not arc onward."
+            type: text
+        type: paragraph
+    id: branching_bolt
+    kind: feature
+    level: 7
+    origins:
+      - source_unit_ids:
+          - u_l0482_c001_paragraph_e05b228bd5
+          - u_l0484_c001_paragraph_2a14bcb2ab
+          - u_l0486_c001_paragraph_d221e89cb8
+          - u_l0488_c001_paragraph_c3a66d2993
+          - u_l0490_c001_paragraph_043d6b18cf
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: electrokinesis
+    psi_cost: 2
+    publishable: true
+    title: Branching Bolt
+  - activation: on_hit
+    classifications:
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - electrokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0494_c001_paragraph_fb9d33ad69
+            text: "T0 Base: Lightning bursts outward in a 10-ft-radius Sphere centered on the struck target. The burst occurs even if no creature other than the struck target is in the Sphere. Each creature in the area, including the struck target, must make a Charisma saving throw, taking 2d8 lightning damage on a failed save, or half as much on a successful one."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0496_c001_paragraph_eca34de65c
+            text: "T1 Overload: Changes from Tier 0: The damage increases to 3d8. The radius remains 10 feet."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0498_c001_paragraph_f508b9fbed
+            text: "T2 Overload: Changes from Tier 1: The damage increases to 4d8. A creature that fails the save also cannot take reactions and has disadvantage on attack rolls until the start of your next turn."
+            type: text
+        type: paragraph
+    id: electron_burst
+    kind: feature
+    level: 10
+    origins:
+      - source_unit_ids:
+          - u_l0492_c001_paragraph_bb50fe95d8
+          - u_l0494_c001_paragraph_fb9d33ad69
+          - u_l0496_c001_paragraph_eca34de65c
+          - u_l0498_c001_paragraph_f508b9fbed
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: electrokinesis
+    psi_cost: 2
+    publishable: true
+    title: Electron Burst
+  - activation: action
+    classifications:
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - electrokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0502_c001_paragraph_49ecafaacb
+            text: "T0 Base: Choose one creature you can see within 60 feet as the primary target. It takes 8d8 lightning damage (Charisma save for half). The lightning then arcs to up to 3 other creatures within 30 feet of the primary target; each takes 4d8 lightning damage (Charisma save for half)."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0504_c001_paragraph_20f817a225
+            text: "T1 Overload: Changes from Tier 0: The primary target takes 10d8, and the lightning arcs to up to 4 other creatures, each taking 5d8."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0506_c001_paragraph_4ff16d5765
+            text: "T2 Overload: Changes from Tier 1: The primary target takes 12d8, and the lightning arcs to up to 5 other creatures, each taking 6d8. Every target that fails its save cannot take reactions and has disadvantage on attack rolls until the start of your next turn. If the primary target fails, its Speed also becomes 0 for that duration."
+            type: text
+        type: paragraph
+    id: forked_lightning
+    kind: feature
+    level: 15
+    origins:
+      - source_unit_ids:
+          - u_l0500_c001_paragraph_37d0ff9d40
+          - u_l0502_c001_paragraph_49ecafaacb
+          - u_l0504_c001_paragraph_20f817a225
+          - u_l0506_c001_paragraph_4ff16d5765
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: electrokinesis
+    psi_cost: 3
+    publishable: true
+    title: Forked Lightning
+  - activation: action
+    classifications:
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - electrokinesis
+    content:
+      - inlines:
+          - source_unit_id: u_l0510_c001_paragraph_cd4c20420e
+            text: "T0 Base: Conjure a hovering orb of lightning filling a 15-ft-radius Sphere at a point within 60 feet. When a creature enters the Sphere for the first time on a turn or starts its turn there, it must make a Charisma saving throw, taking 4d8 lightning damage on a failed save, or half as much on a successful one. As a bonus action on your turn, you can move the orb up to 15 feet."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0512_c001_paragraph_a0f7a2e5d0
+            text: "T1 Overload: Changes from Tier 0: The radius increases to 30 feet."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0514_c001_paragraph_d856879d56
+            text: "T2 Overload: Changes from Tier 1: The Sphere retains the Tier 1 radius. A creature that fails its save cannot take reactions and has disadvantage on attack rolls while inside it. These effects end immediately when the creature leaves."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0516_c001_paragraph_ea0810c840
+            text: Ball Lightning is a standalone Action requiring Concentration, not a rider. Moving the orb onto a creature does not trigger damage immediately; the creature triggers when it enters on its own turn or starts its turn inside.
+            type: text
+        type: paragraph
+    id: ball_lightning
+    kind: feature
+    level: 20
+    origins:
+      - source_unit_ids:
+          - u_l0508_c001_paragraph_7dea418c44
+          - u_l0510_c001_paragraph_cd4c20420e
+          - u_l0512_c001_paragraph_a0f7a2e5d0
+          - u_l0514_c001_paragraph_d856879d56
+          - u_l0516_c001_paragraph_ea0810c840
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: electrokinesis
+    psi_cost: 5
+    publishable: true
+    requires_concentration: true
+    title: Ball Lightning
+  - activation: reaction
+    classifications:
+      acquisition_mode: granted
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - advanced_training
+    content:
+      - inlines:
+          - source_unit_id: u_l0526_c001_paragraph_b772ab9032
+            text: "T0 Base: When you take damage, you may use your reaction and spend 1 Psi to reduce it by 3d8 + your Psionic Ability modifier. Not usable against Blood Tax or self-inflicted damage."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0528_c001_paragraph_ed02e7ea41
+            text: "T1 Overload: Changes from Tier 0: The reduction increases to 5d8 + your Psionic Ability modifier."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0530_c001_paragraph_1bb3b2b145
+            text: "T2 Overload: Changes from Tier 1: The reduction increases to 7d8 + your Psionic Ability modifier. The attacker must make a Strength saving throw. On a failed save, it is pushed up to 15 feet away from you and knocked Prone. On a successful save, it is pushed 5 feet away. If the damage had no originating creature (a trap, environmental effect, falling damage, or similar), this push-and-Prone effect does not occur; the damage reduction still applies."
+            type: text
+        type: paragraph
+    id: advanced_deflection_screen
+    kind: feature
+    level: 5
+    origins:
+      - source_unit_ids:
+          - u_l0524_c001_paragraph_e3f28b3d28
+          - u_l0526_c001_paragraph_b772ab9032
+          - u_l0528_c001_paragraph_ed02e7ea41
+          - u_l0530_c001_paragraph_1bb3b2b145
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: advanced_training
+    psi_cost: 1
+    publishable: true
+    title: "Advanced Training I: Deflection Screen"
+  - activation: bonus_action
+    classifications:
+      acquisition_mode: granted
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - advanced_training
+    content:
+      - inlines:
+          - source_unit_id: u_l0534_c001_paragraph_1f2854d9e6
+            text: "T0 Base: Teleport up to 15 ft to an unoccupied space you can see. This movement does not provoke opportunity attacks."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0536_c001_paragraph_d74ff1a8bc
+            text: "T1 Overload: Changes from Tier 0: Tier 1 replaces Tier 0’s 15-ft teleport range with 30 ft."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0538_c001_paragraph_ab96363382
+            text: "T2 Overload: Changes from Tier 1: As Tier 1. Choose either the space you left or the space where you appear. Each creature of your choice within 5 feet of that space must make your Discipline's signature saving throw against your Psionic save DC. On a failed save, it cannot take reactions until the start of your next turn."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0540_c001_paragraph_b9a3954c56
+            text: ADVANCED TRAINING III, IV, AND V (15TH, 18TH, AND 20TH LEVEL)
+            type: text
+        type: paragraph
+    id: advanced_phase_step
+    kind: feature
+    level: 10
+    origins:
+      - source_unit_ids:
+          - u_l0532_c001_paragraph_46a6b87307
+          - u_l0534_c001_paragraph_1f2854d9e6
+          - u_l0536_c001_paragraph_d74ff1a8bc
+          - u_l0538_c001_paragraph_ab96363382
+          - u_l0540_c001_paragraph_b9a3954c56
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: advanced_training
+    psi_cost: 1
+    publishable: true
+    title: "Advanced Training II: Phase Step"
+  - activation: on_hit
+    classifications:
+      acquisition_mode: selectable
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - advanced_training
+    content:
+      - inlines:
+          - source_unit_id: u_l0544_c001_paragraph_f28ecf85ce
+            text: "T0 Base: The target takes 2d8 psychic damage. There is no saving throw."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0546_c001_paragraph_a513a8bf27
+            text: "T1 Overload: Changes from Tier 0: Damage increases to 3d8 psychic."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0548_c001_paragraph_ec2871725c
+            text: "T2 Overload: Changes from Tier 1: Damage increases to 4d8 psychic, and this damage ignores Resistance to psychic damage."
+            type: text
+        type: paragraph
+    id: advanced_mind_shred
+    kind: feature
+    level: 15
+    origins:
+      - source_unit_ids:
+          - u_l0542_c001_paragraph_4ca8f63999
+          - u_l0544_c001_paragraph_f28ecf85ce
+          - u_l0546_c001_paragraph_a513a8bf27
+          - u_l0548_c001_paragraph_ec2871725c
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: advanced_training
+    psi_cost: 3
+    publishable: true
+    title: Mind Shred
+  - activation: action
+    classifications:
+      acquisition_mode: selectable
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - advanced_training
+    content:
+      - inlines:
+          - source_unit_id: u_l0552_c001_paragraph_7f532b4db7
+            text: "T0 Base: You produce the effects of charm person (Concentration, up to 1 hour) without casting a spell. The target makes a Charisma saving throw against your Psionic save DC. This feature is exclusive — you choose one tier when you activate it. Higher tiers replace the effect entirely; they do not stack."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0554_c001_paragraph_dcdea906dc
+            text: "T1 Overload: Changes from Tier 0: Tier 1 replaces Tier 0’s charm person effect with the effects of suggestion (Concentration, up to 8 hours) without casting a spell. Charisma save against your Psionic save DC."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0556_c001_paragraph_39e6c6e6db
+            text: "T2 Overload: Changes from Tier 1: Tier 2 replaces Tier 1’s suggestion effect with the effects of mass suggestion, affecting up to five creatures you can see within 60 feet (Concentration, up to 8 hours), without casting a spell. Each target makes a Charisma saving throw against your Psionic save DC."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0558_c001_paragraph_6e4d6e87f0
+            text: "Beguile is a standalone Action — it does not require a Manifested Strike hit and is not a rider. All tiers require Concentration and consume your concentration slot. Beguile is not a spell: it requires no components, cannot be Counterspelled or dispelled, is unaffected by features that key off spellcasting (for example, a feature that triggers specifically from casting a spell), and its save is always Charisma regardless of your Discipline. It is escalating mental influence, not spellcasting."
+            type: text
+        type: paragraph
+    id: advanced_beguile
+    kind: feature
+    level: 15
+    origins:
+      - source_unit_ids:
+          - u_l0550_c001_paragraph_cefd850ff0
+          - u_l0552_c001_paragraph_7f532b4db7
+          - u_l0554_c001_paragraph_dcdea906dc
+          - u_l0556_c001_paragraph_39e6c6e6db
+          - u_l0558_c001_paragraph_6e4d6e87f0
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: advanced_training
+    psi_cost: 3
+    publishable: true
+    requires_concentration: true
+    title: Beguile
+  - activation: on_hit
+    classifications:
+      acquisition_mode: selectable
+      entity_kind: feature
+      feature_role: rider
+      rules_area:
+        - advanced_training
+    content:
+      - inlines:
+          - source_unit_id: u_l0562_c001_paragraph_dd578ad1a5
+            text: "T0 Base: The target is Blinded until the end of your next turn. There is no saving throw."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0564_c001_paragraph_c7e91bb133
+            text: "T1 Overload: Changes from Tier 0: The target is Blinded as at Tier 0 and must make an Intelligence saving throw. On a failed save it is also Incapacitated until the end of your next turn."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0566_c001_paragraph_6de7789d8a
+            text: "T2 Overload: Changes from Tier 1: The target is Blinded as at Tier 0 and must make an Intelligence saving throw. On a failed save, the Stunned condition until the end of your next turn replaces the Incapacitated condition from Tier 1."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0568_c001_paragraph_3ce44da4fc
+            text: Mind Lock is the Advanced Training pool’s dedicated control pick. Blinded is its reliable floor; Incapacitated and Stunned are the Overload payoff. Mind Shred is the damage choice, while Mind Lock is the control choice.
+            type: text
+        type: paragraph
+    id: advanced_mind_lock
+    kind: feature
+    level: 15
+    origins:
+      - source_unit_ids:
+          - u_l0560_c001_paragraph_c87ea5c062
+          - u_l0562_c001_paragraph_dd578ad1a5
+          - u_l0564_c001_paragraph_c7e91bb133
+          - u_l0566_c001_paragraph_6de7789d8a
+          - u_l0568_c001_paragraph_3ce44da4fc
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: advanced_training
+    psi_cost: 3
+    publishable: true
+    title: Mind Lock
+  - activation: action
+    classifications:
+      acquisition_mode: selectable
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - advanced_training
+    content:
+      - inlines:
+          - source_unit_id: u_l0572_c001_paragraph_c72bbafd2f
+            text: "T0 Base: Create a 15-ft-radius, 20-ft-high Cylinder of intensified gravity centered on a point within 60 ft. The area is difficult terrain for the duration. Any creature in the zone has its speed halved (no save). A flying creature that enters the zone or starts its turn there immediately falls to the ground, taking fall damage as normal, and cannot fly or gain a fly speed while it remains in the zone. A creature that enters the area for the first time on a turn or starts its turn there must make a Strength saving throw. On a failed save, it is unable to take reactions until the start of its next turn. On a successful save, it suffers no additional effect."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0574_c001_paragraph_6bdefedd6f
+            text: "T1 Overload: Changes from Tier 0: Creatures in the Cylinder have disadvantage on attack rolls."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0576_c001_paragraph_fe9f6e2036
+            text: "T2 Overload: Changes from Tier 1: A creature that fails the saving throw also has its Speed reduced to 0 until the start of its next turn."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0578_c001_paragraph_f154892ea9
+            text: Gravitic Press is a standalone Action — it does not require a Manifested Strike hit and is not a rider. Requires Concentration.
+            type: text
+        type: paragraph
+    id: advanced_gravitic_press
+    kind: feature
+    level: 15
+    origins:
+      - source_unit_ids:
+          - u_l0570_c001_paragraph_bfbd0eafcf
+          - u_l0572_c001_paragraph_c72bbafd2f
+          - u_l0574_c001_paragraph_6bdefedd6f
+          - u_l0576_c001_paragraph_fe9f6e2036
+          - u_l0578_c001_paragraph_f154892ea9
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: advanced_training
+    psi_cost: 3
+    publishable: true
+    requires_concentration: true
+    title: Gravitic Press
+  - activation: bonus_action
+    classifications:
+      acquisition_mode: selectable
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - advanced_training
+    content:
+      - inlines:
+          - source_unit_id: u_l0582_c001_paragraph_e325ab9e95
+            text: "T0 Base: For 1 minute, choose one of the following effects, which lasts for the duration. Blade Shield: you have resistance to bludgeoning, piercing, and slashing damage from weapon attacks. Elemental Shroud: choose one damage type from acid, cold, fire, lightning, or thunder; you have resistance to that damage type. Spellward: you have advantage on saving throws against spells. Steadfast Guard: you have advantage on Strength saving throws, and on ability checks and saving throws to resist being grappled, shoved, knocked prone, or forcibly moved. Mental Bulwark: you have advantage on saving throws against being charmed, frightened, blinded, restrained, incapacitated, paralyzed, or stunned."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0584_c001_paragraph_a0fb871cd5
+            text: "T1 Overload: Changes from Tier 0: Tier 1 replaces Tier 0’s limit of one effect with two of the five effects."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0586_c001_paragraph_25a4ef0f47
+            text: "T2 Overload: Changes from Tier 1: The duration increases to 10 minutes. While Barrier is active and you are not in Initiative, you may spend 1 Psi to replace one of your chosen effects with another effect from the list. If Elemental Shroud is active, you may instead change its chosen damage type. You cannot choose an effect you already have active."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0588_c001_paragraph_c75d78ff11
+            text: Barrier is a standalone Bonus Action — not a rider.
+            type: text
+        type: paragraph
+    id: advanced_barrier
+    kind: feature
+    level: 15
+    origins:
+      - source_unit_ids:
+          - u_l0580_c001_paragraph_6a58329fcc
+          - u_l0582_c001_paragraph_e325ab9e95
+          - u_l0584_c001_paragraph_a0fb871cd5
+          - u_l0586_c001_paragraph_25a4ef0f47
+          - u_l0588_c001_paragraph_c75d78ff11
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: advanced_training
+    psi_cost: 3
+    publishable: true
+    title: Barrier
+  - activation: bonus_action
+    classifications:
+      acquisition_mode: selectable
+      entity_kind: feature
+      feature_role: standalone
+      rules_area:
+        - advanced_training
+    content:
+      - inlines:
+          - source_unit_id: u_l0592_c001_paragraph_04b1d08153
+            text: "T0 Base: As a bonus action, teleport up to 30 feet to an unoccupied space you can see. Choose either the space you left or the space where you appear as the origin of a 5-foot-radius Sphere. Choose up to three other creatures in the Sphere. Each chosen creature must make your Discipline’s signature saving throw against your Psionic save DC, taking 2d10 damage of your Manifested Strike’s damage type on a failed save, or half as much on a successful one. This movement does not provoke opportunity attacks, and you are unaffected by the burst."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0594_c001_paragraph_2d39e456e3
+            text: "T1 Overload: Changes from Tier 0: The teleport range increases to 60 feet and the burst damage increases to 3d10."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0596_c001_paragraph_d1c5252d16
+            text: "T2 Overload: Changes from Tier 1: The burst damage increases to 4d10. A creature that fails the save also cannot take reactions until the start of your next turn."
+            type: text
+        type: paragraph
+      - inlines:
+          - source_unit_id: u_l0598_c001_paragraph_d9ed12d4f0
+            text: Improved Phase Step is a standalone Bonus Action — it is not a rider and does not require a Manifested Strike hit. Where Phase Step is a cheap utility blink, Improved Phase Step is the longer, costlier blink that detonates on either end of the jump.
+            type: text
+        type: paragraph
+    id: advanced_improved_phase_step
+    kind: feature
+    level: 15
+    origins:
+      - source_unit_ids:
+          - u_l0590_c001_paragraph_6e0ce6d562
+          - u_l0592_c001_paragraph_04b1d08153
+          - u_l0594_c001_paragraph_2d39e456e3
+          - u_l0596_c001_paragraph_d1c5252d16
+          - u_l0598_c001_paragraph_d9ed12d4f0
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: advanced_training
+    psi_cost: 3
+    publishable: true
+    title: Improved Phase Step
+  - activation: passive
+    classifications:
+      acquisition_mode: selectable
+      entity_kind: feature
+      feature_role: passive
+      rules_area:
+        - advanced_training
+    content:
+      - inlines:
+          - source_unit_id: u_l0602_c001_paragraph_1b3aada7c7
+            text: You can choose this feature only if you have Psionic Apex. You gain one additional use of Overload Mastery per Short or Long Rest. This stacks with the use granted by Psionic Apex, giving you two total uses per Short or Long Rest.
+            type: text
+        type: paragraph
+    id: advanced_overload_mastery_ii
+    kind: feature
+    level: 18
+    origins:
+      - source_unit_ids:
+          - u_l0600_c001_paragraph_8c13faa3e1
+          - u_l0602_c001_paragraph_1b3aada7c7
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: advanced_training
+    publishable: true
+    title: Overload Mastery II
+  - activation: passive
+    classifications:
+      acquisition_mode: selectable
+      entity_kind: feature
+      feature_role: passive
+      rules_area:
+        - advanced_training
+    content:
+      - inlines:
+          - source_unit_id: u_l0606_c001_paragraph_1587788671
+            text: Your maximum Psi point pool increases by 4. You cannot choose this feature more than once.
+            type: text
+        type: paragraph
+    id: advanced_inner_reserve
+    kind: feature
+    level: 15
+    origins:
+      - source_unit_ids:
+          - u_l0604_c001_paragraph_c4e8d2a5b2
+          - u_l0606_c001_paragraph_1587788671
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: advanced_training
+    publishable: true
+    title: Inner Reserve
+facets:
+  - applicability:
+      kind: all
+    cardinality: multi
+    id: rules_area
+    label: Rules area
+    order: 0
+    requiredness: always
+    vocabulary: rules_areas
+  - applicability:
+      kind: all
+    cardinality: single
+    id: entity_kind
+    label: Entity kind
+    order: 1
+    requiredness: always
+    vocabulary: entity_kinds
+  - applicability:
+      kind: entity_kind
+      values:
+        - feature
+    cardinality: single
+    id: feature_role
+    label: Feature role
+    order: 2
+    requiredness: applicable
+    vocabulary: feature_roles
+  - applicability:
+      kind: rules_area
+      values:
+        - advanced_training
+    cardinality: single
+    id: acquisition_mode
+    label: Acquisition mode
+    order: 3
+    requiredness: applicable
+    vocabulary: acquisition_modes
+metadata:
+  attribution: Created by NixNinja in collaboration with AI assistants. Special thanks to various muses, great and small.
+  compatibility: Fighter subclass rules reference
+  license: Original Kinetic Vanguard material may be used, copied, modified, and redistributed for non-commercial purposes with credit to NixNinja. Commercial use requires prior written permission. SRD-derived rules text and references are separately governed by the Creative Commons Attribution 4.0 International License.
+  title: Kinetic Vanguard
+navigation:
+  categories:
+    - default_topic_id: common_features_how_to_play_topic
+      id: common_features
+      label: Common Features
+      order: 0
+      topics:
+        - entity_ids:
+            - how_to_play
+          id: common_features_how_to_play_topic
+          order: 0
+          title: How to Play This Subclass
+        - entity_ids:
+            - subclass_feature_reference
+          id: common_features_subclass_feature_reference_topic
+          order: 2
+          title: Subclass Feature Reference
+        - entity_ids:
+            - common_psionic_discipline
+          id: common_features_common_psionic_discipline_topic
+          order: 3
+          title: Psionic Discipline
+        - entity_ids:
+            - common_discipline_signature_save
+          id: common_features_common_discipline_signature_save_topic
+          order: 4
+          title: Discipline Signature Save
+        - entity_ids:
+            - common_psi_reservoir
+          id: common_features_common_psi_reservoir_topic
+          order: 5
+          title: Psi Reservoir
+        - entity_ids:
+            - common_psionic_link
+          id: common_features_common_psionic_link_topic
+          order: 6
+          title: Psionic Link
+        - entity_ids:
+            - common_manifested_strike
+          id: common_features_common_manifested_strike_topic
+          order: 7
+          title: Manifested Strike
+        - entity_ids:
+            - common_overload
+          id: common_features_common_overload_topic
+          order: 8
+          title: Overload
+        - entity_ids:
+            - common_signature_rider
+          id: common_features_common_signature_rider_topic
+          order: 9
+          title: Signature Rider
+        - entity_ids:
+            - common_kinetic_mastery
+          id: common_features_common_kinetic_mastery_topic
+          order: 10
+          title: Kinetic Mastery
+        - entity_ids:
+            - common_empathic_sense
+          id: common_features_common_empathic_sense_topic
+          order: 11
+          title: Empathic Sense
+        - entity_ids:
+            - common_vanguard_training
+          id: common_features_common_vanguard_training_topic
+          order: 12
+          title: Vanguard Training
+        - entity_ids:
+            - advanced_training_progression
+          id: common_features_advanced_training_progression_topic
+          order: 13
+          title: Advanced Training Progression
+    - default_topic_id: advanced_training_advanced_deflection_screen_topic
+      id: advanced_training
+      label: Advanced Training
+      order: 1
+      topics:
+        - entity_ids:
+            - advanced_deflection_screen
+          id: advanced_training_advanced_deflection_screen_topic
+          order: 0
+          title: "Advanced Training I: Deflection Screen"
+        - entity_ids:
+            - advanced_phase_step
+          id: advanced_training_advanced_phase_step_topic
+          order: 1
+          title: "Advanced Training II: Phase Step"
+        - entity_ids:
+            - advanced_mind_shred
+          id: advanced_training_advanced_mind_shred_topic
+          order: 2
+          title: Mind Shred
+        - entity_ids:
+            - advanced_beguile
+          id: advanced_training_advanced_beguile_topic
+          order: 3
+          title: Beguile
+        - entity_ids:
+            - advanced_mind_lock
+          id: advanced_training_advanced_mind_lock_topic
+          order: 4
+          title: Mind Lock
+        - entity_ids:
+            - advanced_gravitic_press
+          id: advanced_training_advanced_gravitic_press_topic
+          order: 5
+          title: Gravitic Press
+        - entity_ids:
+            - advanced_barrier
+          id: advanced_training_advanced_barrier_topic
+          order: 6
+          title: Barrier
+        - entity_ids:
+            - advanced_improved_phase_step
+          id: advanced_training_advanced_improved_phase_step_topic
+          order: 7
+          title: Improved Phase Step
+        - entity_ids:
+            - advanced_overload_mastery_ii
+          id: advanced_training_advanced_overload_mastery_ii_topic
+          order: 8
+          title: Overload Mastery II
+        - entity_ids:
+            - advanced_inner_reserve
+          id: advanced_training_advanced_inner_reserve_topic
+          order: 9
+          title: Inner Reserve
+    - default_topic_id: cryokinesis_glacial_spike_topic
+      id: cryokinesis
+      label: Cryokinesis
+      order: 2
+      topics:
+        - entity_ids:
+            - glacial_spike
+          id: cryokinesis_glacial_spike_topic
+          order: 0
+          title: Glacial Spike
+        - entity_ids:
+            - snow_chains
+          id: cryokinesis_snow_chains_topic
+          order: 1
+          title: Snow Chains
+        - entity_ids:
+            - frozen_ground
+          id: cryokinesis_frozen_ground_topic
+          order: 2
+          title: Frozen Ground
+        - entity_ids:
+            - arctic_tempest
+          id: cryokinesis_arctic_tempest_topic
+          order: 3
+          title: Arctic Tempest
+        - entity_ids:
+            - absolute_zero
+          id: cryokinesis_absolute_zero_topic
+          order: 4
+          title: Absolute Zero
+    - default_topic_id: pyrokinesis_ember_bolt_topic
+      id: pyrokinesis
+      label: Pyrokinesis
+      order: 3
+      topics:
+        - entity_ids:
+            - ember_bolt
+          id: pyrokinesis_ember_bolt_topic
+          order: 0
+          title: Ember Bolt
+        - entity_ids:
+            - thermal_fracture
+          id: pyrokinesis_thermal_fracture_topic
+          order: 1
+          title: Thermal Fracture
+        - entity_ids:
+            - cinder_lance
+          id: pyrokinesis_cinder_lance_topic
+          order: 2
+          title: Cinder Lance
+        - entity_ids:
+            - flare
+          id: pyrokinesis_flare_topic
+          order: 3
+          title: Flare
+        - entity_ids:
+            - furnace_strike
+          id: pyrokinesis_furnace_strike_topic
+          order: 4
+          title: Furnace Strike
+    - default_topic_id: psychokinesis_telekinetic_shove_topic
+      id: psychokinesis
+      label: Psychokinesis
+      order: 4
+      topics:
+        - entity_ids:
+            - telekinetic_shove
+          id: psychokinesis_telekinetic_shove_topic
+          order: 0
+          title: Telekinetic Shove
+        - entity_ids:
+            - vectored_thrust
+          id: psychokinesis_vectored_thrust_topic
+          order: 1
+          title: Vectored Thrust
+        - entity_ids:
+            - explosion_implosion
+          id: psychokinesis_explosion_implosion_topic
+          order: 2
+          title: Explosion/Implosion
+        - entity_ids:
+            - telekinetic_slam
+          id: psychokinesis_telekinetic_slam_topic
+          order: 3
+          title: Telekinetic Slam
+        - entity_ids:
+            - mass_levitation
+          id: psychokinesis_mass_levitation_topic
+          order: 4
+          title: Mass Levitation
+    - default_topic_id: electrokinesis_static_discharge_topic
+      id: electrokinesis
+      label: Electrokinesis
+      order: 5
+      topics:
+        - entity_ids:
+            - static_discharge
+          id: electrokinesis_static_discharge_topic
+          order: 0
+          title: Static Discharge
+        - entity_ids:
+            - branching_bolt
+          id: electrokinesis_branching_bolt_topic
+          order: 1
+          title: Branching Bolt
+        - entity_ids:
+            - electron_burst
+          id: electrokinesis_electron_burst_topic
+          order: 2
+          title: Electron Burst
+        - entity_ids:
+            - forked_lightning
+          id: electrokinesis_forked_lightning_topic
+          order: 3
+          title: Forked Lightning
+        - entity_ids:
+            - ball_lightning
+          id: electrokinesis_ball_lightning_topic
+          order: 4
+          title: Ball Lightning
+  default_category_id: common_features
+rules_version: 13.0.0
+schema_version: 1.0.0
+vocabularies:
+  acquisition_modes:
+    - id: granted
+      label: Granted
+      order: 0
+    - id: selectable
+      label: Selectable
+      order: 1
+  entity_kinds:
+    - id: feature
+      label: Feature
+      order: 0
+    - id: system
+      label: System
+      order: 1
+    - id: progression
+      label: Progression
+      order: 2
+  feature_roles:
+    - id: rider
+      label: Rider
+      order: 0
+    - id: standalone
+      label: Standalone
+      order: 1
+    - id: passive
+      label: Passive
+      order: 2
+  rules_areas:
+    - id: common_features
+      label: Common Features
+      order: 0
+    - id: advanced_training
+      label: Advanced Training
+      order: 1
+    - id: cryokinesis
+      label: Cryokinesis
+      order: 2
+    - id: pyrokinesis
+      label: Pyrokinesis
+      order: 3
+    - id: psychokinesis
+      label: Psychokinesis
+      order: 4
+    - id: electrokinesis
+      label: Electrokinesis
+      order: 5

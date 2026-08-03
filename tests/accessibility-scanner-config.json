@@ -1,0 +1,5 @@
+{
+  "scanner": "not-yet-pinned-for-release",
+  "standard": "WCAG 2.2 AA",
+  "release_blocking_impacts": ["critical", "serious"]
+}

@@ -1,0 +1,8 @@
+{
+  "version": 1,
+  "derivations": [
+    {"id":"match_count","inputs":["filtered_entity_ids"],"implementation":"src/runtime.ts#renderResults","placements":["status","facet_count"],"output_type":"nonnegative_integer","format":"base10","announce":true},
+    {"id":"application_version","inputs":["package.json#/version"],"implementation":"src/build.ts#applicationVersion","placements":["metadata"],"output_type":"semver","format":"verbatim","announce":false},
+    {"id":"release_status","inputs":["build/profiles.json#/profiles/*/release_status"],"implementation":"src/build.ts#releaseStatus","placements":["banner","metadata"],"output_type":"enum","format":"verbatim","announce":false}
+  ]
+}
