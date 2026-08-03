@@ -12,15 +12,20 @@
 		},
 		"ghcr.io/devcontainers/features/node:1": {
 			"version": "24.18.1"
+		},
+		"ghcr.io/devcontainers/features/github-cli:1": {
+			"version": "2.97.0"
 		}
 	},
 
 	"containerEnv": {
-		"CODEX_HOME": "/home/vscode/.codex"
+		"CODEX_HOME": "/home/vscode/.codex",
+		"GH_CONFIG_DIR": "/home/vscode/.config/gh"
 	},
 
 	"mounts": [
-		"source=kinetic-vanguard-codex,target=/home/vscode/.codex,type=volume"
+		"source=kinetic-vanguard-codex,target=/home/vscode/.codex,type=volume",
+		"source=kinetic-vanguard-gh,target=/home/vscode/.config/gh,type=volume"
 	],
 
 	"customizations": {
@@ -33,7 +38,7 @@
 		}
 	},
 
-	"postCreateCommand": "sudo install -d -o vscode -g vscode -m 0700 /home/vscode/.codex",
+	"postCreateCommand": "sudo install -d -o vscode -g vscode -m 0700 /home/vscode/.codex /home/vscode/.config/gh",
 
 	"remoteUser": "vscode"
 }
