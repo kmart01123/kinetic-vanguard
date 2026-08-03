@@ -3,6 +3,7 @@ audits:
     id: source_migration_provisional
     subject_ids:
       - how_to_play
+      - common_example_play
       - subclass_feature_reference
       - common_psionic_discipline
       - common_discipline_signature_save
@@ -45,6 +46,10 @@ audits:
       - advanced_improved_phase_step
       - advanced_overload_mastery_ii
       - advanced_inner_reserve
+  - assertion: Example Play is a Common Features system section, not a feature, rider, Overload tier, or Advanced Training option.
+    id: example_play_common_system
+    subject_ids:
+      - common_example_play
 entities:
   - classifications:
       entity_kind: system
@@ -3276,6 +3281,11 @@ navigation:
           id: common_features_how_to_play_topic
           order: 0
           title: How to Play This Subclass
+        - entity_ids:
+            - common_example_play
+          id: common_features_common_example_play_topic
+          order: 1
+          title: Example Play
         - entity_ids:
             - subclass_feature_reference
           id: common_features_subclass_feature_reference_topic
