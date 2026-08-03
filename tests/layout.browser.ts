@@ -138,40 +138,15 @@ test("Manifested Strike progression cells render exactly in desktop browsers", a
   }
 });
 
-test("example turns remain distinct and contained on desktop and mobile in both browsers", async () => {
-  const result = await executeBuild("prototype");
-  const url = `${pathToFileURL(result.htmlPath).href}#category=common_features&topic=common_features_common_overload_topic`;
-  const viewports = [{ width: 1366, height: 900 }, { width: 390, height: 844 }];
-
-  for (const engine of desktopBrowsers) {
-    const browser = await engine.type.launch({ headless: true });
-    const page = await browser.newPage();
-    try {
-      for (const viewport of viewports) {
-        await page.setViewportSize(viewport);await page.goto(url);
-        const rendered = await page.evaluate(() => {
-          const article = document.querySelector<HTMLElement>("article")!;const articleRect = article.getBoundingClientRect();const section=document.querySelector<HTMLElement>(".example-turns")!;const examples = [...document.querySelectorAll<HTMLElement>(".example-turn")];const tiers=[...document.querySelectorAll<HTMLElement>(".feature-tier")];const articleHeading=article.querySelector<HTMLElement>("h2")!;
-          return {
-            count:examples.length,
-            heading:section.querySelector(".example-turns__heading")?.textContent,
-            titles:examples.map(example=>example.querySelector(".example-turn__title")?.textContent),
-            phases:examples.map(example=>[...example.querySelectorAll(".example-turn__phase-title")].map(label=>label.textContent)),
-            contained:examples.every(example=>{const rect=example.getBoundingClientRect();return rect.left>=articleRect.left&&rect.right<=articleRect.right&&example.scrollWidth<=example.clientWidth;}),
-            styled:examples.every(example=>{const style=getComputedStyle(example);return style.backgroundColor!=="rgba(0, 0, 0, 0)"&&parseFloat(style.borderInlineStartWidth)>0;}),
-            tierCount:tiers.length,
-            tierLabels:tiers.map(tier=>tier.querySelector(".feature-tier__label")?.textContent),
-            tiersContained:tiers.every(tier=>{const rect=tier.getBoundingClientRect();return rect.left>=articleRect.left&&rect.right<=articleRect.right&&tier.scrollWidth<=tier.clientWidth;}),
-            tiersStyled:tiers.every(tier=>{const label=tier.querySelector<HTMLElement>(".feature-tier__label")!;const body=tier.querySelector<HTMLElement>(".feature-tier__content p")!;const style=getComputedStyle(label);return style.backgroundColor!=="rgba(0, 0, 0, 0)"&&parseFloat(style.borderInlineStartWidth)>0&&Number(style.fontWeight)>Number(getComputedStyle(body).fontWeight)&&parseFloat(style.fontSize)<parseFloat(getComputedStyle(articleHeading).fontSize);}),
-            documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth
-          };
-        });
-        const size=`${engine.name} ${viewport.width}x${viewport.height}`;assert.equal(rendered.count,4,`${size}: example count`);assert.equal(rendered.heading,"Example Turns",`${size}: section heading`);assert.deepEqual(rendered.titles,["Glacial Spike Tier 2 Lockdown — Level 11 Cryokinesis","Focused Fire — Full Attack Turn, Level 11 Pyrokinesis","Aerial Repositioning — Sustained Turn, Level 11 Psychokinesis","Frozen-Ground Lockdown — Level 11 Cryokinesis"],`${size}: ordered titles`);assert.ok(rendered.phases.every(labels=>labels.join("|")==="Setup|Activation|Rolls and saves|Damage|Effects|Result"),`${size}: complete phases`);assert.equal(rendered.contained,true,`${size}: examples must stay within the article`);assert.equal(rendered.styled,true,`${size}: examples need a distinct background and border`);assert.equal(rendered.tierCount,2,`${size}: tier count`);assert.deepEqual(rendered.tierLabels,["T1 Overload","T2 Overload"],`${size}: tier labels`);assert.equal(rendered.tiersContained,true,`${size}: tiers must stay within the article`);assert.equal(rendered.tiersStyled,true,`${size}: tier labels must be distinct and subordinate`);assert.equal(rendered.documentOverflow,0,`${size}: page must not scroll horizontally`);
-      }
-      await page.emulateMedia({media:"print"});await page.goto(url);assert.equal(await page.locator(".example-turn").first().evaluate(element=>getComputedStyle(element).breakInside),"avoid",`${engine.name}: print examples should avoid internal breaks`);
-    } finally {
-      await browser.close();
+test("Example Play sections remain distinct and contained on desktop and mobile in both browsers", async () => {
+  const result=await executeBuild("prototype");const base=pathToFileURL(result.htmlPath).href;const exampleUrl=`${base}#category=common_features&topic=common_features_common_example_play_topic`;const glacialUrl=`${base}#category=cryokinesis&topic=cryokinesis_glacial_spike_topic`;const viewports=[{width:1366,height:900},{width:390,height:844}];
+  for(const engine of desktopBrowsers){const browser=await engine.type.launch({headless:true});const page=await browser.newPage();try{
+    for(const viewport of viewports){await page.setViewportSize(viewport);await page.goto(exampleUrl);const rendered=await page.evaluate(()=>{const article=document.querySelector<HTMLElement>("#entity-common_example_play")!;const articleRect=article.getBoundingClientRect();const container=article.querySelector<HTMLElement>(".example-play-sections")!;const sections=[...container.querySelectorAll<HTMLElement>(".example-play-section")];return{count:sections.length,headings:sections.map(section=>section.querySelector("h3")?.textContent),titles:sections.map(section=>section.querySelector("h4")?.textContent),columns:getComputedStyle(container).gridTemplateColumns.split(" ").length,contained:sections.every(section=>{const rect=section.getBoundingClientRect();return rect.left>=articleRect.left&&rect.right<=articleRect.right&&section.scrollWidth<=section.clientWidth;}),styled:sections.every(section=>{const card=section.querySelector<HTMLElement>(".example-play-section__card")!;const style=getComputedStyle(card);return style.backgroundColor!=="rgba(0, 0, 0, 0)"&&parseFloat(style.borderTopWidth)>0;}),documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};});
+      const size=`${engine.name} ${viewport.width}x${viewport.height}`;assert.equal(rendered.count,3,`${size}: section count`);assert.deepEqual(rendered.headings,["Cryokinesis","Pyrokinesis","Psychokinesis"],`${size}: heading order`);assert.equal(rendered.titles.length,3,`${size}: title count`);assert.equal(rendered.contained,true,`${size}: sections contained`);assert.equal(rendered.styled,true,`${size}: sections styled`);assert.equal(rendered.documentOverflow,0,`${size}: no horizontal page overflow`);if(viewport.width===390)assert.equal(rendered.columns,1,`${size}: mobile stack`);else assert.ok(rendered.columns>=2,`${size}: desktop grid`);
+      await page.goto(glacialUrl);const inline=await page.evaluate(()=>{const article=document.querySelector<HTMLElement>("#entity-glacial_spike")!;const example=article.querySelector<HTMLElement>(".inline-example")!;const articleRect=article.getBoundingClientRect(),rect=example.getBoundingClientRect(),style=getComputedStyle(example);return{count:article.querySelectorAll(".inline-example").length,tier:example.dataset.overloadTier,contained:rect.left>=articleRect.left&&rect.right<=articleRect.right&&example.scrollWidth<=example.clientWidth,styled:style.backgroundColor!=="rgba(0, 0, 0, 0)"&&parseFloat(style.borderInlineStartWidth)>0,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};});assert.deepEqual(inline,{count:1,tier:"2",contained:true,styled:true,overflow:0},`${size}: inline Glacial example`);
     }
-  }
+    await page.emulateMedia({media:"print"});await page.goto(exampleUrl);assert.equal(await page.locator(".example-play-section").first().evaluate(element=>getComputedStyle(element).breakInside),"avoid",`${engine.name}: print section break`);await page.goto(glacialUrl);assert.equal(await page.locator(".inline-example").evaluate(element=>getComputedStyle(element).breakInside),"avoid",`${engine.name}: print inline break`);
+  }finally{await browser.close();}}
 });
 
 

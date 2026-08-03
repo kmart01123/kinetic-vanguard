@@ -70,19 +70,6 @@
         {"type":"object","additionalProperties":false,"required":["type","discipline","heading","title","body"],"properties":{"type":{"const":"example_play_section"},"discipline":{"enum":["cryokinesis","pyrokinesis","psychokinesis"]},"heading":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"title":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"body":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1}}}
       ]
     },
-    "exampleTurn": {
-      "type":"object","additionalProperties":false,
-      "required":["title","setup","activation","result"],
-      "properties": {
-        "title":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},
-        "setup":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},
-        "activation":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},
-        "rolls_or_saves":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},
-        "damage":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},
-        "effects":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},
-        "result":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}
-      }
-    },
     "classifications": {
       "type":"object","additionalProperties":false,"required":["rules_area","entity_kind"],
       "properties":{"rules_area":{"type":"array","items":{"$ref":"#/$defs/id"},"minItems":1,"uniqueItems":true},"entity_kind":{"$ref":"#/$defs/id"},"feature_role":{"$ref":"#/$defs/id"},"acquisition_mode":{"$ref":"#/$defs/id"}}
@@ -95,7 +82,6 @@
         "publishable":{"const":true},"kind":{"$ref":"#/$defs/id"},
         "level":{"type":"integer","minimum":1,"maximum":20},"progression_section":{"enum":["foundation","reference"]},"psi_cost":{"type":"integer","minimum":0},"activation":{"$ref":"#/$defs/id"},"requires_concentration":{"type":"boolean"},
         "content":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1},
-        "example_turns":{"type":"array","items":{"$ref":"#/$defs/exampleTurn"},"minItems":1},
         "classifications":{"$ref":"#/$defs/classifications"},
         "presentation_metadata":{"type":"object","additionalProperties":false,"required":["primary_rules_area","canonical_topic_by_area"],"properties":{"primary_rules_area":{"$ref":"#/$defs/id"},"canonical_topic_by_area":{"type":"object","additionalProperties":{"$ref":"#/$defs/id"}}}},
         "origins":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["source_unit_ids"],"properties":{"source_unit_ids":{"type":"array","items":{"type":"string","minLength":1},"minItems":1,"uniqueItems":true}}},"minItems":1},

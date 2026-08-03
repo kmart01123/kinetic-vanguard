@@ -57,15 +57,6 @@ export interface ContentBlock {
   body?: ContentBlock[];
 }
 
-export interface ExampleTurn {
-  title: InlineNode[];
-  setup: InlineNode[];
-  activation: InlineNode[];
-  rolls_or_saves?: InlineNode[];
-  damage?: InlineNode[];
-  effects?: InlineNode[];
-  result: InlineNode[];
-}
 
 export interface Entity {
   id: string;
@@ -79,7 +70,6 @@ export interface Entity {
   activation?: string;
   requires_concentration?: boolean;
   content: ContentBlock[];
-  example_turns?: ExampleTurn[];
   classifications: {
     rules_area: string[];
     entity_kind: string;

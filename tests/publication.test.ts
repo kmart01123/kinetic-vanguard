@@ -48,31 +48,17 @@ test("Name control has explicit inert activation contract",async()=>{
   assert.match(html,/get\("name-select"\)\.addEventListener\("change",\s*updateOpen\)/);assert.match(html,/if\s*\(get\("name-open"\)\.getAttribute\("aria-disabled"\)\s*===\s*["']true["']\)/);
 });
 
-test("structured example turns render once, in order, after the rules",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_common_overload_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const document=dom.window.document;const article=document.querySelector<HTMLElement>("#entity-common_overload")!;const section=article.querySelector<HTMLElement>(":scope > .example-turns")!;const examples=[...section.querySelectorAll<HTMLElement>(".example-turn")];const cryokinesis=examples[0]!;
-  assert.equal(section.querySelector(":scope > .example-turns__heading")?.textContent,"Example Turns");
-  assert.equal(article.lastElementChild,section);
-  assert.equal(examples.length,4);
-  assert.deepEqual(examples.map(example=>example.querySelector(".example-turn__title")?.textContent),[
-    "Glacial Spike Tier 2 Lockdown — Level 11 Cryokinesis",
-    "Focused Fire — Full Attack Turn, Level 11 Pyrokinesis",
-    "Aerial Repositioning — Sustained Turn, Level 11 Psychokinesis",
-    "Frozen-Ground Lockdown — Level 11 Cryokinesis"
-  ]);
-  assert.deepEqual({element:cryokinesis.tagName,ariaLabel:cryokinesis.getAttribute("aria-label"),labels:[...cryokinesis.querySelectorAll(".example-turn__phase-title")].map(label=>label.textContent),phaseCount:cryokinesis.querySelectorAll(".example-turn__phase").length},{element:"ASIDE",ariaLabel:"Example turn: Glacial Spike Tier 2 Lockdown — Level 11 Cryokinesis",labels:["Setup","Activation","Rolls and saves","Damage","Effects","Result"],phaseCount:6});
-  const phase=(name:string)=>cryokinesis.querySelector(`.example-turn__phase--${name} p`)?.textContent??"";
-  assert.match(phase("setup"),/^Example assumptions:.*30 feet.*AC 16.*10 Psi/);
-  assert.match(phase("activation"),/Attack action.*Glacial Spike Tier 2.*0-Psi.*8 Blood Tax.*1d10/);
-  assert.match(phase("rolls-or-saves"),/12 \+ 9 = 21.*DC 15.*fails.*4 \+ 9 = 13.*misses/);
-  assert.match(phase("damage"),/7 \+ 3 Int \+ 2.*12 cold damage.*Total.*19 cold damage/);
-  assert.match(phase("effects"),/Restrained until the end of the character’s next turn/);
-  assert.match(phase("result"),/all 10 Psi.*8 psychic damage.*19 cold damage/);
-  for(const migrated of ["Before rolling, you declare: “Glacial Spike T2.”","Turn totals (all three hit): Psi: 3 of 10.","Damage: 30.5 force on average","Damage: 32.5 cold on average"])assert.doesNotMatch(article.textContent??"",new RegExp(migrated.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")));
-  assert.equal(article.querySelector(".rule-example"),null);
-  assert.match(html,/@media print\{\.example-turn\{break-inside:avoid/);
-  await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
+test("Example Play and Glacial examples render exactly once in their destinations",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const createDom=(category:string,topic:string)=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#category=${category}&topic=${topic}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
+  const example=createDom("common_features","common_features_common_example_play_topic");const exampleArticle=example.window.document.querySelector<HTMLElement>("#entity-common_example_play")!;const sections=[...exampleArticle.querySelectorAll<HTMLElement>(":scope > .example-play-sections > .example-play-section")];
+  assert.equal(exampleArticle.querySelector(":scope > h2")?.textContent,"Example Play");assert.deepEqual(sections.map(section=>section.querySelector("h3")?.textContent),["Cryokinesis","Pyrokinesis","Psychokinesis"]);
+  assert.deepEqual(sections.map(section=>section.querySelector("h4")?.textContent),["Example — Lockdown Turn, Level 11 Cryokinesis (PB 4, Int +4, MS 1d10, 3 attacks)","Example — Full Attack Turn, Level 11 Pyrokinesis (PB 4, Cha +4, MS 1d10, 3 attacks)","Example — Sustained Turn, Level 11 Psychokinesis (PB 4, Int +4, MS 1d10, 3 attacks)"]);
+  assert.deepEqual(sections.map(section=>section.querySelectorAll(".example-play-section__body > p").length),[5,5,6]);assert.match(sections[0]?.textContent??"",/Frozen Ground is already active.*Damage: 32\.5 cold/s);assert.match(sections[1]?.textContent??"",/You want focused damage.*47\.5 fire/s);assert.match(sections[2]?.textContent??"",/No need to nova.*30\.5 force/s);
+  for(const section of sections){const title=section.querySelector("h4")!.textContent!;assert.equal((exampleArticle.textContent??"").split(title).length-1,1,`${title} rendered more than once`);}assert.equal(exampleArticle.querySelector(".inline-example"),null);assert.equal(exampleArticle.querySelector(".example-turn"),null);
+  const overload=createDom("common_features","common_features_common_overload_topic");const overloadArticle=overload.window.document.querySelector<HTMLElement>("#entity-common_overload")!;assert.equal(overloadArticle.querySelector(".example-play-section,.inline-example,.example-turns"),null);assert.doesNotMatch(overloadArticle.textContent??"",/Full Attack Turn|Sustained Turn|Lockdown Turn/);
+  const glacial=createDom("cryokinesis","cryokinesis_glacial_spike_topic");const glacialArticle=glacial.window.document.querySelector<HTMLElement>("#entity-glacial_spike")!;const inline=glacialArticle.querySelector<HTMLElement>(".inline-example")!;assert.equal(inline.dataset.overloadTier,"2");assert.equal(inline.querySelector("h3")?.textContent,"Example — Level 11 Cryokinesis (PB 4, Int +3)");assert.equal(inline.querySelectorAll(".inline-example__body > p").length,5);assert.match(inline.textContent??"",/Before rolling, you declare: “Glacial Spike T2.”.*Miss: No effects/s);assert.equal(glacialArticle.querySelector(".example-play-section"),null);
+  assert.match(html,/@media print\{\.example-play-section,\.inline-example\{break-inside:avoid/);
+  await new Promise<void>(resolve=>setImmediate(resolve));for(const dom of [example,overload,glacial])dom.window.close();
 });
 
 test("generated sections render Manifested Strike progression under its stable anchor only",async()=>{
@@ -89,9 +75,9 @@ test("generated sections render Manifested Strike progression under its stable a
   const overload=createDom("common_features_common_overload_topic");const overloadDocument=overload.window.document;const overloadArticle=overloadDocument.querySelector<HTMLElement>("#entity-common_overload")!;const overloadText=overloadArticle.textContent??"";
   assert.doesNotMatch(overloadText,/Manifested Strike die by level/);assert.equal(overloadArticle.querySelector("table th")?.textContent,"Declaration");
   for(const retained of ["The Blood Tax","(3rd level)","(10th level)","more than one feature in the same turn","Critical Hits and Riders","Using Overload","Damage Immunity and Riders"])assert.ok(overloadText.includes(retained),`missing retained Overload content: ${retained}`);
-  const tiers=[...overloadArticle.querySelectorAll<HTMLElement>(".feature-tier")];const exampleSection=overloadArticle.querySelector<HTMLElement>(":scope > .example-turns")!;const overloadChildren=[...overloadArticle.children];
+  const tiers=[...overloadArticle.querySelectorAll<HTMLElement>(".feature-tier")];const overloadChildren=[...overloadArticle.children];
   assert.deepEqual(tiers.map(tier=>({element:tier.tagName,label:tier.querySelector(".feature-tier__label")?.textContent,contentElement:tier.querySelector(".feature-tier__content")?.tagName})),[{element:"DIV",label:"T1 Overload",contentElement:"DIV"},{element:"DIV",label:"T2 Overload",contentElement:"DIV"}]);
-  assert.ok(overloadChildren.indexOf(tiers[0]!)<overloadChildren.indexOf(tiers[1]!));assert.ok(overloadChildren.indexOf(tiers[1]!)<overloadChildren.indexOf(exampleSection));
+  assert.ok(overloadChildren.indexOf(tiers[0]!)<overloadChildren.indexOf(tiers[1]!));assert.equal(overloadArticle.querySelector(".example-play-section,.inline-example,.example-turns"),null);
   const overloadParagraphs=[...overloadArticle.querySelectorAll<HTMLElement>(":scope > p")];assert.match(overloadParagraphs[0]?.textContent??"",/^Declare that you are Overloading/);assert.match(overloadParagraphs[1]?.textContent??"",/^Overload is a deliberate escalation/);
   assert.equal((overloadDocument.querySelector("#topic-select") as HTMLSelectElement).value,"common_features_common_overload_topic");
   await new Promise<void>(resolve=>setImmediate(resolve));manifested.window.close();overload.window.close();
@@ -100,16 +86,10 @@ test("generated sections render Manifested Strike progression under its stable a
 test("paragraph text beginning with Example is not classified heuristically",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const marker='"text":"On your turn, when you attack with Manifested Strike,';const replacement='"text":"Example ordinary paragraph. On your turn, when you attack with Manifested Strike,';const modified=html.replace(marker,replacement);assert.notEqual(modified,html);
   const dom=new JSDOM(modified,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const document=dom.window.document;assert.match(document.querySelector("article p")?.textContent??"",/^Example ordinary paragraph\./);assert.equal(document.querySelector("article .example-turns"),null);
+  const document=dom.window.document;assert.match(document.querySelector("article p")?.textContent??"",/^Example ordinary paragraph\./);assert.equal(document.querySelector("article .example-play-section,.inline-example"),null);
   await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
 });
 
-test("Example Turns renders conditionally and remains isolated to its owning feature",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const createDom=(category:string,topic:string)=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#category=${category}&topic=${topic}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const overload=createDom("common_features","common_features_common_overload_topic");const overloadDocument=overload.window.document;assert.equal(overloadDocument.querySelectorAll("#entity-common_overload > .example-turns").length,1);assert.equal(overloadDocument.querySelectorAll("#entity-common_overload .example-turn").length,4);
-  const glacial=createDom("cryokinesis","cryokinesis_glacial_spike_topic");const glacialArticle=glacial.window.document.querySelector<HTMLElement>("#entity-glacial_spike")!;assert.equal(glacialArticle.querySelector(".example-turns"),null);assert.doesNotMatch(glacialArticle.textContent??"",/Example Turns|Example assumptions|Blood Tax: 2 × PB/);
-  await new Promise<void>(resolve=>setImmediate(resolve));overload.window.close();glacial.window.close();
-});
 
 test("release build fails closed before emitting deployable output",async()=>{await assert.rejects(()=>executeBuild("release"),/Build blocked/);});
 

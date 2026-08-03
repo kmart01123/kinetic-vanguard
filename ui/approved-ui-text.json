@@ -24,15 +24,7 @@
     {"id":"match_count","role":"status_template","placements":["status"],"template":"{count} matches.","slots":{"count":"DerivedOutput"}},
     {"id":"one_match","role":"status_template","placements":["status"],"template":"{count} match.","slots":{"count":"DerivedOutput"}},
     {"id":"filter_cleared","role":"status","placements":["status"],"text":"Classification filters were cleared."},
-    {"id":"example_turns_heading","role":"section_heading","placements":["heading"],"text":"Example Turns"},
-    {"id":"example_accessible_name","role":"accessible_name","placements":["aria-label"],"template":"Example turn: {example_title}","slots":{"example_title":"AuthoritativeText"}},
-    {"id":"example_setup_label","role":"example_phase_label","placements":["label"],"text":"Setup"},
-    {"id":"example_activation_label","role":"example_phase_label","placements":["label"],"text":"Activation"},
-    {"id":"example_rolls_or_saves_label","role":"example_phase_label","placements":["label"],"text":"Rolls and saves"},
-    {"id":"example_damage_label","role":"example_phase_label","placements":["label"],"text":"Damage"},
-    {"id":"example_effects_label","role":"example_phase_label","placements":["label"],"text":"Effects"},
-    {"id":"example_result_label","role":"example_phase_label","placements":["label"],"text":"Result"}
-    ,{"id":"fact_level","role":"fact_label","placements":["label"],"text":"Level"}
+    {"id":"fact_level","role":"fact_label","placements":["label"],"text":"Level"}
     ,{"id":"fact_psi","role":"fact_label","placements":["label"],"text":"Psi"}
     ,{"id":"fact_activation","role":"fact_label","placements":["label"],"text":"Activation"}
     ,{"id":"fact_requirement","role":"fact_label","placements":["label"],"text":"Requirement"}
