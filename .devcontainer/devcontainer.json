@@ -9,8 +9,31 @@
 			"version": "os-provided",
 			"installTools": false,
 			"installJupyterlab": false
+		},
+		"ghcr.io/devcontainers/features/node:1": {
+			"version": "24.18.1"
 		}
 	},
+
+	"containerEnv": {
+		"CODEX_HOME": "/home/vscode/.codex"
+	},
+
+	"mounts": [
+		"source=kinetic-vanguard-codex,target=/home/vscode/.codex,type=volume"
+	],
+
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"openai.chatgpt",
+				"redhat.vscode-yaml",
+				"DavidAnson.vscode-markdownlint"
+			]
+		}
+	},
+
+	"postCreateCommand": "sudo install -d -o vscode -g vscode -m 0700 /home/vscode/.codex",
 
 	"remoteUser": "vscode"
 }
