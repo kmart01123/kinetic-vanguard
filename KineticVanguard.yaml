@@ -104,6 +104,153 @@ entities:
     publishable: true
     title: How to Play This Subclass
   - classifications:
+      entity_kind: system
+      rules_area:
+        - common_features
+    content:
+      - body:
+          - inlines:
+              - source_unit_id: u_l0140_c003_blockquote_paragraph_750364f9e7
+                text: You have 10 Psi. Frozen Ground is already active (2 Psi spent last turn).
+                type: emphasis
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0142_c003_blockquote_paragraph_9ce9acb851
+                text: "Attack 1: MS + T0 Glacial Spike (Signature Rider) — Declare: “Glacial Spike.” Psi: 0. On hit: avg 11.5 cold (1d10+4 plus Spike’s fixed +2). Target Speed −10 ft until the end of your next turn. Blood Tax: 0."
+                type: strong
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0144_c003_blockquote_paragraph_accd416349
+                text: "Attack 2: MS + T1 Glacial Spike — Declare: “Glacial Spike T1.” Psi: 0. On hit: avg 11.5 cold. On a failed Con save, the target’s Speed becomes 0; on a successful save, the Tier 0 −10-foot reduction remains. Blood Tax: PB = 4, paid on declaration; a miss still spends the Blood Tax."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0146_c003_blockquote_paragraph_b4480594be
+                text: "Attack 3: MS — On hit: avg 9.5 cold. Blood Tax: 0."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0148_c003_blockquote_paragraph_e5c8d77618
+                text: "Turn totals: Psi: 0. BT = 4 (Glacial Spike T1). Damage: 32.5 cold on average. The target likely has Speed 0 in difficult terrain; Frozen Ground can stop its movement on its turn. Low burn, high lockdown."
+                type: strong
+            type: paragraph
+        discipline: cryokinesis
+        heading:
+          - source_unit_id: u_l0138_c003_blockquote_paragraph_c3eaa6f391
+            text: Cryokinesis
+            type: text
+        title:
+          - source_unit_id: u_l0138_c003_blockquote_paragraph_c3eaa6f391
+            text: Example — Lockdown Turn, Level 11 Cryokinesis (PB 4, Int +4, MS 1d10, 3 attacks)
+            type: strong
+        type: example_play_section
+      - body:
+          - inlines:
+              - source_unit_id: u_l0114_c003_blockquote_paragraph_00faccb56f
+                text: You have 10 Psi. Three attacks this turn. You want focused damage.
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0116_c003_blockquote_paragraph_01f5d0059a
+                text: "Attack 1: MS + Ember Bolt T2 (Signature Rider) — Declare: “Ember Bolt T2.” Psi: 0. On hit: 1d10 + 4 plus 6 fire damage (average 15.5). Blood Tax: 2×PB = 8, paid on declaration."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0118_c003_blockquote_paragraph_2752e68da9
+                text: "Attack 2: MS + Cinder Lance T0 — Declare: “Cinder Lance.” Psi: 3. On hit: the strike deals 1d10 + 4 and Cinder Lance adds 2 base MS dice, for 3d10 + 4 fire damage (average 20.5). Blood Tax: 0."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0120_c003_blockquote_paragraph_5bcd08e236
+                text: "Attack 3: MS + Ember Bolt T0 — Declare: “Ember Bolt.” Psi: 0. On hit: 1d10 + 4 plus 2 fire damage (average 11.5). Blood Tax: 0."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0122_c003_blockquote_paragraph_7c82271c6b
+                text: "Turn totals (all three hit): Psi: 3 of 10. Blood Tax: 8. Average damage to the primary target: 47.5 fire. A miss still spends any committed Psi and Blood Tax."
+                type: text
+            type: paragraph
+        discipline: pyrokinesis
+        heading:
+          - source_unit_id: u_l0112_c003_blockquote_paragraph_1948bc17f9
+            text: Pyrokinesis
+            type: text
+        title:
+          - source_unit_id: u_l0112_c003_blockquote_paragraph_1948bc17f9
+            text: Example — Full Attack Turn, Level 11 Pyrokinesis (PB 4, Cha +4, MS 1d10, 3 attacks)
+            type: text
+        type: example_play_section
+      - body:
+          - inlines:
+              - source_unit_id: u_l0126_c003_blockquote_paragraph_c4607cec5d
+                text: You have 10 Psi. No need to nova — control the board.
+                type: emphasis
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0128_c003_blockquote_paragraph_5a3fd893c7
+                text: "Bonus Action: Vectored Thrust T1 Overload — Psi: 2. Effect: Fly speed 30 ft, no opportunity attacks (Concentration, up to 10 min). Blood Tax: 1 × PB = 4 (standalone — paid on activation, no roll)."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0130_c003_blockquote_paragraph_37af8865a3
+                text: "Attack 1: MS + T0 Telekinetic Shove (Signature Rider) — Declare: “Telekinetic Shove.” Psi: 0. On hit: avg 11.5 force (1d10+4 plus Shove’s fixed +2), with a Str save against the 10-ft directional push. Blood Tax: 0."
+                type: strong
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0132_c003_blockquote_paragraph_a8389e68cc
+                text: "Attack 2: MS — On hit: avg 9.5 force. Blood Tax: 0."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0134_c003_blockquote_paragraph_ca035bee04
+                text: "Attack 3: MS — On hit: avg 9.5 force. Blood Tax: 0."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0136_c003_blockquote_paragraph_a618462ba0
+                text: "Turn totals: Psi: 2 of 10. BT = 4 (Vectored Thrust T1). Damage: 30.5 force on average, one target repositioned, flying. Sustainable with occasional VT refresh."
+                type: text
+            type: paragraph
+        discipline: psychokinesis
+        heading:
+          - source_unit_id: u_l0124_c003_blockquote_paragraph_a4872a5636
+            text: Psychokinesis
+            type: text
+        title:
+          - source_unit_id: u_l0124_c003_blockquote_paragraph_a4872a5636
+            text: Example — Sustained Turn, Level 11 Psychokinesis (PB 4, Int +4, MS 1d10, 3 attacks)
+            type: strong
+        type: example_play_section
+    id: common_example_play
+    kind: system
+    origins:
+      - source_unit_ids:
+          - u_l0112_c003_blockquote_paragraph_1948bc17f9
+          - u_l0114_c003_blockquote_paragraph_00faccb56f
+          - u_l0116_c003_blockquote_paragraph_01f5d0059a
+          - u_l0118_c003_blockquote_paragraph_2752e68da9
+          - u_l0120_c003_blockquote_paragraph_5bcd08e236
+          - u_l0122_c003_blockquote_paragraph_7c82271c6b
+          - u_l0124_c003_blockquote_paragraph_a4872a5636
+          - u_l0126_c003_blockquote_paragraph_c4607cec5d
+          - u_l0128_c003_blockquote_paragraph_5a3fd893c7
+          - u_l0130_c003_blockquote_paragraph_37af8865a3
+          - u_l0132_c003_blockquote_paragraph_a8389e68cc
+          - u_l0134_c003_blockquote_paragraph_ca035bee04
+          - u_l0136_c003_blockquote_paragraph_a618462ba0
+          - u_l0138_c003_blockquote_paragraph_c3eaa6f391
+          - u_l0140_c003_blockquote_paragraph_750364f9e7
+          - u_l0142_c003_blockquote_paragraph_9ce9acb851
+          - u_l0144_c003_blockquote_paragraph_accd416349
+          - u_l0146_c003_blockquote_paragraph_b4480594be
+          - u_l0148_c003_blockquote_paragraph_e5c8d77618
+    presentation_metadata:
+      canonical_topic_by_area: {}
+      primary_rules_area: common_features
+    progression_section: foundation
+    publishable: true
+    title: Example Play
+  - classifications:
       entity_kind: feature
       feature_role: standalone
       rules_area:

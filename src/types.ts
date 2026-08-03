@@ -43,7 +43,7 @@ export interface InlineNode {
 }
 
 export interface ContentBlock {
-  type: "paragraph" | "list" | "note" | "table" | "example" | "tier";
+  type: "paragraph" | "list" | "note" | "table" | "example" | "tier" | "example_play_section";
   inlines?: InlineNode[];
   style?: "ordered" | "unordered";
   kind?: "note" | "warning";
@@ -52,6 +52,7 @@ export interface ContentBlock {
   rows?: InlineNode[][][];
   title?: InlineNode[];
   heading?: InlineNode[];
+  discipline?: "cryokinesis" | "pyrokinesis" | "psychokinesis";
   tier?: number;
   body?: ContentBlock[];
 }
