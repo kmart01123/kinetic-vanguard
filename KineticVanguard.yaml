@@ -450,34 +450,6 @@ entities:
         type: note
     example_turns:
       - title:
-          - source_unit_id: u_l0100_c003_blockquote_paragraph_9486363841
-            text: Glacial Spike Tier 2 Lockdown — Level 11 Cryokinesis
-            type: text
-        setup:
-          - source_unit_id: u_l0102_c003_blockquote_paragraph_e441f239d1
-            text: "Example assumptions: The level 11 Cryokinetic begins 30 feet from one hostile creature (AC 16) with three attacks available, one free hand, 10 Psi, PB 4, Int +3, and enough hit points to pay Blood Tax. They are not concentrating and use no bonus action or reaction this turn."
-            type: text
-        activation:
-          - source_unit_id: u_l0108_c003_blockquote_paragraph_b0a8492967
-            text: "The character takes the Attack action. Before attack 1, they target the creature and declare “Manifested Strike with Glacial Spike Tier 2.” Glacial Spike is the 0-Psi Signature Rider; Tier 2 costs 2 × PB = 2 × 4 = 8 Blood Tax, paid immediately and retained even if the attack misses. Manifested Strike itself costs 0 Psi, uses its level-set 1d10 die, and is not Overloaded. Attacks 2 and 3 are plain Manifested Strikes with no rider or additional cost."
-            type: text
-        rolls_or_saves:
-          - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
-            text: "The Manifested Strike attack bonus is +9 (+3 Int, +4 PB, +2 Psionic Focus). Attack 1 rolls 12 + 9 = 21 and hits AC 16. The target then rolls 9 against Psionic save DC 15 (8 + 4 + 3) and fails its Constitution save. Attack 2 rolls 8 + 9 = 17 and hits. Attack 3 rolls 4 + 9 = 13 and misses."
-            type: text
-        damage:
-          - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
-            text: "Attack 1 rolls 7 on the 1d10: 7 + 3 Int + 2 from Glacial Spike = 12 cold damage. Attack 2 rolls 4: 4 + 3 = 7 cold damage. Attack 3 deals no damage. Total for the turn: 12 + 7 = 19 cold damage."
-            type: text
-        effects:
-          - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
-            text: The failed Constitution save applies Glacial Spike Tier 2, so the target is Restrained until the end of the character’s next turn. No movement or other secondary effect occurs.
-            type: text
-        result:
-          - source_unit_id: u_l0110_c003_blockquote_paragraph_fae2c7872a
-            text: "The character ends the turn 30 feet from the target with all 10 Psi, having taken 8 psychic damage from Blood Tax. The target has taken 19 cold damage and is Restrained for the stated duration. The Attack action is complete; the missed third attack had no rider costs to lose."
-            type: text
-      - title:
           - source_unit_id: u_l0112_c003_blockquote_paragraph_1948bc17f9
             text: Focused Fire — Full Attack Turn, Level 11 Pyrokinesis
             type: text
@@ -611,12 +583,6 @@ entities:
           - u_l0094_c003_blockquote_paragraph_1eb389a220
           - u_l0096_c003_blockquote_paragraph_0632b4f975
           - u_l0098_c003_blockquote_paragraph_a7fbb0d442
-          - u_l0100_c003_blockquote_paragraph_9486363841
-          - u_l0102_c003_blockquote_paragraph_e441f239d1
-          - u_l0104_c003_blockquote_paragraph_7b15436ca6
-          - u_l0106_c003_blockquote_paragraph_216ebde730
-          - u_l0108_c003_blockquote_paragraph_b0a8492967
-          - u_l0110_c003_blockquote_paragraph_fae2c7872a
           - u_l0112_c003_blockquote_paragraph_1948bc17f9
           - u_l0114_c003_blockquote_paragraph_00faccb56f
           - u_l0116_c003_blockquote_paragraph_01f5d0059a
@@ -2062,6 +2028,38 @@ entities:
             text: "T2 Overload: Changes from Tier 1: On a failed save, the Restrained condition until the end of your next turn replaces Tier 1’s effect that makes its Speed 0 for that duration. On a successful save, the Tier 0 Speed reduction remains."
             type: text
         type: paragraph
+      - body:
+          - inlines:
+              - source_unit_id: u_l0102_c003_blockquote_paragraph_e441f239d1
+                text: "Before rolling, you declare: “Glacial Spike T2.”"
+                type: emphasis
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0104_c003_blockquote_paragraph_7b15436ca6
+                text: "Your strike uses its level-set die: 1d10. The Tier 2 declaration is on Glacial Spike — the strike itself can never be Overloaded."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
+                text: "Hit: Manifested Strike deals 1d10 + 3, and Glacial Spike adds 2 cold damage, for 1d10 + 5 total. On a failed Con save, the target is Restrained until the end of your next turn."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0108_c003_blockquote_paragraph_b0a8492967
+                text: "Blood Tax: 1 × 2 × PB = 2 × 4 = 8, paid on declaration. Glacial Spike is a Signature Rider and costs 0 Psi; Tier 2 escalates its control."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0110_c003_blockquote_paragraph_fae2c7872a
+                text: "Miss: No effects; Blood Tax (8) is still paid — it was spent on declaration. Glacial Spike costs 0 Psi. Roll your next attack."
+                type: text
+            type: paragraph
+        tier: 2
+        title:
+          - source_unit_id: u_l0100_c003_blockquote_paragraph_9486363841
+            text: Example — Level 11 Cryokinesis (PB 4, Int +3)
+            type: strong
+        type: example
     id: glacial_spike
     kind: feature
     level: 3
@@ -2071,6 +2069,12 @@ entities:
           - u_l0333_c001_paragraph_9d36f4b0d6
           - u_l0335_c001_paragraph_d2f0113cac
           - u_l0337_c001_paragraph_a14a2e0347
+          - u_l0100_c003_blockquote_paragraph_9486363841
+          - u_l0102_c003_blockquote_paragraph_e441f239d1
+          - u_l0104_c003_blockquote_paragraph_7b15436ca6
+          - u_l0106_c003_blockquote_paragraph_216ebde730
+          - u_l0108_c003_blockquote_paragraph_b0a8492967
+          - u_l0110_c003_blockquote_paragraph_fae2c7872a
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: cryokinesis
