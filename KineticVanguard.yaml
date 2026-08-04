@@ -359,7 +359,7 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "Concentration Startup Exception: The Blood Tax from the activation that starts a concentration feature does not trigger a concentration check. Only subsequent Blood Tax and other damage sources require checks as normal. Standard concentration rules still apply — you can only concentrate on one feature at a time."
+          - text: "Concentration Startup Exception: When you activate a concentration feature with Overload, the Blood Tax paid for that activation does not trigger a concentration saving throw for the feature being activated. After activation, subsequent damage—including later Blood Tax—forces concentration saving throws as normal. Standard concentration rules still apply—you can concentrate on only one feature at a time."
             type: text
         kind: note
         type: note

@@ -59,17 +59,22 @@ test("Manifested Strike owns its progression immediately after the core rule",as
   assert.deepEqual({title:overloadTopic.title,entityIds:overloadTopic.entity_ids,order:overloadTopic.order},{title:"Overload",entityIds:["common_overload"],order:8});
 });
 
-test("concentration requirements are canonical structured feature data",async()=>{
+test("shared Overload startup exception covers every concentration feature",async()=>{
   const {authority}=await loadAuthority();
-  const concentrationIds=authority.entities
-    .filter(entity=>entity.requires_concentration===true)
-    .map(entity=>entity.id)
-    .sort();
-  assert.deepEqual(concentrationIds,[
+  const concentrationFeatures=authority.entities.filter(entity=>entity.requires_concentration===true);
+  assert.deepEqual(concentrationFeatures.map(entity=>entity.id).sort(),[
     "advanced_beguile","advanced_gravitic_press","ball_lightning",
     "frozen_ground","mass_levitation","vectored_thrust"
   ]);
+  assert.ok(concentrationFeatures.every(entity=>entity.classifications.feature_role==="standalone"));
   assert.equal(authority.entities.find(entity=>entity.id==="telekinetic_slam")?.requires_concentration,undefined);
+  const overload=authority.entities.find(entity=>entity.id==="common_overload")!;
+  const startupException=overload.content
+    .filter(block=>block.type==="note")
+    .flatMap(block=>block.inlines??[])
+    .map(inline=>inline.text)
+    .find(value=>value?.startsWith("Concentration Startup Exception:"));
+  assert.equal(startupException,"Concentration Startup Exception: When you activate a concentration feature with Overload, the Blood Tax paid for that activation does not trigger a concentration saving throw for the feature being activated. After activation, subsequent damage—including later Blood Tax—forces concentration saving throws as normal. Standard concentration rules still apply—you can concentrate on only one feature at a time.");
 });
 
 
