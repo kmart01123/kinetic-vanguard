@@ -14,7 +14,7 @@ permissions:
 
 jobs:
   verification:
-    name: v13 verification
+    name: v13 verification and release build
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
@@ -47,7 +47,7 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Build
+      - name: Build prototype
         run: npm run build
 
       - name: Test determinism
@@ -55,3 +55,26 @@ jobs:
 
       - name: Test layout
         run: npm run test:layout
+
+      - name: Build authorized v13.0 release
+        env:
+          KV_RELEASE_APPROVED: "1"
+        run: npm run build:release
+
+      - name: Verify release identity
+        run: |
+          test -f artifacts/KineticVanguard.html
+          grep -q '"release_status":"release"' artifacts/KineticVanguard.html
+          ! grep -q 'NON-RELEASE PROTOTYPE' artifacts/KineticVanguard.html
+
+      - name: Upload v13.0 publication
+        uses: actions/upload-artifact@v4
+        with:
+          name: kinetic-vanguard-v13.0.0
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            artifacts/KineticVanguard.html
+            artifacts/build-manifest.json
+            artifacts/filtered-search-integrity.json
+            artifacts/coverage-ledger.json
