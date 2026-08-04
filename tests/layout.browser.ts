@@ -3,6 +3,7 @@ import test from "node:test";
 import { pathToFileURL } from "node:url";
 import { chromium, firefox } from "playwright";
 import { executeBuild } from "../src/build.js";
+import { loadAuthority } from "../src/load.js";
 
 const desktopViewports = [
   { width: 1640, height: 860 },
@@ -16,6 +17,38 @@ const desktopBrowsers = [
   { name: "Firefox", type: firefox }
 ];
 const nativeSelectIndicatorAllowance = 24;
+
+test("master Name select renders canonical progression and stable renamed routes in Chromium and Firefox",async()=>{
+  const result=await executeBuild("prototype");const {authority}=await loadAuthority();const url=pathToFileURL(result.htmlPath).href;
+  const rulesAreas=authority.vocabularies.rules_areas!;const expectedGroups=[...rulesAreas].sort((a,b)=>a.order-b.order).map(area=>area.label);
+  const featureIds=new Set(authority.entities.filter(entity=>entity.kind==="feature").map(entity=>entity.id));
+  const expectedFeatures=Object.fromEntries(rulesAreas.map(area=>[area.label,authority.entities.filter(entity=>entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area===area.id).sort((a,b)=>Number(a.level)-Number(b.level)||(a.title<b.title?-1:a.title>b.title?1:0)||(a.id<b.id?-1:a.id>b.id?1:0)).map(entity=>entity.id)]));
+  for(const engine of desktopBrowsers){
+    const browser=await engine.type.launch({headless:true});
+    try{
+      const page=await browser.newPage({viewport:{width:1366,height:768}});await page.goto(url);await page.evaluate(()=>{const push=history.pushState.bind(history);(window as any).__namePushCount=0;history.pushState=(...args)=>{(window as any).__namePushCount++;return push(...args);};});
+      const readGroups=()=>page.locator("#name-select optgroup").evaluateAll(groups=>groups.map(group=>({label:(group as HTMLOptGroupElement).label,ids:[...group.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.value),labels:[...group.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.textContent??"")})));
+      const observed=await readGroups();assert.deepEqual(observed.map(group=>group.label),expectedGroups,engine.name+" group order");
+      for(const group of observed)assert.deepEqual(group.ids.filter(id=>featureIds.has(id)),expectedFeatures[group.label],engine.name+" "+group.label+" feature order");
+      const pyrokinesis=observed.find(group=>group.label==="Pyrokinesis")!;assert.ok(pyrokinesis.ids.indexOf("thermal_fracture")<pyrokinesis.ids.indexOf("furnace_strike"),engine.name+" Thermal Fracture before Furnace Strike");
+      const advanced=observed.find(group=>group.label==="Advanced Training")!;assert.deepEqual(advanced.labels.slice(0,2),["Deflection Screen","Phase Step"],engine.name+" cleaned Advanced Training labels");
+      const pyroFilter=page.locator('input[data-facet="rules_area"][value="pyrokinesis"]');await pyroFilter.check();
+      const filtered=await readGroups();assert.deepEqual(filtered.map(group=>group.label),["Pyrokinesis"],engine.name+" filtered groups");assert.deepEqual(filtered[0]!.ids,pyrokinesis.ids,engine.name+" filtered rebuild order");await pyroFilter.uncheck();
+      const advancedFilter=page.locator('input[data-facet="rules_area"][value="advanced_training"]');await advancedFilter.check();
+      const rebuiltAdvanced=await readGroups();assert.deepEqual(rebuiltAdvanced.map(group=>group.label),["Advanced Training"],engine.name+" rebuilt Advanced Training group");assert.deepEqual(rebuiltAdvanced[0]!.labels.slice(0,2),["Deflection Screen","Phase Step"],engine.name+" rebuilt clean labels");
+      assert.equal(new Set(rebuiltAdvanced[0]!.ids).size,rebuiltAdvanced[0]!.ids.length,engine.name+" no duplicate Advanced Training options");assert.ok(rebuiltAdvanced[0]!.labels.every(label=>!label.startsWith("Advanced Training I:")&&!label.startsWith("Advanced Training II:")),engine.name+" no rebuilt prefixed labels");
+      const resultLabels=await page.locator("#filter-results button").allTextContents();assert.ok(resultLabels.includes("Deflection Screen — Advanced Training"));assert.ok(resultLabels.includes("Phase Step — Advanced Training"));assert.ok(resultLabels.every(label=>!label.startsWith("Advanced Training I:")&&!label.startsWith("Advanced Training II:")));await advancedFilter.uncheck();
+      for(const [id,title,topic] of [["advanced_deflection_screen","Deflection Screen","advanced_training_advanced_deflection_screen_topic"],["advanced_phase_step","Phase Step","advanced_training_advanced_phase_step_topic"]] as const){
+        const historyBefore=await page.evaluate(()=>(window as any).__namePushCount);await page.selectOption("#name-select",id);
+        assert.equal(new URL(page.url()).hash.includes(`entity=${id}`),true);assert.equal(new URLSearchParams(new URL(page.url()).hash.slice(1)).get("topic"),topic);assert.equal(await page.locator(`#entity-${id} h2`).textContent(),title);
+        assert.equal(await page.locator("#name-select").inputValue(),id);assert.equal(await page.locator("#name-open").count(),0);assert.equal(await page.evaluate(()=>(window as any).__namePushCount),historyBefore+1);
+        await page.selectOption("#name-select",id);assert.equal(await page.evaluate(()=>(window as any).__namePushCount),historyBefore+1,engine.name+" same selection history");
+        await page.goBack();await page.goForward();assert.equal(await page.locator(`#entity-${id} h2`).textContent(),title,engine.name+" Forward navigation");await page.goBack();
+      }
+      await page.close();
+    }finally{await browser.close();}
+  }
+});
 
 test("prototype columns and long selected topics fit in desktop browsers", async () => {
   const result = await executeBuild("prototype");
@@ -71,7 +104,7 @@ test("prototype columns and long selected topics fit in desktop browsers", async
         assert.ok(layout.articleRight <= layout.contentRight, `${size}: article must remain inside the content panel`);
         assert.equal(layout.documentOverflow, 0, `${size}: page must not scroll horizontally`);
         assert.equal(layout.textContained, true, `${size}: headings and body text must remain contained`);
-        assert.equal(layout.selectedTopic, "Advanced Training I: Deflection Screen");
+        assert.equal(layout.selectedTopic, "Deflection Screen");
         assert.equal(layout.selectedTopicFits, true, `${size}: selected Topic text must fit beside the native indicator`);
       }
     } finally {

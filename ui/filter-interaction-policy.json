@@ -3,14 +3,12 @@
   "stable_sort": ["primary_rules_area_order", "progression_section_order", "minimum_level", "primary_area_topic_order", "feature_role_order", "title_codepoint", "entity_id_codepoint"],
   "result_activation_area": "canonical_primary_rules_area",
   "name_placeholder_token": "name_placeholder",
-  "name_reset_events": ["initial_load","direct_route","history_restore","classification_change","successful_open"],
-  "inactive_open_accessible_name_token": "open_inactive_name",
-  "persistent_open_description_token": "open_description",
-  "focusable_aria_disabled": true,
-  "name_activation_focus": "authoritative_entity_heading",
+  "name_reset_events": ["classification_change","category_change","topic_change"],
+  "name_selection_sync_events": ["initial_load","direct_route","history_restore","successful_selection"],
+  "name_activation_focus": "retain_native_select_focus",
   "settling_interval_ms": 0,
   "settled_state_hook": "data-filter-settled",
   "history_state_fields": ["category","topic","classifications","entity","resultRoute","focusOrigin"],
-  "focus_origins": ["category","topic","name_open","result","history","fragment"],
+  "focus_origins": ["category","topic","name","result","history","fragment"],
   "fragment_keys": ["category","topic","filters","entity"]
 }

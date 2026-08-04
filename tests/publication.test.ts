@@ -3,6 +3,11 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 import { executeBuild } from "../src/build.js";
+import { loadAuthority } from "../src/load.js";
+
+const styledAdditionOperators=/[˖∔⊕⊞➕⨁⨢⨣⨤⨥⨦⨧⨨⨭⨮⨹⨺⩱⩲⩳⩴⩵⩶⩷⩸﬩]/u;
+const hasAlternateAddition=(value:string)=>/\bplus\b/iu.test(value)||[...value].some(character=>character!=="+"&&(character.normalize("NFKC")==="+"||styledAdditionOperators.test(character)));
+const assertAsciiTableAddition=(values:string[],source:string)=>{for(const value of values)assert.equal(hasAlternateAddition(value),false,`${source} table cell uses a non-ASCII addition operator: ${value}`);};
 
 test("prototype is self-contained, offline, and unmistakably non-release",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
@@ -42,10 +47,73 @@ test("overload tier labels and content render as separate compact elements",asyn
   await new Promise<void>(resolve=>setImmediate(resolve));glacial.window.close();empathic.window.close();
 });
 
-test("Name control has explicit inert activation contract",async()=>{
+test("Name control uses committed selection without redundant Open UI",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  assert.match(html,/id="name-select"/);assert.match(html,/id="name-open"[^>]+aria-disabled="true"[^>]+aria-label="Open selected rule"/);assert.match(html,/Select a rule name, then choose Open\./);
-  assert.match(html,/get\("name-select"\)\.addEventListener\("change",\s*updateOpen\)/);assert.match(html,/if\s*\(get\("name-open"\)\.getAttribute\("aria-disabled"\)\s*===\s*["']true["']\)/);
+  assert.match(html,/<label for="name-select">Name<\/label><select id="name-select"><\/select>/);
+  assert.match(html,/get\("name-select"\)\.addEventListener\("change",\s*event\s*=>\s*openEntity\(event\.target\.value,\s*"name"\)\)/);
+  assert.doesNotMatch(html,/id="name-open"|name-row|Open selected rule|Select a rule name, then choose Open\.|Choosing a name does not navigate until you choose Open\./);
+  assert.match(html,/\.controls select\{width:100%;min-width:0\}/);
+});
+
+test("generated publication uses centralized warm dark theme tokens",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const style=html.match(/<style>([\s\S]*?)<\/style>/)?.[1]??"";
+  assert.match(style,/:root\{color-scheme:dark;/);
+  for(const token of ["--bg","--panel","--control-bg","--control-hover","--control-active","--control-disabled","--ink","--muted","--accent","--focus","--line","--selected-bg","--note-bg"]){
+    assert.match(style,new RegExp(`${token}:#[0-9a-f]{6}`),`${token} must be a shared theme token`);
+  }
+  for(const sharedHook of [
+    /body\{[^}]*background:var\(--bg\)[^}]*color:var\(--ink\)/,
+    /\.panel,article\{[^}]*background:var\(--panel\)[^}]*border:1px solid var\(--line\)/,
+    /select,button\{[^}]*border:1px solid var\(--line-strong\)[^}]*background:var\(--control-bg\)[^}]*color:var\(--ink\)/,
+    /fieldset label:has\(input:checked\)\{[^}]*background:var\(--selected-bg\)[^}]*color:var\(--accent-strong\)/,
+    /\.note\{[^}]*border-left:\.3rem solid var\(--accent\)[^}]*background:var\(--note-bg\)/,
+    /:focus-visible\{outline:3px solid var\(--focus\)/
+  ])assert.match(style,sharedHook);
+  for(const legacyLightColor of ["#f7f3ea","#fffdfa","#17202a","#5d6873","#d6cfc2"])assert.equal(style.includes(legacyLightColor),false,`${legacyLightColor} must not remain in the default theme`);
+});
+
+test("rendered Name options derive level-name-ID order from canonical data and rebuild with filters",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_subclass_feature_reference_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
+  const document=dom.window.document,entityById=new Map(authority.entities.map(entity=>[entity.id,entity]));
+  const rulesAreas=authority.vocabularies.rules_areas!;const expectedGroupLabels=[...rulesAreas].sort((a,b)=>a.order-b.order).map(area=>area.label);
+  const groups=()=>[...document.querySelectorAll<HTMLOptGroupElement>("#name-select optgroup")];
+  assert.deepEqual(groups().map(group=>group.label),expectedGroupLabels);
+  for(const group of groups()){
+    const area=rulesAreas.find(value=>value.label===group.label)!;
+    const visibleFeatureIds=[...group.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.value).filter(id=>entityById.get(id)?.kind==="feature");
+    const expectedFeatureIds=authority.entities
+      .filter(entity=>entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area===area.id)
+      .sort((a,b)=>Number(a.level)-Number(b.level)||(a.title<b.title?-1:a.title>b.title?1:0)||(a.id<b.id?-1:a.id>b.id?1:0))
+      .map(entity=>entity.id);
+    assert.deepEqual(visibleFeatureIds,expectedFeatureIds,`${group.label} feature option order`);
+  }
+  const pyrokinesis=groups().find(group=>group.label==="Pyrokinesis")!;
+  const pyrokinesisIds=[...pyrokinesis.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.value);
+  assert.ok(pyrokinesisIds.indexOf("thermal_fracture")<pyrokinesisIds.indexOf("furnace_strike"));
+  const advanced=groups().find(group=>group.label==="Advanced Training")!;
+  const advancedOptions=[...advanced.querySelectorAll<HTMLOptionElement>(":scope > option")],allOptions=[...document.querySelectorAll<HTMLOptionElement>("#name-select option")].filter(option=>option.value);
+  assert.deepEqual(advancedOptions.slice(0,2).map(option=>option.textContent),["Deflection Screen","Phase Step"]);
+  assert.equal(new Set(allOptions.map(option=>option.value)).size,allOptions.length);
+  assert.equal(allOptions.filter(option=>option.textContent==="Deflection Screen").length,1);
+  assert.equal(allOptions.filter(option=>option.textContent==="Phase Step").length,1);
+  assert.equal(allOptions.some(option=>option.textContent==="Advanced Training I: Deflection Screen"||option.textContent==="Advanced Training II: Phase Step"),false);
+  assert.equal(advanced.querySelector('option[value="advanced_deflection_screen"]')?.textContent,"Deflection Screen");
+  assert.equal(advanced.querySelector('option[value="advanced_phase_step"]')?.textContent,"Phase Step");
+  const referenceText=document.querySelector("#entity-subclass_feature_reference")?.textContent??"";assert.match(referenceText,/Discipline 10th Feature, Phase Step, Tier 2 Overload/);assert.doesNotMatch(referenceText,/Advanced Training II \(Phase Step\)/);
+  const area=document.querySelector('input[data-facet="rules_area"][value="pyrokinesis"]') as HTMLInputElement;
+  area.checked=true;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
+  assert.deepEqual(groups().map(group=>group.label),["Pyrokinesis"]);
+  assert.deepEqual([...groups()[0]!.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.value),pyrokinesisIds);
+  area.checked=false;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
+  const advancedArea=document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement;
+  advancedArea.checked=true;advancedArea.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
+  assert.deepEqual(groups().map(group=>group.label),["Advanced Training"]);
+  const rebuiltLabels=[...groups()[0]!.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.textContent);
+  assert.deepEqual(rebuiltLabels.slice(0,2),["Deflection Screen","Phase Step"]);assert.equal(new Set(rebuiltLabels).size,rebuiltLabels.length);assert.equal(rebuiltLabels.some(label=>label?.startsWith("Advanced Training I:")||label?.startsWith("Advanced Training II:")),false);
+  advancedArea.checked=false;advancedArea.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
+  assert.deepEqual(groups().map(group=>group.label),expectedGroupLabels);
+  await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
 });
 
 test("Example Play keeps four full turns and Overload keeps one Glacial example",async()=>{
@@ -80,6 +148,29 @@ test("generated sections render Manifested Strike progression under its stable a
   await new Promise<void>(resolve=>setImmediate(resolve));manifested.window.close();overload.window.close();
 });
 
+test("table formulae use literal ASCII + in source and rendered output",async()=>{
+  assert.equal(hasAlternateAddition("PB + INT"),false);
+  for(const alternate of ["PB plus INT","level ＋ 1","PB ➕ INT"])assert.equal(hasAlternateAddition(alternate),true,alternate);
+  const {authority}=await loadAuthority();
+  const tableEntities=authority.entities.filter(entity=>entity.content.some(block=>block.type==="table"));
+  const canonicalCells=tableEntities.flatMap(entity=>entity.content.filter(block=>block.type==="table").flatMap(block=>[...(block.headers??[]),...(block.rows??[]).flat()]).map(cell=>cell.map(node=>node.text??node.label??String(node.value?.value??"")).join("")));
+  assertAsciiTableAddition(canonicalCells,"canonical authority");
+  assert.ok(canonicalCells.includes("Rider cost + feature cost"));
+  const legacy=await readFile("Kinetic_Vanguard.md","utf8");
+  const legacyCells=legacy.split("\n").filter(line=>/^\s*\|/.test(line)).flatMap(line=>line.split("|").slice(1,-1).map(cell=>cell.trim()));
+  assertAsciiTableAddition(legacyCells,"legacy Markdown");
+  const inventory=JSON.parse(await readFile("migration/source-units.json","utf8"));
+  const compiledCells=inventory.units.filter((unit:any)=>unit.type==="table_cell").map((unit:any)=>unit.normalized_source as string);
+  assertAsciiTableAddition(compiledCells,"compiled migration inventory");
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
+  for(const entity of tableEntities){
+    const route=authority.navigation.categories.flatMap(category=>category.topics.map(topic=>({category,topic}))).find(({topic})=>topic.entity_ids.includes(entity.id))!;
+    const dom=new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#category=${route.category.id}&topic=${route.topic.id}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
+    const renderedCells=[...dom.window.document.querySelectorAll<HTMLElement>(`#entity-${entity.id} table th, #entity-${entity.id} table td`)].map(cell=>cell.textContent??"");
+    assert.ok(renderedCells.length>0,`${entity.id} did not render its table`);assertAsciiTableAddition(renderedCells,`rendered ${entity.id}`);dom.window.close();
+  }
+});
+
 test("paragraph text beginning with Example is not classified heuristically",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const marker='"text":"On your turn, when you attack with Manifested Strike,';const replacement='"text":"Example ordinary paragraph. On your turn, when you attack with Manifested Strike,';const modified=html.replace(marker,replacement);assert.notEqual(modified,html);
   const dom=new JSDOM(modified,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
@@ -90,14 +181,29 @@ test("paragraph text beginning with Example is not classified heuristically",asy
 
 test("release build fails closed before emitting deployable output",async()=>{await assert.rejects(()=>executeBuild("release"),/Build blocked/);});
 
-test("generated browser runtime initializes and Name activation is explicit",async()=>{
+test("committed Name selection opens exactly once, preserves history state, and remains synchronized",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value.replace(/[^a-zA-Z0-9_-]/g,"_")};}});
+  let pushCount=0;
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value.replace(/[^a-zA-Z0-9_-]/g,"_")};const push=window.history.pushState.bind(window.history);window.history.pushState=(...args:any[])=>{pushCount++;return push(...args);};}});
   const document=dom.window.document;assert.equal(document.querySelectorAll("#category-select option").length,6);assert.ok(document.querySelector("#rules-content article"));
-  const name=document.querySelector("#name-select") as HTMLSelectElement;const open=document.querySelector("#name-open") as HTMLButtonElement;const originalUrl=dom.window.location.href;
-  name.value="static_discharge";name.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  assert.equal(dom.window.location.href,originalUrl);assert.equal(open.getAttribute("aria-disabled"),"false");assert.equal(open.getAttribute("aria-label"),"Open Static Discharge");
-  open.click();assert.match(dom.window.location.hash,/entity=static_discharge/);assert.equal(name.value,"");assert.equal(open.getAttribute("aria-disabled"),"true");assert.equal(document.activeElement?.textContent,"Static Discharge");
+  const name=document.querySelector("#name-select") as HTMLSelectElement;assert.equal(document.querySelector("#name-open"),null);assert.equal(name.value,"");
+  const area=document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement;const kind=document.querySelector("#facet-entity_kind") as HTMLSelectElement;const role=document.querySelector("#facet-feature_role") as HTMLSelectElement;const acquisition=document.querySelector("#facet-acquisition_mode") as HTMLSelectElement;const initialArticle=document.querySelector("#rules-content article");
+  area.checked=true;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));kind.value="feature";kind.dispatchEvent(new dom.window.Event("change",{bubbles:true}));role.value="standalone";role.dispatchEvent(new dom.window.Event("change",{bubbles:true}));acquisition.value="granted";acquisition.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
+  assert.equal(pushCount,4);assert.equal(name.value,"");assert.equal(document.querySelector("#rules-content article"),initialArticle);assert.match(dom.window.location.hash,/filters=rules_area%3Aadvanced_training%3Bentity_kind%3Afeature%3Bfeature_role%3Astandalone%3Bacquisition_mode%3Agranted/);
+  const content=document.querySelector("#rules-content")!;const observer=new dom.window.MutationObserver(()=>{});observer.observe(content,{childList:true});
+  name.focus();
+  name.value="advanced_deflection_screen";name.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
+  const openedArticle=document.querySelector("#entity-advanced_deflection_screen");
+  assert.equal(pushCount,5);assert.ok(openedArticle);assert.equal(document.querySelector("#rules-content article h2")?.textContent,"Deflection Screen");assert.equal(name.value,"advanced_deflection_screen");assert.equal(document.activeElement,name);
+  const route=new URLSearchParams(dom.window.location.hash.slice(1));assert.equal(route.get("category"),"advanced_training");assert.equal(route.get("topic"),"advanced_training_advanced_deflection_screen_topic");assert.equal(route.get("entity"),"advanced_deflection_screen");assert.equal(route.get("filters"),null);
+  assert.equal((document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement).checked,false);assert.equal((document.querySelector("#facet-entity_kind") as HTMLSelectElement).value,"");assert.equal((document.querySelector("#facet-feature_role") as HTMLSelectElement).value,"");assert.equal((document.querySelector("#facet-acquisition_mode") as HTMLSelectElement).value,"");
+  const addedArticles=observer.takeRecords().flatMap(record=>[...record.addedNodes]).filter(node=>node.nodeType===1&&(node as Element).matches("article"));assert.equal(addedArticles.length,1);
+  name.dispatchEvent(new dom.window.Event("change",{bubbles:true}));assert.equal(pushCount,5);assert.equal(document.querySelector("#rules-content article"),openedArticle);assert.equal(observer.takeRecords().length,0);
+  name.value="";name.dispatchEvent(new dom.window.Event("change",{bubbles:true}));assert.equal(pushCount,5);assert.equal(document.querySelector("#rules-content article"),openedArticle);
+  const restored=new Promise<void>(resolve=>dom.window.addEventListener("popstate",()=>resolve(),{once:true}));dom.window.history.back();await restored;
+  assert.equal((document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement).checked,true);assert.equal((document.querySelector("#facet-entity_kind") as HTMLSelectElement).value,"feature");assert.equal((document.querySelector("#facet-feature_role") as HTMLSelectElement).value,"standalone");assert.equal((document.querySelector("#facet-acquisition_mode") as HTMLSelectElement).value,"granted");assert.equal(name.value,"");assert.match(dom.window.location.hash,/filters=rules_area%3Aadvanced_training%3Bentity_kind%3Afeature%3Bfeature_role%3Astandalone%3Bacquisition_mode%3Agranted/);
+  const forwarded=new Promise<void>(resolve=>dom.window.addEventListener("popstate",()=>resolve(),{once:true}));dom.window.history.forward();await forwarded;
+  assert.equal(name.value,"advanced_deflection_screen");assert.ok(document.querySelector("#entity-advanced_deflection_screen"));assert.equal(pushCount,5);
   await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
 });
 

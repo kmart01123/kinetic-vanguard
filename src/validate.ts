@@ -82,12 +82,20 @@ export function validateSemantics(authority:Authority,migration:MigrationState,r
 
 export type ProgressionSection="foundation"|"levelled"|"reference";
 export interface FilterIndexEntry {id:string;title:string;primary_rules_area:string;rules_area_order:number;minimum_level:number|null;progression_section:ProgressionSection;progression_order:number;feature_role_order:number;classifications:Record<string,string[]>;routes:Record<string,string>}
-export interface FilterIndex { entities:FilterIndexEntry[] }
+export interface NameIndexGroup {id:string;label:string;order:number;entity_ids:string[]}
+export interface FilterIndex { entities:FilterIndexEntry[];name_groups:NameIndexGroup[] }
 const progressionSectionOrder:Record<ProgressionSection,number>={foundation:0,levelled:1,reference:2};
+const numericLevel=(entry:FilterIndexEntry):number=>entry.minimum_level===null?Number.MAX_SAFE_INTEGER:Number(entry.minimum_level);
+export function compareNameEntries(a:FilterIndexEntry,b:FilterIndexEntry):number{
+  return (progressionSectionOrder[a.progression_section]-progressionSectionOrder[b.progression_section])
+    ||(numericLevel(a)-numericLevel(b))
+    ||codepointCompare(a.title,b.title)
+    ||codepointCompare(a.id,b.id);
+}
 export function compareFilterEntries(a:FilterIndexEntry,b:FilterIndexEntry):number{
   return (a.rules_area_order-b.rules_area_order)
     ||(progressionSectionOrder[a.progression_section]-progressionSectionOrder[b.progression_section])
-    ||((a.minimum_level??Number.MAX_SAFE_INTEGER)-(b.minimum_level??Number.MAX_SAFE_INTEGER))
+    ||(numericLevel(a)-numericLevel(b))
     ||(a.progression_order-b.progression_order)
     ||(a.feature_role_order-b.feature_role_order)
     ||codepointCompare(a.title,b.title)
@@ -98,7 +106,9 @@ export function buildFilterIndex(authority:Authority):FilterIndex{
   const areaOrder=new Map((authority.vocabularies.rules_areas??[]).map(value=>[value.id,value.order]));
   const roleOrder=new Map((authority.vocabularies.feature_roles??[]).map(value=>[value.id,value.order]));
   const topicOrderByEntityArea=new Map<string,number>();for(const category of authority.navigation.categories)for(const topic of category.topics)for(const entityId of topic.entity_ids)topicOrderByEntityArea.set(`${entityId}\0${category.id}`,Math.min(topic.order,topicOrderByEntityArea.get(`${entityId}\0${category.id}`)??Number.MAX_SAFE_INTEGER));
-  return{entities:authority.entities.map(entity=>{const primaryArea=entity.presentation_metadata.primary_rules_area;const areaRoutes=routesByEntity.get(entity.id)!;const routes=Object.fromEntries([...areaRoutes].map(([area,topics])=>[area,entity.presentation_metadata.canonical_topic_by_area[area]??topics[0]! ]));return{id:entity.id,title:entity.title,primary_rules_area:primaryArea,rules_area_order:areaOrder.get(primaryArea)!,minimum_level:entity.level??null,progression_section:(entity.level===undefined?entity.progression_section!:"levelled") as ProgressionSection,progression_order:topicOrderByEntityArea.get(`${entity.id}\0${primaryArea}`)!,feature_role_order:entity.classifications.feature_role?roleOrder.get(entity.classifications.feature_role)!:Number.MAX_SAFE_INTEGER,classifications:{rules_area:[primaryArea],entity_kind:[entity.classifications.entity_kind],...(entity.classifications.feature_role?{feature_role:[entity.classifications.feature_role]}:{}),...(entity.classifications.acquisition_mode?{acquisition_mode:[entity.classifications.acquisition_mode]}:{})},routes};}).sort(compareFilterEntries)};
+  const entries=authority.entities.map(entity=>{const primaryArea=entity.presentation_metadata.primary_rules_area;const areaRoutes=routesByEntity.get(entity.id)!;const routes=Object.fromEntries([...areaRoutes].map(([area,topics])=>[area,entity.presentation_metadata.canonical_topic_by_area[area]??topics[0]! ]));return{id:entity.id,title:entity.title,primary_rules_area:primaryArea,rules_area_order:areaOrder.get(primaryArea)!,minimum_level:entity.level??null,progression_section:(entity.level===undefined?entity.progression_section!:"levelled") as ProgressionSection,progression_order:topicOrderByEntityArea.get(`${entity.id}\0${primaryArea}`)!,feature_role_order:entity.classifications.feature_role?roleOrder.get(entity.classifications.feature_role)!:Number.MAX_SAFE_INTEGER,classifications:{rules_area:[primaryArea],entity_kind:[entity.classifications.entity_kind],...(entity.classifications.feature_role?{feature_role:[entity.classifications.feature_role]}:{}),...(entity.classifications.acquisition_mode?{acquisition_mode:[entity.classifications.acquisition_mode]}:{})},routes};});
+  const name_groups=(authority.vocabularies.rules_areas??[]).map(area=>({id:area.id,label:area.label,order:area.order,entity_ids:entries.filter(entry=>entry.primary_rules_area===area.id).sort(compareNameEntries).map(entry=>entry.id)})).sort((a,b)=>a.order-b.order||codepointCompare(a.id,b.id));
+  return{entities:[...entries].sort(compareFilterEntries),name_groups};
 }
 
 export function buildIntegrity(authority:Authority,index:FilterIndex):Record<string,unknown>{

@@ -8,6 +8,7 @@ export function clientRuntime(model: any): void {
   const entities: Map<string,any> = new Map(model.authority.entities.map((entity: any) => [entity.id, entity]));
   const categories: Map<string,any> = new Map(model.authority.navigation.categories.map((category: any) => [category.id, category]));
   const indexed = model.filterIndex.entities;
+  const indexedById:Map<string,any>=new Map(indexed.map((item:any)=>[item.id,item]));
   const state: any = { category: model.authority.navigation.default_category_id, topic: "", classifications: {}, entity: null, resultRoute: null, focusOrigin: "fragment" };
   const category = () => categories.get(state.category) as any;
   const categoryTopics = (categoryId=state.category) => [...(categories.get(categoryId)?.topics ?? [])].sort((a:any,b:any)=>a.order-b.order);
@@ -20,7 +21,6 @@ export function clientRuntime(model: any): void {
     if(state.entity&&!topic()?.entity_ids.includes(state.entity)){state.entity=null;state.resultRoute=null;}
     return corrected;
   }
-  const selectedName = () => (get("name-select") as HTMLSelectElement).value;
   const match = (item: any, selections = state.classifications) => Object.entries(selections).every(([facet, raw]: any) => {
     const values = Array.isArray(raw) ? raw : raw ? [raw] : [];
     return values.length === 0 || values.some((value: string) => item.classifications[facet]?.includes(value));
@@ -35,12 +35,7 @@ export function clientRuntime(model: any): void {
     return `#${parameters.toString()}`;
   };
   const writeHistory = (mode: "push"|"replace") => history[mode === "push" ? "pushState" : "replaceState"](safeState(), "", fragment());
-  function resetName(): void { (get("name-select") as HTMLSelectElement).value = ""; updateOpen(); }
-  function updateOpen(): void {
-    const button = get("name-open"); const entity = entities.get(selectedName()) as any;
-    button.setAttribute("aria-disabled", entity ? "false" : "true");
-    button.setAttribute("aria-label", entity ? String(ui.get("open_entity")).replace("{entity_title}", entity.title) : String(ui.get("open_inactive_name")));
-  }
+  function syncNameSelection(): void { const select=get("name-select") as HTMLSelectElement;select.value=state.entity&&indexedById.has(state.entity)?state.entity:""; }
   function announce(message: string): void {
     const region=get("filter-live"); get("filter-root").setAttribute("data-filter-settled","false"); region.textContent="";
     queueMicrotask(()=>{region.textContent=message;get("filter-root").setAttribute("data-filter-settled","true");});
@@ -82,8 +77,8 @@ export function clientRuntime(model: any): void {
   }
   function renderNameOptions(): void {
     const select=get("name-select") as HTMLSelectElement;select.textContent="";const placeholder=document.createElement("option");placeholder.value="";placeholder.textContent=String(ui.get("name_placeholder"));select.append(placeholder);
-    for(const area of areaValues){const group=document.createElement("optgroup");group.label=area.label;const names=indexed.filter((candidate:any)=>candidate.primary_rules_area===area.id).sort((a:any,b:any)=>a.title<b.title?-1:a.title>b.title?1:a.id<b.id?-1:a.id>b.id?1:0);for(const item of names){const option=document.createElement("option");option.value=item.id;option.textContent=item.title;group.append(option);}select.append(group);}
-    resetName();
+    for(const area of model.filterIndex.name_groups){const names=area.entity_ids.map((id:string)=>indexedById.get(id)).filter((item:any)=>item&&match(item));if(!names.length)continue;const group=document.createElement("optgroup");group.label=area.label;for(const item of names){const option=document.createElement("option");option.value=item.id;option.textContent=item.title;group.append(option);}select.append(group);}
+    syncNameSelection();
   }
   function readFacetControls(): void {
     for(const facet of model.authority.facets){if(facet.cardinality==="multi")state.classifications[facet.id]=[...document.querySelectorAll(`[data-facet="${facet.id}"]:checked`)].map((node:any)=>node.value);else state.classifications[facet.id]=(get(`facet-${facet.id}`) as HTMLSelectElement).value||"";}
@@ -106,8 +101,8 @@ export function clientRuntime(model: any): void {
     if(shouldAnnounce)announce(result.length===1?String(ui.get("one_match")).replace("{count}",String(result.length)):result.length?String(ui.get("match_count")).replace("{count}",String(result.length)):String(ui.get("no_matches")));
   }
   function resultArea(item:any):string{return item.primary_rules_area;}
-  function openEntity(id:string,origin:"name_open"|"result"):void {
-    const item=indexed.find((candidate:any)=>candidate.id===id);if(!item)return;const area=origin==="name_open"?item.primary_rules_area:resultArea(item);state.category=area;state.topic=item.routes[area];state.classifications={};state.entity=id;state.resultRoute=item.routes[area];state.focusOrigin=origin;writeHistory("push");renderNavigation();renderFacets();renderResults(false);resetName();renderTopic(id);if(origin==="name_open")announce(String(ui.get("filter_cleared")));
+  function openEntity(id:string,origin:"name"|"result"):void {
+    const item=indexedById.get(id);if(!item)return;const area=origin==="name"?item.primary_rules_area:resultArea(item);const route=item.routes[area];if(state.entity===id&&state.category===area&&state.topic===route){syncNameSelection();return;}state.category=area;state.topic=route;state.classifications={};state.entity=id;state.resultRoute=route;state.focusOrigin=origin;writeHistory("push");renderNavigation();renderFacets();renderResults(false);renderNameOptions();renderTopic(origin==="result"?id:undefined);if(origin==="name")announce(String(ui.get("filter_cleared")));
   }
   function parseFragment():boolean {
     let corrected=false;const parameters=new URLSearchParams(location.hash.slice(1));const requestedCategory=parameters.get("category");const requestedTopic=parameters.get("topic");if(normalizeNavigation(requestedCategory,requestedTopic))corrected=true;state.classifications={};
@@ -119,10 +114,9 @@ export function clientRuntime(model: any): void {
     if(!snapshot||Object.keys(snapshot).some(key=>!fields.has(key))||!validFilters||!validFocus||!validEntity){initialize();return;}Object.assign(state,snapshot);normalizeNavigation();renderNavigation();renderFacets();renderResults(false);renderNameOptions();renderTopic();
   }
   function initialize():void {const corrected=parseFragment();renderNavigation();renderNameOptions();renderFacets();renderResults(false);renderTopic();writeHistory("replace");if(corrected)announce(String(ui.get("filter_instruction")));}
-  get("category-select").addEventListener("change",event=>{normalizeNavigation((event.target as HTMLSelectElement).value,"");state.entity=null;state.resultRoute=null;state.focusOrigin="category";renderNavigation();renderTopic();writeHistory("push");announce(category().label);});
-  get("topic-select").addEventListener("change",event=>{normalizeNavigation(state.category,(event.target as HTMLSelectElement).value);state.entity=null;state.resultRoute=null;state.focusOrigin="topic";renderTopic();writeHistory("push");announce(topic()?.title??category().label);});
-  get("name-select").addEventListener("change",updateOpen);
-  get("name-open").addEventListener("click",()=>{if(get("name-open").getAttribute("aria-disabled")==="true")return;openEntity(selectedName(),"name_open");});
-  get("facet-controls").addEventListener("change",()=>{readFacetControls();resetName();state.entity=null;state.focusOrigin="result";writeHistory("push");renderResults(true);});
+  get("category-select").addEventListener("change",event=>{normalizeNavigation((event.target as HTMLSelectElement).value,"");state.entity=null;state.resultRoute=null;state.focusOrigin="category";syncNameSelection();renderNavigation();renderTopic();writeHistory("push");announce(category().label);});
+  get("topic-select").addEventListener("change",event=>{normalizeNavigation(state.category,(event.target as HTMLSelectElement).value);state.entity=null;state.resultRoute=null;state.focusOrigin="topic";syncNameSelection();renderTopic();writeHistory("push");announce(topic()?.title??category().label);});
+  get("name-select").addEventListener("change",event=>openEntity((event.target as HTMLSelectElement).value,"name"));
+  get("facet-controls").addEventListener("change",()=>{readFacetControls();state.entity=null;state.focusOrigin="result";renderNameOptions();writeHistory("push");renderResults(true);});
   addEventListener("popstate",event=>restore(event.state));initialize();
 }

@@ -38,7 +38,7 @@ The required broad categories are:
 - **Psychokinesis**;
 - **Electrokinesis**.
 
-There is no umbrella **Disciplines** category, no catch-all view that renders the complete rules corpus, and no unrestricted text-search field. Filtered search is a secondary route into the same validated topics and entities. It combines finite classifications such as rules area and feature role—for example, **Electrokinesis** plus **Rider**—and includes a finite single-select **Name** identity control generated from authoritative entity IDs and titles. The initial implementation uses a grouped native `<select>` plus an adjacent explicit **Open** button. Selection remains inert until activation, and no editable filtering or autocomplete is permitted. Filtered search is not a second content model.
+There is no umbrella **Disciplines** category, no catch-all view that renders the complete rules corpus, and no unrestricted text-search field. Filtered search is a secondary route into the same validated topics and entities. It combines finite classifications such as rules area and feature role—for example, **Electrokinesis** plus **Rider**—and includes a finite single-select **Name** identity control generated from authoritative entity IDs and titles. The implementation uses a grouped native `<select>`; committing a valid selection displays that rule immediately, and no editable filtering or autocomplete is permitted. Filtered search is not a second content model.
 
 Only `Kinetic_Vanguard.md` may be used as a migration input. During a one-time human-reviewed migration, every enumerated source unit in the pinned master file will receive an explicit disposition. The derivative Markdown files MUST NOT be used as migration inputs, fallback sources, or completeness evidence.
 
@@ -642,22 +642,20 @@ The Name control is a permanent complete title index grouped by `primary_rules_a
 
 Every entity rendered by more than one selector-reachable topic in any rules area MUST declare one `canonical_topic_by_area` entry for that area. Name activation uses the canonical or sole topic in `primary_rules_area`. Area-scoped filtered-result activation uses the canonical or sole topic in the deterministic result-activation area defined in section 8.4.
 
-Name selection and Name activation are separate operations:
+Name selection and Name activation are one committed native-select interaction:
 
 1. the Name `<select>` MUST begin with a non-entity placeholder option whose approved UI-text label is **Select a rule by name**;
-2. the placeholder MUST be selected in the default unactivated state and immediately after any Name-state reset; a user MAY subsequently select a Name value while classification facets remain active, but selection alone remains inert until Open activation;
-3. an initial direct entity route, a validated shared fragment, browser Back, or browser Forward MUST leave the Name select on the placeholder; arriving at or restoring an entity topic MUST NOT auto-select its identity option;
-4. changing the selected Name value MUST NOT navigate, clear classification filters, update the topic route, move focus, or otherwise cause a change of context;
-5. an adjacent **Open** button, programmatically associated with the Name control and persistent instruction text, performs activation;
-6. while the placeholder is selected or no valid target exists, the Open button MUST remain focusable, expose `aria-disabled="true"`, use the approved static accessible name **Open selected rule**, and reference the approved persistent description **Select a rule name, then choose Open.** through `aria-describedby`;
-7. activating Open while it is aria-disabled MUST be inert: it MUST NOT navigate, change route or selection state, move focus, or emit a live-region announcement; the persistent accessible description is the required instruction;
-8. when a valid Name value is selected, Open MUST expose `aria-disabled="false"`; the visible button label remains the generic UI verb **Open** and its accessible name MUST be produced by the provenance-safe UI template **Open {entity_title}**, whose slot accepts the selected entity's authoritative title; the persistent description MAY remain associated;
-9. activating a valid Open target MUST use `pushState`, preserve the prior classification-filter state in browser history, clear classification facets only in the newly activated route state, render the entity's canonical or sole topic in its primary rules area, reset the destination-state Name control to the placeholder with Open aria-disabled, and move focus under the policy in `ui/filter-interaction-policy.json`;
-10. browser Back MUST restore the complete prior route and classification state with the Name placeholder selected and Open aria-disabled; browser Forward to the activated destination MUST restore that destination with the placeholder selected and Open aria-disabled.
+2. the placeholder MUST be selected when no entity route is active and after category, topic, or classification changes reset the Name state;
+3. an initial direct entity route, a validated shared fragment, browser Back, or browser Forward MUST synchronize the Name select with the displayed entity when that entity is a valid Name option;
+4. only the native `change` event for a committed valid option MAY activate a Name route; focus, opening the menu, navigating without commitment, initialization, option rebuilding, and programmatic synchronization MUST NOT activate a route;
+5. a committed valid Name MUST use the shared entity-opening function, `pushState`, preserve the prior classification-filter state in browser history, clear classification facets only in the newly activated route state, render the entity's canonical or sole topic in its primary rules area, and keep the destination Name selection synchronized;
+6. the placeholder, an empty value, or a value without a valid indexed target MUST be inert and MUST NOT navigate, render, write history, move focus, or announce;
+7. committing the already displayed entity MUST be idempotent: no duplicate history entry, render, focus change, or announcement is permitted;
+8. browser Back MUST restore the complete prior route, classification, and synchronized Name state; browser Forward MUST restore the destination and its synchronized Name state.
 
-The required focus destination after valid Name activation is the rendered authoritative entity heading. The heading MUST be programmatically focusable with `tabindex="-1"` and retain its native heading semantics and authoritative title text. Name activation MUST NOT separately repeat the entity title through the live region. When activation clears classification selections, at most one polite message MAY report that state correction without repeating the title.
+Name selection MUST retain focus on the native select. The rendered authoritative entity heading remains programmatically focusable with `tabindex="-1"` for result-button activation, but a Name change MUST NOT steal focus from the select. Name activation MUST NOT separately repeat the entity title through the live region. When activation clears classification selections, at most one polite message MAY report that state correction without repeating the title.
 
-Selecting or changing any classification facet resets the Name select to the placeholder and makes Open aria-disabled, regardless of whether the previous Name selection had been activated or merely selected. Name options remain enabled regardless of classification-filter state because a later Name activation establishes a new mutually exclusive route state.
+Selecting or changing any classification facet resets the Name select to the placeholder without activating a rule. Name options remain enabled regardless of classification-filter state because a later committed Name selection establishes a new mutually exclusive route state.
 
 Until at least one classification facet value is selected, the classification-results region MUST display instructions rather than results. This empty-state rule does not hide the separate finite Name title index and is not the definition of the All Rules prohibition. A saturated finite classification selection MAY return every publishable entity as a metadata-only result list. It MUST NOT render the complete rules prose or equivalent catch-all content.
 
@@ -723,7 +721,7 @@ Classification matching is exact and deterministic:
 
 An entity’s structured `level` is its earliest acquisition or availability level. An entity without a level MUST declare `progression_section`: `foundation` sorts before level-gated entries and `reference` sorts after them. Converting a missing level to zero is prohibited. Semantic validation MUST reject an unlevelled entity without a section and a levelled entity that also declares a section.
 
-The Name identity control is mutually exclusive with classification filtering only after explicit Open-button activation. Changing the Name selection is inert except for updating the Open button's aria-disabled state and composed accessible name. Name options MUST remain enabled regardless of current classification availability. Activating Open clears conflicting filters only in the new route state while browser history retains the prior state. Selecting any classification facet resets the Name control to its placeholder, regardless of whether the previously displayed Name identity had been activated.
+The Name identity control is mutually exclusive with classification filtering only after a valid Name selection is committed. Name options MUST remain enabled regardless of current classification availability. Committing a Name clears conflicting filters only in the new route state while browser history retains the prior state. Selecting any classification facet resets the Name control to its placeholder without activating a rule.
 
 The canonical classification case:
 
@@ -770,11 +768,10 @@ Results MUST NOT:
 Filtered search MUST include:
 
 - persistent accessible labels and instructions for every facet control;
-- persistent instruction text associated with the Name select and Open button explaining that selection alone does not navigate;
-- a focusable aria-disabled Open button whose inactive accessible name is **Open selected rule** and whose persistent accessible description is **Select a rule name, then choose Open.**;
-- inert aria-disabled activation that produces no navigation, state change, focus movement, or live-region message;
-- a composed accessible Open-button name that includes the selected authoritative entity title only when a valid Name value is selected;
-- keyboard-operable classification selection, Name selection, explicit Name activation, and result activation;
+- a persistent accessible label for the native Name select;
+- committed-change activation that works with mouse, touch, keyboard, and native assistive-technology interaction;
+- inert placeholder, empty, invalid, option-rebuild, synchronization, and same-entity states;
+- keyboard-operable classification selection, Name selection, and result activation;
 - visible focus;
 - a single polite live region for settled filter-state announcements;
 - one consolidated announcement per settled classification interaction covering result-count changes, disabled-value changes, and cleared invalid selections;
@@ -783,7 +780,7 @@ Filtered search MUST include:
 - clear empty-state and no-result behavior;
 - no focus trap and no pointer-only requirement.
 
-Changing one facet or the Name selection MUST NOT unexpectedly move focus or change context. Name activation is deliberate navigation: it MUST follow the `pushState`, destination-placeholder, history-restoration, and authoritative-heading focus policy declared in `ui/filter-interaction-policy.json` and constrained by sections 7.4 and 8.1. The authoritative title is announced through the focused entity heading and MUST NOT be duplicated in the live region. The persistent inactive-state description, not the filter-state live region, provides the instruction for aria-disabled Open. Per-value count updates MUST NOT each produce separate live-region announcements. Initial fragment correction and initial state announcement MUST be combined into at most one message.
+Changing one facet or rebuilding or synchronizing the Name options MUST NOT unexpectedly move focus or activate a rule. A committed valid Name is deliberate navigation: it MUST follow the `pushState`, selection-synchronization, history-restoration, and native-select focus policy declared in `ui/filter-interaction-policy.json` and constrained by sections 7.4 and 8.1. The authoritative title MUST NOT be duplicated in the live region. Per-value count updates MUST NOT each produce separate live-region announcements. Initial fragment correction and initial state announcement MUST be combined into at most one message.
 
 ### 8.6 Filtered-search conformance
 
@@ -918,13 +915,13 @@ The UI MUST NOT include:
 - attack, save, damage, or combat-resolution execution;
 - calculators.
 
-Native non-editable `<select>` first-letter navigation is permitted and is not text search. The Name `<select>` MUST NOT navigate or clear state from its `input` or `change` event. Only activation of the adjacent Open button may perform the Name route change. The Open button MUST remain focusable and MUST express its inactive state with `aria-disabled="true"` rather than the native `disabled` attribute.
+Native non-editable `<select>` first-letter navigation is permitted and is not text search. The Name `<select>` MUST activate a valid route only from its committed native `change` event. Its `input` event, focus, menu opening, uncommitted traversal, placeholder, programmatic option rebuilding, and programmatic synchronization MUST remain inert.
 
 ### 9.4 Approved static UI text
 
-`ui/approved-ui-text.json` MAY contain only generic interface chrome such as the Name placeholder, inactive Open accessible name, persistent inactive-Open description, filter instructions, empty-state messages, generic navigation instructions, accessibility message templates, release-status notices, version-field labels, and the concise no-JavaScript notice.
+`ui/approved-ui-text.json` MAY contain only generic interface chrome such as the Name placeholder, filter instructions, empty-state messages, generic navigation instructions, accessibility message templates, release-status notices, version-field labels, and the concise no-JavaScript notice.
 
-The initial UI tokens MUST include the exact strings **Select a rule by name**, **Open selected rule**, and **Select a rule name, then choose Open.**, plus the reviewed result-identity template **{entity_title} — {primary_rules_area_label}**.
+The initial UI tokens MUST include the exact string **Select a rule by name** plus the reviewed result-identity template **{entity_title} — {primary_rules_area_label}**.
 
 Each UI-text entry MUST declare:
 
@@ -944,10 +941,7 @@ A typed UI-text template MAY produce `ComposedText<TemplateId, Placement, Slots>
 - no raw string or UI-text token is passed through a substitution slot;
 - constituent provenance and leaf coverage are recorded separately.
 
-`ComposedText` is a provenance-safe container, not a fourth provenance class. The initial required compositions are:
-
-- the Open-button accessible-name template **Open {entity_title}**, where `{entity_title}` is `AuthoritativeText` from the selected entity title; and
-- the filtered-result identity template **{entity_title} — {primary_rules_area_label}**, where both slots are `AuthoritativeText` and the separator is an approved literal segment.
+`ComposedText` is a provenance-safe container, not a fourth provenance class. The initial required composition is the filtered-result identity template **{entity_title} — {primary_rules_area_label}**, where both slots are `AuthoritativeText` and the separator is an approved literal segment.
 
 The result-identity composition is presentation-only and does not create an alias or replacement title.
 
@@ -1336,18 +1330,17 @@ Automated JavaScript-enabled browser and structure tests MUST confirm:
 - the independently reviewed correctness corpus succeeds;
 - expected disabled availability and selection-clearing behavior succeed;
 - the canonical classification and Advanced Training acquisition-mode cases return their exact expected sets;
-- the Name control's default unactivated state selects the approved non-entity placeholder **Select a rule by name**; Open is focusable with `aria-disabled="true"`, exposes the static accessible name **Open selected rule**, and references the persistent description **Select a rule name, then choose Open.**;
-- activating aria-disabled Open is inert and produces no navigation, route or selection change, focus movement, or live-region message;
-- every Name value can be selected without navigation or state clearing, and explicit Open-button activation routes to exactly its entity, clears conflicting classification selections only in the new history state, and uses `pushState`;
-- the Name control uses a native non-editable `<select>` plus an adjacent focusable Open button and contains no native-disabled Open state, text/search input, `textarea`, `contenteditable`, editable combobox, `aria-autocomplete`, or client-side option-narrowing code;
-- Name `input` and `change` events do not navigate, clear classification state, move focus, mutate the fragment, or write browser-history state;
-- unactivated Name choices are transient DOM state, are not restored by Back or Forward, and every restored route presents the Name placeholder;
-- selecting any classification facet resets the Name select to its placeholder and makes Open aria-disabled, including after a prior Name activation or unactivated Name selection;
-- a valid Open target exposes the composed accessible name **Open {entity_title}** with separately traceable UI-template and authoritative-title constituents;
+- the Name control's default state selects the approved non-entity placeholder **Select a rule by name** and exposes the persistent label **Name**;
+- placeholder, empty, invalid, focus-only, menu-open, uncommitted, option-rebuild, initialization, and programmatic-synchronization states are inert;
+- every committed valid Name selection routes to exactly its entity, clears conflicting classification selections only in the new history state, and uses `pushState`;
+- the Name control uses a native non-editable `<select>` with no adjacent activation button, text/search input, `textarea`, `contenteditable`, editable combobox, `aria-autocomplete`, or client-side option-narrowing code;
+- the Name `input` event does not navigate, and its native `change` event performs exactly one update only for a committed valid target;
+- Back and Forward restore synchronized Name state for the restored route;
+- selecting any classification facet resets the Name select to its placeholder without opening a rule;
 - every composition template has reviewed registry metadata, typed slots, placement authorization, and corresponding conformance tests;
-- Name activation focuses the rendered authoritative entity heading defined by `ui/filter-interaction-policy.json`;
-- the activated destination resets Name to the placeholder and Open to aria-disabled; browser Back restores the complete prior state and browser Forward restores the destination with the placeholder and aria-disabled Open;
-- initial direct entity routes and validated shared fragments leave Name on the placeholder rather than auto-selecting the routed entity;
+- Name activation retains focus on the native select as defined by `ui/filter-interaction-policy.json`;
+- the activated destination synchronizes Name to the displayed entity; browser Back restores the complete prior state and browser Forward restores the synchronized destination;
+- initial direct entity routes and validated shared fragments synchronize Name to the routed entity;
 - no-selection, empty, no-result, negative, multi-select OR, cross-area, and saturated-selection behavior work;
 - saturated results expose metadata only and no All Rules content view;
 - direct links and fragments restore valid selector and filter state;
@@ -1381,7 +1374,7 @@ Release validation MUST include:
 
 Every step MUST have a stable ID and MAY declare `allow_not_applicable: true`. A recorded `not_applicable` result is permitted only for a step that declares that flag and MUST include a non-empty rationale. The validator MUST reject `not_applicable` for every other step. Prototype-tagged steps MUST verify the visible and accessibility-exposed prototype banner; release-tagged steps MUST verify that the prototype banner is absent.
 
-The script MUST begin by confirming that the Name select exposes the approved placeholder; that Open remains in the tab order with `aria-disabled="true"`; that its inactive accessible name is **Open selected rule**; that `aria-describedby` exposes **Select a rule name, then choose Open.**; and that inert activation causes no navigation, state change, focus movement, or live-region announcement. It MUST exercise keyboard traversal and value changes within the Name select while classification filters are active and confirm that no navigation, clearing, or focus movement occurs before valid Open activation. It MUST confirm the composed accessible name **Open {entity_title}**, activate Open, and verify `pushState`, focus on the rendered authoritative entity heading, destination reset to the placeholder, and non-duplicated live-region behavior. It MUST verify that changing an unactivated Name value does not change the URL or browser-history state. It MUST verify that Back restores the prior route and classification state with the Name placeholder and aria-disabled Open, and that Forward restores the destination with the placeholder and aria-disabled Open. It MUST test an initial validated entity fragment and confirm that it also leaves Name on the placeholder. It MUST then activate a classification facet after a Name route and confirm that the Name control remains or resets to the placeholder and Open becomes aria-disabled.
+The script MUST begin by confirming that the Name select exposes the approved placeholder, a persistent accessible label, native semantics, and visible focus, and that no adjacent activation button exists. It MUST exercise mouse, touch, keyboard, and native assistive-technology selection, confirming that focus and menu opening alone are inert and that one committed valid selection produces exactly one `pushState` and card render while retaining select focus. It MUST verify inert placeholder, empty, invalid, same-entity, option-rebuild, initialization, and programmatic-synchronization states and non-duplicated live-region behavior. It MUST verify that Back restores the prior route and classification state and that Forward restores the synchronized destination. It MUST test an initial validated entity fragment and confirm that Name synchronizes to the entity. It MUST then activate a classification facet after a Name route and confirm that the Name control resets to the placeholder without opening a rule.
 
 The script MUST also exercise at least one filtered result whose title is duplicated in another primary area or a fixture equivalent and confirm that the visible label and accessible name expose the required authoritative primary-area disambiguator.
 
@@ -1483,11 +1476,11 @@ CI MUST perform a clean double-build comparison or equivalent content-hash compa
 
 ### 16.10 Add deterministic filtered search
 
-**Selected.** Finite schema-defined facets let users combine known classifications—for example, Electrokinesis and Rider—while remaining offline, derived, deterministic, accessible, and subordinate to the same topic routes. A grouped native Name `<select>` projected from authoritative entity IDs and titles, paired with an explicit Open button, provides finite known-name navigation without change-on-input or unrestricted text entry.
+**Selected.** Finite schema-defined facets let users combine known classifications—for example, Electrokinesis and Rider—while remaining offline, derived, deterministic, accessible, and subordinate to the same topic routes. A grouped native Name `<select>` projected from authoritative entity IDs and titles provides finite known-name navigation through committed native changes without unrestricted text entry.
 
 ### 16.11 Add unrestricted text or fuzzy search
 
-**Rejected for the initial implementation.** Open text search would add tokenization, typo tolerance, ranking, highlighting, snippet safety, natural-language recall expectations, and text-input accessibility behavior. Known-name lookup is served by a grouped native Name `<select>` with ordinary first-letter selection and an explicit Open button; classification lookup is served by controlled facets. Editable comboboxes, autocomplete, substring filtering, custom type-ahead, and change-on-input navigation are excluded. A future need for natural-language or fuzzy search requires a follow-on ADR supported by observed failed lookup cases.
+**Rejected for the initial implementation.** Open text search would add tokenization, typo tolerance, ranking, highlighting, snippet safety, natural-language recall expectations, and text-input accessibility behavior. Known-name lookup is served by a grouped native Name `<select>` with ordinary first-letter selection and committed change activation; classification lookup is served by controlled facets. Editable comboboxes, autocomplete, substring filtering, and custom type-ahead are excluded. A future need for natural-language or fuzzy search requires a follow-on ADR supported by observed failed lookup cases.
 
 ### 16.12 Add an All Rules screen
 
@@ -1573,7 +1566,7 @@ ADR-0001 is ready to move from **Proposed** to **Accepted** when maintainers agr
 - [ ] Cascading selectors and deterministic filtered search are complementary routes into the same entities and topics.
 - [ ] Every publishable entity is filterable, selector-reachable, carries an accepted origin record, is classified with a complete multi-valued `rules_area` set, `entity_kind`, and applicable conditional facets, carries one non-facet `primary_rules_area`, and declares `canonical_topic_by_area` for every ambiguous rendering area.
 - [ ] Classification search uses only facets and controlled values declared in `KineticVanguard.yaml`, with AND across facets and OR within multi-select facets; the sole derived value domain is the reviewed entity-identity projection.
-- [ ] A grouped native single-select Name control generated from authoritative entity IDs and titles begins at an approved non-entity placeholder and uses an adjacent focusable aria-disabled Open button; selection alone does not navigate, clear filters, or move focus, valid activation uses a composed authoritative accessible name and heading focus, and no editable combobox, autocomplete, or text narrowing is present.
+- [ ] A grouped native single-select Name control generated from authoritative entity IDs and titles begins at an approved non-entity placeholder; one committed valid selection performs one shared route/card update while retaining native focus, programmatic changes remain inert, same-rule selection is idempotent, and no adjacent activation button, editable combobox, autocomplete, or text narrowing is present.
 - [ ] The controlled facets support the canonical **Electrokinesis + Rider**, **Advanced Training + Granted**, and **Advanced Training + Selectable** cases.
 - [ ] The publication has no unrestricted text-search field and no All Rules content view; saturated metadata-only result lists are permitted.
 - [ ] The data model and UI distinguish granted from selectable Advanced Training without this ADR naming rules-authoritative feature assignments.
@@ -1602,7 +1595,7 @@ Release requires, in order:
 6. migration acceptance, including gap-free source-span coverage, source-unit disposition coverage, entity-side orphan detection, new-content-origin evidence, classification review, aggregate deferral-set review, ambiguity-resolution attestations, and content-validity verification of every consumed evidence subject, policy binding, and digest-migration chain without requiring a release build-manifest hash;
 7. direct-or-indirect coverage of every retained rule-significant leaf, closed classification of every authority leaf including provenance-and-evidence metadata, and enforced three-class atomic-constituent provenance validation;
 8. selector reachability, rules-area/topic redundancy validation, Name-label uniqueness, per-area canonical-route validation, deterministic result-activation-area validation, authoritative result-label disambiguation, generated filtered-search integrity checks, globally disabled zero-result values, and independently reviewed correctness conformance;
-9. native non-editable Name-select plus explicit Open-button validation, including placeholder initial, direct-route, destination, and reset states; focusable aria-disabled behavior; static inactive accessible naming and persistent description; inert activation without live-region output; reviewed composed accessible naming; no change on selection; `pushState`; authoritative-heading focus placement; Back/Forward restoration; and structural rejection of unauthorized `history.state` content;
+9. native non-editable Name-select committed-change validation, including placeholder, direct-route, destination, synchronization, rebuild, and reset states; inert invalid and programmatic changes; exactly one update and `pushState` per valid commitment; same-rule idempotence; retained native focus; Back/Forward restoration; and structural rejection of unauthorized `history.state` content;
 10. prototype identity and deployable-directory isolation tests, with profile-tagged accessibility-script steps proving prototype-banner presence and release-banner absence as applicable and validating `not_applicable` only for steps that explicitly authorize it with a rationale;
 11. two complete clean staged builds through manifest emission, each proving a clean direct-declared-input Git state and identical canonical path/SHA-256 direct-input inventory, with inherited migration provenance recorded separately and byte-identical staged deterministic artifacts—including the generated effective-ledger view and canonical SQLite when retained—and pinned automated accessibility assertions required by the staged profile;
 12. successful deterministic build-manifest comparison and selection of the verified staged publication and manifest hash;
@@ -1610,4 +1603,3 @@ Release requires, in order:
 14. production of release-scoped evidence against that verified staged publication, including any non-deterministic scanner or browser reports as classified under section 14, the profile-tagged recorded manual screen-reader script report, release-specific accepted-known-issue approvals, and the per-release aggregate deferral re-review carrying current effective-ledger, amendment-set, and deferral-set digests;
 15. completed release evidence record bound to the verified build-manifest hash and hashing all required current content-scoped evidence, accepted digest-migration records, subject-coverage maps, policy-registry identity, and release-scoped evidence;
 16. atomic promotion of the verified `KineticVanguard.html` into a freshly constructed one-file deployable directory with `release_status: release`.
-

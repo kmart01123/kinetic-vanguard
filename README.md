@@ -6,7 +6,7 @@ This repository implements the schema-first architecture accepted by ADR-0001 re
 
 ## Release status
 
-Kinetic Vanguard **v13.0.0** is approved for release. The publication is one self-contained, offline-capable file: `KineticVanguard.html`.
+Kinetic Vanguard **v13.0.1** is the current patch release. The publication is one self-contained, offline-capable file: `KineticVanguard.html`.
 
 Revision 22 closes the ADR review cycle and authorizes v13.0 to ship behind the automated product gate. The full schema, semantic, architecture, publication, filter, determinism, and Chromium/Firefox layout suites remain release-blocking. Unperformed human migration and evidence work is documented as a v13.0 waiver rather than misrepresented as completed review.
 
@@ -30,7 +30,7 @@ An authorized release build uses:
 KV_RELEASE_APPROVED=1 npm run build:release
 ```
 
-It writes `artifacts/KineticVanguard.html` with `release_status: release` and no prototype banner. GitHub Actions runs the authorized release build only after all verification steps pass and uploads the publication plus its build manifest and integrity reports as the `kinetic-vanguard-v13.0.0` artifact.
+It writes `artifacts/KineticVanguard.html` with `release_status: release` and no prototype banner. GitHub Actions runs the authorized release build only after all verification steps pass and uploads the publication plus its build manifest and integrity reports as the `kinetic-vanguard-v13.0.1` artifact.
 
 `npm run migrate` re-enumerates the pinned master and rewrites the provisional YAML plus migration inventory files. It is a migration-development command, not a normal build stage. Do not run it casually after manual provenance work begins.
 
@@ -50,10 +50,10 @@ The browser application contains only native finite selectors, checkboxes, butto
 
 The Rules area filter is canonical: it matches only an entity’s `presentation_metadata.primary_rules_area`, which is also the source of the visible result suffix. Additional selector-reachable routes recorded in `classifications.rules_area` remain available for browsing but do not broaden filtered results. Different facet groups use AND; selected values within the multi-select Rules area group use OR.
 
-Filtered results use this exact comparator: Rules area vocabulary order, progression section (`foundation`, `levelled`, `reference`), earliest `level`, primary-area topic/source order, feature-role vocabulary order, title codepoint order, then entity-ID codepoint order. The Name selector remains alphabetical within each Rules area.
+Filtered results use this exact comparator: Rules area vocabulary order, progression section (`foundation`, `levelled`, `reference`), earliest `level`, primary-area topic/source order, feature-role vocabulary order, title codepoint order, then entity-ID codepoint order. The generated Name index preserves Rules area vocabulary order and, within each group, uses progression section, numeric earliest `level`, bare title codepoint order, then entity-ID codepoint order. The browser filters and renders that preordered index, including after classification changes.
 
 `level` is the structured earliest acquisition/availability level. Selectable high-tier Advanced Training entries therefore use level 15, except Overload Mastery II, whose Psionic Apex prerequisite makes its earliest level 18. An entity without a level must declare `progression_section`; foundational or automatically applicable mechanics sort before level-gated entries, while supplemental/reference entries sort after them. Semantic validation rejects missing or conflicting section metadata.
 
-## Known v13.0.1 follow-up
+## Known follow-up
 
 Forked Lightning needs explicit failed-save wording for non-primary targets. The issue is tracked separately and does not block the v13.0 publication.
