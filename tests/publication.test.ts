@@ -53,6 +53,23 @@ test("Name control has explicit inert activation contract",async()=>{
   assert.match(html,/get\("name-select"\)\.addEventListener\("change",\s*updateOpen\)/);assert.match(html,/if\s*\(get\("name-open"\)\.getAttribute\("aria-disabled"\)\s*===\s*["']true["']\)/);
 });
 
+test("generated publication uses centralized warm dark theme tokens",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const style=html.match(/<style>([\s\S]*?)<\/style>/)?.[1]??"";
+  assert.match(style,/:root\{color-scheme:dark;/);
+  for(const token of ["--bg","--panel","--control-bg","--control-hover","--control-active","--control-disabled","--ink","--muted","--accent","--focus","--line","--selected-bg","--note-bg"]){
+    assert.match(style,new RegExp(`${token}:#[0-9a-f]{6}`),`${token} must be a shared theme token`);
+  }
+  for(const sharedHook of [
+    /body\{[^}]*background:var\(--bg\)[^}]*color:var\(--ink\)/,
+    /\.panel,article\{[^}]*background:var\(--panel\)[^}]*border:1px solid var\(--line\)/,
+    /select,button\{[^}]*border:1px solid var\(--line-strong\)[^}]*background:var\(--control-bg\)[^}]*color:var\(--ink\)/,
+    /fieldset label:has\(input:checked\)\{[^}]*background:var\(--selected-bg\)[^}]*color:var\(--accent-strong\)/,
+    /\.note\{[^}]*border-left:\.3rem solid var\(--accent\)[^}]*background:var\(--note-bg\)/,
+    /:focus-visible\{outline:3px solid var\(--focus\)/
+  ])assert.match(style,sharedHook);
+  for(const legacyLightColor of ["#f7f3ea","#fffdfa","#17202a","#5d6873","#d6cfc2"])assert.equal(style.includes(legacyLightColor),false,`${legacyLightColor} must not remain in the default theme`);
+});
+
 test("rendered Name options derive level-name-ID order from canonical data and rebuild with filters",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_subclass_feature_reference_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
