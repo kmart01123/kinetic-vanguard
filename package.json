@@ -1,0 +1,35 @@
+{
+  "name": "kinetic-vanguard-reference",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Schema-first deterministic static rules reference for Kinetic Vanguard",
+  "type": "module",
+  "packageManager": "npm@11.16.0",
+  "engines": {
+    "node": "24.18.1"
+  },
+  "scripts": {
+    "migrate": "tsx src/migrate.ts",
+    "validate": "tsx src/cli.ts validate",
+    "build": "tsx src/cli.ts build --profile prototype",
+    "build:release": "tsx src/cli.ts build --profile release",
+    "promote": "tsx src/promote.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
+    "test:layout": "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 tsx --test tests/layout.browser.ts",
+    "test:determinism": "tsx src/determinism.ts"
+  },
+  "dependencies": {
+    "ajv": "8.20.0",
+    "ajv-formats": "3.0.1",
+    "yaml": "2.9.0"
+  },
+  "devDependencies": {
+    "@types/jsdom": "21.1.7",
+    "@types/node": "24.1.0",
+    "jsdom": "26.1.0",
+    "playwright": "1.55.1",
+    "tsx": "4.20.3",
+    "typescript": "5.9.2"
+  }
+}

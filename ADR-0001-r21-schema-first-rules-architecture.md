@@ -584,9 +584,9 @@ A category MAY define another finite dependent selector when a topic naturally h
 
 Every topic option MUST resolve to at least one publishable entity, and every publishable entity MUST belong to at least one topic.
 
-For every publishable entity, semantic validation MUST derive the set of broad areas containing its selector-reachable topics and require exact equality with the entity's independently authored `rules_area` classification set. This is a deliberate redundancy check between authored classification intent and authored publication composition; a mismatch means the maintainer MUST decide whether the classification or navigation is wrong rather than treating either as automatically derived.
+For every publishable entity, semantic validation MUST derive the set of broad areas containing its selector-reachable topics and require exact equality with the entity's independently authored `rules_area` route-classification set. This is a deliberate redundancy check between authored navigation intent and authored publication composition; a mismatch means the maintainer MUST decide whether the classification or navigation is wrong rather than treating either as automatically derived.
 
-The entity's `primary_rules_area` presentation metadata MUST be exactly one member of that set. Exact equality intentionally means that an entity may be returned by an area filter only when at least one selector-reachable topic in that area renders it. If an entity is intended to be discoverable through area A, publication navigation MUST include at least one selector-reachable topic in area A that renders that entity. An entity that merely pertains to another area but is not rendered there MAY be linked as a related entity, but MUST NOT claim that area in `rules_area`.
+The entity's `primary_rules_area` presentation metadata MUST be exactly one member of that set and is the entity's single canonical filtered-result area. Selector reachability in another area does not make the entity a filtered result for that area. If an entity is intended to be a filtered result for area A, `primary_rules_area` MUST be A; additional `rules_area` values and routes are navigation-only. The result suffix and Rules area filter projection MUST both use `primary_rules_area`.
 
 Authoring diagnostics for an equality failure SHOULD name the entity, each authored-but-unrendered area, and each rendered-but-unauthored area so the maintainer can decide which side is wrong.
 
@@ -687,7 +687,7 @@ The initial classification model MUST include:
 The initial identity and presentation model additionally MUST include:
 
 - `entity_name`: the sole derived identity domain, single-select and projected from publishable entity IDs and titles;
-- `primary_rules_area`: required single-valued presentation metadata for every publishable entity, constrained to one member of `rules_area`, and not a facet or member of the classification vector;
+- `primary_rules_area`: required single-valued presentation metadata for every publishable entity, constrained to one member of `rules_area`; it is projected as the sole Rules area value in the filter index and supplies the result-label suffix;
 - `canonical_topic_by_area`: a map from rules-area ID to topic ID. For every area in which an entity is rendered by more than one selector-reachable topic, the map MUST contain exactly one entry naming a topic in that area that renders the entity. An area with exactly one rendering topic MAY omit the entry; the sole topic is then canonical by construction.
 
 Other controlled facets MAY include activation type, damage type, level band, resource interaction, or other finite classifications justified by lookup needs. An optional facet MUST have explicit applicability conditions; a classification required by those conditions cannot be omitted.
@@ -718,7 +718,10 @@ Classification matching is exact and deterministic:
 - selections across different classification facets are combined with logical **AND**;
 - multiple selected values within a multi-select classification facet are combined with logical **OR**;
 - an unselected classification facet imposes no constraint;
-- result ordering follows only the stable sort declared in `ui/filter-interaction-policy.json`; navigation order or another authority sequence does not independently alter filtered-result ordering.
+- Rules area matching compares selections only with the filter index’s single `primary_rules_area` projection; secondary navigation routes do not match;
+- result ordering follows the stable sort declared in `ui/filter-interaction-policy.json`: Rules area vocabulary order, progression-section order, earliest level, primary-area topic/source order, feature-role order, title codepoint order, then entity-ID codepoint order.
+
+An entity’s structured `level` is its earliest acquisition or availability level. An entity without a level MUST declare `progression_section`: `foundation` sorts before level-gated entries and `reference` sorts after them. Converting a missing level to zero is prohibited. Semantic validation MUST reject an unlevelled entity without a section and a levelled entity that also declares a section.
 
 The Name identity control is mutually exclusive with classification filtering only after explicit Open-button activation. Changing the Name selection is inert except for updating the Open button's aria-disabled state and composed accessible name. Name options MUST remain enabled regardless of current classification availability. Activating Open clears conflicting filters only in the new route state while browser history retains the prior state. Selecting any classification facet resets the Name control to its placeholder, regardless of whether the previously displayed Name identity had been activated.
 
@@ -729,7 +732,7 @@ rules_area = electrokinesis
 feature_role = rider
 ```
 
-returns the independently reviewed complete set of publishable entities classified as both Electrokinesis and a rider, including entities that also appear in other rules areas.
+returns the independently reviewed complete set of publishable riders whose `primary_rules_area` is Electrokinesis. An entity with an Electrokinesis navigation route but another canonical primary area is excluded.
 
 The classification interface SHOULD display the result count for each currently available facet value. Counts and availability are derived non-rule outputs. A classification value that would produce no matching result MUST remain present but disabled; it MUST NOT be hidden. Focus MUST remain stable. If an upstream change invalidates a selected dependent value, the runtime MUST clear it once and include that correction in the consolidated accessible announcement.
 
@@ -737,12 +740,7 @@ The classification interface SHOULD display the result count for each currently 
 
 Each classification result MUST resolve to one deterministic selector route and MAY focus a specific entity within its topic.
 
-The result-activation area MUST be selected deterministically:
-
-1. when exactly one `rules_area` value is actively selected and the entity belongs to it, use that area;
-2. otherwise use the entity's `primary_rules_area`.
-
-Within the result-activation area, activation uses the entity's `canonical_topic_by_area` entry when the entity has multiple rendering topics in that area, or the sole rendering topic when only one exists.
+The result-activation area MUST be the entity's `primary_rules_area`. Within that area, activation uses the entity's `canonical_topic_by_area` entry when the entity has multiple rendering topics, or the sole rendering topic when only one exists.
 
 Every result control's visible identity label and accessible name MUST use the provenance-safe composition:
 
@@ -1332,6 +1330,7 @@ Automated JavaScript-enabled browser and structure tests MUST confirm:
 - required and conditional classifications are present;
 - each entity's `rules_area` set exactly equals its selector-reachable topic-area set;
 - `primary_rules_area` is one member of that set;
+- every filtered result's Rules area match and visible suffix both derive from `primary_rules_area`, regardless of secondary selector-reachable routes;
 - every filtered-result visible label and accessible name equals the required authoritative composition `{entity_title} — {primary_rules_area_label}` and introduces no alias;
 - the generated integrity corpus succeeds;
 - the independently reviewed correctness corpus succeeds;

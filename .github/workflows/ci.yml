@@ -1,0 +1,80 @@
+name: CI
+
+on:
+  pull_request:
+    branches:
+      - main
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verification:
+    name: v13 verification and release build
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use repository npm version
+        run: npm install --global npm@11.16.0
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install browser engines
+        run: npx playwright install --with-deps chromium firefox
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Validate
+        run: npm run validate
+
+      - name: Test
+        run: npm test
+
+      - name: Build prototype
+        run: npm run build
+
+      - name: Test determinism
+        run: npm run test:determinism
+
+      - name: Test layout
+        run: npm run test:layout
+
+      - name: Build authorized v13.0 release
+        env:
+          KV_RELEASE_APPROVED: "1"
+        run: npm run build:release
+
+      - name: Verify release identity
+        run: |
+          test -f artifacts/KineticVanguard.html
+          grep -q '"release_status":"release"' artifacts/KineticVanguard.html
+          ! grep -q '<p class="prototype"' artifacts/KineticVanguard.html
+
+      - name: Upload v13.0 publication
+        uses: actions/upload-artifact@v4
+        with:
+          name: kinetic-vanguard-v13.0.0
+          if-no-files-found: error
+          retention-days: 90
+          path: |
+            artifacts/KineticVanguard.html
+            artifacts/build-manifest.json
+            artifacts/filtered-search-integrity.json
+            artifacts/coverage-ledger.json

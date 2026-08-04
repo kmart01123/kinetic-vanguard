@@ -1,0 +1,21 @@
+import { mkdtemp, readFile, readdir } from "node:fs/promises";
+import { resolve } from "node:path";
+import Ajv2020Module from "ajv/dist/2020.js";
+import addFormatsModule from "ajv-formats";
+import { sha256 } from "./canonical.js";
+import { replaceDirectoryAtomically, writeAtomic } from "./io.js";
+
+const manifestPath="artifacts/build-manifest.json",htmlPath="artifacts/KineticVanguard.html",evidencePath="artifacts/release-evidence.json";
+const [manifestBytes,html,evidenceBytes,schemaBytes]=await Promise.all([readFile(manifestPath),readFile(htmlPath,"utf8"),readFile(evidencePath),readFile("release/release-evidence-schema.json")]);
+const manifest=JSON.parse(manifestBytes.toString("utf8")),evidence=JSON.parse(evidenceBytes.toString("utf8")),schema=JSON.parse(schemaBytes.toString("utf8"));
+const Ajv2020=((Ajv2020Module as any).default??Ajv2020Module) as new(options:any)=>any;const addFormats=((addFormatsModule as any).default??addFormatsModule) as (ajv:any)=>void;const ajv=new Ajv2020({allErrors:true,strict:true});addFormats(ajv);
+if(!ajv.validate(schema,evidence))throw new Error(`Release evidence is invalid: ${ajv.errorsText()}`);
+if(manifest.build_identity.release_status!=="release")throw new Error("Refusing to promote a non-release build");
+if(evidence.decision!=="approved")throw new Error("Release evidence decision is not approved");
+if(evidence.build_manifest_sha256!==sha256(manifestBytes))throw new Error("Release evidence references a different build manifest");
+if(manifest.generated_artifacts.html!==sha256(html))throw new Error("Staged HTML differs from the verified manifest");
+if(html.includes('<p class="prototype"')||!html.includes('"release_status":"release"'))throw new Error("Staged publication has an invalid release identity");
+const temporary=await mkdtemp(resolve("deployable.stage-"));await writeAtomic(resolve(temporary,"KineticVanguard.html"),html);
+const inventory=await readdir(temporary);if(inventory.length!==1||inventory[0]!=="KineticVanguard.html")throw new Error("Fresh deployable directory does not contain exactly the one permitted file");
+await replaceDirectoryAtomically(temporary,resolve("deployable"));
+process.stdout.write(`Promoted ${manifest.generated_artifacts.html} to deployable/KineticVanguard.html\n`);

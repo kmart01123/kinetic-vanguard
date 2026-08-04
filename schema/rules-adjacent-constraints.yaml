@@ -1,0 +1,11 @@
+schema_version: "1.0.0"
+constraints:
+  - schema_path: "/properties/entities/items/properties/kind"
+    rationale: "Entity structural kinds drive required renderer behavior and conditional classification."
+    authority_owner: "Kinetic Vanguard maintainers"
+  - schema_path: "/properties/content/$defs/block/properties/type"
+    rationale: "Closed rich-text node kinds are application structure, not game rules."
+    authority_owner: "Kinetic Vanguard maintainers"
+  - schema_path: "/properties/facets/items/properties/cardinality"
+    rationale: "Facet cardinality is required application behavior."
+    authority_owner: "Kinetic Vanguard maintainers"

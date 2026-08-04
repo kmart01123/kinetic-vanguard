@@ -1,0 +1,108 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://kinetic-vanguard.invalid/KineticVanguard.schema.json",
+  "title": "Kinetic Vanguard authority",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schema_version", "rules_version", "metadata", "vocabularies", "facets", "entities", "navigation"],
+  "properties": {
+    "schema_version": {"type":"string","pattern":"^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "rules_version": {"type":"string","pattern":"^[0-9]+\\.[0-9]+\\.[0-9]+$"},
+    "metadata": {"$ref":"#/$defs/metadata"},
+    "vocabularies": {
+      "type":"object",
+      "additionalProperties": {"type":"array","items":{"$ref":"#/$defs/vocabularyValue"},"minItems":1}
+    },
+    "facets": {"type":"array","items":{"$ref":"#/$defs/facet"},"minItems":4},
+    "entities": {"type":"array","items":{"$ref":"#/$defs/entity"},"minItems":1},
+    "navigation": {"$ref":"#/$defs/navigation"},
+    "audits": {"type":"array","items":{"$ref":"#/$defs/audit"},"default":[]}
+  },
+  "$defs": {
+    "id": {"type":"string","pattern":"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$"},
+    "metadata": {
+      "type":"object","additionalProperties":false,
+      "required":["title","attribution","license"],
+      "properties": {
+        "title":{"type":"string","minLength":1},
+        "attribution":{"type":"string","minLength":1},
+        "license":{"type":"string","minLength":1},
+        "compatibility":{"type":"string","minLength":1},
+        "release_notes":{"type":"string","minLength":1}
+      }
+    },
+    "vocabularyValue": {
+      "type":"object","additionalProperties":false,"required":["id","label","order"],
+      "properties":{"id":{"$ref":"#/$defs/id"},"label":{"type":"string","minLength":1},"order":{"type":"integer","minimum":0}}
+    },
+    "facet": {
+      "type":"object","additionalProperties":false,"required":["id","label","cardinality","requiredness","applicability","order","vocabulary"],
+      "properties": {
+        "id":{"$ref":"#/$defs/id"},"label":{"type":"string","minLength":1},
+        "cardinality":{"enum":["single","multi"]},"requiredness":{"enum":["always","applicable"]},
+        "applicability":{"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"enum":["all","entity_kind","rules_area"]},"values":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true}}},
+        "order":{"type":"integer","minimum":0},"vocabulary":{"$ref":"#/$defs/id"}
+      }
+    },
+    "typedValue": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"integer"},"value":{"type":"integer"},"unit":{"type":"string"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","count","sides"],"properties":{"kind":{"const":"dice"},"count":{"type":"integer","minimum":1},"sides":{"type":"integer","minimum":2},"modifier":{"type":"integer"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"reference"},"value":{"$ref":"#/$defs/id"}}}
+      ]
+    },
+    "inline": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["type","text","source_unit_id"],"properties":{"type":{"const":"text"},"text":{"type":"string","minLength":1},"source_unit_id":{"type":"string","minLength":1}}},
+        {"type":"object","additionalProperties":false,"required":["type","text","source_unit_id"],"properties":{"type":{"enum":["emphasis","strong","code"]},"text":{"type":"string","minLength":1},"source_unit_id":{"type":"string","minLength":1}}},
+        {"type":"object","additionalProperties":false,"required":["type","term_id","label","source_unit_id"],"properties":{"type":{"const":"term_reference"},"term_id":{"$ref":"#/$defs/id"},"label":{"type":"string","minLength":1},"source_unit_id":{"type":"string","minLength":1}}},
+        {"type":"object","additionalProperties":false,"required":["type","value","source_unit_id"],"properties":{"type":{"const":"typed_value"},"value":{"$ref":"#/$defs/typedValue"},"source_unit_id":{"type":"string","minLength":1}}}
+      ]
+    },
+    "block": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["type","inlines"],"properties":{"type":{"const":"paragraph"},"inlines":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}}},
+        {"type":"object","additionalProperties":false,"required":["type","style","items"],"properties":{"type":{"const":"list"},"style":{"enum":["ordered","unordered"]},"items":{"type":"array","items":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"minItems":1}}},
+        {"type":"object","additionalProperties":false,"required":["type","kind","inlines"],"properties":{"type":{"const":"note"},"kind":{"enum":["note","warning"]},"inlines":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}}},
+        {"type":"object","additionalProperties":false,"required":["type","headers","rows"],"properties":{"type":{"const":"table"},"headers":{"type":"array","items":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"minItems":1},"rows":{"type":"array","items":{"type":"array","items":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}},"minItems":1}}},
+        {"type":"object","additionalProperties":false,"required":["type","tier","heading","body"],"properties":{"type":{"const":"tier"},"tier":{"type":"integer","minimum":0},"heading":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"body":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1}}},
+        {"type":"object","additionalProperties":false,"required":["type","tier","title","body"],"properties":{"type":{"const":"example"},"tier":{"type":"integer","minimum":0},"title":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"body":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1}}},
+        {"type":"object","additionalProperties":false,"required":["type","discipline","heading","title","setup","activation","rolls_or_saves","damage","effects","result"],"properties":{"type":{"const":"example_play_section"},"discipline":{"enum":["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]},"heading":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"title":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"setup":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"activation":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"rolls_or_saves":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"damage":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"effects":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"result":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}}}
+      ]
+    },
+    "classifications": {
+      "type":"object","additionalProperties":false,"required":["rules_area","entity_kind"],
+      "properties":{"rules_area":{"type":"array","items":{"$ref":"#/$defs/id"},"minItems":1,"uniqueItems":true},"entity_kind":{"$ref":"#/$defs/id"},"feature_role":{"$ref":"#/$defs/id"},"acquisition_mode":{"$ref":"#/$defs/id"}}
+    },
+    "entity": {
+      "type":"object","additionalProperties":false,
+      "required":["id","title","publishable","kind","content","classifications","presentation_metadata","origins"],
+      "properties": {
+        "id":{"$ref":"#/$defs/id"},"title":{"type":"string","minLength":1},"short_title":{"type":"string","minLength":1},
+        "publishable":{"const":true},"kind":{"$ref":"#/$defs/id"},
+        "level":{"type":"integer","minimum":1,"maximum":20},"progression_section":{"enum":["foundation","reference"]},"psi_cost":{"type":"integer","minimum":0},"activation":{"$ref":"#/$defs/id"},"requires_concentration":{"type":"boolean"},
+        "content":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1},
+        "classifications":{"$ref":"#/$defs/classifications"},
+        "presentation_metadata":{"type":"object","additionalProperties":false,"required":["primary_rules_area","canonical_topic_by_area"],"properties":{"primary_rules_area":{"$ref":"#/$defs/id"},"canonical_topic_by_area":{"type":"object","additionalProperties":{"$ref":"#/$defs/id"}}}},
+        "origins":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["source_unit_ids"],"properties":{"source_unit_ids":{"type":"array","items":{"type":"string","minLength":1},"minItems":1,"uniqueItems":true}}},"minItems":1},
+        "related_entity_ids":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true}
+      }
+    },
+    "topic": {
+      "type":"object","additionalProperties":false,"required":["id","title","entity_ids","order"],
+      "properties":{"id":{"$ref":"#/$defs/id"},"title":{"type":"string","minLength":1},"entity_ids":{"type":"array","items":{"$ref":"#/$defs/id"},"minItems":1,"uniqueItems":true},"order":{"type":"integer","minimum":0}}
+    },
+    "category": {
+      "type":"object","additionalProperties":false,"required":["id","label","order","default_topic_id","topics"],
+      "properties":{"id":{"$ref":"#/$defs/id"},"label":{"type":"string","minLength":1},"order":{"type":"integer","minimum":0},"default_topic_id":{"$ref":"#/$defs/id"},"topics":{"type":"array","items":{"$ref":"#/$defs/topic"},"minItems":1}}
+    },
+    "navigation": {
+      "type":"object","additionalProperties":false,"required":["default_category_id","categories"],
+      "properties":{"default_category_id":{"$ref":"#/$defs/id"},"categories":{"type":"array","items":{"$ref":"#/$defs/category"},"minItems":6}}
+    },
+    "audit": {
+      "type":"object","additionalProperties":false,"required":["id","assertion","subject_ids"],
+      "properties":{"id":{"$ref":"#/$defs/id"},"assertion":{"type":"string","minLength":1},"subject_ids":{"type":"array","items":{"$ref":"#/$defs/id"},"minItems":1}}
+    }
+  }
+}

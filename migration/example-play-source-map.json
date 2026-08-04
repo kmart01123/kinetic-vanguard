@@ -1,0 +1,79 @@
+{
+  "schema_version": "1.0.0",
+  "migration_source_filename": "Kinetic_Vanguard.md",
+  "blocks": [
+    {
+      "id": "glacial_spike_inline_overload_example",
+      "classification": "overload_inline_example",
+      "discipline": "cryokinesis",
+      "source_line_range": [
+        100,
+        110
+      ],
+      "destination_entity_id": "common_overload",
+      "source_unit_ids": [
+        "u_l0100_c003_blockquote_paragraph_9486363841",
+        "u_l0102_c003_blockquote_paragraph_e441f239d1",
+        "u_l0104_c003_blockquote_paragraph_7b15436ca6",
+        "u_l0106_c003_blockquote_paragraph_216ebde730",
+        "u_l0108_c003_blockquote_paragraph_b0a8492967",
+        "u_l0110_c003_blockquote_paragraph_fae2c7872a"
+      ]
+    },
+    {
+      "id": "pyrokinesis_full_attack_turn",
+      "classification": "example_play_full_turn",
+      "discipline": "pyrokinesis",
+      "source_line_range": [
+        112,
+        122
+      ],
+      "destination_entity_id": "common_example_play",
+      "source_unit_ids": [
+        "u_l0112_c003_blockquote_paragraph_1948bc17f9",
+        "u_l0114_c003_blockquote_paragraph_00faccb56f",
+        "u_l0116_c003_blockquote_paragraph_01f5d0059a",
+        "u_l0118_c003_blockquote_paragraph_2752e68da9",
+        "u_l0120_c003_blockquote_paragraph_5bcd08e236",
+        "u_l0122_c003_blockquote_paragraph_7c82271c6b"
+      ]
+    },
+    {
+      "id": "psychokinesis_sustained_turn",
+      "classification": "example_play_full_turn",
+      "discipline": "psychokinesis",
+      "source_line_range": [
+        124,
+        136
+      ],
+      "destination_entity_id": "common_example_play",
+      "source_unit_ids": [
+        "u_l0124_c003_blockquote_paragraph_a4872a5636",
+        "u_l0126_c003_blockquote_paragraph_c4607cec5d",
+        "u_l0128_c003_blockquote_paragraph_5a3fd893c7",
+        "u_l0130_c003_blockquote_paragraph_37af8865a3",
+        "u_l0132_c003_blockquote_paragraph_a8389e68cc",
+        "u_l0134_c003_blockquote_paragraph_ca035bee04",
+        "u_l0136_c003_blockquote_paragraph_a618462ba0"
+      ]
+    },
+    {
+      "id": "cryokinesis_lockdown_turn",
+      "classification": "example_play_full_turn",
+      "discipline": "cryokinesis",
+      "source_line_range": [
+        138,
+        148
+      ],
+      "destination_entity_id": "common_example_play",
+      "source_unit_ids": [
+        "u_l0138_c003_blockquote_paragraph_c3eaa6f391",
+        "u_l0140_c003_blockquote_paragraph_750364f9e7",
+        "u_l0142_c003_blockquote_paragraph_9ce9acb851",
+        "u_l0144_c003_blockquote_paragraph_accd416349",
+        "u_l0146_c003_blockquote_paragraph_b4480594be",
+        "u_l0148_c003_blockquote_paragraph_e5c8d77618"
+      ]
+    }
+  ]
+}

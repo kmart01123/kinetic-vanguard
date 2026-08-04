@@ -1,4 +1,3 @@
-// For format details, see https://aka.ms/devcontainer.json.
 {
 	"name": "Kinetic Vanguard v13",
 
@@ -33,8 +32,25 @@
 			"extensions": [
 				"openai.chatgpt",
 				"redhat.vscode-yaml",
-				"DavidAnson.vscode-markdownlint"
-			]
+				"DavidAnson.vscode-markdownlint",
+				"ms-vscode.live-server"
+			],
+			"settings": {
+				"livePreview.portNumber": 3000,
+				"livePreview.autoRefreshPreview": "On Changes to Saved Files",
+				"livePreview.openPreviewTarget": "External Browser"
+			}
+		}
+	},
+
+	"forwardPorts": [
+		3000
+	],
+
+	"portsAttributes": {
+		"3000": {
+			"label": "Kinetic Vanguard Live Preview",
+			"onAutoForward": "openBrowser"
 		}
 	},
 
