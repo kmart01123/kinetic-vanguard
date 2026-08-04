@@ -149,7 +149,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
     {name:"narrow tablet",width:820,height:1180},
     {name:"mobile",width:390,height:844}
   ];
-  const expectedHeadings=["Cryokinesis","Pyrokinesis","Psychokinesis"];
+  const expectedHeadings=["Cryokinesis","Pyrokinesis","Psychokinesis","Electrokinesis"];
   let canonicalText:string[]|undefined;
   for(const engine of desktopBrowsers){
     const browser=await engine.type.launch({headless:true});
@@ -200,7 +200,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
         assert.equal(rendered.containerClass,"example-play-flow",size+": semantic flow class");
         assert.equal(rendered.containerDisplay,"block",size+": block flow");
         assert.equal(rendered.legacyLayoutCount,0,size+": no grid/card classes");
-        assert.equal(rendered.count,3,size+": section count");
+        assert.equal(rendered.count,4,size+": section count");
         assert.deepEqual(rendered.headings,expectedHeadings,size+": heading order");
         canonicalText??=rendered.texts;
         assert.deepEqual(rendered.texts,canonicalText,size+": unchanged content and order");

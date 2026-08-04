@@ -52,7 +52,7 @@ export interface ContentBlock {
   rows?: InlineNode[][][];
   title?: InlineNode[];
   heading?: InlineNode[];
-  discipline?: "cryokinesis" | "pyrokinesis" | "psychokinesis";
+  discipline?: "cryokinesis" | "pyrokinesis" | "psychokinesis" | "electrokinesis";
   tier?: number;
   body?: ContentBlock[];
 }

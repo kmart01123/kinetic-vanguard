@@ -226,6 +226,42 @@ entities:
             text: Example — Sustained Turn, Level 11 Psychokinesis (PB 4, Int +4, MS 1d10, 3 attacks)
             type: strong
         type: example_play_section
+      - body:
+          - inlines:
+              - source_unit_id: u_l0032_c001_paragraph_6b59f5947c
+                text: You are a Level 11 Fighter with PB +4, a +4 Psionic Ability modifier, a 1d10 Manifested Strike die, three attacks, and enough Psi. Several enemies occupy tight clusters. Resolve each attack completely before choosing the next target, so later attacks can exploit the room after earlier arcs resolve.
+                type: emphasis
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0480_c001_paragraph_2a8e852537
+                text: "Attack 1: MS + Static Discharge T2 (Signature Rider) — Choose the first primary creature and declare the complete package before rolling. Psi: 0. Pay Blood Tax: 2×PB = 8 on declaration. On a hit, Manifested Strike deals 1d10 + 4 lightning damage only to the struck creature, and only that creature receives Sap. Static Discharge then deals 2 lightning damage to the struck creature and up to PB (4) other creatures within 5 feet of it; each affected creature makes a Charisma save, losing reactions until the start of your next turn on a failure. The four secondaries are damaged by the rider but are not hit and do not receive Sap. On a miss, neither the rider nor Sap resolves, but the 8 Blood Tax remains paid."
+                type: strong
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0486_c001_paragraph_d221e89cb8
+                text: "Attack 2: MS + Branching Bolt T0 — After attack 1 resolves, choose a second primary creature with another enemy within 15 feet and declare Branching Bolt before rolling. Psi: 2, paid on declaration. On a hit, Manifested Strike deals 1d10 + 4 lightning damage and applies Sap only to the primary; the rider deals 1d10 lightning damage to that creature and up to one chosen secondary. The secondary takes rider damage but is not hit and does not receive Sap. On a miss, Branching Bolt does not resolve, but the 2 Psi remains spent."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0494_c001_paragraph_fb9d33ad69
+                text: "Attack 3: MS + Electron Burst T0 — After attack 2 resolves, choose a third primary creature at the center of the remaining cluster and declare Electron Burst before rolling. Psi: 2, paid on declaration. On a hit, Manifested Strike deals 1d10 + 4 lightning damage and applies Sap only to the primary. A 10-foot-radius Sphere centered on that creature then includes it and every other creature in the area; each makes a Charisma save, taking 2d8 lightning damage on a failure or half on a success. Creatures caught only in the burst are damaged but are not hit and do not receive Sap. On a miss, no burst occurs, but the 2 Psi remains spent."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0206_c001_paragraph_f1ddd895ea
+                text: "Turn totals (all three attacks hit): Psi: 4. Blood Tax: 8. Three primary creatures are struck, while additional creatures take damage through Static Discharge’s arcs, Branching Bolt, and Electron Burst. Static Discharge is the unlimited Signature Rider; Branching Bolt and Electron Burst were each used once. Only Static Discharge was Tier 2, satisfying the one-Tier-2-rider limit for this Attack action. Three attacks, chosen and resolved in sequence, clear the room without treating secondary rider targets as hits."
+                type: strong
+            type: paragraph
+        discipline: electrokinesis
+        heading:
+          - source_unit_id: u_l0472_c001_paragraph_23fa6b15be
+            text: Electrokinesis
+            type: text
+        title:
+          - source_unit_id: u_l0472_c001_paragraph_23fa6b15be
+            text: Room Sweep — Electrokinesis
+            type: strong
+        type: example_play_section
     id: common_example_play
     kind: system
     origins:
@@ -249,6 +285,12 @@ entities:
           - u_l0144_c003_blockquote_paragraph_accd416349
           - u_l0146_c003_blockquote_paragraph_b4480594be
           - u_l0148_c003_blockquote_paragraph_e5c8d77618
+          - u_l0032_c001_paragraph_6b59f5947c
+          - u_l0206_c001_paragraph_f1ddd895ea
+          - u_l0472_c001_paragraph_23fa6b15be
+          - u_l0480_c001_paragraph_2a8e852537
+          - u_l0486_c001_paragraph_d221e89cb8
+          - u_l0494_c001_paragraph_fb9d33ad69
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: common_features
