@@ -26,7 +26,7 @@ test("master Name select renders canonical progression and stable renamed routes
   for(const engine of desktopBrowsers){
     const browser=await engine.type.launch({headless:true});
     try{
-      const page=await browser.newPage({viewport:{width:1366,height:768}});await page.goto(url);
+      const page=await browser.newPage({viewport:{width:1366,height:768}});await page.goto(url);await page.evaluate(()=>{const push=history.pushState.bind(history);(window as any).__namePushCount=0;history.pushState=(...args)=>{(window as any).__namePushCount++;return push(...args);};});
       const readGroups=()=>page.locator("#name-select optgroup").evaluateAll(groups=>groups.map(group=>({label:(group as HTMLOptGroupElement).label,ids:[...group.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.value),labels:[...group.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.textContent??"")})));
       const observed=await readGroups();assert.deepEqual(observed.map(group=>group.label),expectedGroups,engine.name+" group order");
       for(const group of observed)assert.deepEqual(group.ids.filter(id=>featureIds.has(id)),expectedFeatures[group.label],engine.name+" "+group.label+" feature order");
@@ -39,8 +39,10 @@ test("master Name select renders canonical progression and stable renamed routes
       assert.equal(new Set(rebuiltAdvanced[0]!.ids).size,rebuiltAdvanced[0]!.ids.length,engine.name+" no duplicate Advanced Training options");assert.ok(rebuiltAdvanced[0]!.labels.every(label=>!label.startsWith("Advanced Training I:")&&!label.startsWith("Advanced Training II:")),engine.name+" no rebuilt prefixed labels");
       const resultLabels=await page.locator("#filter-results button").allTextContents();assert.ok(resultLabels.includes("Deflection Screen — Advanced Training"));assert.ok(resultLabels.includes("Phase Step — Advanced Training"));assert.ok(resultLabels.every(label=>!label.startsWith("Advanced Training I:")&&!label.startsWith("Advanced Training II:")));await advancedFilter.uncheck();
       for(const [id,title,topic] of [["advanced_deflection_screen","Deflection Screen","advanced_training_advanced_deflection_screen_topic"],["advanced_phase_step","Phase Step","advanced_training_advanced_phase_step_topic"]] as const){
-        await page.selectOption("#name-select",id);await page.click("#name-open");
+        const historyBefore=await page.evaluate(()=>(window as any).__namePushCount);await page.selectOption("#name-select",id);
         assert.equal(new URL(page.url()).hash.includes(`entity=${id}`),true);assert.equal(new URLSearchParams(new URL(page.url()).hash.slice(1)).get("topic"),topic);assert.equal(await page.locator(`#entity-${id} h2`).textContent(),title);
+        assert.equal(await page.locator("#name-select").inputValue(),id);assert.equal(await page.locator("#name-open").count(),0);assert.equal(await page.evaluate(()=>(window as any).__namePushCount),historyBefore+1);
+        await page.selectOption("#name-select",id);assert.equal(await page.evaluate(()=>(window as any).__namePushCount),historyBefore+1,engine.name+" same selection history");
         await page.goBack();await page.goForward();assert.equal(await page.locator(`#entity-${id} h2`).textContent(),title,engine.name+" Forward navigation");await page.goBack();
       }
       await page.close();
