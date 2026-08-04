@@ -5,10 +5,19 @@
 ### Changed
 
 - Established `KineticVanguard.yaml` as the sole maintained rules-authoring source.
+- Completed a full language audit of all 44 publishable rules entities, tightening grammar, terminology, sentence structure, tables, examples, and tier wording without intentionally changing mechanics.
+- Consolidated repeated Overload, Manifested Strike, and Advanced Training reminders so shared rules are stated once and feature text focuses on feature-specific outcomes.
 
 ### Removed
 
 - Retired the completed v12.1.0 Markdown migration source, migration command, migration-only records, and obsolete ADR revision files from the active repository.
+- Removed non-normative design commentary, duplicated activation reminders, and other superfluous text where the same rule is already established by structured metadata or shared rules.
+
+### Rules decisions pending
+
+- Forked Lightning still requires the separately approved non-primary-target failed-save wording decision.
+- The canonical YAML marks Vectored Thrust, Frozen Ground, Mass Levitation, Ball Lightning, and Gravitic Press as concentration features but does not state their maximum durations in active rules text.
+- Mass Levitation does not state whether Medium-or-smaller and Large targets can be mixed in one activation.
 
 ## 13.0.1 — 2026-08-04
 
