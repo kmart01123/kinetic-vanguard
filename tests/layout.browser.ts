@@ -149,7 +149,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
     {name:"narrow tablet",width:820,height:1180},
     {name:"mobile",width:390,height:844}
   ];
-  const expectedHeadings=["Cryokinesis","Pyrokinesis","Psychokinesis","Cryokinesis","Electrokinesis"];
+  const expectedHeadings=["Pyrokinesis","Psychokinesis","Cryokinesis","Electrokinesis"];
   let canonicalText:string[]|undefined;
   for(const engine of desktopBrowsers){
     const browser=await engine.type.launch({headless:true});
@@ -200,7 +200,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
         assert.equal(rendered.containerClass,"example-play-flow",size+": semantic flow class");
         assert.equal(rendered.containerDisplay,"block",size+": block flow");
         assert.equal(rendered.legacyLayoutCount,0,size+": no grid/card classes");
-        assert.equal(rendered.count,5,size+": section count");
+        assert.equal(rendered.count,4,size+": section count");
         assert.deepEqual(rendered.headings,expectedHeadings,size+": heading order");
         canonicalText??=rendered.texts;
         assert.deepEqual(rendered.texts,canonicalText,size+": unchanged content and order");
@@ -214,12 +214,13 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
         assert.equal(rendered.contained,true,size+": sections stay within the article");
         assert.equal(rendered.documentOverflow,0,size+": no horizontal page overflow");
         await page.goto(glacialUrl);
-        assert.equal(await page.locator("#entity-common_overload .inline-example").count(),0,size+": no duplicate inline example");
+        const inline=page.locator("#entity-common_overload .inline-example");assert.equal(await inline.count(),1,size+": one Overload Glacial example");assert.equal(await inline.locator("h3").textContent(),"Example — Level 11 Cryokinesis (PB 4, Int +3)");assert.equal(await page.locator("#entity-common_example_play .inline-example").count(),0,size+": absent from Example Play");
       }
       await page.emulateMedia({media:"print"});
       await page.goto(exampleUrl);
       assert.equal(await page.locator(".example-play-section").first().evaluate(element=>getComputedStyle(element).breakInside),"avoid",engine.name+": print section break");
       assert.equal(await page.locator(".example-play-section").last().evaluate(element=>getComputedStyle(element).breakInside),"avoid",engine.name+": final print section break");
+      await page.goto(glacialUrl);assert.equal(await page.locator(".inline-example").evaluate(element=>getComputedStyle(element).breakInside),"avoid",engine.name+": print inline break");
     }finally{
       await browser.close();
     }

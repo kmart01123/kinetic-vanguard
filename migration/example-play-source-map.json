@@ -3,14 +3,14 @@
   "migration_source_filename": "Kinetic_Vanguard.md",
   "blocks": [
     {
-      "id": "glacial_spike_tier_2_lockdown",
-      "classification": "example_play_full_turn",
+      "id": "glacial_spike_inline_overload_example",
+      "classification": "overload_inline_example",
       "discipline": "cryokinesis",
       "source_line_range": [
         100,
         110
       ],
-      "destination_entity_id": "common_example_play",
+      "destination_entity_id": "common_overload",
       "source_unit_ids": [
         "u_l0100_c003_blockquote_paragraph_9486363841",
         "u_l0102_c003_blockquote_paragraph_e441f239d1",

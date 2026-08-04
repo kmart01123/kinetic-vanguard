@@ -83,13 +83,15 @@ test("example turns use one plain-text six-phase authority contract",async()=>{
   const overload=authority.entities.find(entity=>entity.id==="common_overload")!;
   const sections=examplePlay.content.filter(block=>block.type==="example_play_section") as any[];
   const phases=["setup","activation","rolls_or_saves","damage","effects","result"];
-  assert.deepEqual(sections.map(block=>block.discipline),["cryokinesis","pyrokinesis","psychokinesis","cryokinesis","electrokinesis"]);
-  assert.deepEqual(sections.map(block=>block.title.map((node:any)=>node.text).join("")),["Glacial Spike Tier 2 Lockdown — Level 11 Cryokinesis","Focused Fire — Level 11 Pyrokinesis","Aerial Repositioning — Level 11 Psychokinesis","Frozen Ground Lockdown — Level 11 Cryokinesis","Room Sweep — Level 11 Electrokinesis"]);
+  assert.deepEqual(sections.map(block=>block.discipline),["pyrokinesis","psychokinesis","cryokinesis","electrokinesis"]);
+  assert.deepEqual(sections.map(block=>block.title.map((node:any)=>node.text).join("")),["Focused Fire — Level 11 Pyrokinesis","Aerial Repositioning — Level 11 Psychokinesis","Frozen Ground Lockdown — Level 11 Cryokinesis","Room Sweep — Level 11 Electrokinesis"]);
   for(const section of sections){
     assert.ok(phases.every(field=>Array.isArray(section[field])));
     for(const field of ["heading","title",...phases]){assert.ok(section[field].length>0);assert.ok(section[field].every((node:any)=>node.type==="text"),section.title[0].text+" "+field+" must use plain text");}
   }
-  assert.equal(overload.content.some(block=>block.type==="example"),false);
+  const overloadExamples=overload.content.filter(block=>block.type==="example") as any[];
+  assert.equal(overloadExamples.length,1);assert.equal(overloadExamples[0].title.map((node:any)=>node.text).join(""),"Example — Level 11 Cryokinesis (PB 4, Int +3)");
+  assert.equal(sections.some(section=>JSON.stringify(section).includes("u_l0100_c003_blockquote_paragraph_9486363841")),false);
   assert.doesNotMatch(JSON.stringify(sections),/Example assumptions:|Full Attack Turn|Sustained Turn|type":"(?:strong|emphasis)"/);
 });
 

@@ -114,43 +114,6 @@ entities:
         - common_features
     content:
       - activation:
-          - source_unit_id: u_l0108_c003_blockquote_paragraph_b0a8492967
-            text: The fighter takes the Attack action and declares Manifested Strike with Glacial Spike Tier 2 against the creature before attack 1. The 0-Psi Signature Rider costs 2 × PB = 8 Blood Tax, paid immediately and retained on a miss.
-            type: text
-          - source_unit_id: u_l0104_c003_blockquote_paragraph_7b15436ca6
-            text: The 1d10 Manifested Strike is not Overloaded. Attacks 2 and 3 are plain Manifested Strikes with no additional cost.
-            type: text
-        damage:
-          - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
-            text: Attack 1 rolls 7 on the 1d10, dealing 7 + 3 Int + 2 from Glacial Spike = 12 cold damage. Attack 2 rolls 4, dealing 4 + 3 = 7 cold damage. Attack 3 misses and deals no damage. The creature takes 12 + 7 = 19 cold damage in total.
-            type: text
-        discipline: cryokinesis
-        effects:
-          - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
-            text: The failed Constitution save applies Glacial Spike Tier 2, leaving the creature Restrained until the end of the fighter’s next turn. No movement or other secondary effect occurs.
-            type: text
-        heading:
-          - source_unit_id: u_l0100_c003_blockquote_paragraph_9486363841
-            text: Cryokinesis
-            type: text
-        result:
-          - source_unit_id: u_l0110_c003_blockquote_paragraph_fae2c7872a
-            text: The fighter ends 30 feet from the creature with all 10 Psi, 8 hit points lost to Blood Tax, and no concentration, bonus action, reaction, or movement used. The creature has taken 19 cold damage and is Restrained until the end of the fighter’s next turn.
-            type: text
-        rolls_or_saves:
-          - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
-            text: The attack bonus is +9 (+3 Int, +4 PB, +2 Psionic Focus). Attack 1 rolls 12 + 9 = 21 and hits AC 16; the creature then rolls 9 against save DC 15 (8 + 4 + 3) and fails its Constitution save. Attack 2 rolls 8 + 9 = 17 and hits. Attack 3 rolls 4 + 9 = 13 and misses.
-            type: text
-        setup:
-          - source_unit_id: u_l0102_c003_blockquote_paragraph_e441f239d1
-            text: A level 11 Cryokinesis fighter begins 30 feet from one hostile creature with AC 16. The fighter has three attacks, one free hand, 10 Psi, PB +4, Int +3, a 1d10 Manifested Strike die, enough hit points for Blood Tax, and no active concentration.
-            type: text
-        title:
-          - source_unit_id: u_l0100_c003_blockquote_paragraph_9486363841
-            text: Glacial Spike Tier 2 Lockdown — Level 11 Cryokinesis
-            type: text
-        type: example_play_section
-      - activation:
           - source_unit_id: u_l0116_c003_blockquote_paragraph_01f5d0059a
             text: The fighter takes the Attack action and targets the creature three times. Attack 1 is Manifested Strike with Ember Bolt Tier 2 for 0 Psi and 8 Blood Tax (2 × PB), paid before the roll. Attack 2 is Manifested Strike with Cinder Lance Tier 0 for 3 Psi and no Blood Tax. Attack 3 is Manifested Strike with Ember Bolt Tier 0 for 0 Psi and no Blood Tax. Every declared cost remains spent on a miss.
             type: text
@@ -290,12 +253,6 @@ entities:
     kind: system
     origins:
       - source_unit_ids:
-          - u_l0100_c003_blockquote_paragraph_9486363841
-          - u_l0102_c003_blockquote_paragraph_e441f239d1
-          - u_l0104_c003_blockquote_paragraph_7b15436ca6
-          - u_l0106_c003_blockquote_paragraph_216ebde730
-          - u_l0108_c003_blockquote_paragraph_b0a8492967
-          - u_l0110_c003_blockquote_paragraph_fae2c7872a
           - u_l0112_c003_blockquote_paragraph_1948bc17f9
           - u_l0114_c003_blockquote_paragraph_00faccb56f
           - u_l0116_c003_blockquote_paragraph_01f5d0059a
@@ -373,6 +330,38 @@ entities:
             type: text
         tier: 2
         type: tier
+      - body:
+          - inlines:
+              - source_unit_id: u_l0102_c003_blockquote_paragraph_e441f239d1
+                text: "Before rolling, you declare: “Glacial Spike T2.”"
+                type: emphasis
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0104_c003_blockquote_paragraph_7b15436ca6
+                text: "Your strike uses its level-set die: 1d10. The Tier 2 declaration is on Glacial Spike — the strike itself can never be Overloaded."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
+                text: "Hit: Manifested Strike deals 1d10 + 3, and Glacial Spike adds 2 cold damage, for 1d10 + 5 total. On a failed Con save, the target is Restrained until the end of your next turn."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0108_c003_blockquote_paragraph_b0a8492967
+                text: "Blood Tax: 1 × 2 × PB = 2 × 4 = 8, paid on declaration. Glacial Spike is a Signature Rider and costs 0 Psi; Tier 2 escalates its control."
+                type: text
+            type: paragraph
+          - inlines:
+              - source_unit_id: u_l0110_c003_blockquote_paragraph_fae2c7872a
+                text: "Miss: No effects; Blood Tax (8) is still paid — it was spent on declaration. Glacial Spike costs 0 Psi. Roll your next attack."
+                type: text
+            type: paragraph
+        tier: 2
+        title:
+          - source_unit_id: u_l0100_c003_blockquote_paragraph_9486363841
+            text: Example — Level 11 Cryokinesis (PB 4, Int +3)
+            type: strong
+        type: example
       - inlines:
           - source_unit_id: u_l0056_c003_blockquote_paragraph_7159b18e60
             text: The full attack package — rider activation and rider Overload tier — is declared before the roll. One rider per hit (discipline or Advanced Training). A hit resolves the whole package. A miss cancels rider effects, but Psi and Blood Tax are still spent — Blood Tax is paid immediately on declaration, never after the attack resolves. If you Overload more than one feature in the same turn (a rider and a standalone feature, say), you pay Blood Tax once per Overload declared.
@@ -575,6 +564,12 @@ entities:
           - u_l0094_c003_blockquote_paragraph_1eb389a220
           - u_l0096_c003_blockquote_paragraph_0632b4f975
           - u_l0098_c003_blockquote_paragraph_a7fbb0d442
+          - u_l0100_c003_blockquote_paragraph_9486363841
+          - u_l0102_c003_blockquote_paragraph_e441f239d1
+          - u_l0104_c003_blockquote_paragraph_7b15436ca6
+          - u_l0106_c003_blockquote_paragraph_216ebde730
+          - u_l0108_c003_blockquote_paragraph_b0a8492967
+          - u_l0110_c003_blockquote_paragraph_fae2c7872a
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: common_features
