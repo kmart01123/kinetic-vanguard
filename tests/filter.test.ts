@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import YAML from "yaml";
 import { loadAuthority } from "../src/load.js";
-import { buildFilterIndex, buildIntegrity, compareFilterEntries, type FilterIndexEntry } from "../src/validate.js";
+import { buildFilterIndex, buildIntegrity, compareFilterEntries, compareNameEntries, type FilterIndexEntry } from "../src/validate.js";
 
 const select=(index:any,selections:Record<string,string[]>)=>index.entities.filter((item:any)=>Object.entries(selections).every(([facet,values])=>values.some(value=>item.classifications[facet]?.includes(value)))).map((item:any)=>item.id).sort();
 
@@ -16,7 +16,7 @@ test("independently-authored provisional correctness cases agree",async()=>{
 
 
 const orderedSelect=(index:any,selections:Record<string,string[]>)=>index.entities.filter((item:any)=>Object.entries(selections).every(([facet,values])=>values.some(value=>item.classifications[facet]?.includes(value))));
-const sortable=(title:string,minimum_level:number|null,progression_section:FilterIndexEntry["progression_section"],progression_order=0):FilterIndexEntry=>({id:title.toLowerCase().replaceAll(" ","_"),title,primary_rules_area:"psychokinesis",rules_area_order:4,minimum_level,progression_section,progression_order,feature_role_order:0,classifications:{rules_area:["psychokinesis"],entity_kind:["feature"],feature_role:["rider"]},routes:{psychokinesis:"topic"}});
+const sortable=(title:string,minimum_level:number|null,progression_section:FilterIndexEntry["progression_section"],progression_order=0,id=title.toLowerCase().replaceAll(" ","_")):FilterIndexEntry=>({id,title,primary_rules_area:"psychokinesis",rules_area_order:4,minimum_level,progression_section,progression_order,feature_role_order:0,classifications:{rules_area:["psychokinesis"],entity_kind:["feature"],feature_role:["rider"]},routes:{psychokinesis:"topic"}});
 
 test("Rules area uses only the canonical displayed area",async()=>{
   const {authority}=await loadAuthority();const index=buildFilterIndex(authority);
@@ -41,6 +41,34 @@ test("progression comparator sorts by level before name",()=>{
   assert.deepEqual(entries.sort(compareFilterEntries).map(item=>item.title),["Feature Z","Feature M","Feature A","Feature B","Feature C"]);
 });
 
+
+test("Name comparator uses numeric level, then bare name, then canonical ID",()=>{
+  const entries=[
+    sortable("Level Twenty","20" as unknown as number,"levelled",0,"level_20"),
+    sortable("Twin",7,"levelled",0,"twin_z"),
+    sortable("Level Ten","10" as unknown as number,"levelled",0,"level_10"),
+    sortable("Beta",7,"levelled",0,"beta"),
+    sortable("Level Three",3,"levelled",0,"level_3"),
+    sortable("Twin","7" as unknown as number,"levelled",0,"twin_a"),
+    sortable("Alpha",7,"levelled",0,"alpha")
+  ];
+  assert.deepEqual(entries.sort(compareNameEntries).map(item=>item.id),["level_3","alpha","beta","twin_a","twin_z","level_10","level_20"]);
+});
+
+test("canonical feature levels, cleaned names, groups, and destinations feed the Name index",async()=>{
+  const {authority}=await loadAuthority();const index=buildFilterIndex(authority);
+  const entity=(id:string)=>authority.entities.find(candidate=>candidate.id===id)!;
+  assert.equal(entity("thermal_fracture").level,7);assert.equal(typeof entity("thermal_fracture").level,"number");
+  assert.equal(entity("furnace_strike").level,20);assert.equal(typeof entity("furnace_strike").level,"number");
+  assert.deepEqual([entity("advanced_deflection_screen").title,entity("advanced_phase_step").title],["Deflection Screen","Phase Step"]);
+  assert.deepEqual([entity("advanced_deflection_screen").presentation_metadata.primary_rules_area,entity("advanced_phase_step").presentation_metadata.primary_rules_area],["advanced_training","advanced_training"]);
+  const advanced=index.name_groups.find(group=>group.id==="advanced_training")!,pyrokinesis=index.name_groups.find(group=>group.id==="pyrokinesis")!;
+  assert.ok(advanced.entity_ids.indexOf("advanced_deflection_screen")<advanced.entity_ids.indexOf("advanced_phase_step"));
+  assert.ok(pyrokinesis.entity_ids.indexOf("thermal_fracture")<pyrokinesis.entity_ids.indexOf("furnace_strike"));
+  const indexed=(id:string)=>index.entities.find(candidate=>candidate.id===id)!;
+  assert.equal(indexed("advanced_deflection_screen").routes.advanced_training,"advanced_training_advanced_deflection_screen_topic");
+  assert.equal(indexed("advanced_phase_step").routes.advanced_training,"advanced_training_advanced_phase_step_topic");
+});
 test("unlevelled entities use explicit foundation and reference sections",async()=>{
   const {authority}=await loadAuthority();const index=buildFilterIndex(authority);const common=orderedSelect(index,{rules_area:["common_features"]});
   const foundation=common.findIndex((item:any)=>item.id==="how_to_play"),firstLevel=common.findIndex((item:any)=>item.minimum_level!==null),reference=common.findIndex((item:any)=>item.id==="subclass_feature_reference");

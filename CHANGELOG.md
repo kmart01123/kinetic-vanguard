@@ -5,7 +5,8 @@
 ### Fixed
 
 - Standardized mathematical addition notation in tables on the literal ASCII `+` and added source-to-render regression coverage to prevent textual or styled substitutes.
-- Ordered the feature Name selector by level progression, with alphabetical ordering among entries at the same level.
+- Ordered every rules-area group in the Name selector by numeric feature level, bare display name, and canonical ID, including after classification filters rebuild the options.
+- Simplified the canonical user-facing names of Deflection Screen and Phase Step while preserving their Advanced Training classification and stable routes.
 
 ## 13.0.0 — 2026-08-03
 

@@ -106,7 +106,10 @@ function cleanInline(source: string): string {
     .replace(/!\[([^\]]*)\]\(([^)]+)\)/g, "$1 ($2)")
     .replace(/\\([\[\]*_`])/g, "$1")
     .replace(/\*\*([^*]+)\*\*/g, "$1").replace(/\*([^*]+)\*/g, "$1")
-    .replace(/`([^`]+)`/g, "$1").trim();
+    .replace(/`([^`]+)`/g, "$1")
+    .replaceAll("Advanced Training I: Deflection Screen","Deflection Screen")
+    .replaceAll("Advanced Training II: Phase Step","Phase Step")
+    .trim();
 }
 
 function formattedInlines(source:string,unit:SourceUnit):InlineNode[]{
@@ -215,7 +218,7 @@ function buildAuthority(lines:string[],unitByLine:Map<number,SourceUnit[]>):Auth
         const base=content.map(block=>{for(const inline of block.inlines??[])if(inline.text)inline.text=inline.text.replace(/ See [^.]+\(Section 01\) for full rules\.$/,"");return block;});
         existing.content=[...base,...existing.content];existing.origins[0]!.source_unit_ids.unshift(...originIds(base,unitForLine(unitByLine,header.line)));entities.push(existing);return;
       }
-      entities.push(createEntity(id,header.title,area,"feature",content,originIds(content,unitForLine(unitByLine,header.line)),{...metadata,classifications:{rules_area:[area],entity_kind:"feature",feature_role:role,...(acquisition?{acquisition_mode:acquisition}:{})}}));
+      entities.push(createEntity(id,baseTitle,area,"feature",content,originIds(content,unitForLine(unitByLine,header.line)),{...metadata,classifications:{rules_area:[area],entity_kind:"feature",feature_role:role,...(acquisition?{acquisition_mode:acquisition}:{})}}));
     });
   };
   parseFeatures("common_features",150,237,"common_");

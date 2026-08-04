@@ -53,18 +53,36 @@ test("Name control has explicit inert activation contract",async()=>{
   assert.match(html,/get\("name-select"\)\.addEventListener\("change",\s*updateOpen\)/);assert.match(html,/if\s*\(get\("name-open"\)\.getAttribute\("aria-disabled"\)\s*===\s*["']true["']\)/);
 });
 
-test("Name options use level progression and alphabetical same-level order in every rules area",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
+test("rendered Name options derive level-name-ID order from canonical data and rebuild with filters",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const groups=Object.fromEntries([...dom.window.document.querySelectorAll<HTMLOptGroupElement>("#name-select optgroup")].map(group=>[group.label,[...group.querySelectorAll("option")].map(option=>option.textContent)]));
-  assert.deepEqual(groups,{
-    "Common Features":["Example Play","How to Play This Subclass","Discipline Signature Save","Kinetic Mastery","Manifested Strike","Overload","Psi Reservoir","Psionic Discipline","Psionic Link","Signature Rider","Empathic Sense","Vanguard Training","Advanced Training Progression","Subclass Feature Reference"],
-    "Advanced Training":["Advanced Training I: Deflection Screen","Advanced Training II: Phase Step","Barrier","Beguile","Gravitic Press","Improved Phase Step","Inner Reserve","Mind Lock","Mind Shred","Overload Mastery II"],
-    Cryokinesis:["Glacial Spike","Snow Chains","Frozen Ground","Arctic Tempest","Absolute Zero"],
-    Pyrokinesis:["Ember Bolt","Thermal Fracture","Cinder Lance","Flare","Furnace Strike"],
-    Psychokinesis:["Telekinetic Shove","Vectored Thrust","Explosion/Implosion","Telekinetic Slam","Mass Levitation"],
-    Electrokinesis:["Static Discharge","Branching Bolt","Electron Burst","Forked Lightning","Ball Lightning"]
-  });
+  const document=dom.window.document,entityById=new Map(authority.entities.map(entity=>[entity.id,entity]));
+  const rulesAreas=authority.vocabularies.rules_areas!;const expectedGroupLabels=[...rulesAreas].sort((a,b)=>a.order-b.order).map(area=>area.label);
+  const groups=()=>[...document.querySelectorAll<HTMLOptGroupElement>("#name-select optgroup")];
+  assert.deepEqual(groups().map(group=>group.label),expectedGroupLabels);
+  for(const group of groups()){
+    const area=rulesAreas.find(value=>value.label===group.label)!;
+    const visibleFeatureIds=[...group.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.value).filter(id=>entityById.get(id)?.kind==="feature");
+    const expectedFeatureIds=authority.entities
+      .filter(entity=>entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area===area.id)
+      .sort((a,b)=>Number(a.level)-Number(b.level)||(a.title<b.title?-1:a.title>b.title?1:0)||(a.id<b.id?-1:a.id>b.id?1:0))
+      .map(entity=>entity.id);
+    assert.deepEqual(visibleFeatureIds,expectedFeatureIds,`${group.label} feature option order`);
+  }
+  const pyrokinesis=groups().find(group=>group.label==="Pyrokinesis")!;
+  const pyrokinesisIds=[...pyrokinesis.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.value);
+  assert.ok(pyrokinesisIds.indexOf("thermal_fracture")<pyrokinesisIds.indexOf("furnace_strike"));
+  const advanced=groups().find(group=>group.label==="Advanced Training")!;
+  assert.deepEqual([...advanced.querySelectorAll<HTMLOptionElement>(":scope > option")].slice(0,2).map(option=>option.textContent),["Deflection Screen","Phase Step"]);
+  assert.equal([...document.querySelectorAll<HTMLOptionElement>("#name-select option")].some(option=>option.textContent==="Advanced Training I: Deflection Screen"||option.textContent==="Advanced Training II: Phase Step"),false);
+  assert.equal(advanced.querySelector('option[value="advanced_deflection_screen"]')?.textContent,"Deflection Screen");
+  assert.equal(advanced.querySelector('option[value="advanced_phase_step"]')?.textContent,"Phase Step");
+  const area=document.querySelector('input[data-facet="rules_area"][value="pyrokinesis"]') as HTMLInputElement;
+  area.checked=true;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
+  assert.deepEqual(groups().map(group=>group.label),["Pyrokinesis"]);
+  assert.deepEqual([...groups()[0]!.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.value),pyrokinesisIds);
+  area.checked=false;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
+  assert.deepEqual(groups().map(group=>group.label),expectedGroupLabels);
   await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
 });
 

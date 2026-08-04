@@ -8,11 +8,7 @@ export function clientRuntime(model: any): void {
   const entities: Map<string,any> = new Map(model.authority.entities.map((entity: any) => [entity.id, entity]));
   const categories: Map<string,any> = new Map(model.authority.navigation.categories.map((category: any) => [category.id, category]));
   const indexed = model.filterIndex.entities;
-  const nameSectionOrder:Record<string,number>={foundation:0,levelled:1,reference:2};
-  const compareNameEntries=(a:any,b:any)=>((nameSectionOrder[a.progression_section]??Number.MAX_SAFE_INTEGER)-(nameSectionOrder[b.progression_section]??Number.MAX_SAFE_INTEGER))
-    ||((a.minimum_level??Number.MAX_SAFE_INTEGER)-(b.minimum_level??Number.MAX_SAFE_INTEGER))
-    ||(a.title<b.title?-1:a.title>b.title?1:0)
-    ||(a.id<b.id?-1:a.id>b.id?1:0);
+  const indexedById:Map<string,any>=new Map(indexed.map((item:any)=>[item.id,item]));
   const state: any = { category: model.authority.navigation.default_category_id, topic: "", classifications: {}, entity: null, resultRoute: null, focusOrigin: "fragment" };
   const category = () => categories.get(state.category) as any;
   const categoryTopics = (categoryId=state.category) => [...(categories.get(categoryId)?.topics ?? [])].sort((a:any,b:any)=>a.order-b.order);
@@ -87,7 +83,7 @@ export function clientRuntime(model: any): void {
   }
   function renderNameOptions(): void {
     const select=get("name-select") as HTMLSelectElement;select.textContent="";const placeholder=document.createElement("option");placeholder.value="";placeholder.textContent=String(ui.get("name_placeholder"));select.append(placeholder);
-    for(const area of areaValues){const group=document.createElement("optgroup");group.label=area.label;const names=indexed.filter((candidate:any)=>candidate.primary_rules_area===area.id).sort(compareNameEntries);for(const item of names){const option=document.createElement("option");option.value=item.id;option.textContent=item.title;group.append(option);}select.append(group);}
+    for(const area of model.filterIndex.name_groups){const names=area.entity_ids.map((id:string)=>indexedById.get(id)).filter((item:any)=>item&&match(item));if(!names.length)continue;const group=document.createElement("optgroup");group.label=area.label;for(const item of names){const option=document.createElement("option");option.value=item.id;option.textContent=item.title;group.append(option);}select.append(group);}
     resetName();
   }
   function readFacetControls(): void {
@@ -112,7 +108,7 @@ export function clientRuntime(model: any): void {
   }
   function resultArea(item:any):string{return item.primary_rules_area;}
   function openEntity(id:string,origin:"name_open"|"result"):void {
-    const item=indexed.find((candidate:any)=>candidate.id===id);if(!item)return;const area=origin==="name_open"?item.primary_rules_area:resultArea(item);state.category=area;state.topic=item.routes[area];state.classifications={};state.entity=id;state.resultRoute=item.routes[area];state.focusOrigin=origin;writeHistory("push");renderNavigation();renderFacets();renderResults(false);resetName();renderTopic(id);if(origin==="name_open")announce(String(ui.get("filter_cleared")));
+    const item=indexedById.get(id);if(!item)return;const area=origin==="name_open"?item.primary_rules_area:resultArea(item);state.category=area;state.topic=item.routes[area];state.classifications={};state.entity=id;state.resultRoute=item.routes[area];state.focusOrigin=origin;writeHistory("push");renderNavigation();renderFacets();renderResults(false);renderNameOptions();renderTopic(id);if(origin==="name_open")announce(String(ui.get("filter_cleared")));
   }
   function parseFragment():boolean {
     let corrected=false;const parameters=new URLSearchParams(location.hash.slice(1));const requestedCategory=parameters.get("category");const requestedTopic=parameters.get("topic");if(normalizeNavigation(requestedCategory,requestedTopic))corrected=true;state.classifications={};
@@ -128,6 +124,6 @@ export function clientRuntime(model: any): void {
   get("topic-select").addEventListener("change",event=>{normalizeNavigation(state.category,(event.target as HTMLSelectElement).value);state.entity=null;state.resultRoute=null;state.focusOrigin="topic";renderTopic();writeHistory("push");announce(topic()?.title??category().label);});
   get("name-select").addEventListener("change",updateOpen);
   get("name-open").addEventListener("click",()=>{if(get("name-open").getAttribute("aria-disabled")==="true")return;openEntity(selectedName(),"name_open");});
-  get("facet-controls").addEventListener("change",()=>{readFacetControls();resetName();state.entity=null;state.focusOrigin="result";writeHistory("push");renderResults(true);});
+  get("facet-controls").addEventListener("change",()=>{readFacetControls();renderNameOptions();state.entity=null;state.focusOrigin="result";writeHistory("push");renderResults(true);});
   addEventListener("popstate",event=>restore(event.state));initialize();
 }

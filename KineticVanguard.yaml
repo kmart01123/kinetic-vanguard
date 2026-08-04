@@ -598,7 +598,7 @@ entities:
                 text: 5th
                 type: text
             - - source_unit_id: u_l0277_c011_table_cell_22e17bd74f
-                text: "Advanced Training I: Deflection Screen"
+                text: Deflection Screen
                 type: text
           - - - source_unit_id: u_l0278_c003_table_cell_afdd55851b
                 text: 7th
@@ -1864,7 +1864,7 @@ entities:
     content:
       - inlines:
           - source_unit_id: u_l0238_c001_paragraph_e3f28b3d28
-            text: "Advanced Training I: Deflection Screen · 5th Level · 1 Psi · Reaction"
+            text: "Deflection Screen · 5th Level · 1 Psi · Reaction"
             type: text
         type: paragraph
       - inlines:
@@ -1874,7 +1874,7 @@ entities:
         type: paragraph
       - inlines:
           - source_unit_id: u_l0242_c001_paragraph_46a6b87307
-            text: "Advanced Training II: Phase Step · 10th Level · 1 Psi · Bonus Action"
+            text: "Phase Step · 10th Level · 1 Psi · Bonus Action"
             type: text
         type: paragraph
       - inlines:
@@ -2797,7 +2797,7 @@ entities:
       primary_rules_area: advanced_training
     psi_cost: 1
     publishable: true
-    title: "Advanced Training I: Deflection Screen"
+    title: Deflection Screen
   - activation: bonus_action
     classifications:
       acquisition_mode: granted
@@ -2841,7 +2841,7 @@ entities:
       primary_rules_area: advanced_training
     psi_cost: 1
     publishable: true
-    title: "Advanced Training II: Phase Step"
+    title: Phase Step
   - activation: on_hit
     classifications:
       acquisition_mode: selectable
@@ -3280,12 +3280,12 @@ navigation:
             - advanced_deflection_screen
           id: advanced_training_advanced_deflection_screen_topic
           order: 0
-          title: "Advanced Training I: Deflection Screen"
+          title: Deflection Screen
         - entity_ids:
             - advanced_phase_step
           id: advanced_training_advanced_phase_step_topic
           order: 1
-          title: "Advanced Training II: Phase Step"
+          title: Phase Step
         - entity_ids:
             - advanced_mind_shred
           id: advanced_training_advanced_mind_shred_topic
