@@ -142,7 +142,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
   const result=await executeBuild("prototype");
   const base=pathToFileURL(result.htmlPath).href;
   const exampleUrl=base+"#category=common_features&topic=common_features_common_example_play_topic";
-  const glacialUrl=base+"#category=cryokinesis&topic=cryokinesis_glacial_spike_topic";
+  const glacialUrl=base+"#category=common_features&topic=common_features_common_overload_topic";
   const viewports=[
     {name:"wide desktop",width:1600,height:1000},
     {name:"standard laptop",width:1366,height:900},
@@ -215,7 +215,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
         assert.equal(rendered.documentOverflow,0,size+": no horizontal page overflow");
         await page.goto(glacialUrl);
         const inline=await page.evaluate(()=>{
-          const article=document.querySelector<HTMLElement>("#entity-glacial_spike")!;
+          const article=document.querySelector<HTMLElement>("#entity-common_overload")!;
           const example=article.querySelector<HTMLElement>(".inline-example")!;
           const articleRect=article.getBoundingClientRect(),rect=example.getBoundingClientRect(),style=getComputedStyle(example);
           return{count:article.querySelectorAll(".inline-example").length,tier:example.dataset.overloadTier,absentFromExamplePlay:document.querySelector("#entity-common_example_play .inline-example")===null,contained:rect.left>=articleRect.left&&rect.right<=articleRect.right&&example.scrollWidth<=example.clientWidth,styled:style.backgroundColor!=="rgba(0, 0, 0, 0)"&&parseFloat(style.borderInlineStartWidth)>0,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
