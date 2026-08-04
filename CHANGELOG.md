@@ -5,6 +5,7 @@
 ### Fixed
 
 - Standardized mathematical addition notation in tables on the literal ASCII `+` and added source-to-render regression coverage to prevent textual or styled substitutes.
+- Ordered the feature Name selector by level progression, with alphabetical ordering among entries at the same level.
 
 ## 13.0.0 — 2026-08-03
 

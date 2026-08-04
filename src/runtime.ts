@@ -8,6 +8,11 @@ export function clientRuntime(model: any): void {
   const entities: Map<string,any> = new Map(model.authority.entities.map((entity: any) => [entity.id, entity]));
   const categories: Map<string,any> = new Map(model.authority.navigation.categories.map((category: any) => [category.id, category]));
   const indexed = model.filterIndex.entities;
+  const nameSectionOrder:Record<string,number>={foundation:0,levelled:1,reference:2};
+  const compareNameEntries=(a:any,b:any)=>((nameSectionOrder[a.progression_section]??Number.MAX_SAFE_INTEGER)-(nameSectionOrder[b.progression_section]??Number.MAX_SAFE_INTEGER))
+    ||((a.minimum_level??Number.MAX_SAFE_INTEGER)-(b.minimum_level??Number.MAX_SAFE_INTEGER))
+    ||(a.title<b.title?-1:a.title>b.title?1:0)
+    ||(a.id<b.id?-1:a.id>b.id?1:0);
   const state: any = { category: model.authority.navigation.default_category_id, topic: "", classifications: {}, entity: null, resultRoute: null, focusOrigin: "fragment" };
   const category = () => categories.get(state.category) as any;
   const categoryTopics = (categoryId=state.category) => [...(categories.get(categoryId)?.topics ?? [])].sort((a:any,b:any)=>a.order-b.order);
@@ -82,7 +87,7 @@ export function clientRuntime(model: any): void {
   }
   function renderNameOptions(): void {
     const select=get("name-select") as HTMLSelectElement;select.textContent="";const placeholder=document.createElement("option");placeholder.value="";placeholder.textContent=String(ui.get("name_placeholder"));select.append(placeholder);
-    for(const area of areaValues){const group=document.createElement("optgroup");group.label=area.label;const names=indexed.filter((candidate:any)=>candidate.primary_rules_area===area.id).sort((a:any,b:any)=>a.title<b.title?-1:a.title>b.title?1:a.id<b.id?-1:a.id>b.id?1:0);for(const item of names){const option=document.createElement("option");option.value=item.id;option.textContent=item.title;group.append(option);}select.append(group);}
+    for(const area of areaValues){const group=document.createElement("optgroup");group.label=area.label;const names=indexed.filter((candidate:any)=>candidate.primary_rules_area===area.id).sort(compareNameEntries);for(const item of names){const option=document.createElement("option");option.value=item.id;option.textContent=item.title;group.append(option);}select.append(group);}
     resetName();
   }
   function readFacetControls(): void {

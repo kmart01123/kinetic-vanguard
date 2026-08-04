@@ -53,6 +53,21 @@ test("Name control has explicit inert activation contract",async()=>{
   assert.match(html,/get\("name-select"\)\.addEventListener\("change",\s*updateOpen\)/);assert.match(html,/if\s*\(get\("name-open"\)\.getAttribute\("aria-disabled"\)\s*===\s*["']true["']\)/);
 });
 
+test("Name options use level progression and alphabetical same-level order in every rules area",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
+  const groups=Object.fromEntries([...dom.window.document.querySelectorAll<HTMLOptGroupElement>("#name-select optgroup")].map(group=>[group.label,[...group.querySelectorAll("option")].map(option=>option.textContent)]));
+  assert.deepEqual(groups,{
+    "Common Features":["Example Play","How to Play This Subclass","Discipline Signature Save","Kinetic Mastery","Manifested Strike","Overload","Psi Reservoir","Psionic Discipline","Psionic Link","Signature Rider","Empathic Sense","Vanguard Training","Advanced Training Progression","Subclass Feature Reference"],
+    "Advanced Training":["Advanced Training I: Deflection Screen","Advanced Training II: Phase Step","Barrier","Beguile","Gravitic Press","Improved Phase Step","Inner Reserve","Mind Lock","Mind Shred","Overload Mastery II"],
+    Cryokinesis:["Glacial Spike","Snow Chains","Frozen Ground","Arctic Tempest","Absolute Zero"],
+    Pyrokinesis:["Ember Bolt","Thermal Fracture","Cinder Lance","Flare","Furnace Strike"],
+    Psychokinesis:["Telekinetic Shove","Vectored Thrust","Explosion/Implosion","Telekinetic Slam","Mass Levitation"],
+    Electrokinesis:["Static Discharge","Branching Bolt","Electron Burst","Forked Lightning","Ball Lightning"]
+  });
+  await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
+});
+
 test("Example Play keeps four full turns and Overload keeps one Glacial example",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_common_example_play_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const article=dom.window.document.querySelector<HTMLElement>("#entity-common_example_play")!;const sections=[...article.querySelectorAll<HTMLElement>(":scope > .example-play-flow > .example-play-section")];
