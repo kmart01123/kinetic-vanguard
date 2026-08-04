@@ -1,12 +1,14 @@
-# Kinetic Vanguard schema-first reference
+# Kinetic Vanguard v13 rules reference
 
-This repository implements the prototype profile authorized by ADR-0001 revision 21.
+This repository implements the schema-first architecture accepted by ADR-0001 revision 22.
 
-`KineticVanguard.yaml` is the only v13 rules authority. The legacy `Kinetic_Vanguard.md` is used only by the one-time migration command and is deliberately absent from `build/inputs.json`.
+`KineticVanguard.yaml` is the only v13 rules authority. The legacy `Kinetic_Vanguard.md` is represented only through the checked-in migration inventory and provenance records and is deliberately absent from `build/inputs.json`.
 
-## Development status
+## Release status
 
-The current rules version is **v13**. It is in stabilization, bug-squish, and presentation-polish work, with the current focus on rules clarity, layout integrity, consistency, and validation. The generated publication remains a non-release prototype; v13 is not finalized or released.
+Kinetic Vanguard **v13.0.0** is approved for release. The publication is one self-contained, offline-capable file: `KineticVanguard.html`.
+
+Revision 22 closes the ADR review cycle and authorizes v13.0 to ship behind the automated product gate. The full schema, semantic, architecture, publication, filter, determinism, and Chromium/Firefox layout suites remain release-blocking. Unperformed human migration and evidence work is documented as a v13.0 waiver rather than misrepresented as completed review.
 
 ## Commands
 
@@ -17,30 +19,26 @@ npm run validate
 npm test
 npm run build
 npm run test:determinism
+npm run test:layout
 ```
 
-`npm run build` writes the self-contained, offline-capable prototype to `artifacts/KineticVanguard.prototype.html`. It always carries a visible and accessibility-exposed `NON-RELEASE PROTOTYPE` identity.
+`npm run build` writes the development publication to `artifacts/KineticVanguard.prototype.html`. It always carries a visible and accessibility-exposed `NON-RELEASE PROTOTYPE` identity.
 
-`npm run migrate` re-enumerates the pinned master and rewrites the provisional YAML plus migration inventory files. It is a migration-development command, not a normal build stage. Do not run it after humans begin disposition review without following the ADR’s inventory-version and amendment rules.
+An authorized release build uses:
 
-## Release status
+```text
+KV_RELEASE_APPROVED=1 npm run build:release
+```
 
-`npm run build:release` intentionally fails closed. A release cannot be generated until maintainers provide all human and environment gates required by the ADR, including:
+It writes `artifacts/KineticVanguard.html` with `release_status: release` and no prototype banner. GitHub Actions runs the authorized release build only after all verification steps pass and uploads the publication plus its build manifest and integrity reports as the `kinetic-vanguard-v13.0.0` artifact.
 
-- dispositions and content-scoped attestations for all 548 source units;
-- migration acceptance and entity-origin review;
-- independent classification/correctness review;
-- accepted content-evidence policy binding;
-- pinned accessibility scanner, browser, and assistive-technology versions plus completed reports;
-- immutable base-container identity and release evidence.
-
-The deployable directory is never touched by a prototype build.
+`npm run migrate` re-enumerates the pinned master and rewrites the provisional YAML plus migration inventory files. It is a migration-development command, not a normal build stage. Do not run it casually after manual provenance work begins.
 
 ## Architecture
 
 The build parses restricted YAML 1.2, validates the canonical JSON Schema, performs semantic navigation/classification/origin checks, constructs immutable filter and route projections, and emits:
 
-- the prototype HTML;
+- release or prototype HTML;
 - effective migration ledger;
 - filtered-search integrity report;
 - coverage/provenance ledger;
@@ -55,3 +53,7 @@ The Rules area filter is canonical: it matches only an entity’s `presentation_
 Filtered results use this exact comparator: Rules area vocabulary order, progression section (`foundation`, `levelled`, `reference`), earliest `level`, primary-area topic/source order, feature-role vocabulary order, title codepoint order, then entity-ID codepoint order. The Name selector remains alphabetical within each Rules area.
 
 `level` is the structured earliest acquisition/availability level. Selectable high-tier Advanced Training entries therefore use level 15, except Overload Mastery II, whose Psionic Apex prerequisite makes its earliest level 18. An entity without a level must declare `progression_section`; foundational or automatically applicable mechanics sort before level-gated entries, while supplemental/reference entries sort after them. Semantic validation rejects missing or conflicting section metadata.
+
+## Known v13.0.1 follow-up
+
+Forked Lightning needs explicit failed-save wording for non-primary targets. The issue is tracked separately and does not block the v13.0 publication.
