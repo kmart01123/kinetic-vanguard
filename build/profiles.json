@@ -10,8 +10,9 @@
     "release": {
       "release_status": "release",
       "output": "artifacts/KineticVanguard.html",
-      "require_accepted_migration": true,
-      "require_release_evidence": true
+      "require_accepted_migration": false,
+      "require_release_evidence": false,
+      "release_basis": "ADR-0001-r22-accepted-v13-release.md"
     }
   }
 }
