@@ -156,12 +156,6 @@ test("table formulae use literal ASCII + in source and rendered output",async()=
   const canonicalCells=tableEntities.flatMap(entity=>entity.content.filter(block=>block.type==="table").flatMap(block=>[...(block.headers??[]),...(block.rows??[]).flat()]).map(cell=>cell.map(node=>node.text??node.label??String(node.value?.value??"")).join("")));
   assertAsciiTableAddition(canonicalCells,"canonical authority");
   assert.ok(canonicalCells.includes("Rider cost + feature cost"));
-  const legacy=await readFile("Kinetic_Vanguard.md","utf8");
-  const legacyCells=legacy.split("\n").filter(line=>/^\s*\|/.test(line)).flatMap(line=>line.split("|").slice(1,-1).map(cell=>cell.trim()));
-  assertAsciiTableAddition(legacyCells,"legacy Markdown");
-  const inventory=JSON.parse(await readFile("migration/source-units.json","utf8"));
-  const compiledCells=inventory.units.filter((unit:any)=>unit.type==="table_cell").map((unit:any)=>unit.normalized_source as string);
-  assertAsciiTableAddition(compiledCells,"compiled migration inventory");
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   for(const entity of tableEntities){
     const route=authority.navigation.categories.flatMap(category=>category.topics.map(topic=>({category,topic}))).find(({topic})=>topic.entity_ids.includes(entity.id))!;

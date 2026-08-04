@@ -1,5 +1,15 @@
 # Changelog
 
+## 13.1.0 — Unreleased
+
+### Changed
+
+- Established `KineticVanguard.yaml` as the sole maintained rules-authoring source.
+
+### Removed
+
+- Retired the completed v12.1.0 Markdown migration source, migration command, migration-only records, and obsolete ADR revision files from the active repository.
+
 ## 13.0.1 — 2026-08-04
 
 ### Fixed

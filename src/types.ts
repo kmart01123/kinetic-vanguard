@@ -38,7 +38,6 @@ export interface InlineNode {
   type: "text" | "emphasis" | "strong" | "code" | "term_reference" | "typed_value";
   text?: string;
   label?: string;
-  source_unit_id: string;
   value?: { kind: string; value?: string | number; count?: number; sides?: number; modifier?: number; unit?: string };
 }
 
@@ -86,7 +85,6 @@ export interface Entity {
     primary_rules_area: string;
     canonical_topic_by_area: Record<string, string>;
   };
-  origins: Array<{ source_unit_ids: string[] }>;
   related_entity_ids?: string[];
 }
 
@@ -110,9 +108,3 @@ export interface Authority {
 }
 
 export interface Diagnostic { severity: "error" | "warning"; code: string; message: string; path?: string }
-
-export interface SourceSpan { start: number; end: number }
-export interface SourceUnit {
-  id: string; type: string; spans: SourceSpan[]; location: { line: number; column: number };
-  content_sha256: string; normalized_source: string; inline_metadata: { link_destinations: string[] };
-}

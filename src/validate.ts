@@ -1,39 +1,10 @@
-import { readFile } from "node:fs/promises";
-import type { Authority, Diagnostic, Entity } from "./types.js";
-import { hashFile, sha256, prettyCanonicalJson, codepointCompare } from "./canonical.js";
-
-type LedgerEntry={ledger_entry_id:string;source_unit_id:string;workflow_state:string;disposition:string|null;destination_entity_ids:string[]};
-export interface MigrationState { manifest:Record<string,any>; inventory:Record<string,any>; coverage:Record<string,any>; ledger:Record<string,any>; effective:Record<string,any>; accepted:boolean }
-
-const QUALIFYING=new Set(["transposed","consolidated","rewritten_equivalent","corrected_by_rules_decision"]);
+import type { Authority, Diagnostic } from "./types.js";
+import { codepointCompare } from "./canonical.js";
 
 function duplicateDiagnostics(values:string[],code:string,label:string):Diagnostic[]{const seen=new Set<string>();const diagnostics:Diagnostic[]=[];for(const value of values){if(seen.has(value))diagnostics.push({severity:"error",code,message:`Duplicate ${label}: ${value}`});seen.add(value);}return diagnostics;}
 function vocabulary(authority:Authority,name:string):Set<string>{return new Set((authority.vocabularies[name]??[]).map(value=>value.id));}
 
-export async function validateMigration(requireAccepted:boolean):Promise<{state:MigrationState;diagnostics:Diagnostic[]}>{
-  const diagnostics:Diagnostic[]=[];
-  const [manifestText,inventoryText,coverageText,ledgerText]=await Promise.all(["migration/manifest.json","migration/source-units.json","migration/source-coverage.json","migration/disposition-ledger.json"].map(path=>readFile(path,"utf8")));
-  const manifest=JSON.parse(manifestText!),inventory=JSON.parse(inventoryText!),coverage=JSON.parse(coverageText!),ledger=JSON.parse(ledgerText!);
-  const checks:Array<[string,string,string]>=[
-    [manifest.source_unit_inventory.path,manifest.source_unit_inventory.sha256,"inventory"],
-  ];
-  checks.push([manifest.source_coverage.path,manifest.source_coverage.sha256,"coverage"],[manifest.disposition_ledger.path,manifest.disposition_ledger.sha256,"ledger"]);
-  for(const [path,expected,label] of checks)if(await hashFile(path)!==expected)diagnostics.push({severity:"error",code:"migration.hash",message:`Migration ${label} hash does not match manifest`,path});
-  if(coverage.source_sha256!==manifest.migration_source_sha256||inventory.source_sha256!==manifest.migration_source_sha256||ledger.source_sha256!==manifest.migration_source_sha256)diagnostics.push({severity:"error",code:"migration.source_hash",message:"Migration artifacts disagree on pinned source hash"});
-  let cursor=0;for(const span of coverage.spans as Array<{start:number;end:number}>){if(span.start!==cursor)diagnostics.push({severity:"error",code:"migration.coverage",message:`Coverage gap or overlap at byte ${cursor}`});cursor=span.end;}
-  if(cursor!==coverage.total_byte_count||coverage.covered_byte_count!==coverage.total_byte_count||coverage.gap_count!==0||coverage.overlap_count!==0)diagnostics.push({severity:"error",code:"migration.coverage",message:"Source coverage is not an exact partition"});
-  const unitIds=(inventory.units as Array<{id:string}>).map(unit=>unit.id);diagnostics.push(...duplicateDiagnostics(unitIds,"migration.unit_duplicate","source unit ID"));
-  const entries=ledger.entries as LedgerEntry[];diagnostics.push(...duplicateDiagnostics(entries.map(entry=>entry.source_unit_id),"migration.ledger_duplicate","ledger source unit"));
-  if(new Set(entries.map(entry=>entry.source_unit_id)).size!==new Set(unitIds).size||unitIds.some(id=>!entries.some(entry=>entry.source_unit_id===id)))diagnostics.push({severity:"error",code:"migration.ledger_coverage",message:"Disposition ledger does not cover every inventory unit exactly once"});
-  const pending=entries.filter(entry=>entry.workflow_state==="pending_review"||!entry.disposition);
-  if(pending.length)diagnostics.push({severity:requireAccepted?"error":"warning",code:"migration.pending_review",message:`${pending.length} source units remain pending human disposition review`});
-  const effective={format_version:"1.0.0",source_sha256:manifest.migration_source_sha256,entries:entries.map(entry=>({source_unit_id:entry.source_unit_id,terminal_id:entry.ledger_entry_id,effective_disposition:entry.disposition,destination_entity_ids:entry.destination_entity_ids,amendment_chain:[]})).sort((a,b)=>codepointCompare(a.source_unit_id,b.source_unit_id))};
-  const accepted=pending.length===0&&Boolean(manifest.migration_acceptance);
-  if(requireAccepted&&!manifest.migration_acceptance)diagnostics.push({severity:"error",code:"migration.not_accepted",message:"Migration manifest has no human-reviewed acceptance record"});
-  return{state:{manifest,inventory,coverage,ledger,effective,accepted},diagnostics};
-}
-
-export function validateSemantics(authority:Authority,migration:MigrationState,requireAccepted:boolean):Diagnostic[]{
+export function validateSemantics(authority:Authority):Diagnostic[]{
   const diagnostics:Diagnostic[]=[];
   const entities=new Map(authority.entities.map(entity=>[entity.id,entity]));
   diagnostics.push(...duplicateDiagnostics(authority.entities.map(entity=>entity.id),"entity.duplicate","entity ID"));
@@ -49,8 +20,6 @@ export function validateSemantics(authority:Authority,migration:MigrationState,r
     for(const topic of category.topics){if(topicToArea.has(topic.id))diagnostics.push({severity:"error",code:"navigation.topic_duplicate",message:`Duplicate topic ID ${topic.id}`});topicToArea.set(topic.id,category.id);topicEntities.set(topic.id,new Set(topic.entity_ids));for(const id of topic.entity_ids)if(!entities.has(id))diagnostics.push({severity:"error",code:"navigation.entity_unknown",message:`Topic ${topic.id} references unknown entity ${id}`});}
   }
   const rulesAreas=vocabulary(authority,"rules_areas"),entityKinds=vocabulary(authority,"entity_kinds"),roles=vocabulary(authority,"feature_roles"),modes=vocabulary(authority,"acquisition_modes");
-  const inventoryIds=new Set((migration.inventory.units as Array<{id:string}>).map(unit=>unit.id));
-  const effectiveByUnit=new Map((migration.effective.entries as Array<any>).map(entry=>[entry.source_unit_id,entry]));
   const titleByGroup=new Set<string>();
   for(const [index,entity] of authority.entities.entries()){
     const path=`/entities/${index}`;
@@ -70,12 +39,11 @@ export function validateSemantics(authority:Authority,migration:MigrationState,r
     for(const [area,topicIds] of topicsByArea)if(topicIds.length>1){const canonical=entity.presentation_metadata.canonical_topic_by_area[area];if(!canonical||!topicIds.includes(canonical))diagnostics.push({severity:"error",code:"presentation.canonical_topic",message:`${entity.id}: area ${area} needs one valid canonical topic`,path});}
     for(const [area,topicId] of Object.entries(entity.presentation_metadata.canonical_topic_by_area))if(!topicsByArea.get(area)?.includes(topicId))diagnostics.push({severity:"error",code:"presentation.canonical_topic_extra",message:`${entity.id}: invalid canonical mapping ${area} -> ${topicId}`,path});
     const titleKey=`${entity.presentation_metadata.primary_rules_area}\0${entity.title}`;if(titleByGroup.has(titleKey))diagnostics.push({severity:"error",code:"presentation.name_duplicate",message:`Duplicate Name label ${entity.title} in ${entity.presentation_metadata.primary_rules_area}`,path});titleByGroup.add(titleKey);
-    const originIds=entity.origins.flatMap(origin=>origin.source_unit_ids);if(!originIds.length)diagnostics.push({severity:"error",code:"origin.missing",message:`${entity.id}: missing origin`,path});
-    for(const id of originIds){if(!inventoryIds.has(id))diagnostics.push({severity:"error",code:"origin.unknown",message:`${entity.id}: unknown origin unit ${id}`,path});if(requireAccepted&&!QUALIFYING.has(effectiveByUnit.get(id)?.effective_disposition))diagnostics.push({severity:"error",code:"origin.unaccepted",message:`${entity.id}: origin ${id} lacks qualifying accepted disposition`,path});}
     if(!entity.content.length)diagnostics.push({severity:"error",code:"coverage.empty_entity",message:`${entity.id}: no rule-significant content`,path});
-    const contentOriginIds=new Set<string>();const addInlines=(nodes:Entity["content"][number]["inlines"])=>nodes?.forEach(node=>contentOriginIds.add(node.source_unit_id));const visitBlock=(block:Entity["content"][number])=>{addInlines(block.inlines);addInlines(block.heading);addInlines(block.title);block.items?.forEach(addInlines);block.headers?.forEach(addInlines);block.rows?.forEach(row=>row.forEach(addInlines));block.body?.forEach(visitBlock);};entity.content.forEach(visitBlock);
-    for(const id of contentOriginIds)if(!originIds.includes(id))diagnostics.push({severity:"error",code:"coverage.origin",message:`${entity.id}: rendered leaf ${id} is absent from entity origins`,path});
   }
+  diagnostics.push(...duplicateDiagnostics((authority.audits??[]).map(audit=>audit.id),"audit.duplicate","audit ID"));
+  for(const audit of authority.audits??[])for(const subjectId of audit.subject_ids)if(!entities.has(subjectId))diagnostics.push({severity:"error",code:"audit.subject_unknown",message:`${audit.id}: unknown subject ${subjectId}`});
+  const authorityAudit=(authority.audits??[]).find(audit=>audit.id==="yaml_rules_authority");const authoredEntityIds=[...entities.keys()].sort(codepointCompare);const auditedEntityIds=[...new Set(authorityAudit?.subject_ids??[])].sort(codepointCompare);if(!authorityAudit||JSON.stringify(auditedEntityIds)!==JSON.stringify(authoredEntityIds))diagnostics.push({severity:"error",code:"authority.coverage",message:"YAML authority audit must cover every publishable entity exactly once"});
   for(const facet of authority.facets){if(!authority.vocabularies[facet.vocabulary])diagnostics.push({severity:"error",code:"facet.vocabulary",message:`Facet ${facet.id} references unknown vocabulary ${facet.vocabulary}`});}
   return diagnostics;
 }

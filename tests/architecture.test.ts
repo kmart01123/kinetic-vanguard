@@ -1,35 +1,48 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { executeBuild } from "../src/build.js";
 import { loadAuthority } from "../src/load.js";
-import { validateMigration, validateSemantics } from "../src/validate.js";
+import { validateSemantics } from "../src/validate.js";
 
-test("authority is schema-valid and semantically valid for prototype",async()=>{
-  const loaded=await loadAuthority();const migration=await validateMigration(false);
-  const diagnostics=[...loaded.diagnostics,...migration.diagnostics,...validateSemantics(loaded.authority,migration.state,false)];
-  assert.deepEqual(diagnostics.filter(item=>item.severity==="error"),[]);
-  assert.ok(diagnostics.some(item=>item.code==="migration.pending_review"));
+const assertAbsent=async(path:string)=>assert.rejects(access(path),(error:any)=>error?.code==="ENOENT");
+async function filesUnder(root:string):Promise<string[]>{const entries=await readdir(root,{withFileTypes:true});const files:string[]=[];for(const entry of entries){const path=join(root,entry.name);if(entry.isDirectory())files.push(...await filesUnder(path));else files.push(path);}return files;}
+
+test("YAML authority is schema-valid, semantically valid, and complete",async()=>{
+  const loaded=await loadAuthority();const diagnostics=[...loaded.diagnostics,...validateSemantics(loaded.authority)];
+  assert.deepEqual(diagnostics,[]);
+  assert.equal(loaded.authority.rules_version,"13.1.0");
+  const audit=loaded.authority.audits?.find(item=>item.id==="yaml_rules_authority")!;
+  assert.deepEqual([...audit.subject_ids].sort(),loaded.authority.entities.map(entity=>entity.id).sort());
 });
 
-test("legacy Markdown is inherited provenance, never a direct input",async()=>{
-  const manifest=JSON.parse(await readFile("build/inputs.json","utf8"));
-  assert.ok(!manifest.inputs.some((input:any)=>input.path==="Kinetic_Vanguard.md"));
-  const migration=JSON.parse(await readFile("migration/manifest.json","utf8"));
-  assert.equal(migration.migration_source_filename,"Kinetic_Vanguard.md");
+test("retired migration sources are absent from the active architecture",async()=>{
+  await Promise.all([assertAbsent("Kinetic_Vanguard.md"),assertAbsent("src/migrate.ts"),assertAbsent("migration")]);
+  const rootFiles=await readdir(".");assert.deepEqual(rootFiles.filter(path=>/^ADR-0001.*\.md$/.test(path)),[]);
+  const packageJson=JSON.parse(await readFile("package.json","utf8"));assert.equal(packageJson.scripts.migrate,undefined);
+  const inputs=JSON.parse(await readFile("build/inputs.json","utf8")).inputs as Array<{path:string;role:string}>;
+  assert.deepEqual(inputs.filter(input=>input.role==="rules_authority").map(input=>input.path),["KineticVanguard.yaml"]);
+  assert.ok(inputs.every(input=>!/(?:^|\/)migration(?:\/|$)|Kinetic_Vanguard\.md|ADR-0001|src\/migrate/.test(input.path)));
+  const productionFiles=(await Promise.all(["src","build","schema","review","release","policy",".github"].map(filesUnder))).flat();
+  for(const path of productionFiles)assert.doesNotMatch(await readFile(path,"utf8"),/Kinetic_Vanguard\.md|ADR-0001|src\/migrate|npm run migrate/,path);
+  assert.match(await readFile("CHANGELOG.md","utf8"),/migration/i);
 });
 
-test("source coverage is exact",async()=>{
-  const coverage=JSON.parse(await readFile("migration/source-coverage.json","utf8"));let cursor=0;
-  for(const span of coverage.spans){assert.equal(span.start,cursor);cursor=span.end;}
-  assert.equal(cursor,coverage.total_byte_count);assert.equal(coverage.covered_byte_count,coverage.total_byte_count);assert.equal(coverage.gap_count,0);assert.equal(coverage.overlap_count,0);
+test("prototype and release builds reflect direct YAML edits",async()=>{
+  const temporary=await mkdtemp(join(tmpdir(),"kv-yaml-authority-"));const authorityPath=join(temporary,"KineticVanguard.edited.yaml");const source=await readFile("KineticVanguard.yaml","utf8");const edited=source.replace("title: Kinetic Vanguard","title: Kinetic Vanguard YAML Edit Probe");assert.notEqual(edited,source);await writeFile(authorityPath,edited);
+  const previousApproval=process.env.KV_RELEASE_APPROVED;
+  try{
+    const prototypeRoot=join(temporary,"prototype"),releaseRoot=join(temporary,"release");
+    const prototype=await executeBuild("prototype",prototypeRoot,authorityPath);process.env.KV_RELEASE_APPROVED="1";const release=await executeBuild("release",releaseRoot,authorityPath);
+    for(const result of [prototype,release]){const html=await readFile(result.htmlPath,"utf8");assert.match(html,/Kinetic Vanguard YAML Edit Probe/);assert.doesNotMatch(html,/Kinetic_Vanguard\.md|npm run migrate|edit (?:the )?Markdown/i);assert.equal(result.manifest.build_identity.canonical_rules_authority,authorityPath);assert.deepEqual(result.manifest.declared_inputs.filter((input:any)=>input.role==="rules_authority").map((input:any)=>input.path),[authorityPath]);}
+    const coverage=JSON.parse(await readFile(join(prototypeRoot,"coverage-ledger.json"),"utf8"));const {authority}=await loadAuthority(authorityPath);assert.equal(coverage.entity_count,authority.entities.length);assert.deepEqual(coverage.entities.map((entity:any)=>entity.entity_id),authority.entities.map(entity=>entity.id));assert.ok(coverage.entities.every((entity:any)=>entity.content_block_count>0&&entity.destinations.length>0));
+  }finally{if(previousApproval===undefined)delete process.env.KV_RELEASE_APPROVED;else process.env.KV_RELEASE_APPROVED=previousApproval;await rm(temporary,{recursive:true,force:true});}
 });
-
 test("Manifested Strike owns its progression immediately after the core rule",async()=>{
   const expectedRows=[["3–4","1d6"],["5–10","1d8"],["11–16","1d10"],["17–20","1d12"]] as const;
   const expectedProse="Manifested Strike die by level: 1d6 (3rd–4th) → 1d8 (5th–10th) → 1d10 (11th–16th) → 1d12 (17th–20th)";
-  const source=await readFile("Kinetic_Vanguard.md","utf8");
-  for(const [level,die] of expectedRows)assert.ok(source.split("\n").includes(`| ${level.padEnd(13)} | ${die.padEnd(6)} |`));
-
   const {authority}=await loadAuthority();
   const manifested=authority.entities.find(item=>item.id==="common_manifested_strike")!;
   const overload=authority.entities.find(item=>item.id==="common_overload")!;
@@ -40,10 +53,6 @@ test("Manifested Strike owns its progression immediately after the core rule",as
   const rows=table.rows!.map(row=>row.map(cell=>cell.map(node=>node.text).join("")));
   assert.deepEqual(rows,expectedRows);assert.doesNotMatch(JSON.stringify(table),/�/u);
   assert.doesNotMatch(JSON.stringify(overload.content),/Manifested Strike die by level|Fighter Level\|MS Die/);
-
-  const progressionSourceIds=["u_l0079_c001_paragraph_fee08637a9","u_l0081_c003_table_cell_9badec117b","u_l0081_c019_table_cell_33739f9c45","u_l0083_c003_table_cell_2ddace8cf2","u_l0083_c019_table_cell_44868e6ec0","u_l0084_c003_table_cell_e64785a46b","u_l0084_c019_table_cell_2409c213e8","u_l0085_c003_table_cell_9c98fb2a8d","u_l0085_c019_table_cell_d814910798","u_l0086_c003_table_cell_a7c2a40e21","u_l0086_c019_table_cell_41af4746c0"];
-  const manifestedOrigins=new Set(manifested.origins.flatMap(origin=>origin.source_unit_ids));const overloadOrigins=new Set(overload.origins.flatMap(origin=>origin.source_unit_ids));
-  assert.ok(progressionSourceIds.every(id=>manifestedOrigins.has(id)));assert.ok(progressionSourceIds.every(id=>!overloadOrigins.has(id)));
 
   const common=authority.navigation.categories.find(category=>category.id==="common_features")!;const manifestedTopic=common.topics.find(topic=>topic.id==="common_features_common_manifested_strike_topic")!;const overloadTopic=common.topics.find(topic=>topic.id==="common_features_common_overload_topic")!;
   assert.deepEqual({title:manifestedTopic.title,entityIds:manifestedTopic.entity_ids,order:manifestedTopic.order},{title:"Manifested Strike",entityIds:["common_manifested_strike"],order:7});
@@ -91,7 +100,6 @@ test("example turns use one plain-text six-phase authority contract",async()=>{
   }
   const overloadExamples=overload.content.filter(block=>block.type==="example") as any[];
   assert.equal(overloadExamples.length,1);assert.equal(overloadExamples[0].title.map((node:any)=>node.text).join(""),"Example — Level 11 Cryokinesis (PB 4, Int +3)");
-  assert.equal(sections.some(section=>JSON.stringify(section).includes("u_l0100_c003_blockquote_paragraph_9486363841")),false);
   assert.doesNotMatch(JSON.stringify(sections),/Example assumptions:|Full Attack Turn|Sustained Turn|type":"(?:strong|emphasis)"/);
 });
 

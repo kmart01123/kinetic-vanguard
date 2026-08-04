@@ -1,14 +1,14 @@
 # Kinetic Vanguard v13 rules reference
 
-This repository implements the schema-first architecture accepted by ADR-0001 revision 22.
+`KineticVanguard.yaml` is the sole canonical rules authority. All rule wording, balance, metadata, tables, examples, and feature changes are authored directly in YAML.
 
-`KineticVanguard.yaml` is the only v13 rules authority. The legacy `Kinetic_Vanguard.md` is represented only through the checked-in migration inventory and provenance records and is deliberately absent from `build/inputs.json`.
+Prototype and authorized release HTML are generated from that YAML after schema and semantic validation. `Kinetic_Vanguard.md` was retired after the completed v12.1.0-to-v13 migration; Git history and tagged releases preserve the legacy source and architecture review record.
 
 ## Release status
 
 Kinetic Vanguard **v13.0.1** is the current patch release. The publication is one self-contained, offline-capable file: `KineticVanguard.html`.
 
-Revision 22 closes the ADR review cycle and authorizes v13.0 to ship behind the automated product gate. The full schema, semantic, architecture, publication, filter, determinism, and Chromium/Firefox layout suites remain release-blocking. Unperformed human migration and evidence work is documented as a v13.0 waiver rather than misrepresented as completed review.
+The schema, semantic, publication, filter, accessibility, determinism, and Chromium/Firefox layout suites remain release-blocking.
 
 ## Commands
 
@@ -32,16 +32,15 @@ KV_RELEASE_APPROVED=1 npm run build:release
 
 It writes `artifacts/KineticVanguard.html` with `release_status: release` and no prototype banner. GitHub Actions runs the authorized release build only after all verification steps pass and uploads the publication plus its build manifest and integrity reports as the `kinetic-vanguard-v13.0.1` artifact.
 
-`npm run migrate` re-enumerates the pinned master and rewrites the provisional YAML plus migration inventory files. It is a migration-development command, not a normal build stage. Do not run it casually after manual provenance work begins.
+The completed one-time Markdown migration command has been removed and is not part of normal development. Contributors edit `KineticVanguard.yaml` directly; there is no Markdown synchronization step.
 
 ## Architecture
 
-The build parses restricted YAML 1.2, validates the canonical JSON Schema, performs semantic navigation/classification/origin checks, constructs immutable filter and route projections, and emits:
+The build parses restricted YAML 1.2, validates the canonical JSON Schema, performs semantic navigation, classification, authority-coverage, and route checks, constructs immutable filter and route projections, and emits:
 
 - release or prototype HTML;
-- effective migration ledger;
 - filtered-search integrity report;
-- coverage/provenance ledger;
+- YAML entity-to-route coverage ledger;
 - deterministic build manifest.
 
 The browser application contains only native finite selectors, checkboxes, buttons, and links. It makes no runtime network request and does not use local persistence, free-text search, a rules catch-all view, character state, or calculators.

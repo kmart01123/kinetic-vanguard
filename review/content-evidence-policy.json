@@ -3,6 +3,5 @@
   "digest_algorithm": "sha256",
   "canonical_serialization": "RFC8785-compatible JSON: lexicographically sorted object keys, array order preserved, UTF-8, no insignificant whitespace",
   "subject_scope": "narrowest_stable_subject",
-  "attestation_reuse": "only_while_all_declared_subject_digests_match",
-  "migration_chain": "complete_non_branching_chain_required"
+  "attestation_reuse": "only_while_all_declared_subject_digests_match"
 }
