@@ -70,7 +70,7 @@ jobs:
       - name: Upload v13.0 publication
         uses: actions/upload-artifact@v4
         with:
-          name: kinetic-vanguard-v13.0.0
+          name: kinetic-vanguard-v13.0.1
           if-no-files-found: error
           retention-days: 90
           path: |

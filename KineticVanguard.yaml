@@ -3447,7 +3447,7 @@ navigation:
           order: 4
           title: Ball Lightning
   default_category_id: common_features
-rules_version: 13.0.0
+rules_version: 13.0.1
 schema_version: 1.0.0
 vocabularies:
   acquisition_modes:

@@ -3,6 +3,11 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 import { executeBuild } from "../src/build.js";
+import { loadAuthority } from "../src/load.js";
+
+const styledAdditionOperators=/[˖∔⊕⊞➕⨁⨢⨣⨤⨥⨦⨧⨨⨭⨮⨹⨺⩱⩲⩳⩴⩵⩶⩷⩸﬩]/u;
+const hasAlternateAddition=(value:string)=>/\bplus\b/iu.test(value)||[...value].some(character=>character!=="+"&&(character.normalize("NFKC")==="+"||styledAdditionOperators.test(character)));
+const assertAsciiTableAddition=(values:string[],source:string)=>{for(const value of values)assert.equal(hasAlternateAddition(value),false,`${source} table cell uses a non-ASCII addition operator: ${value}`);};
 
 test("prototype is self-contained, offline, and unmistakably non-release",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
@@ -78,6 +83,29 @@ test("generated sections render Manifested Strike progression under its stable a
   const overloadParagraphs=[...overloadArticle.querySelectorAll<HTMLElement>(":scope > p")];assert.match(overloadParagraphs[0]?.textContent??"",/^Declare that you are Overloading/);assert.match(overloadParagraphs[1]?.textContent??"",/^Overload is a deliberate escalation/);
   assert.equal((overloadDocument.querySelector("#topic-select") as HTMLSelectElement).value,"common_features_common_overload_topic");
   await new Promise<void>(resolve=>setImmediate(resolve));manifested.window.close();overload.window.close();
+});
+
+test("table formulae use literal ASCII + in source and rendered output",async()=>{
+  assert.equal(hasAlternateAddition("PB + INT"),false);
+  for(const alternate of ["PB plus INT","level ＋ 1","PB ➕ INT"])assert.equal(hasAlternateAddition(alternate),true,alternate);
+  const {authority}=await loadAuthority();
+  const tableEntities=authority.entities.filter(entity=>entity.content.some(block=>block.type==="table"));
+  const canonicalCells=tableEntities.flatMap(entity=>entity.content.filter(block=>block.type==="table").flatMap(block=>[...(block.headers??[]),...(block.rows??[]).flat()]).map(cell=>cell.map(node=>node.text??node.label??String(node.value?.value??"")).join("")));
+  assertAsciiTableAddition(canonicalCells,"canonical authority");
+  assert.ok(canonicalCells.includes("Rider cost + feature cost"));
+  const legacy=await readFile("Kinetic_Vanguard.md","utf8");
+  const legacyCells=legacy.split("\n").filter(line=>/^\s*\|/.test(line)).flatMap(line=>line.split("|").slice(1,-1).map(cell=>cell.trim()));
+  assertAsciiTableAddition(legacyCells,"legacy Markdown");
+  const inventory=JSON.parse(await readFile("migration/source-units.json","utf8"));
+  const compiledCells=inventory.units.filter((unit:any)=>unit.type==="table_cell").map((unit:any)=>unit.normalized_source as string);
+  assertAsciiTableAddition(compiledCells,"compiled migration inventory");
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
+  for(const entity of tableEntities){
+    const route=authority.navigation.categories.flatMap(category=>category.topics.map(topic=>({category,topic}))).find(({topic})=>topic.entity_ids.includes(entity.id))!;
+    const dom=new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#category=${route.category.id}&topic=${route.topic.id}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
+    const renderedCells=[...dom.window.document.querySelectorAll<HTMLElement>(`#entity-${entity.id} table th, #entity-${entity.id} table td`)].map(cell=>cell.textContent??"");
+    assert.ok(renderedCells.length>0,`${entity.id} did not render its table`);assertAsciiTableAddition(renderedCells,`rendered ${entity.id}`);dom.window.close();
+  }
 });
 
 test("paragraph text beginning with Example is not classified heuristically",async()=>{

@@ -235,7 +235,7 @@ function buildAuthority(lines:string[],unitByLine:Map<number,SourceUnit[]>):Auth
     return {id,label,order:areaOrder,default_topic_id:topics[0]!.id,topics};
   });
   return {
-    schema_version:"1.0.0",rules_version:"13.0.0",
+    schema_version:"1.0.0",rules_version:"13.0.1",
     metadata:{title:"Kinetic Vanguard",attribution:"Created by NixNinja in collaboration with AI assistants. Special thanks to various muses, great and small.",license:"Original Kinetic Vanguard material may be used, copied, modified, and redistributed for non-commercial purposes with credit to NixNinja. Commercial use requires prior written permission. SRD-derived rules text and references are separately governed by the Creative Commons Attribution 4.0 International License.",compatibility:"Fighter subclass rules reference"},
     vocabularies:{
       rules_areas:areaDefinitions.map(([id,label],order)=>({id,label,order})),

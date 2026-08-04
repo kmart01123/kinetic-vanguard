@@ -1,5 +1,11 @@
 # Changelog
 
+## 13.0.1 — 2026-08-04
+
+### Fixed
+
+- Standardized mathematical addition notation in tables on the literal ASCII `+` and added source-to-render regression coverage to prevent textual or styled substitutes.
+
 ## 13.0.0 — 2026-08-03
 
 Kinetic Vanguard v13.0.0 is the first schema-first release and the complete replacement for the legacy multi-document reference workflow.
