@@ -138,15 +138,99 @@ test("Manifested Strike progression cells render exactly in desktop browsers", a
   }
 });
 
-test("Example Play sections remain distinct and contained on desktop and mobile in both browsers", async () => {
-  const result=await executeBuild("prototype");const base=pathToFileURL(result.htmlPath).href;const exampleUrl=`${base}#category=common_features&topic=common_features_common_example_play_topic`;const glacialUrl=`${base}#category=cryokinesis&topic=cryokinesis_glacial_spike_topic`;const viewports=[{width:1366,height:900},{width:390,height:844}];
-  for(const engine of desktopBrowsers){const browser=await engine.type.launch({headless:true});const page=await browser.newPage();try{
-    for(const viewport of viewports){await page.setViewportSize(viewport);await page.goto(exampleUrl);const rendered=await page.evaluate(()=>{const article=document.querySelector<HTMLElement>("#entity-common_example_play")!;const articleRect=article.getBoundingClientRect();const container=article.querySelector<HTMLElement>(".example-play-sections")!;const sections=[...container.querySelectorAll<HTMLElement>(".example-play-section")];return{count:sections.length,headings:sections.map(section=>section.querySelector("h3")?.textContent),titles:sections.map(section=>section.querySelector("h4")?.textContent),columns:getComputedStyle(container).gridTemplateColumns.split(" ").length,contained:sections.every(section=>{const rect=section.getBoundingClientRect();return rect.left>=articleRect.left&&rect.right<=articleRect.right&&section.scrollWidth<=section.clientWidth;}),styled:sections.every(section=>{const card=section.querySelector<HTMLElement>(".example-play-section__card")!;const style=getComputedStyle(card);return style.backgroundColor!=="rgba(0, 0, 0, 0)"&&parseFloat(style.borderTopWidth)>0;}),documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};});
-      const size=`${engine.name} ${viewport.width}x${viewport.height}`;assert.equal(rendered.count,3,`${size}: section count`);assert.deepEqual(rendered.headings,["Cryokinesis","Pyrokinesis","Psychokinesis"],`${size}: heading order`);assert.equal(rendered.titles.length,3,`${size}: title count`);assert.equal(rendered.contained,true,`${size}: sections contained`);assert.equal(rendered.styled,true,`${size}: sections styled`);assert.equal(rendered.documentOverflow,0,`${size}: no horizontal page overflow`);if(viewport.width===390)assert.equal(rendered.columns,1,`${size}: mobile stack`);else assert.ok(rendered.columns>=2,`${size}: desktop grid`);
-      await page.goto(glacialUrl);const inline=await page.evaluate(()=>{const article=document.querySelector<HTMLElement>("#entity-glacial_spike")!;const example=article.querySelector<HTMLElement>(".inline-example")!;const articleRect=article.getBoundingClientRect(),rect=example.getBoundingClientRect(),style=getComputedStyle(example);return{count:article.querySelectorAll(".inline-example").length,tier:example.dataset.overloadTier,contained:rect.left>=articleRect.left&&rect.right<=articleRect.right&&example.scrollWidth<=example.clientWidth,styled:style.backgroundColor!=="rgba(0, 0, 0, 0)"&&parseFloat(style.borderInlineStartWidth)>0,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};});assert.deepEqual(inline,{count:1,tier:"2",contained:true,styled:true,overflow:0},`${size}: inline Glacial example`);
+test("Example Play uses one flat, full-width row per discipline at every viewport", async () => {
+  const result=await executeBuild("prototype");
+  const base=pathToFileURL(result.htmlPath).href;
+  const exampleUrl=base+"#category=common_features&topic=common_features_common_example_play_topic";
+  const glacialUrl=base+"#category=cryokinesis&topic=cryokinesis_glacial_spike_topic";
+  const viewports=[
+    {name:"wide desktop",width:1600,height:1000},
+    {name:"standard laptop",width:1366,height:900},
+    {name:"narrow tablet",width:820,height:1180},
+    {name:"mobile",width:390,height:844}
+  ];
+  const expectedHeadings=["Cryokinesis","Pyrokinesis","Psychokinesis"];
+  let canonicalText:string[]|undefined;
+  for(const engine of desktopBrowsers){
+    const browser=await engine.type.launch({headless:true});
+    const page=await browser.newPage();
+    try{
+      for(const viewport of viewports){
+        await page.setViewportSize(viewport);
+        await page.goto(exampleUrl);
+        const rendered=await page.evaluate(()=>{
+          const article=document.querySelector<HTMLElement>("#entity-common_example_play")!;
+          const container=article.querySelector<HTMLElement>(":scope > .example-play-flow")!;
+          const containerRect=container.getBoundingClientRect();
+          const sections=[...container.querySelectorAll<HTMLElement>(":scope > .example-play-section")];
+          const rects=sections.map(section=>section.getBoundingClientRect());
+          const contents=sections.map(section=>section.querySelector<HTMLElement>(".example-play-section__content")!);
+          return{
+            containerClass:container.className,
+            containerDisplay:getComputedStyle(container).display,
+            legacyLayoutCount:article.querySelectorAll(".example-play-sections,.example-play-section__card").length,
+            count:sections.length,
+            headings:sections.map(section=>section.querySelector("h3")?.textContent),
+            texts:sections.map(section=>section.textContent??""),
+            fullWidth:rects.every(rect=>Math.abs(rect.width-containerRect.width)<=1&&Math.abs(rect.left-containerRect.left)<=1),
+            ownRows:rects.every((rect,index)=>index===0||rect.top>=rects[index-1]!.bottom),
+            verticalSeparation:rects.every((rect,index)=>index===0||rect.top-rects[index-1]!.bottom>=20),
+            aligned:sections.every((section,index)=>{
+              const heading=section.querySelector<HTMLElement>(".example-play-section__heading")!.getBoundingClientRect();
+              const content=contents[index]!.getBoundingClientRect();
+              return Math.abs(heading.left-content.left)<=1&&Math.abs(heading.right-content.right)<=1;
+            }),
+            readableWidth:contents.every(content=>{
+              const width=content.getBoundingClientRect().width;
+              return width>=Math.min(containerRect.width,600)-1&&width<=containerRect.width+1;
+            }),
+            flat:contents.every(content=>{
+              const style=getComputedStyle(content);
+              return parseFloat(style.borderTopWidth)>0&&parseFloat(style.borderRightWidth)===0&&parseFloat(style.borderBottomWidth)===0&&parseFloat(style.borderLeftWidth)===0&&style.boxShadow==="none"&&parseFloat(style.borderRadius)===0;
+            }),
+            titlesFit:sections.every(section=>{
+              const title=section.querySelector<HTMLElement>(".example-play-section__title")!;
+              return title.scrollWidth<=title.clientWidth;
+            }),
+            contained:rects.every((rect,index)=>rect.left>=containerRect.left&&rect.right<=containerRect.right&&sections[index]!.scrollWidth<=sections[index]!.clientWidth),
+            documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth
+          };
+        });
+        const size=engine.name+" "+viewport.name+" "+viewport.width+"x"+viewport.height;
+        assert.equal(rendered.containerClass,"example-play-flow",size+": semantic flow class");
+        assert.equal(rendered.containerDisplay,"block",size+": block flow");
+        assert.equal(rendered.legacyLayoutCount,0,size+": no grid/card classes");
+        assert.equal(rendered.count,3,size+": section count");
+        assert.deepEqual(rendered.headings,expectedHeadings,size+": heading order");
+        canonicalText??=rendered.texts;
+        assert.deepEqual(rendered.texts,canonicalText,size+": unchanged content and order");
+        assert.equal(rendered.fullWidth,true,size+": each discipline occupies a full row");
+        assert.equal(rendered.ownRows,true,size+": sections stack vertically");
+        assert.equal(rendered.verticalSeparation,true,size+": sections have clear whitespace");
+        assert.equal(rendered.aligned,true,size+": headings align with example content");
+        assert.equal(rendered.readableWidth,true,size+": readable inner width");
+        assert.equal(rendered.flat,true,size+": flat divider treatment");
+        assert.equal(rendered.titlesFit,true,size+": titles wrap without overflow");
+        assert.equal(rendered.contained,true,size+": sections stay within the article");
+        assert.equal(rendered.documentOverflow,0,size+": no horizontal page overflow");
+        await page.goto(glacialUrl);
+        const inline=await page.evaluate(()=>{
+          const article=document.querySelector<HTMLElement>("#entity-glacial_spike")!;
+          const example=article.querySelector<HTMLElement>(".inline-example")!;
+          const articleRect=article.getBoundingClientRect(),rect=example.getBoundingClientRect(),style=getComputedStyle(example);
+          return{count:article.querySelectorAll(".inline-example").length,tier:example.dataset.overloadTier,absentFromExamplePlay:document.querySelector("#entity-common_example_play .inline-example")===null,contained:rect.left>=articleRect.left&&rect.right<=articleRect.right&&example.scrollWidth<=example.clientWidth,styled:style.backgroundColor!=="rgba(0, 0, 0, 0)"&&parseFloat(style.borderInlineStartWidth)>0,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
+        });
+        assert.deepEqual(inline,{count:1,tier:"2",absentFromExamplePlay:true,contained:true,styled:true,overflow:0},size+": inline Glacial example");
+      }
+      await page.emulateMedia({media:"print"});
+      await page.goto(exampleUrl);
+      assert.equal(await page.locator(".example-play-section").first().evaluate(element=>getComputedStyle(element).breakInside),"avoid",engine.name+": print section break");
+      await page.goto(glacialUrl);
+      assert.equal(await page.locator(".inline-example").evaluate(element=>getComputedStyle(element).breakInside),"avoid",engine.name+": print inline break");
+    }finally{
+      await browser.close();
     }
-    await page.emulateMedia({media:"print"});await page.goto(exampleUrl);assert.equal(await page.locator(".example-play-section").first().evaluate(element=>getComputedStyle(element).breakInside),"avoid",`${engine.name}: print section break`);await page.goto(glacialUrl);assert.equal(await page.locator(".inline-example").evaluate(element=>getComputedStyle(element).breakInside),"avoid",`${engine.name}: print inline break`);
-  }finally{await browser.close();}}
+  }
 });
 
 
