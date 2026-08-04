@@ -610,7 +610,7 @@ entities:
                 text: 10th
                 type: text
             - - source_unit_id: u_l0279_c011_table_cell_d01f665577
-                text: Discipline 10th Feature, Advanced Training II (Phase Step), Tier 2 Overload
+                text: Discipline 10th Feature, Phase Step, Tier 2 Overload
                 type: text
           - - - source_unit_id: u_l0280_c003_table_cell_464b0c8c3c
                 text: 15th

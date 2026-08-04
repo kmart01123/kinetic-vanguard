@@ -55,7 +55,7 @@ test("Name control has explicit inert activation contract",async()=>{
 
 test("rendered Name options derive level-name-ID order from canonical data and rebuild with filters",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_subclass_feature_reference_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const document=dom.window.document,entityById=new Map(authority.entities.map(entity=>[entity.id,entity]));
   const rulesAreas=authority.vocabularies.rules_areas!;const expectedGroupLabels=[...rulesAreas].sort((a,b)=>a.order-b.order).map(area=>area.label);
   const groups=()=>[...document.querySelectorAll<HTMLOptGroupElement>("#name-select optgroup")];
@@ -73,15 +73,26 @@ test("rendered Name options derive level-name-ID order from canonical data and r
   const pyrokinesisIds=[...pyrokinesis.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.value);
   assert.ok(pyrokinesisIds.indexOf("thermal_fracture")<pyrokinesisIds.indexOf("furnace_strike"));
   const advanced=groups().find(group=>group.label==="Advanced Training")!;
-  assert.deepEqual([...advanced.querySelectorAll<HTMLOptionElement>(":scope > option")].slice(0,2).map(option=>option.textContent),["Deflection Screen","Phase Step"]);
-  assert.equal([...document.querySelectorAll<HTMLOptionElement>("#name-select option")].some(option=>option.textContent==="Advanced Training I: Deflection Screen"||option.textContent==="Advanced Training II: Phase Step"),false);
+  const advancedOptions=[...advanced.querySelectorAll<HTMLOptionElement>(":scope > option")],allOptions=[...document.querySelectorAll<HTMLOptionElement>("#name-select option")].filter(option=>option.value);
+  assert.deepEqual(advancedOptions.slice(0,2).map(option=>option.textContent),["Deflection Screen","Phase Step"]);
+  assert.equal(new Set(allOptions.map(option=>option.value)).size,allOptions.length);
+  assert.equal(allOptions.filter(option=>option.textContent==="Deflection Screen").length,1);
+  assert.equal(allOptions.filter(option=>option.textContent==="Phase Step").length,1);
+  assert.equal(allOptions.some(option=>option.textContent==="Advanced Training I: Deflection Screen"||option.textContent==="Advanced Training II: Phase Step"),false);
   assert.equal(advanced.querySelector('option[value="advanced_deflection_screen"]')?.textContent,"Deflection Screen");
   assert.equal(advanced.querySelector('option[value="advanced_phase_step"]')?.textContent,"Phase Step");
+  const referenceText=document.querySelector("#entity-subclass_feature_reference")?.textContent??"";assert.match(referenceText,/Discipline 10th Feature, Phase Step, Tier 2 Overload/);assert.doesNotMatch(referenceText,/Advanced Training II \(Phase Step\)/);
   const area=document.querySelector('input[data-facet="rules_area"][value="pyrokinesis"]') as HTMLInputElement;
   area.checked=true;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
   assert.deepEqual(groups().map(group=>group.label),["Pyrokinesis"]);
   assert.deepEqual([...groups()[0]!.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.value),pyrokinesisIds);
   area.checked=false;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
+  const advancedArea=document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement;
+  advancedArea.checked=true;advancedArea.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
+  assert.deepEqual(groups().map(group=>group.label),["Advanced Training"]);
+  const rebuiltLabels=[...groups()[0]!.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.textContent);
+  assert.deepEqual(rebuiltLabels.slice(0,2),["Deflection Screen","Phase Step"]);assert.equal(new Set(rebuiltLabels).size,rebuiltLabels.length);assert.equal(rebuiltLabels.some(label=>label?.startsWith("Advanced Training I:")||label?.startsWith("Advanced Training II:")),false);
+  advancedArea.checked=false;advancedArea.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
   assert.deepEqual(groups().map(group=>group.label),expectedGroupLabels);
   await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
 });

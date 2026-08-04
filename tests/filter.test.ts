@@ -61,11 +61,15 @@ test("canonical feature levels, cleaned names, groups, and destinations feed the
   assert.equal(entity("thermal_fracture").level,7);assert.equal(typeof entity("thermal_fracture").level,"number");
   assert.equal(entity("furnace_strike").level,20);assert.equal(typeof entity("furnace_strike").level,"number");
   assert.deepEqual([entity("advanced_deflection_screen").title,entity("advanced_phase_step").title],["Deflection Screen","Phase Step"]);
+  assert.deepEqual([entity("advanced_deflection_screen").level,entity("advanced_phase_step").level],[5,10]);
+  assert.deepEqual([entity("advanced_deflection_screen").classifications.acquisition_mode,entity("advanced_phase_step").classifications.acquisition_mode],["granted","granted"]);
   assert.deepEqual([entity("advanced_deflection_screen").presentation_metadata.primary_rules_area,entity("advanced_phase_step").presentation_metadata.primary_rules_area],["advanced_training","advanced_training"]);
   const advanced=index.name_groups.find(group=>group.id==="advanced_training")!,pyrokinesis=index.name_groups.find(group=>group.id==="pyrokinesis")!;
   assert.ok(advanced.entity_ids.indexOf("advanced_deflection_screen")<advanced.entity_ids.indexOf("advanced_phase_step"));
   assert.ok(pyrokinesis.entity_ids.indexOf("thermal_fracture")<pyrokinesis.entity_ids.indexOf("furnace_strike"));
   const indexed=(id:string)=>index.entities.find(candidate=>candidate.id===id)!;
+  const advancedTitles=advanced.entity_ids.map(id=>indexed(id).title);
+  assert.equal(new Set(advancedTitles).size,advancedTitles.length);
   assert.equal(indexed("advanced_deflection_screen").routes.advanced_training,"advanced_training_advanced_deflection_screen_topic");
   assert.equal(indexed("advanced_phase_step").routes.advanced_training,"advanced_training_advanced_phase_step_topic");
 });

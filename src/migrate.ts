@@ -109,6 +109,7 @@ function cleanInline(source: string): string {
     .replace(/`([^`]+)`/g, "$1")
     .replaceAll("Advanced Training I: Deflection Screen","Deflection Screen")
     .replaceAll("Advanced Training II: Phase Step","Phase Step")
+    .replaceAll("Advanced Training II (Phase Step)","Phase Step")
     .trim();
 }
 
