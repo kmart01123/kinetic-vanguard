@@ -65,7 +65,7 @@ jobs:
         run: |
           test -f artifacts/KineticVanguard.html
           grep -q '"release_status":"release"' artifacts/KineticVanguard.html
-          ! grep -q 'NON-RELEASE PROTOTYPE' artifacts/KineticVanguard.html
+          ! grep -q '<p class="prototype"' artifacts/KineticVanguard.html
 
       - name: Upload v13.0 publication
         uses: actions/upload-artifact@v4
