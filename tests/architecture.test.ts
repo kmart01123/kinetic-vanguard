@@ -77,22 +77,21 @@ test("Common rules do not leak into discipline Browse topics",async()=>{
   for(const categoryId of ["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]){const topicEntities=new Set(categories.get(categoryId)!.topics.flatMap(topic=>topic.entity_ids));assert.ok(commonOnly.every(entityId=>!topicEntities.has(entityId)));}
 });
 
-test("Markdown example sources have ordered, isolated authority placements",async()=>{
-  const [{authority},sourceMap,inventory]=await Promise.all([loadAuthority(),readFile("migration/example-play-source-map.json","utf8").then(JSON.parse),readFile("migration/source-units.json","utf8").then(JSON.parse)]);
-  const units=new Map<string,string>(inventory.units.map((unit:any)=>[unit.id,unit.normalized_source]));const visible=(source:string)=>source.replaceAll("**","").replace(/^\*(.*)\*$/u,"$1");
-  const examplePlay=authority.entities.find(entity=>entity.id==="common_example_play")!;const overload=authority.entities.find(entity=>entity.id==="common_overload")!;const glacial=authority.entities.find(entity=>entity.id==="glacial_spike")!;
-  const sections=examplePlay.content.filter(block=>block.type==="example_play_section");assert.deepEqual(sections.map(block=>block.discipline),["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]);
-  const nodes=(block:any)=>[...(block.title??[]),...(block.body??[]).flatMap((child:any)=>child.inlines??[])];
-  for(const section of sections.filter(block=>block.discipline!=="electrokinesis")){const mapped=sourceMap.blocks.find((block:any)=>block.classification==="example_play_full_turn"&&block.discipline===section.discipline)!;const leaves=nodes(section);assert.deepEqual(leaves.map((node:any)=>node.source_unit_id),mapped.source_unit_ids);for(const node of leaves)assert.equal(node.text,visible(units.get(node.source_unit_id)!),node.source_unit_id);}
-  const inline=overload.content.find(block=>block.type==="example")!;const inlineMap=sourceMap.blocks.find((block:any)=>block.classification==="overload_inline_example")!;assert.equal(inlineMap.destination_entity_id,"common_overload");assert.equal(inline.tier,2);assert.deepEqual(nodes(inline).map((node:any)=>node.source_unit_id),inlineMap.source_unit_ids);for(const node of nodes(inline))assert.equal(node.text,visible(units.get(node.source_unit_id)!),node.source_unit_id);
-  assert.notEqual(inlineMap.id,sourceMap.blocks.find((block:any)=>block.discipline==="cryokinesis"&&block.classification==="example_play_full_turn")!.id);assert.equal(glacial.content.some(block=>block.type==="example"),false);
-  for(const mapped of sourceMap.blocks){const expected=mapped.classification==="overload_inline_example"?"common_overload":"common_example_play";for(const sourceId of mapped.source_unit_ids){const owners=authority.entities.filter(entity=>JSON.stringify(entity).includes(sourceId)).map(entity=>entity.id);assert.deepEqual(owners,[expected],`${sourceId} owner`);}}
-  assert.deepEqual(examplePlay.classifications,{entity_kind:"system",rules_area:["common_features"]});assert.equal(examplePlay.kind,"system");assert.equal("example_turns" in overload,false);assert.doesNotMatch(JSON.stringify(authority),/Example assumptions:|Focused Fire —|Aerial Repositioning —|Frozen-Ground Lockdown —/);
-  const common=authority.navigation.categories.find(category=>category.id==="common_features")!;const topic=common.topics.find(item=>item.id==="common_features_common_example_play_topic")!;assert.deepEqual({title:topic.title,order:topic.order,entityIds:topic.entity_ids},{title:"Example Play",order:1,entityIds:["common_example_play"]});
-  for(const category of authority.navigation.categories.filter(category=>category.id!=="common_features"))assert.ok(category.topics.every(item=>!item.entity_ids.includes(examplePlay.id)),`${category.id} contains Example Play`);
-  const sourceIds=(block:any)=>JSON.stringify(block);const base=overload.content.findIndex(block=>sourceIds(block).includes("u_l0202_c001_paragraph_d86ad8e4be"));const explanation=overload.content.findIndex(block=>sourceIds(block).includes("u_l0048_c001_paragraph_656828983b"));const tier1=overload.content.findIndex(block=>block.type==="tier"&&block.tier===1);const tier2=overload.content.findIndex(block=>block.type==="tier"&&block.tier===2);const inlinePosition=overload.content.indexOf(inline);assert.ok(base<explanation&&explanation<tier1&&tier1<tier2);assert.equal(inlinePosition,tier2+1);
+test("example turns use one plain-text six-phase authority contract",async()=>{
+  const {authority}=await loadAuthority();
+  const examplePlay=authority.entities.find(entity=>entity.id==="common_example_play")!;
+  const overload=authority.entities.find(entity=>entity.id==="common_overload")!;
+  const sections=examplePlay.content.filter(block=>block.type==="example_play_section") as any[];
+  const phases=["setup","activation","rolls_or_saves","damage","effects","result"];
+  assert.deepEqual(sections.map(block=>block.discipline),["cryokinesis","pyrokinesis","psychokinesis","cryokinesis","electrokinesis"]);
+  assert.deepEqual(sections.map(block=>block.title.map((node:any)=>node.text).join("")),["Glacial Spike Tier 2 Lockdown — Level 11 Cryokinesis","Focused Fire — Level 11 Pyrokinesis","Aerial Repositioning — Level 11 Psychokinesis","Frozen Ground Lockdown — Level 11 Cryokinesis","Room Sweep — Level 11 Electrokinesis"]);
+  for(const section of sections){
+    assert.ok(phases.every(field=>Array.isArray(section[field])));
+    for(const field of ["heading","title",...phases]){assert.ok(section[field].length>0);assert.ok(section[field].every((node:any)=>node.type==="text"),section.title[0].text+" "+field+" must use plain text");}
+  }
+  assert.equal(overload.content.some(block=>block.type==="example"),false);
+  assert.doesNotMatch(JSON.stringify(sections),/Example assumptions:|Full Attack Turn|Sustained Turn|type":"(?:strong|emphasis)"/);
 });
-
 
 test("tiered rules use an ordered, cumulative hierarchy without changing mechanics",async()=>{
   const {authority}=await loadAuthority();

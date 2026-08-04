@@ -3,11 +3,14 @@
   "migration_source_filename": "Kinetic_Vanguard.md",
   "blocks": [
     {
-      "id": "glacial_spike_inline_overload_example",
-      "classification": "overload_inline_example",
+      "id": "glacial_spike_tier_2_lockdown",
+      "classification": "example_play_full_turn",
       "discipline": "cryokinesis",
-      "source_line_range": [100, 110],
-      "destination_entity_id": "common_overload",
+      "source_line_range": [
+        100,
+        110
+      ],
+      "destination_entity_id": "common_example_play",
       "source_unit_ids": [
         "u_l0100_c003_blockquote_paragraph_9486363841",
         "u_l0102_c003_blockquote_paragraph_e441f239d1",
@@ -21,7 +24,10 @@
       "id": "pyrokinesis_full_attack_turn",
       "classification": "example_play_full_turn",
       "discipline": "pyrokinesis",
-      "source_line_range": [112, 122],
+      "source_line_range": [
+        112,
+        122
+      ],
       "destination_entity_id": "common_example_play",
       "source_unit_ids": [
         "u_l0112_c003_blockquote_paragraph_1948bc17f9",
@@ -36,7 +42,10 @@
       "id": "psychokinesis_sustained_turn",
       "classification": "example_play_full_turn",
       "discipline": "psychokinesis",
-      "source_line_range": [124, 136],
+      "source_line_range": [
+        124,
+        136
+      ],
       "destination_entity_id": "common_example_play",
       "source_unit_ids": [
         "u_l0124_c003_blockquote_paragraph_a4872a5636",
@@ -52,7 +61,10 @@
       "id": "cryokinesis_lockdown_turn",
       "classification": "example_play_full_turn",
       "discipline": "cryokinesis",
-      "source_line_range": [138, 148],
+      "source_line_range": [
+        138,
+        148
+      ],
       "destination_entity_id": "common_example_play",
       "source_unit_ids": [
         "u_l0138_c003_blockquote_paragraph_c3eaa6f391",

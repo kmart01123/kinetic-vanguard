@@ -113,159 +113,189 @@ entities:
       rules_area:
         - common_features
     content:
-      - body:
-          - inlines:
-              - source_unit_id: u_l0140_c003_blockquote_paragraph_750364f9e7
-                text: You have 10 Psi. Frozen Ground is already active (2 Psi spent last turn).
-                type: emphasis
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0142_c003_blockquote_paragraph_9ce9acb851
-                text: "Attack 1: MS + T0 Glacial Spike (Signature Rider) — Declare: “Glacial Spike.” Psi: 0. On hit: avg 11.5 cold (1d10+4 plus Spike’s fixed +2). Target Speed −10 ft until the end of your next turn. Blood Tax: 0."
-                type: strong
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0144_c003_blockquote_paragraph_accd416349
-                text: "Attack 2: MS + T1 Glacial Spike — Declare: “Glacial Spike T1.” Psi: 0. On hit: avg 11.5 cold. On a failed Con save, the target’s Speed becomes 0; on a successful save, the Tier 0 −10-foot reduction remains. Blood Tax: PB = 4, paid on declaration; a miss still spends the Blood Tax."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0146_c003_blockquote_paragraph_b4480594be
-                text: "Attack 3: MS — On hit: avg 9.5 cold. Blood Tax: 0."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0148_c003_blockquote_paragraph_e5c8d77618
-                text: "Turn totals: Psi: 0. BT = 4 (Glacial Spike T1). Damage: 32.5 cold on average. The target likely has Speed 0 in difficult terrain; Frozen Ground can stop its movement on its turn. Low burn, high lockdown."
-                type: strong
-            type: paragraph
+      - activation:
+          - source_unit_id: u_l0108_c003_blockquote_paragraph_b0a8492967
+            text: The fighter takes the Attack action and declares Manifested Strike with Glacial Spike Tier 2 against the creature before attack 1. The 0-Psi Signature Rider costs 2 × PB = 8 Blood Tax, paid immediately and retained on a miss.
+            type: text
+          - source_unit_id: u_l0104_c003_blockquote_paragraph_7b15436ca6
+            text: The 1d10 Manifested Strike is not Overloaded. Attacks 2 and 3 are plain Manifested Strikes with no additional cost.
+            type: text
+        damage:
+          - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
+            text: Attack 1 rolls 7 on the 1d10, dealing 7 + 3 Int + 2 from Glacial Spike = 12 cold damage. Attack 2 rolls 4, dealing 4 + 3 = 7 cold damage. Attack 3 misses and deals no damage. The creature takes 12 + 7 = 19 cold damage in total.
+            type: text
         discipline: cryokinesis
+        effects:
+          - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
+            text: The failed Constitution save applies Glacial Spike Tier 2, leaving the creature Restrained until the end of the fighter’s next turn. No movement or other secondary effect occurs.
+            type: text
         heading:
-          - source_unit_id: u_l0138_c003_blockquote_paragraph_c3eaa6f391
+          - source_unit_id: u_l0100_c003_blockquote_paragraph_9486363841
             text: Cryokinesis
             type: text
+        result:
+          - source_unit_id: u_l0110_c003_blockquote_paragraph_fae2c7872a
+            text: The fighter ends 30 feet from the creature with all 10 Psi, 8 hit points lost to Blood Tax, and no concentration, bonus action, reaction, or movement used. The creature has taken 19 cold damage and is Restrained until the end of the fighter’s next turn.
+            type: text
+        rolls_or_saves:
+          - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
+            text: The attack bonus is +9 (+3 Int, +4 PB, +2 Psionic Focus). Attack 1 rolls 12 + 9 = 21 and hits AC 16; the creature then rolls 9 against save DC 15 (8 + 4 + 3) and fails its Constitution save. Attack 2 rolls 8 + 9 = 17 and hits. Attack 3 rolls 4 + 9 = 13 and misses.
+            type: text
+        setup:
+          - source_unit_id: u_l0102_c003_blockquote_paragraph_e441f239d1
+            text: A level 11 Cryokinesis fighter begins 30 feet from one hostile creature with AC 16. The fighter has three attacks, one free hand, 10 Psi, PB +4, Int +3, a 1d10 Manifested Strike die, enough hit points for Blood Tax, and no active concentration.
+            type: text
         title:
-          - source_unit_id: u_l0138_c003_blockquote_paragraph_c3eaa6f391
-            text: Example — Lockdown Turn, Level 11 Cryokinesis (PB 4, Int +4, MS 1d10, 3 attacks)
-            type: strong
+          - source_unit_id: u_l0100_c003_blockquote_paragraph_9486363841
+            text: Glacial Spike Tier 2 Lockdown — Level 11 Cryokinesis
+            type: text
         type: example_play_section
-      - body:
-          - inlines:
-              - source_unit_id: u_l0114_c003_blockquote_paragraph_00faccb56f
-                text: You have 10 Psi. Three attacks this turn. You want focused damage.
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0116_c003_blockquote_paragraph_01f5d0059a
-                text: "Attack 1: MS + Ember Bolt T2 (Signature Rider) — Declare: “Ember Bolt T2.” Psi: 0. On hit: 1d10 + 4 plus 6 fire damage (average 15.5). Blood Tax: 2×PB = 8, paid on declaration."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0118_c003_blockquote_paragraph_2752e68da9
-                text: "Attack 2: MS + Cinder Lance T0 — Declare: “Cinder Lance.” Psi: 3. On hit: the strike deals 1d10 + 4 and Cinder Lance adds 2 base MS dice, for 3d10 + 4 fire damage (average 20.5). Blood Tax: 0."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0120_c003_blockquote_paragraph_5bcd08e236
-                text: "Attack 3: MS + Ember Bolt T0 — Declare: “Ember Bolt.” Psi: 0. On hit: 1d10 + 4 plus 2 fire damage (average 11.5). Blood Tax: 0."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0122_c003_blockquote_paragraph_7c82271c6b
-                text: "Turn totals (all three hit): Psi: 3 of 10. Blood Tax: 8. Average damage to the primary target: 47.5 fire. A miss still spends any committed Psi and Blood Tax."
-                type: text
-            type: paragraph
+      - activation:
+          - source_unit_id: u_l0116_c003_blockquote_paragraph_01f5d0059a
+            text: The fighter takes the Attack action and targets the creature three times. Attack 1 is Manifested Strike with Ember Bolt Tier 2 for 0 Psi and 8 Blood Tax (2 × PB), paid before the roll. Attack 2 is Manifested Strike with Cinder Lance Tier 0 for 3 Psi and no Blood Tax. Attack 3 is Manifested Strike with Ember Bolt Tier 0 for 0 Psi and no Blood Tax. Every declared cost remains spent on a miss.
+            type: text
+        damage:
+          - source_unit_id: u_l0120_c003_blockquote_paragraph_5bcd08e236
+            text: Attack 1 rolls 8 on its 1d10, dealing 8 + 4 + 6 from Ember Bolt Tier 2 = 18 fire damage. Attack 2 rolls 6 for the strike and 7 and 4 for Cinder Lance’s two additional base Manifested Strike dice, dealing 6 + 7 + 4 + 4 = 21 fire damage. Attack 3 rolls 5, dealing 5 + 4 + 2 from Ember Bolt Tier 0 = 11 fire damage. The creature takes 18 + 21 + 11 = 50 fire damage in total.
+            type: text
         discipline: pyrokinesis
+        effects:
+          - source_unit_id: u_l0120_c003_blockquote_paragraph_5bcd08e236
+            text: These rider tiers add focused damage only. They cause no forced movement, Speed change, condition, or other area effect.
+            type: text
         heading:
           - source_unit_id: u_l0112_c003_blockquote_paragraph_1948bc17f9
             text: Pyrokinesis
             type: text
+        result:
+          - source_unit_id: u_l0122_c003_blockquote_paragraph_7c82271c6b
+            text: The fighter ends 40 feet from the creature with 7 of 10 Psi, 8 hit points lost to Blood Tax, and no concentration, bonus action, reaction, or movement used. The creature has taken 50 fire damage.
+            type: text
+        rolls_or_saves:
+          - source_unit_id: u_l0118_c003_blockquote_paragraph_2752e68da9
+            text: The attack bonus is +10 (+4 Cha, +4 PB, +2 Psionic Focus). The attacks roll 9 + 10 = 19, 13 + 10 = 23, and 7 + 10 = 17; all three hit AC 16. These Ember Bolt and Cinder Lance tiers require no saving throws.
+            type: text
+        setup:
+          - source_unit_id: u_l0114_c003_blockquote_paragraph_00faccb56f
+            text: A level 11 Pyrokinesis fighter begins 40 feet from one hostile creature with AC 16 and no fire resistance or immunity. The fighter has three attacks, one free hand, 10 Psi, PB +4, Cha +4, a 1d10 Manifested Strike die, and enough hit points for Blood Tax.
+            type: text
         title:
           - source_unit_id: u_l0112_c003_blockquote_paragraph_1948bc17f9
-            text: Example — Full Attack Turn, Level 11 Pyrokinesis (PB 4, Cha +4, MS 1d10, 3 attacks)
+            text: Focused Fire — Level 11 Pyrokinesis
             type: text
         type: example_play_section
-      - body:
-          - inlines:
-              - source_unit_id: u_l0126_c003_blockquote_paragraph_c4607cec5d
-                text: You have 10 Psi. No need to nova — control the board.
-                type: emphasis
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0128_c003_blockquote_paragraph_5a3fd893c7
-                text: "Bonus Action: Vectored Thrust T1 Overload — Psi: 2. Effect: Fly speed 30 ft, no opportunity attacks (Concentration, up to 10 min). Blood Tax: 1 × PB = 4 (standalone — paid on activation, no roll)."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0130_c003_blockquote_paragraph_37af8865a3
-                text: "Attack 1: MS + T0 Telekinetic Shove (Signature Rider) — Declare: “Telekinetic Shove.” Psi: 0. On hit: avg 11.5 force (1d10+4 plus Shove’s fixed +2), with a Str save against the 10-ft directional push. Blood Tax: 0."
-                type: strong
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0132_c003_blockquote_paragraph_a8389e68cc
-                text: "Attack 2: MS — On hit: avg 9.5 force. Blood Tax: 0."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0134_c003_blockquote_paragraph_ca035bee04
-                text: "Attack 3: MS — On hit: avg 9.5 force. Blood Tax: 0."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0136_c003_blockquote_paragraph_a618462ba0
-                text: "Turn totals: Psi: 2 of 10. BT = 4 (Vectored Thrust T1). Damage: 30.5 force on average, one target repositioned, flying. Sustainable with occasional VT refresh."
-                type: text
-            type: paragraph
+      - activation:
+          - source_unit_id: u_l0128_c003_blockquote_paragraph_5a3fd893c7
+            text: As a bonus action, the fighter activates standalone Vectored Thrust Tier 1, spends 2 Psi, takes 4 Blood Tax (1 × PB), and begins concentrating for up to 10 minutes. The startup Blood Tax requires no concentration check. The fighter uses the 30-foot fly speed to move 30 feet from the creature without provoking opportunity attacks, then takes the Attack action. Attack 1 adds Telekinetic Shove Tier 0 for 0 Psi; attacks 2 and 3 are plain Manifested Strikes.
+            type: text
+        damage:
+          - source_unit_id: u_l0132_c003_blockquote_paragraph_a8389e68cc
+            text: Attack 1 rolls 7 on its 1d10, dealing 7 + 4 Int + 2 from Telekinetic Shove = 13 force damage. Attack 2 rolls 6, dealing 6 + 4 = 10 force damage. Attack 3 rolls 4, dealing 4 + 4 = 8 force damage. The creature takes 13 + 10 + 8 = 31 force damage in total.
+            type: text
         discipline: psychokinesis
+        effects:
+          - source_unit_id: u_l0134_c003_blockquote_paragraph_ca035bee04
+            text: The failed Strength save lets the fighter push the creature 10 feet horizontally in a chosen direction. Vectored Thrust remains active through concentration, and the flight provokes no opportunity attacks.
+            type: text
         heading:
           - source_unit_id: u_l0124_c003_blockquote_paragraph_a4872a5636
             text: Psychokinesis
             type: text
+        result:
+          - source_unit_id: u_l0136_c003_blockquote_paragraph_a618462ba0
+            text: The fighter ends flying 30 feet from the creature’s starting position with 8 of 10 Psi, 4 hit points lost to Blood Tax, and concentration on Vectored Thrust. The creature has taken 31 force damage and ends 10 feet from its starting position. The bonus action, movement, and all three attacks are used; no reaction is used.
+            type: text
+        rolls_or_saves:
+          - source_unit_id: u_l0130_c003_blockquote_paragraph_37af8865a3
+            text: The attack bonus is +10 (+4 Int, +4 PB, +2 Psionic Focus). The attacks roll 9 + 10 = 19, 12 + 10 = 22, and 7 + 10 = 17; all three hit AC 16. After attack 1 deals damage, the creature rolls 12 against save DC 16 (8 + 4 + 4) and fails its Strength save.
+            type: text
+        setup:
+          - source_unit_id: u_l0126_c003_blockquote_paragraph_c4607cec5d
+            text: A level 11 Psychokinesis fighter begins within 5 feet of one hostile creature with AC 16. The fighter has three attacks, one free hand, 10 Psi, PB +4, Int +4, a 1d10 Manifested Strike die, enough hit points for Blood Tax, and an open concentration slot.
+            type: text
         title:
           - source_unit_id: u_l0124_c003_blockquote_paragraph_a4872a5636
-            text: Example — Sustained Turn, Level 11 Psychokinesis (PB 4, Int +4, MS 1d10, 3 attacks)
-            type: strong
+            text: Aerial Repositioning — Level 11 Psychokinesis
+            type: text
         type: example_play_section
-      - body:
-          - inlines:
-              - source_unit_id: u_l0032_c001_paragraph_6b59f5947c
-                text: You are a Level 11 Fighter with PB +4, a +4 Psionic Ability modifier, a 1d10 Manifested Strike die, three attacks, and enough Psi. Several enemies occupy tight clusters. Resolve each attack completely before choosing the next target, so later attacks can exploit the room after earlier arcs resolve.
-                type: emphasis
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0480_c001_paragraph_2a8e852537
-                text: "Attack 1: MS + Static Discharge T2 (Signature Rider) — Choose the first primary creature and declare the complete package before rolling. Psi: 0. Pay Blood Tax: 2×PB = 8 on declaration. On a hit, Manifested Strike deals 1d10 + 4 lightning damage only to the struck creature, and only that creature receives Sap. Static Discharge then deals 2 lightning damage to the struck creature and up to PB (4) other creatures within 5 feet of it; each affected creature makes a Charisma save, losing reactions until the start of your next turn on a failure. The four secondaries are damaged by the rider but are not hit and do not receive Sap. On a miss, neither the rider nor Sap resolves, but the 8 Blood Tax remains paid."
-                type: strong
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0486_c001_paragraph_d221e89cb8
-                text: "Attack 2: MS + Branching Bolt T0 — After attack 1 resolves, choose a second primary creature with another enemy within 15 feet and declare Branching Bolt before rolling. Psi: 2, paid on declaration. On a hit, Manifested Strike deals 1d10 + 4 lightning damage and applies Sap only to the primary; the rider deals 1d10 lightning damage to that creature and up to one chosen secondary. The secondary takes rider damage but is not hit and does not receive Sap. On a miss, Branching Bolt does not resolve, but the 2 Psi remains spent."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0494_c001_paragraph_fb9d33ad69
-                text: "Attack 3: MS + Electron Burst T0 — After attack 2 resolves, choose a third primary creature at the center of the remaining cluster and declare Electron Burst before rolling. Psi: 2, paid on declaration. On a hit, Manifested Strike deals 1d10 + 4 lightning damage and applies Sap only to the primary. A 10-foot-radius Sphere centered on that creature then includes it and every other creature in the area; each makes a Charisma save, taking 2d8 lightning damage on a failure or half on a success. Creatures caught only in the burst are damaged but are not hit and do not receive Sap. On a miss, no burst occurs, but the 2 Psi remains spent."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0206_c001_paragraph_f1ddd895ea
-                text: "Turn totals (all three attacks hit): Psi: 4. Blood Tax: 8. Three primary creatures are struck, while additional creatures take damage through Static Discharge’s arcs, Branching Bolt, and Electron Burst. Static Discharge is the unlimited Signature Rider; Branching Bolt and Electron Burst were each used once. Only Static Discharge was Tier 2, satisfying the one-Tier-2-rider limit for this Attack action. Three attacks, chosen and resolved in sequence, clear the room without treating secondary rider targets as hits."
-                type: strong
-            type: paragraph
+      - activation:
+          - source_unit_id: u_l0142_c003_blockquote_paragraph_9ce9acb851
+            text: The fighter remains in place and takes the Attack action. Attack 1 is Manifested Strike with Glacial Spike Tier 0 for 0 Psi and no Blood Tax. Attack 2 is Manifested Strike with Glacial Spike Tier 1 for 0 Psi and 4 Blood Tax (1 × PB), paid before the roll and retained on a miss. Attack 3 is a plain Manifested Strike. No bonus action or reaction is used.
+            type: text
+        damage:
+          - source_unit_id: u_l0146_c003_blockquote_paragraph_b4480594be
+            text: Attack 1 rolls 6 on its 1d10, dealing 6 + 4 Int + 2 from Glacial Spike = 12 cold damage. Attack 2 rolls 8, dealing 8 + 4 + 2 = 14 cold damage. Attack 3 rolls 5, dealing 5 + 4 = 9 cold damage. The creature takes 12 + 14 + 9 = 35 cold damage in total.
+            type: text
+        discipline: cryokinesis
+        effects:
+          - source_unit_id: u_l0144_c003_blockquote_paragraph_accd416349
+            text: Attack 1 reduces the creature’s Speed by 10 feet. Attack 2’s failed Constitution save makes its Speed 0 until the end of the fighter’s next turn, replacing that reduction. Frozen Ground remains difficult terrain; when the creature starts its next turn in the Cylinder, it makes Frozen Ground’s separate Constitution save.
+            type: text
+        heading:
+          - source_unit_id: u_l0138_c003_blockquote_paragraph_c3eaa6f391
+            text: Cryokinesis
+            type: text
+        result:
+          - source_unit_id: u_l0148_c003_blockquote_paragraph_e5c8d77618
+            text: The fighter ends 20 feet from the creature with 8 Psi, 4 hit points lost to Blood Tax, and concentration on Frozen Ground. The creature has taken 35 cold damage and has Speed 0 in difficult terrain until the end of the fighter’s next turn. No Psi, bonus action, reaction, or movement is used this turn.
+            type: text
+        rolls_or_saves:
+          - source_unit_id: u_l0144_c003_blockquote_paragraph_accd416349
+            text: The attack bonus is +10 (+4 Int, +4 PB, +2 Psionic Focus). The attacks roll 10 + 10 = 20, 8 + 10 = 18, and 12 + 10 = 22; all three hit AC 16. After attack 2 deals damage, the creature rolls 11 against save DC 16 (8 + 4 + 4) and fails its Constitution save.
+            type: text
+        setup:
+          - source_unit_id: u_l0140_c003_blockquote_paragraph_750364f9e7
+            text: A level 11 Cryokinesis fighter begins 20 feet from one hostile creature with AC 16 inside the 15-foot-radius Frozen Ground Cylinder. The fighter has three attacks, one free hand, PB +4, Int +4, a 1d10 Manifested Strike die, 8 Psi remaining after activating Frozen Ground last turn for 2 Psi, enough hit points for Blood Tax, and concentration on the difficult-terrain area.
+            type: text
+        title:
+          - source_unit_id: u_l0138_c003_blockquote_paragraph_c3eaa6f391
+            text: Frozen Ground Lockdown — Level 11 Cryokinesis
+            type: text
+        type: example_play_section
+      - activation:
+          - source_unit_id: u_l0480_c001_paragraph_2a8e852537
+            text: The fighter takes the Attack action and resolves each attack before choosing the next target. Attack 1 declares Manifested Strike with the Static Discharge Signature Rider at Tier 2 for 0 Psi and pays 8 Blood Tax (2 × PB) before the roll. Attack 2 declares Branching Bolt Tier 0 for 2 Psi. Attack 3 declares Electron Burst Tier 0 for 2 Psi. The Psi and Blood Tax remain spent if the associated attack misses.
+            type: text
+        damage:
+          - source_unit_id: u_l0494_c001_paragraph_fb9d33ad69
+            text: Attack 1 rolls 7 on its 1d10, dealing 7 + 4 = 11 lightning damage to the first primary; Static Discharge adds 2 damage to it and each of four secondaries. Attack 2 rolls 6 for 10 strike damage, and Branching Bolt rolls 8 for the second primary and one secondary. Attack 3 rolls 5 for 9 strike damage, and Electron Burst rolls 6 + 5 = 11 damage against each failed save. Across the five creatures, the turn deals 111 lightning damage.
+            type: text
         discipline: electrokinesis
+        effects:
+          - source_unit_id: u_l0480_c001_paragraph_2a8e852537
+            text: Only each struck primary receives Sap. Static Discharge affects the first primary and four nearby creatures; each fails its Charisma save and loses reactions until the start of the fighter’s next turn. Branching Bolt damages its primary and one chosen secondary. Electron Burst damages all five creatures in its 10-foot-radius Sphere. Secondary targets are damaged but are not hit and do not receive Sap.
+            type: text
         heading:
           - source_unit_id: u_l0472_c001_paragraph_23fa6b15be
             text: Electrokinesis
             type: text
+        result:
+          - source_unit_id: u_l0206_c001_paragraph_f1ddd895ea
+            text: The fighter ends in place with 6 Psi, 8 hit points lost to Blood Tax, and no concentration, bonus action, reaction, or movement used. The five creatures have taken 111 lightning damage in total; three primaries are struck and Sapped, and all five cannot take reactions until the start of the fighter’s next turn. Static Discharge is the only Tier 2 rider used, while Branching Bolt and Electron Burst are each used once.
+            type: text
+        rolls_or_saves:
+          - source_unit_id: u_l0486_c001_paragraph_d221e89cb8
+            text: The attack bonus is +10 (+4 Psionic Ability, +4 PB, +2 Psionic Focus). The attacks roll 9 + 10 = 19, 12 + 10 = 22, and 7 + 10 = 17; all three hit AC 16. Each of the five Static Discharge targets rolls 12 against save DC 16 and fails its Charisma save. Each of the five Electron Burst targets rolls 13 against DC 16 and fails its Charisma save.
+            type: text
+        setup:
+          - source_unit_id: u_l0032_c001_paragraph_6b59f5947c
+            text: A level 11 Electrokinesis fighter faces five hostile creatures with AC 16 clustered so four are within 5 feet of the first primary, a later secondary is within 15 feet of the second primary, and all five fit inside the final 10-foot-radius Sphere. The fighter has three attacks, 10 Psi, PB +4, a +4 Psionic Ability modifier, a 1d10 Manifested Strike die, and enough hit points for Blood Tax.
+            type: text
         title:
           - source_unit_id: u_l0472_c001_paragraph_23fa6b15be
-            text: Room Sweep — Electrokinesis
-            type: strong
+            text: Room Sweep — Level 11 Electrokinesis
+            type: text
         type: example_play_section
     id: common_example_play
     kind: system
     origins:
       - source_unit_ids:
+          - u_l0100_c003_blockquote_paragraph_9486363841
+          - u_l0102_c003_blockquote_paragraph_e441f239d1
+          - u_l0104_c003_blockquote_paragraph_7b15436ca6
+          - u_l0106_c003_blockquote_paragraph_216ebde730
+          - u_l0108_c003_blockquote_paragraph_b0a8492967
+          - u_l0110_c003_blockquote_paragraph_fae2c7872a
           - u_l0112_c003_blockquote_paragraph_1948bc17f9
           - u_l0114_c003_blockquote_paragraph_00faccb56f
           - u_l0116_c003_blockquote_paragraph_01f5d0059a
@@ -343,38 +373,6 @@ entities:
             type: text
         tier: 2
         type: tier
-      - body:
-          - inlines:
-              - source_unit_id: u_l0102_c003_blockquote_paragraph_e441f239d1
-                text: "Before rolling, you declare: “Glacial Spike T2.”"
-                type: emphasis
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0104_c003_blockquote_paragraph_7b15436ca6
-                text: "Your strike uses its level-set die: 1d10. The Tier 2 declaration is on Glacial Spike — the strike itself can never be Overloaded."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0106_c003_blockquote_paragraph_216ebde730
-                text: "Hit: Manifested Strike deals 1d10 + 3, and Glacial Spike adds 2 cold damage, for 1d10 + 5 total. On a failed Con save, the target is Restrained until the end of your next turn."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0108_c003_blockquote_paragraph_b0a8492967
-                text: "Blood Tax: 1 × 2 × PB = 2 × 4 = 8, paid on declaration. Glacial Spike is a Signature Rider and costs 0 Psi; Tier 2 escalates its control."
-                type: text
-            type: paragraph
-          - inlines:
-              - source_unit_id: u_l0110_c003_blockquote_paragraph_fae2c7872a
-                text: "Miss: No effects; Blood Tax (8) is still paid — it was spent on declaration. Glacial Spike costs 0 Psi. Roll your next attack."
-                type: text
-            type: paragraph
-        tier: 2
-        title:
-          - source_unit_id: u_l0100_c003_blockquote_paragraph_9486363841
-            text: Example — Level 11 Cryokinesis (PB 4, Int +3)
-            type: strong
-        type: example
       - inlines:
           - source_unit_id: u_l0056_c003_blockquote_paragraph_7159b18e60
             text: The full attack package — rider activation and rider Overload tier — is declared before the roll. One rider per hit (discipline or Advanced Training). A hit resolves the whole package. A miss cancels rider effects, but Psi and Blood Tax are still spent — Blood Tax is paid immediately on declaration, never after the attack resolves. If you Overload more than one feature in the same turn (a rider and a standalone feature, say), you pay Blood Tax once per Overload declared.
@@ -577,12 +575,6 @@ entities:
           - u_l0094_c003_blockquote_paragraph_1eb389a220
           - u_l0096_c003_blockquote_paragraph_0632b4f975
           - u_l0098_c003_blockquote_paragraph_a7fbb0d442
-          - u_l0100_c003_blockquote_paragraph_9486363841
-          - u_l0102_c003_blockquote_paragraph_e441f239d1
-          - u_l0104_c003_blockquote_paragraph_7b15436ca6
-          - u_l0106_c003_blockquote_paragraph_216ebde730
-          - u_l0108_c003_blockquote_paragraph_b0a8492967
-          - u_l0110_c003_blockquote_paragraph_fae2c7872a
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: common_features

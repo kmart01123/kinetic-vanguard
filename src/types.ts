@@ -55,6 +55,12 @@ export interface ContentBlock {
   discipline?: "cryokinesis" | "pyrokinesis" | "psychokinesis" | "electrokinesis";
   tier?: number;
   body?: ContentBlock[];
+  setup?: InlineNode[];
+  activation?: InlineNode[];
+  rolls_or_saves?: InlineNode[];
+  damage?: InlineNode[];
+  effects?: InlineNode[];
+  result?: InlineNode[];
 }
 
 

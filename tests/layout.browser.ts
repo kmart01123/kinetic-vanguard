@@ -149,7 +149,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
     {name:"narrow tablet",width:820,height:1180},
     {name:"mobile",width:390,height:844}
   ];
-  const expectedHeadings=["Cryokinesis","Pyrokinesis","Psychokinesis","Electrokinesis"];
+  const expectedHeadings=["Cryokinesis","Pyrokinesis","Psychokinesis","Cryokinesis","Electrokinesis"];
   let canonicalText:string[]|undefined;
   for(const engine of desktopBrowsers){
     const browser=await engine.type.launch({headless:true});
@@ -200,7 +200,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
         assert.equal(rendered.containerClass,"example-play-flow",size+": semantic flow class");
         assert.equal(rendered.containerDisplay,"block",size+": block flow");
         assert.equal(rendered.legacyLayoutCount,0,size+": no grid/card classes");
-        assert.equal(rendered.count,4,size+": section count");
+        assert.equal(rendered.count,5,size+": section count");
         assert.deepEqual(rendered.headings,expectedHeadings,size+": heading order");
         canonicalText??=rendered.texts;
         assert.deepEqual(rendered.texts,canonicalText,size+": unchanged content and order");
@@ -214,19 +214,12 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
         assert.equal(rendered.contained,true,size+": sections stay within the article");
         assert.equal(rendered.documentOverflow,0,size+": no horizontal page overflow");
         await page.goto(glacialUrl);
-        const inline=await page.evaluate(()=>{
-          const article=document.querySelector<HTMLElement>("#entity-common_overload")!;
-          const example=article.querySelector<HTMLElement>(".inline-example")!;
-          const articleRect=article.getBoundingClientRect(),rect=example.getBoundingClientRect(),style=getComputedStyle(example);
-          return{count:article.querySelectorAll(".inline-example").length,tier:example.dataset.overloadTier,absentFromExamplePlay:document.querySelector("#entity-common_example_play .inline-example")===null,contained:rect.left>=articleRect.left&&rect.right<=articleRect.right&&example.scrollWidth<=example.clientWidth,styled:style.backgroundColor!=="rgba(0, 0, 0, 0)"&&parseFloat(style.borderInlineStartWidth)>0,overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
-        });
-        assert.deepEqual(inline,{count:1,tier:"2",absentFromExamplePlay:true,contained:true,styled:true,overflow:0},size+": inline Glacial example");
+        assert.equal(await page.locator("#entity-common_overload .inline-example").count(),0,size+": no duplicate inline example");
       }
       await page.emulateMedia({media:"print"});
       await page.goto(exampleUrl);
       assert.equal(await page.locator(".example-play-section").first().evaluate(element=>getComputedStyle(element).breakInside),"avoid",engine.name+": print section break");
-      await page.goto(glacialUrl);
-      assert.equal(await page.locator(".inline-example").evaluate(element=>getComputedStyle(element).breakInside),"avoid",engine.name+": print inline break");
+      assert.equal(await page.locator(".example-play-section").last().evaluate(element=>getComputedStyle(element).breakInside),"avoid",engine.name+": final print section break");
     }finally{
       await browser.close();
     }
