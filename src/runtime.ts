@@ -50,7 +50,7 @@ export function clientRuntime(model: any): void {
   }
   const appendInline = (parent: HTMLElement, node: any) => {
     const element=node.type==="strong"?document.createElement("strong"):node.type==="emphasis"?document.createElement("em"):node.type==="code"?document.createElement("code"):document.createElement("span");
-    element.textContent=node.text??node.label??String(node.value?.value??"");element.dataset.sourceUnit=node.source_unit_id;parent.append(element);
+    element.textContent=node.text??node.label??String(node.value?.value??"");parent.append(element);
   };
   const inlineText = (nodes:any[]) => nodes.map(node=>node.text??node.label??String(node.value?.value??"")).join("");
   const inlineSlice = (nodes:any[],start:number,end:number) => {const result:any[]=[];let offset=0;for(const node of nodes){const value=node.text??node.label??String(node.value?.value??"");const from=Math.max(start-offset,0),to=Math.min(end-offset,value.length);if(from<to)result.push({...node,text:value.slice(from,to),label:undefined,value:undefined});offset+=value.length;}return result;};

@@ -9,7 +9,6 @@
     "node": "24.18.1"
   },
   "scripts": {
-    "migrate": "tsx src/migrate.ts",
     "validate": "tsx src/cli.ts validate",
     "build": "tsx src/cli.ts build --profile prototype",
     "build:release": "tsx src/cli.ts build --profile release",
