@@ -27,6 +27,7 @@ export async function executeBuild(profileName:BuildProfile,outputRoot="artifact
   const loaded=await loadAuthority();const migrationResult=await validateMigration(profile.require_accepted_migration);const diagnostics:Diagnostic[]=[...loaded.diagnostics,...migrationResult.diagnostics];
   if(!loaded.diagnostics.some(item=>item.severity==="error"))diagnostics.push(...validateSemantics(loaded.authority,migrationResult.state,profile.require_accepted_migration));
   if(profileName==="release"){
+    if(process.env.KV_RELEASE_APPROVED!=="1")diagnostics.push({severity:"error",code:"release.approval_required",message:"Release generation requires explicit KV_RELEASE_APPROVED=1 authorization"});
     if(policyBindings[0].status!=="accepted")diagnostics.push({severity:"error",code:"evidence.policy_unaccepted",message:"Content-evidence policy has no accepted registry binding"});
     const correctness=YAML.parse(await readFile("tests/filtered-search-correctness.yaml","utf8"));if(correctness.review_status!=="accepted")diagnostics.push({severity:"error",code:"filter.correctness_unreviewed",message:"Filtered-search correctness corpus lacks accepted maintainer review"});
     if(profile.require_accepted_migration&&!migrationResult.state.manifest.migration_acceptance)diagnostics.push({severity:"error",code:"migration.acceptance_missing",message:"Migration acceptance evidence is absent"});
