@@ -78,6 +78,22 @@ test("shared Overload startup exception covers every concentration feature",asyn
 });
 
 
+test("Forked Lightning resolves every target's save and outcomes independently",async()=>{
+  const {authority}=await loadAuthority();
+  const feature=authority.entities.find(entity=>entity.id==="forked_lightning")!;
+  const rules=feature.content.flatMap(block=>block.inlines??[]).map(inline=>inline.text).join("\n");
+  assert.match(rules,/Every target makes its own Charisma saving throw and resolves its damage independently\./);
+  assert.match(rules,/primary target takes 8d8 lightning damage on a failed save or half as much on a successful one/);
+  assert.match(rules,/Each secondary target takes 4d8 lightning damage on a failed save or half as much on a successful one/);
+  assert.match(rules,/One target’s saving throw never determines another target’s damage or conditions\./);
+  assert.match(rules,/Each target that fails its own saving throw cannot take reactions and has Disadvantage on attack rolls/);
+  assert.match(rules,/a target that succeeds suffers neither effect/);
+  assert.match(rules,/Only if the primary target fails its saving throw does its Speed also become 0/);
+  assert.match(rules,/A secondary target’s Speed does not change\./);
+  for(const mechanic of ["up to 3 other creatures","8d8 lightning damage","4d8 lightning damage","10d8","up to 4 other creatures","5d8","12d8","up to 5 other creatures","6d8"])assert.ok(rules.includes(mechanic),"Forked Lightning mechanic changed: "+mechanic);
+});
+
+
 test("Common rules do not leak into discipline Browse topics",async()=>{
   const {authority}=await loadAuthority();const entities=new Map(authority.entities.map(entity=>[entity.id,entity]));
   const categories=new Map(authority.navigation.categories.map(category=>[category.id,category]));

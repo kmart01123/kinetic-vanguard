@@ -7,6 +7,7 @@
 - Established `KineticVanguard.yaml` as the sole maintained rules-authoring source.
 - Completed a full language audit of all 44 publishable rules entities, tightening grammar, terminology, sentence structure, tables, examples, and tier wording without intentionally changing mechanics.
 - Consolidated repeated Overload, Manifested Strike, and Advanced Training reminders so shared rules are stated once and feature text focuses on feature-specific outcomes.
+- Clarified that every Forked Lightning target makes and resolves its own Charisma saving throw, with Tier 2 disruption limited to targets that fail and Speed 0 limited to a failed save by the primary target.
 
 ### Removed
 
@@ -15,7 +16,6 @@
 
 ### Rules decisions pending
 
-- Forked Lightning still requires the separately approved non-primary-target failed-save wording decision.
 - The canonical YAML marks Vectored Thrust, Frozen Ground, Mass Levitation, Ball Lightning, and Gravitic Press as concentration features but does not state their maximum durations in active rules text.
 - Mass Levitation does not state whether Medium-or-smaller and Large targets can be mixed in one activation.
 

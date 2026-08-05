@@ -1730,7 +1730,7 @@ entities:
         - electrokinesis
     content:
       - inlines:
-          - text: "T0 Base: Choose one creature you can see within 60 feet as the primary target. It takes 8d8 lightning damage (Charisma save for half). The lightning then arcs to up to 3 other creatures within 30 feet of the primary target; each takes 4d8 lightning damage (Charisma save for half)."
+          - text: "T0 Base: Choose one creature you can see within 60 feet as the primary target. The lightning then arcs to up to 3 other creatures within 30 feet of the primary target. Every target makes its own Charisma saving throw and resolves its damage independently. The primary target takes 8d8 lightning damage on a failed save or half as much on a successful one. Each secondary target takes 4d8 lightning damage on a failed save or half as much on a successful one. One target’s saving throw never determines another target’s damage or conditions."
             type: text
         type: paragraph
       - inlines:
@@ -1738,7 +1738,7 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: The primary target takes 12d8, and the lightning arcs to up to 5 other creatures, each taking 6d8. Every target that fails its save cannot take reactions and has disadvantage on attack rolls until the start of your next turn. If the primary target fails, its Speed also becomes 0 for that duration."
+          - text: "T2 Overload: Changes from Tier 1: The primary target takes 12d8, and the lightning arcs to up to 5 other creatures, each taking 6d8. Each target that fails its own saving throw cannot take reactions and has Disadvantage on attack rolls until the start of your next turn; a target that succeeds suffers neither effect. Only if the primary target fails its saving throw does its Speed also become 0 for that duration. A secondary target’s Speed does not change."
             type: text
         type: paragraph
     id: forked_lightning
