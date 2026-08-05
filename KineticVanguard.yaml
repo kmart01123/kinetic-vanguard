@@ -57,11 +57,11 @@ entities:
         - common_features
     content:
       - inlines:
-          - text: "On your turn, when you attack with Manifested Strike, you can attach one rider to each hit. Your Discipline’s 3rd-level rider is your Signature Rider: it costs 0 Psi at every tier and can be used on any number of Manifested Strike hits. Other riders cost their listed Psi and can each be used once per Attack action."
+          - text: "Immediately before each Manifested Strike attack roll, you can declare one rider for that attack. Your Signature Rider costs no Psi. Other riders cost their listed Psi. A declared rider resolves only on a hit, but its Psi and Blood Tax remain spent on a miss. Each non-Signature rider can be used once per Attack action, and only one rider can be Tier 2 in each Attack action."
             type: text
         type: paragraph
       - inlines:
-          - text: Resolve attacks one at a time. Immediately before each attack roll, choose the target and declare the attack’s complete package, including its rider, Overload tier, and any damage-type option. Pay all Psi and Blood Tax when you make that declaration, then roll and fully resolve the attack before declaring the next one. A hit resolves the declared package. On a miss, the rider does not resolve, but its Psi and Blood Tax remain spent. Manifested Strike itself is never Overloaded.
+          - text: Resolve attacks one at a time. With the rider declaration, choose the target, Overload tier, and any damage-type option, then pay all Psi and Blood Tax. Roll and fully resolve the attack before declaring the next one. Manifested Strike itself is never Overloaded.
             type: text
         type: paragraph
       - inlines:
@@ -244,7 +244,7 @@ entities:
         type: tier
       - body:
           - inlines:
-              - text: (10th level) You can Overload a rider or standalone feature to Tier 2. You take psychic damage equal to twice your Proficiency Bonus as Blood Tax when you declare the Overload. Within each Attack action, only one rider can be Tier 2. Action Surge creates a new Attack action and a new Tier 2 rider allowance. This limit does not restrict standalone features.
+              - text: (10th level) You can Overload a rider or standalone feature to Tier 2. Tier 2’s Blood Tax replaces the Tier 1 amount. A Tier 2 Overload costs twice your Proficiency Bonus in total. You take that psychic damage as Blood Tax when you declare the Overload. Within each Attack action, only one rider can be Tier 2. Action Surge creates a new Attack action and a new Tier 2 rider allowance. This limit does not restrict standalone features.
                 type: text
             type: paragraph
         heading:
@@ -266,7 +266,7 @@ entities:
                 type: text
             type: paragraph
           - inlines:
-              - text: "Blood Tax: 1 × 2 × PB = 2 × 4 = 8, paid on declaration. Glacial Spike is a Signature Rider and costs 0 Psi; Tier 2 escalates its control."
+              - text: "Blood Tax: 2 × Proficiency Bonus = 2 × 4 = 8, paid on declaration. Glacial Spike is a Signature Rider and costs 0 Psi; Tier 2 escalates its control."
                 type: text
             type: paragraph
           - inlines:
@@ -1267,7 +1267,7 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: On a failed save, the Restrained condition until the end of your next turn replaces Tier 1’s effect that makes its Speed 0 until the end of the current turn."
+          - text: "T2 Overload: Changes from Tier 1: On a failed save, the Restrained condition until the end of your next turn replaces the Tier 0 effect retained by Tier 1 that makes the target’s Speed 0 until the end of the current turn."
             type: text
         type: paragraph
       - inlines:
@@ -1583,7 +1583,7 @@ entities:
         - psychokinesis
     content:
       - inlines:
-          - text: You seize a foe with overwhelming telekinetic force and slam it violently into the ground with crushing power.
+          - text: You seize a foe with overwhelming telekinetic force and hurl it across the battlefield.
             type: text
         type: paragraph
       - inlines:
@@ -1737,11 +1737,11 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The primary target takes 10d8, and the lightning arcs to up to 4 other creatures, each taking 5d8."
+          - text: "T1 Overload: Changes from Tier 0: The lightning arcs to up to 4 other creatures. Every target makes its own Charisma saving throw and resolves its own damage. The primary target takes 10d8 lightning damage on a failed save or half as much on a successful one. Each secondary target takes 5d8 lightning damage on a failed save or half as much on a successful one."
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: The primary target takes 12d8, and the lightning arcs to up to 5 other creatures, each taking 6d8. Each target that fails its own saving throw cannot take reactions and has Disadvantage on attack rolls until the start of your next turn; a target that succeeds suffers neither effect. Only if the primary target fails its saving throw does its Speed also become 0 for that duration. A secondary target’s Speed does not change."
+          - text: "T2 Overload: Changes from Tier 1: The lightning arcs to up to 5 other creatures. Every target makes its own Charisma saving throw and resolves its own damage. The primary target takes 12d8 lightning damage on a failed save or half as much on a successful one. Each secondary target takes 6d8 lightning damage on a failed save or half as much on a successful one. Each target that fails its own saving throw cannot take reactions and has Disadvantage on attack rolls until the start of your next turn. A target that succeeds still takes half damage but can take reactions and does not have Disadvantage on attack rolls. Only if the primary target fails its saving throw does its Speed also become 0 for that duration. A secondary target’s Speed does not change."
             type: text
         type: paragraph
     id: forked_lightning
@@ -1761,7 +1761,7 @@ entities:
         - electrokinesis
     content:
       - inlines:
-          - text: "T0 Base: This effect requires Concentration for up to 1 minute. Conjure a hovering orb of lightning that fills a 15-foot-radius Sphere centered on a point within 60 feet. When a creature enters the Sphere for the first time on a turn or starts its turn there, it must make a Charisma saving throw, taking 4d8 lightning damage on a failed save or half as much on a successful one. As a bonus action on your turn, you can move the orb up to 15 feet."
+          - text: "T0 Base: This effect requires Concentration for up to 1 minute. Conjure a hovering orb of lightning that fills a 15-foot-radius Sphere centered on a point within 60 feet. When a creature enters the Sphere for the first time on any turn or starts its turn there, it must make a Charisma saving throw, taking 4d8 lightning damage on a failed save or half as much on a successful one. Voluntary or forced movement into the Sphere can trigger this effect, but a creature can trigger it by entering only once per turn. As a bonus action on your turn, you can move the orb up to 15 feet."
             type: text
         type: paragraph
       - inlines:
@@ -1773,7 +1773,7 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: Moving the orb onto a creature does not trigger damage immediately. The creature triggers the effect when it enters on its own turn or starts its turn inside the Sphere.
+          - text: Moving the orb onto a stationary creature does not trigger damage immediately because the creature has not entered the Sphere. The creature must later enter the Sphere or start its turn there to trigger the effect.
             type: text
         type: paragraph
     id: ball_lightning

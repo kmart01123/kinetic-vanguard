@@ -86,13 +86,42 @@ test("Forked Lightning resolves every target's save and outcomes independently",
   assert.match(rules,/primary target takes 8d8 lightning damage on a failed save or half as much on a successful one/);
   assert.match(rules,/Each secondary target takes 4d8 lightning damage on a failed save or half as much on a successful one/);
   assert.match(rules,/One target’s saving throw never determines another target’s damage or conditions\./);
-  assert.match(rules,/Each target that fails its own saving throw cannot take reactions and has Disadvantage on attack rolls/);
-  assert.match(rules,/a target that succeeds suffers neither effect/);
+  for(const tier of ["T1 Overload","T2 Overload"]){
+    const tierText=feature.content.find(block=>block.type==="paragraph"&&block.inlines?.[0]?.text?.startsWith(tier))!.inlines![0]!.text!;
+    assert.match(tierText,/Every target makes its own Charisma saving throw and resolves its own damage\./);
+    assert.match(tierText,/primary target takes \d+d8 lightning damage on a failed save or half as much on a successful one/);
+    assert.match(tierText,/secondary target takes \d+d8 lightning damage on a failed save or half as much on a successful one/);
+  }
+  assert.match(rules,/A target that succeeds still takes half damage but can take reactions and does not have Disadvantage on attack rolls\./);
   assert.match(rules,/Only if the primary target fails its saving throw does its Speed also become 0/);
   assert.match(rules,/A secondary target’s Speed does not change\./);
   for(const mechanic of ["up to 3 other creatures","8d8 lightning damage","4d8 lightning damage","10d8","up to 4 other creatures","5d8","12d8","up to 5 other creatures","6d8"])assert.ok(rules.includes(mechanic),"Forked Lightning mechanic changed: "+mechanic);
 });
 
+
+test("approved trigger, timing, replacement, and flavor clarifications remain canonical",async()=>{
+  const {authority}=await loadAuthority();
+  const rulesFor=(id:string)=>authority.entities.find(entity=>entity.id===id)!.content.flatMap(block=>block.inlines??[]).map(inline=>inline.text).join("\n");
+
+  const howToPlay=rulesFor("how_to_play");
+  assert.ok(howToPlay.startsWith("Immediately before each Manifested Strike attack roll, you can declare one rider for that attack."));
+  for(const rule of ["Your Signature Rider costs no Psi.","Other riders cost their listed Psi.","A declared rider resolves only on a hit, but its Psi and Blood Tax remain spent on a miss.","Each non-Signature rider can be used once per Attack action"])assert.ok(howToPlay.includes(rule));
+
+  const overload=authority.entities.find(entity=>entity.id==="common_overload")!;
+  const tier2=overload.content.find(block=>block.type==="tier"&&block.tier===2)!;
+  assert.match(JSON.stringify(tier2),/Tier 2’s Blood Tax replaces the Tier 1 amount\./);
+  assert.match(JSON.stringify(tier2),/A Tier 2 Overload costs twice your Proficiency Bonus in total\./);
+  assert.match(JSON.stringify(overload.content),/2 × Proficiency Bonus = 2 × 4 = 8/);
+  assert.doesNotMatch(JSON.stringify(overload.content),/1 × 2 × PB/);
+
+  const ballLightning=rulesFor("ball_lightning");
+  for(const rule of ["enters the Sphere for the first time on any turn","Voluntary or forced movement into the Sphere can trigger this effect","trigger it by entering only once per turn","Moving the orb onto a stationary creature does not trigger damage immediately","must later enter the Sphere or start its turn there"])assert.ok(ballLightning.includes(rule),rule);
+
+  assert.match(rulesFor("frozen_ground"),/replaces the Tier 0 effect retained by Tier 1 that makes the target’s Speed 0/);
+  assert.doesNotMatch(rulesFor("frozen_ground"),/replaces Tier 1’s effect that makes its Speed 0/);
+  assert.ok(rulesFor("telekinetic_slam").startsWith("You seize a foe with overwhelming telekinetic force and hurl it across the battlefield."));
+  assert.doesNotMatch(rulesFor("telekinetic_slam"),/ground|Prone|falling damage|collision damage/i);
+});
 
 test("fixed concentration durations are explicit in structured authority and rules text",async()=>{
   const {authority}=await loadAuthority();
@@ -199,5 +228,5 @@ test("tiered rules use an ordered, cumulative hierarchy without changing mechani
 
   const frozenGround=rulesFor("frozen_ground");
   assert.match(frozenGround,/Speed becomes 0 until the end of the current turn/);
-  assert.match(frozenGround,/Restrained condition until the end of your next turn replaces Tier 1/);
+  assert.match(frozenGround,/Restrained condition until the end of your next turn replaces the Tier 0 effect retained by Tier 1/);
 });
