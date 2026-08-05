@@ -9,6 +9,9 @@ import { validateSemantics } from "../src/validate.js";
 
 const assertAbsent=async(path:string)=>assert.rejects(access(path),(error:any)=>error?.code==="ENOENT");
 async function filesUnder(root:string):Promise<string[]>{const entries=await readdir(root,{withFileTypes:true});const files:string[]=[];for(const entry of entries){const path=join(root,entry.name);if(entry.isDirectory())files.push(...await filesUnder(path));else files.push(path);}return files;}
+const inlineText=(nodes:any[]|undefined)=>nodes?.map(node=>node.text??node.label??"").join("")??"";
+const blockText=(block:any):string=>[inlineText(block.inlines),...(block.items??[]).map((item:any[])=>inlineText(item)),...(block.body??[]).map((item:any)=>blockText(item))].filter(Boolean).join("\n");
+const entityRules=(entity:any)=>entity.content.map((block:any)=>blockText(block)).filter(Boolean).join("\n");
 
 test("YAML authority is schema-valid, semantically valid, and complete",async()=>{
   const loaded=await loadAuthority();const diagnostics=[...loaded.diagnostics,...validateSemantics(loaded.authority)];
@@ -59,7 +62,19 @@ test("Manifested Strike owns its progression immediately after the core rule",as
   const overload=authority.entities.find(item=>item.id==="common_overload")!;
   const progressionIndex=manifested.content.findIndex(block=>block.type==="paragraph"&&block.inlines?.map(node=>node.text).join("")===expectedProse);
   const tableIndex=manifested.content.findIndex(block=>block.type==="table"&&block.headers?.map(cell=>cell.map(node=>node.text).join("")).join("|")==="Fighter Level|Manifested Strike Die");
-  assert.equal(progressionIndex,1);assert.equal(tableIndex,2);
+  const indexContaining=(fragment:string)=>manifested.content.findIndex(block=>blockText(block).includes(fragment));
+  const orderedCore=[
+    indexContaining("When you take the Attack action"),
+    indexContaining("Your attack bonus equals"),
+    indexContaining("On a hit, the strike deals one Manifested Strike die"),
+    progressionIndex,
+    tableIndex,
+    indexContaining("Manifested Strike costs no Psi"),
+    indexContaining("On a critical hit")
+  ];
+  assert.deepEqual(orderedCore,[...orderedCore].sort((a,b)=>a-b));assert.equal(new Set(orderedCore).size,orderedCore.length);assert.ok(orderedCore.every(index=>index>=0));
+  assert.match(blockText(manifested.content[orderedCore[0]!]!),/range of 60 feet/);assert.match(blockText(manifested.content[orderedCore[2]!]!),/Your Discipline determines the strike’s damage type/);
+  assert.equal(tableIndex,progressionIndex+1);assert.ok(orderedCore.at(-1)!<indexContaining("For feats, Fighting Styles"));
   const table=manifested.content[tableIndex]!;
   const rows=table.rows!.map(row=>row.map(cell=>cell.map(node=>node.text).join("")));
   assert.deepEqual(rows,expectedRows);assert.doesNotMatch(JSON.stringify(table),/�/u);
@@ -112,11 +127,17 @@ test("Forked Lightning resolves every target's save and outcomes independently",
 
 test("approved trigger, timing, replacement, and flavor clarifications remain canonical",async()=>{
   const {authority}=await loadAuthority();
-  const rulesFor=(id:string)=>authority.entities.find(entity=>entity.id===id)!.content.flatMap(block=>block.inlines??[]).map(inline=>inline.text).join("\n");
+  const rulesFor=(id:string)=>entityRules(authority.entities.find(entity=>entity.id===id)!);
 
-  const howToPlay=rulesFor("how_to_play");
-  assert.ok(howToPlay.startsWith("Immediately before each Manifested Strike attack roll, you can declare one rider for that attack."));
-  for(const rule of ["Your Signature Rider costs no Psi.","Other riders cost their listed Psi.","A declared rider resolves only on a hit, but its Psi and Blood Tax remain spent on a miss.","Each non-Signature rider can be used once per Attack action"])assert.ok(howToPlay.includes(rule));
+  const howToPlay=authority.entities.find(entity=>entity.id==="how_to_play")!;
+  const procedureIndex=howToPlay.content.findIndex(block=>block.type==="list"&&block.style==="ordered");const procedure=howToPlay.content[procedureIndex]!;
+  const steps=procedure.items!.map(item=>inlineText(item));assert.equal(steps.length,6);
+  const stepMechanics=[["Choose","target"],["Immediately before the attack roll","no rider or one legal rider"],["Tier 0 or an available Overload tier","Whether or not you use a rider","damage-type option"],["Pay","Psi","Blood Tax"],["Roll","fully resolve"],["On a miss","any declared rider does not resolve","Psi and Blood Tax remain spent"]];
+  for(const [index,fragments] of stepMechanics.entries())for(const fragment of fragments)assert.ok(steps[index]!.includes(fragment),"How to Play step "+(index+1)+": "+fragment);
+  assert.match(blockText(howToPlay.content[0]!),/^Resolve attacks one at a time\. A rider is an on-hit feature/);
+  const limits=howToPlay.content.find(block=>block.type==="list"&&block.style==="unordered")!;const limitText=limits.items!.map(item=>inlineText(item)).join("\n");
+  for(const rule of ["Signature Rider costs no Psi and can be used repeatedly","Other riders cost their listed Psi, and each can be used once per Attack action","only one rider","Only one rider can be Tier 2","Manifested Strike itself is never Overloaded"])assert.ok(limitText.includes(rule),rule);
+  for(const edgeCase of ["Action Surge","Rider Target Parity","only one standalone psionic feature","Short Disruption Timing"])assert.ok(procedureIndex<howToPlay.content.findIndex(block=>blockText(block).includes(edgeCase)),edgeCase);
 
   const overload=authority.entities.find(entity=>entity.id==="common_overload")!;
   const tier2=overload.content.find(block=>block.type==="tier"&&block.tier===2)!;
@@ -124,6 +145,14 @@ test("approved trigger, timing, replacement, and flavor clarifications remain ca
   assert.match(JSON.stringify(tier2),/A Tier 2 Overload costs twice your Proficiency Bonus in total\./);
   assert.match(JSON.stringify(overload.content),/2 × Proficiency Bonus = 2 × 4 = 8/);
   assert.doesNotMatch(JSON.stringify(overload.content),/1 × 2 × PB/);
+  const overloadIndex=(predicate:(block:any)=>boolean)=>overload.content.findIndex(predicate);const exampleIndex=overloadIndex(block=>block.type==="example");const costTableIndex=overloadIndex(block=>block.type==="table");
+  const orderedOverload=[overloadIndex(block=>blockText(block).startsWith("Overload strengthens")),overloadIndex(block=>block.type==="tier"&&block.tier===1),overloadIndex(block=>block.type==="tier"&&block.tier===2),exampleIndex,costTableIndex,overloadIndex(block=>blockText(block).startsWith("Multiple Overloads")),overloadIndex(block=>blockText(block).startsWith("Critical Hits and Riders")),overloadIndex(block=>blockText(block).startsWith("Damage Immunity and Riders")),overloadIndex(block=>blockText(block).startsWith("Blood Tax Resistance and Immunity")),overloadIndex(block=>blockText(block).startsWith("Concentration Startup Exception")),overloadIndex(block=>blockText(block).startsWith("Blood Tax and Temporary Hit Points")),overloadIndex(block=>blockText(block).startsWith("Blood Tax at 0 Hit Points"))];
+  assert.deepEqual(orderedOverload,[...orderedOverload].sort((a,b)=>a-b));assert.equal(new Set(orderedOverload).size,orderedOverload.length);assert.ok(orderedOverload.every(index=>index>=0));
+  const costTable=overload.content[costTableIndex]!;const cells=(row:any[])=>row.map(cell=>inlineText(cell));const costRows=costTable.rows!.map(cells);const tier2Row=costRows.find(row=>row[0]==="Manifested Strike + Tier 2 rider")!;assert.equal(tier2Row[2],"2 × Proficiency Bonus in total");
+  const tier0Row=costRows.find(row=>row[0]==="Manifested Strike + Tier 0 rider")!;assert.match(tier0Row[3]??"",/Signature Rider is repeatable at every tier/);
+  const standaloneRow=costRows.find(row=>row[0]==="Overloaded standalone feature")!;assert.equal(standaloneRow[2],"Tier 1: Proficiency Bonus; Tier 2: 2 × Proficiency Bonus in total");
+  assert.deepEqual(costRows.find(row=>row[0]==="Overloaded rider + overloaded standalone feature"),["Overloaded rider + overloaded standalone feature","Rider cost + feature cost","Sum both","Each Overload pays separately"]);
+  const holdout=rulesFor("common_manifested_strike");assert.match(holdout,/Declare this option before the attack roll\. If the attack has a rider, declare the option at the same time as that rider and its tier\./);
 
   const ballLightning=rulesFor("ball_lightning");
   for(const rule of ["enters the Sphere for the first time on any turn","Voluntary or forced movement into the Sphere can trigger this effect","trigger it by entering only once per turn","Moving the orb onto a stationary creature does not trigger damage immediately","must later enter the Sphere or start its turn there"])assert.ok(ballLightning.includes(rule),rule);
@@ -132,6 +161,48 @@ test("approved trigger, timing, replacement, and flavor clarifications remain ca
   assert.doesNotMatch(rulesFor("frozen_ground"),/replaces Tier 1’s effect that makes its Speed 0/);
   assert.ok(rulesFor("telekinetic_slam").startsWith("You seize a foe with overwhelming telekinetic force and hurl it across the battlefield."));
   assert.doesNotMatch(rulesFor("telekinetic_slam"),/ground|Prone|falling damage|collision damage/i);
+});
+
+test("newcomer common rules preserve choices, resources, Signature Riders, and Kinetic Mastery",async()=>{
+  const {authority}=await loadAuthority();
+  const entity=(id:string)=>authority.entities.find(item=>item.id===id)!;
+  const rules=(id:string)=>entityRules(entity(id));
+  const listItems=(id:string,index=0)=>entity(id).content.filter(block=>block.type==="list")[index]!.items!.map(item=>inlineText(item));
+
+  const discipline=entity("common_psionic_discipline");
+  const disciplineRules=rules("common_psionic_discipline");
+  assert.ok(blockText(discipline.content[0]!).startsWith("When you gain this feature at Fighter level 3, choose Intelligence, Wisdom, or Charisma as your Psionic Ability."));
+  assert.match(disciplineRules,/This choice is separate from your Discipline./);
+  assert.match(disciplineRules,/Your Discipline grants its own features and determines your Manifested Strike’s damage type./);
+  assert.match(disciplineRules,/Your Manifested Strike attack bonus includes this modifier, and you add the modifier to the strike’s damage roll./);
+  assert.match(disciplineRules,/Psionic saving throw Difficulty Class = 8 \+ your Proficiency Bonus \+ your Psionic Ability modifier/);
+  assert.doesNotMatch(disciplineRules,/choose (?:Pyrokinesis|Cryokinesis|Psychokinesis|Electrokinesis)/i);
+
+  assert.deepEqual(listItems("common_discipline_signature_save"),[
+    "Pyrokinesis: Dexterity saving throw",
+    "Cryokinesis: Constitution saving throw",
+    "Psychokinesis: Strength saving throw",
+    "Electrokinesis: Charisma saving throw"
+  ]);
+  assert.ok(rules("common_discipline_signature_save").startsWith("A signature saving throw is used only when a feature specifically calls for your Discipline’s signature saving throw."));
+  assert.match(rules("common_discipline_signature_save"),/A saving throw named by another feature is not replaced/);
+
+  const reservoir=entity("common_psi_reservoir");const reservoirText=rules("common_psi_reservoir");
+  for(const rule of ["only when that feature lists a Psi cost greater than 0","Manifested Strike itself costs no Psi","half your Fighter level, rounded up, plus your Proficiency Bonus","Short or Long Rest"])assert.ok(reservoirText.includes(rule),rule);
+  assert.deepEqual(reservoir.content.map(block=>block.type),["paragraph","paragraph","paragraph","table"]);
+  assert.deepEqual(reservoir.content[3]!.rows!.map(row=>row.map(cell=>inlineText(cell))),[["3–4","+2","4"],["5–6","+3","6"],["7–8","+3","7"],["9–10","+4","9"],["11–12","+4","10"],["13–14","+5","12"],["15–16","+5","13"],["17–18","+6","15"],["19–20","+6","16"]]);
+
+  assert.deepEqual(listItems("common_signature_rider"),["Pyrokinesis: Ember Bolt","Cryokinesis: Glacial Spike","Psychokinesis: Telekinetic Shove","Electrokinesis: Static Discharge"]);
+  const signatureRules=rules("common_signature_rider");
+  for(const rule of ["Psi cost remains 0 at every tier","declare it repeatedly for any number of your Manifested Strike attacks","only one rider","pay the applicable Blood Tax","Only one rider in each Attack action can be Tier 2"])assert.ok(signatureRules.includes(rule),rule);
+
+  const mastery=entity("common_kinetic_mastery");const masteryRules=rules("common_kinetic_mastery");
+  assert.deepEqual(listItems("common_kinetic_mastery"),["Pyrokinesis: Graze","Cryokinesis: Slow","Psychokinesis: Push","Electrokinesis: Sap"]);
+  const separateIndex=mastery.content.findIndex(block=>blockText(block).startsWith("Kinetic Mastery is separate from a rider"));
+  const basicIndices=["Pyrokinesis — Graze","Cryokinesis — Slow","Psychokinesis — Push","Electrokinesis — Sap"].map(prefix=>mastery.content.findIndex(block=>blockText(block).startsWith(prefix)));
+  const interactionIndices=["Tactical Master","Graze and the Holdout Option","Slow and Glacial Spike","Telekinetic Shove and Push","Masteries and Damage Immunity"].map(prefix=>mastery.content.findIndex(block=>blockText(block).startsWith(prefix)));
+  assert.ok(separateIndex>=0&&basicIndices.every(index=>index>separateIndex)&&interactionIndices.every(index=>index>Math.max(...basicIndices)));
+  for(const rule of ["does not occupy the hit’s rider slot","does not count against the number of weapons","misses, the target takes damage equal to your Psionic Ability modifier","hits a creature and deals damage","reduce its Speed by 10 feet until the start of your next turn","hits a Large or smaller creature","push it up to 10 feet straight away from you","Disadvantage on its next attack roll before the start of your next turn","replaces Kinetic Mastery rather than stacking","half your Psionic Ability modifier, rounded down","reduced by 20 feet until the start of your next turn","successful saving throw leaves the target unmoved","damage immunity does not prevent them"])assert.ok(masteryRules.includes(rule),rule);
 });
 
 test("fixed concentration durations are explicit in structured authority and rules text",async()=>{
@@ -177,10 +248,15 @@ test("Mass Levitation prohibits mixing its creature-size target groups",async()=
 
 test("Psi Cost Reference provides full-English activation and duration values",async()=>{
   const {authority}=await loadAuthority();const reference=authority.entities.find(entity=>entity.id==="subclass_feature_reference")!;
+  assert.deepEqual(reference.content.map(block=>block.type),["paragraph","table","paragraph","table"]);
+  assert.equal(blockText(reference.content[0]!),"The first table shows the features you gain at each Fighter level.");
+  assert.equal(blockText(reference.content[2]!),"The second table compares each feature’s Discipline, Psi cost, activation, and duration.");
   const table=reference.content.find(block=>block.type==="table"&&block.headers?.some(cell=>cell.some(node=>node.text==="Duration")))!;
   const cell=(nodes:any[])=>nodes.map(node=>node.text??node.label??String(node.value?.value??"")).join("");
   assert.deepEqual(table.headers!.map(cell),["Level","Feature","Discipline","Psi","Activation","Duration"]);
   const rows=table.rows!.map(row=>row.map(cell));assert.ok(rows.every(row=>row.length===6));
+  assert.equal(rows.length,34);
+  assert.equal(new Set(rows.map(row=>row[1])).size,rows.length);
   const byFeature=new Map(rows.map(row=>[row[1],row]));
   for(const [feature,duration] of [["Vectored Thrust","Up to 10 minutes"],["Frozen Ground","Up to 1 minute"],["Mass Levitation","Up to 1 minute"],["Ball Lightning","Up to 1 minute"],["Gravitic Press","Up to 1 minute"],["Beguile","Varies by tier"]])assert.equal(byFeature.get(feature)?.[5],duration);
   assert.equal(byFeature.get("Glacial Spike")?.[4],"Declared before roll · Resolves on hit");
@@ -223,16 +299,120 @@ test("example turns use one plain-text six-phase authority contract",async()=>{
   const examplePlay=authority.entities.find(entity=>entity.id==="common_example_play")!;
   const overload=authority.entities.find(entity=>entity.id==="common_overload")!;
   const sections=examplePlay.content.filter(block=>block.type==="example_play_section") as any[];
-  const phases=["setup","activation","rolls_or_saves","damage","effects","result"];
+  const phases=["setup","activation","rolls_or_saves","damage","effects","result"] as const;
   assert.deepEqual(sections.map(block=>block.discipline),["pyrokinesis","psychokinesis","cryokinesis","electrokinesis"]);
   assert.deepEqual(sections.map(block=>block.title.map((node:any)=>node.text).join("")),["Focused Fire — Level 11 Pyrokinesis","Aerial Repositioning — Level 11 Psychokinesis","Frozen Ground Lockdown — Level 11 Cryokinesis","Room Sweep — Level 11 Electrokinesis"]);
   for(const section of sections){
     assert.ok(phases.every(field=>Array.isArray(section[field])));
     for(const field of ["heading","title",...phases]){assert.ok(section[field].length>0);assert.ok(section[field].every((node:any)=>node.type==="text"),section.title[0].text+" "+field+" must use plain text");}
   }
+  const expectedPhases=[
+    {
+      discipline:"pyrokinesis",
+      setup:["40 feet","Armor Class 16","10 Psi","Proficiency Bonus +4","Charisma +4","1d10 Manifested Strike die"],
+      activation:["resolve three attacks against the same creature, one at a time","Ember Bolt at Tier 2","8 Blood Tax","Cinder Lance at Tier 0","3 Psi","Ember Bolt at Tier 0"],
+      rolls_or_saves:["9 + 10 = 19","13 + 10 = 23","7 + 10 = 17","Armor Class 16"],
+      damage:["18 fire damage","21 fire damage","11 fire damage","18 + 21 + 11 = 50 fire damage"],
+      effects:["no forced movement, Speed change, condition, or area effect"],
+      result:["7 of 10 Psi","8 Hit Points lost to Blood Tax","used your Attack action and all three attacks","50 fire damage"]
+    },
+    {
+      discipline:"psychokinesis",
+      setup:["within 5 feet","Armor Class 16","10 Psi","Intelligence +4","open concentration slot"],
+      activation:["Vectored Thrust at Tier 1","spend 2 Psi","4 Blood Tax","move to a point 30 feet from the creature’s starting position","Telekinetic Shove at Tier 0"],
+      rolls_or_saves:["9 + 10 = 19","12 + 10 = 22","7 + 10 = 17","12 against Difficulty Class 16","fails its Strength saving throw"],
+      damage:["13 force damage","10 force damage","8 force damage","13 + 10 + 8 = 31 force damage"],
+      effects:["push the creature 10 feet","replaces Push mastery","flight provokes no Opportunity Attacks"],
+      result:["30 feet from the creature’s starting position","8 of 10 Psi","4 Hit Points lost to Blood Tax","concentrating on Vectored Thrust","31 force damage","ends 10 feet from its starting position","reaction remains unused"]
+    },
+    {
+      discipline:"cryokinesis",
+      setup:["20 feet","15-foot-radius Frozen Ground Cylinder","8 Psi remaining","concentration on the difficult-terrain area"],
+      activation:["Glacial Spike at Tier 0","Glacial Spike at Tier 1","4 Blood Tax","Attack 3 is a plain Manifested Strike"],
+      rolls_or_saves:["10 + 10 = 20","8 + 10 = 18","12 + 10 = 22","11 against Difficulty Class 16","fails its Constitution saving throw"],
+      damage:["12 cold damage","14 cold damage","9 cold damage","12 + 14 + 9 = 35 cold damage"],
+      effects:["reduces the creature’s Speed by 10 feet","Speed 0 until the end of your next turn","Frozen Ground remains difficult terrain"],
+      result:["8 Psi","4 Hit Points lost to Blood Tax","still concentrating on Frozen Ground","35 cold damage","Speed 0 in difficult terrain","no Psi, bonus action, reaction, or movement this turn"]
+    },
+    {
+      discipline:"electrokinesis",
+      setup:["five hostile creatures","three intended primary targets are within 60 feet","four are within 5 feet","all five fit inside the final 10-foot-radius Sphere","10 Psi"],
+      activation:["fully resolve each attack before choosing the next target","Static Discharge Signature Rider at Tier 2","8 Blood Tax","Branching Bolt at Tier 0","Electron Burst at Tier 0"],
+      rolls_or_saves:["9 + 10 = 19","12 + 10 = 22","7 + 10 = 17","five Static Discharge targets","12 against Difficulty Class 16","five Electron Burst targets","13 against Difficulty Class 16"],
+      damage:["11 + (2 × 5) = 21 damage","10 + (8 × 2) = 26 damage","9 + (11 × 5) = 64 damage","21 + 26 + 64 = 111 lightning damage"],
+      effects:["three struck primary targets receive Sap","all five fail the saving throw and cannot take reactions","secondary targets are damaged but are not hit and do not receive Sap"],
+      result:["6 Psi","8 Hit Points lost to Blood Tax","111 lightning damage in total","Three primary targets are struck and Sapped","none of the five can take reactions","only Tier 2 rider used"]
+    }
+  ] as const;
+  for(const expected of expectedPhases){const section=sections.find(item=>item.discipline===expected.discipline)!;for(const phase of phases)for(const fragment of expected[phase])assert.ok(inlineText(section[phase]).includes(fragment),`${expected.discipline} ${phase}: ${fragment}`);}
+
   const overloadExamples=overload.content.filter(block=>block.type==="example") as any[];
   assert.equal(overloadExamples.length,1);assert.equal(overloadExamples[0].title.map((node:any)=>node.text).join(""),"Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)");
   assert.doesNotMatch(JSON.stringify(sections),/Example assumptions:|Full Attack Turn|Sustained Turn|type":"(?:strong|emphasis)"/);
+});
+
+test("all four Signature Riders retain their approved mechanics",async()=>{
+  const {authority}=await loadAuthority();
+  const expected={
+    glacial_spike:{rulesArea:"cryokinesis",tiers:{
+      "T0 Base:":[
+        "The struck target takes 2 cold damage",
+        "This damage is fixed and does not scale",
+        "Speed is reduced by 10 feet until the end of your next turn",
+        "This reduction does not stack with itself"
+      ],
+      "T1 Overload: Changes from Tier 0:":[
+        "must make a Constitution saving throw",
+        "On a failed save, its Speed becomes 0 until the end of your next turn",
+        "replacing the Tier 0 Speed reduction",
+        "On a successful save, the Tier 0 Speed reduction remains"
+      ],
+      "T2 Overload: Changes from Tier 1:":[
+        "On a failed save, the struck target is Restrained until the end of your next turn",
+        "replaces Tier 1’s effect that makes its Speed 0 for that duration",
+        "On a successful save, the Tier 0 Speed reduction remains"
+      ]
+    }},
+    ember_bolt:{rulesArea:"pyrokinesis",tiers:{
+      "T0 Base:":["The struck target takes 2 additional fire damage","This damage is fixed, does not scale, and has no per-Attack-action limit"],
+      "T1 Overload: Changes from Tier 0:":["additional fire damage increases to 4"],
+      "T2 Overload: Changes from Tier 1:":["additional fire damage increases to 6"]
+    }},
+    telekinetic_shove:{rulesArea:"psychokinesis",tiers:{
+      "T0 Base:":[
+        "The struck target takes 2 additional force damage",
+        "must make a Strength saving throw",
+        "On a failed save, push it 10 feet in any horizontal direction",
+        "On a successful save, the target remains unmoved",
+        "replaces Push mastery for that hit, whether the save succeeds or fails",
+        "The target is moved only once"
+      ],
+      "T1 Overload: Changes from Tier 0:":["push distance increases to 15 feet"],
+      "T2 Overload: Changes from Tier 1:":["push distance increases to 20 feet","On a failed save, the target’s Speed also becomes 0 until the end of your next turn"]
+    }},
+    static_discharge:{rulesArea:"electrokinesis",tiers:{
+      "T0 Base:":[
+        "The struck target takes 2 lightning damage with no saving throw",
+        "Up to one other creature of your choice within 5 feet of it also takes 2 lightning damage with no saving throw"
+      ],
+      "T1 Overload: Changes from Tier 0:":[
+        "Replace the limit of one other creature with a number of other creatures equal to your Proficiency Bonus within 5 feet of the struck target",
+        "Each affected creature still takes 2 lightning damage with no saving throw"
+      ],
+      "T2 Overload: Changes from Tier 1:":[
+        "Each affected creature still takes 2 lightning damage with no saving throw",
+        "must make a Charisma saving throw",
+        "On a failed save, it cannot take reactions until the start of your next turn",
+        "On a successful save, it suffers no additional effect",
+        "A creature makes this save even if lightning immunity prevents the damage"
+      ]
+    }}
+  } as const;
+  const tierRules=(entity:any,label:string)=>{const block=entity.content.find((candidate:any)=>candidate.type==="paragraph"&&blockText(candidate).startsWith(label));assert.ok(block,entity.id+": missing "+label);return blockText(block);};
+  for(const [id,spec] of Object.entries(expected)){const entity=authority.entities.find(item=>item.id===id)!;assert.equal(entity.level,3);assert.equal(entity.activation,"on_hit");assert.equal(entity.psi_cost,0);assert.equal(entity.classifications.feature_role,"rider");assert.deepEqual(entity.classifications.rules_area,[spec.rulesArea]);const positions=Object.keys(spec.tiers).map(label=>entity.content.findIndex(block=>blockText(block).startsWith(label)));assert.deepEqual(positions,[...positions].sort((a,b)=>a-b));assert.ok(positions.every(index=>index>=0));for(const [label,fragments] of Object.entries(spec.tiers) as Array<[string,readonly string[]]>){const rules=tierRules(entity,label);for(const fragment of fragments)assert.ok(rules.includes(fragment),id+" "+label+": "+fragment);}}
+  const parity=entityRules(authority.entities.find(item=>item.id==="how_to_play")!);
+  assert.match(parity,/struck creature is included among the affected creatures/);
+  assert.match(parity,/Every affected creature otherwise resolves the same rider damage, saving throw, conditions, and applicable effects/);
 });
 
 test("tiered rules use an ordered, cumulative hierarchy without changing mechanics",async()=>{
