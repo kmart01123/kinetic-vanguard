@@ -9,15 +9,12 @@
 - Consolidated repeated Overload, Manifested Strike, and Advanced Training reminders so shared rules are stated once and feature text focuses on feature-specific outcomes.
 - Clarified that every Forked Lightning target makes and resolves its own Charisma saving throw, with Tier 2 disruption limited to targets that fail and Speed 0 limited to a failed save by the primary target.
 - Defined fixed concentration durations for Vectored Thrust (up to 10 minutes) and Frozen Ground, Mass Levitation, Ball Lightning, and Gravitic Press (up to 1 minute), including canonical rendered metadata.
+- Prohibited mixing Medium-or-smaller and Large target groups in a single Mass Levitation activation while preserving each group’s existing target limit.
 
 ### Removed
 
 - Retired the completed v12.1.0 Markdown migration source, migration command, migration-only records, and obsolete ADR revision files from the active repository.
 - Removed non-normative design commentary, duplicated activation reminders, and other superfluous text where the same rule is already established by structured metadata or shared rules.
-
-### Rules decisions pending
-
-- Mass Levitation does not state whether Medium-or-smaller and Large targets can be mixed in one activation.
 
 ## 13.0.1 — 2026-08-04
 

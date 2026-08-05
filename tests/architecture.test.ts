@@ -114,6 +114,25 @@ test("fixed concentration durations are explicit in structured authority and rul
 });
 
 
+test("Mass Levitation prohibits mixing its creature-size target groups",async()=>{
+  const {authority}=await loadAuthority();
+  const feature=authority.entities.find(entity=>entity.id==="mass_levitation")!;
+  const rules=feature.content.flatMap(block=>block.inlines??[]).map(inline=>inline.text).join("\n");
+  assert.match(rules,/choose one target group within 60 feet: up to five Medium or smaller creatures, or up to two Large creatures\./);
+  assert.match(rules,/You cannot choose creatures from both groups as part of the same activation\./);
+  for(const mechanic of [
+    "Huge or larger creatures are immune",
+    "Each target must make a Strength saving throw",
+    "lifted 30 feet into the air and Restrained while hovering",
+    "At the start of each affected creature’s turn, it repeats the saving throw",
+    "On a successful save, it descends safely and the effect ends for that creature",
+    "move each creature still levitated by this feature up to 15 feet in any direction",
+    "This is forced movement; the creature remains lifted and Restrained",
+    "takes force damage equal to twice your Psionic Ability modifier"
+  ])assert.ok(rules.includes(mechanic),"Mass Levitation mechanic changed: "+mechanic);
+});
+
+
 test("Common rules do not leak into discipline Browse topics",async()=>{
   const {authority}=await loadAuthority();const entities=new Map(authority.entities.map(entity=>[entity.id,entity]));
   const categories=new Map(authority.navigation.categories.map(category=>[category.id,category]));
