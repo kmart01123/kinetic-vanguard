@@ -20,7 +20,7 @@
 - Derived active continuous-integration release labels and artifact naming from the canonical rules version.
 - Defined the Fighter level 3 choice of one permanent Kinetic Discipline, distinct from the Psionic Ability choice, and documented every subclass element that choice determines.
 - Renamed the Psi Cost Reference’s duration column to Ongoing Duration and normalized all 34 rows against tier-aware ongoing outcomes without changing feature mechanics.
-- Added page-local Show and Level filters to the Psi Cost Reference, with live row counts, an accessible no-match state, and full-table print output.
+- Added page-local Show and Level filters to the Psi Cost Reference, with live row counts, an accessible no-match state, full-table print output, and readable desktop and print column sizing.
 
 ### Removed
 
