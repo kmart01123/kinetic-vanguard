@@ -94,6 +94,26 @@ test("Forked Lightning resolves every target's save and outcomes independently",
 });
 
 
+test("fixed concentration durations are explicit in structured authority and rules text",async()=>{
+  const {authority}=await loadAuthority();
+  const expected=[
+    ["advanced_gravitic_press","up to 1 minute"],
+    ["ball_lightning","up to 1 minute"],
+    ["frozen_ground","up to 1 minute"],
+    ["mass_levitation","up to 1 minute"],
+    ["vectored_thrust","up to 10 minutes"]
+  ];
+  const features=authority.entities.filter(entity=>entity.concentration_duration!==undefined).sort((a,b)=>a.id.localeCompare(b.id));
+  assert.deepEqual(features.map(entity=>[entity.id,entity.concentration_duration]),expected);
+  assert.ok(features.every(entity=>entity.requires_concentration===true));
+  for(const entity of features){
+    const rules=entity.content.flatMap(block=>block.inlines??[]).map(inline=>inline.text).join("\n");
+    assert.ok(rules.includes(`requires Concentration for ${entity.concentration_duration}.`),`${entity.id} is missing its canonical maximum duration`);
+  }
+  assert.equal(authority.entities.find(entity=>entity.id==="advanced_beguile")?.concentration_duration,undefined);
+});
+
+
 test("Common rules do not leak into discipline Browse topics",async()=>{
   const {authority}=await loadAuthority();const entities=new Map(authority.entities.map(entity=>[entity.id,entity]));
   const categories=new Map(authority.navigation.categories.map(category=>[category.id,category]));

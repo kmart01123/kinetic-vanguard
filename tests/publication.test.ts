@@ -250,11 +250,23 @@ test("feature metadata renders concentration only from structured authority",asy
   assert.ok(levitationMetadata.some(item=>item.term==="Activation"&&item.value==="action"));
   assert.ok(levitationMetadata.some(item=>item.value==="Concentration"));
 
+  const frozen=render(html,"cryokinesis","cryokinesis_frozen_ground_topic");
+  const vectored=render(html,"psychokinesis","psychokinesis_vectored_thrust_topic");
+  const ball=render(html,"electrokinesis","electrokinesis_ball_lightning_topic");
+  for(const [dom,entityId,duration] of [
+    [gravitic,"advanced_gravitic_press","up to 1 minute"],
+    [levitation,"mass_levitation","up to 1 minute"],
+    [frozen,"frozen_ground","up to 1 minute"],
+    [vectored,"vectored_thrust","up to 10 minutes"],
+    [ball,"ball_lightning","up to 1 minute"]
+  ] as const)assert.ok(metadata(dom.window.document,entityId).some(item=>item.term==="Duration"&&item.value===duration),`${entityId} duration metadata is missing`);
+
   const slam=render(html,"psychokinesis","psychokinesis_telekinetic_slam_topic");
   const slamMetadata=metadata(slam.window.document,"telekinetic_slam");
   assert.ok(slamMetadata.some(item=>item.term==="Psi"&&item.value==="3"));
   assert.ok(slamMetadata.some(item=>item.term==="Activation"&&item.value==="action"));
   assert.ok(!slamMetadata.some(item=>item.value==="Concentration"));
+  assert.ok(!slamMetadata.some(item=>item.term==="Duration"));
 
   const marker='"text":"You seize a foe with overwhelming telekinetic force';
   const replacement='"text":"This description mentions concentration but does not require it. You seize a foe with overwhelming telekinetic force';
@@ -267,7 +279,7 @@ test("feature metadata renders concentration only from structured authority",asy
   const metadataCss=html.match(/\.feature-metadata\{([^}]*)\}/)?.[1]??"";
   assert.doesNotMatch(metadataCss,/(?:^|;)width:/);
   await new Promise<void>(resolve=>setImmediate(resolve));
-  for(const dom of [gravitic,levitation,slam,descriptionOnly])dom.window.close();
+  for(const dom of [gravitic,levitation,frozen,vectored,ball,slam,descriptionOnly])dom.window.close();
 });
 
 

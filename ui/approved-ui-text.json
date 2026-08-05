@@ -22,6 +22,7 @@
     {"id":"fact_level","role":"fact_label","placements":["label"],"text":"Level"}
     ,{"id":"fact_psi","role":"fact_label","placements":["label"],"text":"Psi"}
     ,{"id":"fact_activation","role":"fact_label","placements":["label"],"text":"Activation"}
+    ,{"id":"fact_duration","role":"fact_label","placements":["label"],"text":"Duration"}
     ,{"id":"fact_requirement","role":"fact_label","placements":["label"],"text":"Requirement"}
     ,{"id":"fact_concentration","role":"fact_value","placements":["metadata"],"text":"Concentration"}
   ]

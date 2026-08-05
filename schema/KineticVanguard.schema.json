@@ -80,7 +80,7 @@
       "properties": {
         "id":{"$ref":"#/$defs/id"},"title":{"type":"string","minLength":1},"short_title":{"type":"string","minLength":1},
         "publishable":{"const":true},"kind":{"$ref":"#/$defs/id"},
-        "level":{"type":"integer","minimum":1,"maximum":20},"progression_section":{"enum":["foundation","reference"]},"psi_cost":{"type":"integer","minimum":0},"activation":{"$ref":"#/$defs/id"},"requires_concentration":{"type":"boolean"},
+        "level":{"type":"integer","minimum":1,"maximum":20},"progression_section":{"enum":["foundation","reference"]},"psi_cost":{"type":"integer","minimum":0},"activation":{"$ref":"#/$defs/id"},"requires_concentration":{"type":"boolean"},"concentration_duration":{"type":"string","minLength":1},
         "content":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1},
         "classifications":{"$ref":"#/$defs/classifications"},
         "presentation_metadata":{"type":"object","additionalProperties":false,"required":["primary_rules_area","canonical_topic_by_area"],"properties":{"primary_rules_area":{"$ref":"#/$defs/id"},"canonical_topic_by_area":{"type":"object","additionalProperties":{"$ref":"#/$defs/id"}}}},
