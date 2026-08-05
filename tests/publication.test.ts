@@ -50,6 +50,26 @@ test("overload tier labels and content render as separate compact elements",asyn
   await new Promise<void>(resolve=>setImmediate(resolve));glacial.window.close();empathic.window.close();
 });
 
+test("rendered permanent Discipline choice and Ongoing Duration reference stay explicit",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
+  const render=(topic:string)=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=${topic}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
+  const discipline=render("common_features_common_psionic_discipline_topic");const disciplineArticle=discipline.window.document.querySelector<HTMLElement>("#entity-common_psionic_discipline")!;
+  const disciplineParagraphs=[...disciplineArticle.querySelectorAll<HTMLElement>(":scope > p")].map(paragraph=>paragraph.textContent);
+  assert.equal(disciplineArticle.querySelector("h2")?.textContent,"Psionic Discipline");
+  assert.equal(disciplineParagraphs[0],"When you gain this subclass at Fighter level 3, choose one Kinetic Discipline: Pyrokinesis, Cryokinesis, Psychokinesis, or Electrokinesis. Your chosen Discipline determines your Manifested Strike’s damage type, Discipline signature saving throw, Kinetic Mastery, Signature Rider, and the Discipline features you gain at Fighter levels 3, 7, 10, 15, and 20. This choice is permanent and is separate from your Psionic Ability choice.");
+  assert.equal(disciplineParagraphs[1],"Choose Intelligence, Wisdom, or Charisma as your Psionic Ability. Your Psionic Ability choice does not change your Discipline.");
+
+  const reference=render("common_features_subclass_feature_reference_topic");const referenceArticle=reference.window.document.querySelector<HTMLElement>("#entity-subclass_feature_reference")!;
+  const table=[...referenceArticle.querySelectorAll<HTMLTableElement>("table")].find(candidate=>[...candidate.querySelectorAll("th")].some(cell=>cell.textContent==="Ongoing Duration"))!;
+  const headers=[...table.querySelectorAll("th")].map(cell=>cell.textContent);assert.deepEqual(headers,["Level","Feature","Discipline","Psi","Activation","Ongoing Duration"]);assert.equal(headers.includes("Duration"),false);
+  const definition="Ongoing Duration shows how long the feature or any condition, zone, or other effect it creates can continue after its initial resolution. Damage, teleportation, and forced movement resolve immediately. ‘Varies by tier’ means the feature’s tiers have different ongoing durations.";
+  assert.equal(table.closest(".table-scroll")?.previousElementSibling?.textContent,definition);assert.equal(table.className,"quick-reference-table");
+  const rows=[...table.querySelectorAll("tbody tr")].map(row=>[...row.querySelectorAll("td")].map(cell=>cell.textContent??""));assert.equal(rows.length,34);
+  const byFeature=new Map(rows.map(row=>[row[1],row[5]]));
+  for(const [feature,duration] of [["Explosion/Implosion","Until the end of your next turn"],["Phase Step","Varies by tier"],["Electron Burst","Varies by tier"],["Vectored Thrust","Concentration, up to 10 minutes"],["Frozen Ground","Concentration, up to 1 minute"],["Mass Levitation","Concentration, up to 1 minute"],["Ball Lightning","Concentration, up to 1 minute"],["Gravitic Press","Concentration, up to 1 minute"],["Beguile","Varies by tier"],["Barrier","Varies by tier"],["Inner Reserve","Continuous"],["Overload Mastery II","Continuous"]] as const)assert.equal(byFeature.get(feature),duration);
+  await new Promise<void>(resolve=>setImmediate(resolve));discipline.window.close();reference.window.close();
+});
+
 test("Name control uses committed selection without redundant Open UI",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   assert.match(html,/<label for="name-select">Name<\/label><select id="name-select"><\/select>/);

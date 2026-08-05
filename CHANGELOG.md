@@ -18,6 +18,8 @@
 - Rendered tier labels as semantic level-three headings and expanded the Psi Cost Reference with full-English activation and duration values in a horizontally scrollable mobile table.
 - Normalized active authority and approved interface text to full English without contractions, with an automated source-level guard.
 - Derived active continuous-integration release labels and artifact naming from the canonical rules version.
+- Defined the Fighter level 3 choice of one permanent Kinetic Discipline, distinct from the Psionic Ability choice, and documented every subclass element that choice determines.
+- Renamed the Psi Cost Reference’s duration column to Ongoing Duration and normalized all 34 rows against tier-aware ongoing outcomes without changing feature mechanics.
 
 ### Removed
 

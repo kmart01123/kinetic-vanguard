@@ -4,6 +4,7 @@ import { access, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promi
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { executeBuild } from "../src/build.js";
+import { canonicalJson, sha256 } from "../src/canonical.js";
 import { loadAuthority } from "../src/load.js";
 import { validateSemantics } from "../src/validate.js";
 
@@ -171,12 +172,22 @@ test("newcomer common rules preserve choices, resources, Signature Riders, and K
 
   const discipline=entity("common_psionic_discipline");
   const disciplineRules=rules("common_psionic_discipline");
-  assert.ok(blockText(discipline.content[0]!).startsWith("When you gain this feature at Fighter level 3, choose Intelligence, Wisdom, or Charisma as your Psionic Ability."));
-  assert.match(disciplineRules,/This choice is separate from your Discipline./);
-  assert.match(disciplineRules,/Your Discipline grants its own features and determines your Manifested Strike’s damage type./);
-  assert.match(disciplineRules,/Your Manifested Strike attack bonus includes this modifier, and you add the modifier to the strike’s damage roll./);
+  assert.equal(discipline.id,"common_psionic_discipline");assert.equal(discipline.title,"Psionic Discipline");assert.equal(discipline.level,3);
+  assert.deepEqual(discipline.classifications,{entity_kind:"feature",feature_role:"passive",rules_area:["common_features"]});
+  assert.equal(blockText(discipline.content[0]!),"When you gain this subclass at Fighter level 3, choose one Kinetic Discipline: Pyrokinesis, Cryokinesis, Psychokinesis, or Electrokinesis. Your chosen Discipline determines your Manifested Strike’s damage type, Discipline signature saving throw, Kinetic Mastery, Signature Rider, and the Discipline features you gain at Fighter levels 3, 7, 10, 15, and 20. This choice is permanent and is separate from your Psionic Ability choice.");
+  assert.equal(blockText(discipline.content[1]!),"Choose Intelligence, Wisdom, or Charisma as your Psionic Ability. Your Psionic Ability choice does not change your Discipline.");
+  assert.match(disciplineRules,/Your Psionic Ability modifier is the ability modifier for the ability you chose\./);
+  assert.match(disciplineRules,/Your Manifested Strike attack bonus includes this modifier, and you add the modifier to the strike’s damage roll\./);
+  assert.match(disciplineRules,/Use it whenever another subclass feature refers to your Psionic Ability\./);
   assert.match(disciplineRules,/Psionic saving throw Difficulty Class = 8 \+ your Proficiency Bonus \+ your Psionic Ability modifier/);
-  assert.doesNotMatch(disciplineRules,/choose (?:Pyrokinesis|Cryokinesis|Psychokinesis|Electrokinesis)/i);
+  assert.match(rules("how_to_play"),/At Fighter level 3, choose one Kinetic Discipline; this choice is permanent\./);
+  const disciplineTopic=authority.navigation.categories.find(category=>category.id==="common_features")!.topics.find(topic=>topic.id==="common_features_common_psionic_discipline_topic")!;
+  assert.deepEqual(disciplineTopic.entity_ids,["common_psionic_discipline"]);
+  const retrainingLanguage=authority.entities.flatMap(item=>item.content.map(block=>({id:item.id,text:blockText(block)}))).filter(({text})=>
+    /\b(?:can|may)\s+(?:retrain|swap|replace|switch|change|choose (?:another|a different))\b[^.]*\b(?:Kinetic )?Discipline\b/iu.test(text)||
+    /\b(?:Kinetic )?Discipline\b[^.]*\b(?:can|may)\s+be\s+(?:retrained|swapped|replaced|switched|changed)\b/iu.test(text)
+  );
+  assert.deepEqual(retrainingLanguage,[]);
 
   assert.deepEqual(listItems("common_discipline_signature_save"),[
     "Pyrokinesis: Dexterity saving throw",
@@ -246,25 +257,52 @@ test("Mass Levitation prohibits mixing its creature-size target groups",async()=
 });
 
 
-test("Psi Cost Reference provides full-English activation and duration values",async()=>{
+test("Psi Cost Reference defines complete tier-aware Ongoing Duration values",async()=>{
   const {authority}=await loadAuthority();const reference=authority.entities.find(entity=>entity.id==="subclass_feature_reference")!;
-  assert.deepEqual(reference.content.map(block=>block.type),["paragraph","table","paragraph","table"]);
+  assert.deepEqual(reference.content.map(block=>block.type),["paragraph","table","paragraph","paragraph","table"]);
   assert.equal(blockText(reference.content[0]!),"The first table shows the features you gain at each Fighter level.");
-  assert.equal(blockText(reference.content[2]!),"The second table compares each feature’s Discipline, Psi cost, activation, and duration.");
-  const table=reference.content.find(block=>block.type==="table"&&block.headers?.some(cell=>cell.some(node=>node.text==="Duration")))!;
+  const progression=reference.content[1]!;assert.match(inlineText(progression.rows![0]![1]),/^Psionic Discipline \(one permanent Kinetic Discipline choice\)/);
+  assert.equal(blockText(reference.content[2]!),"The second table compares each feature’s Discipline, Psi cost, activation, and ongoing duration.");
+  const definition="Ongoing Duration shows how long the feature or any condition, zone, or other effect it creates can continue after its initial resolution. Damage, teleportation, and forced movement resolve immediately. ‘Varies by tier’ means the feature’s tiers have different ongoing durations.";
+  assert.equal(blockText(reference.content[3]!),definition);
+  const table=reference.content.find(block=>block.type==="table"&&block.headers?.some(cell=>cell.some(node=>node.text==="Ongoing Duration")))!;
+  assert.equal(reference.content.indexOf(table),reference.content.indexOf(reference.content[3]!)+1);
   const cell=(nodes:any[])=>nodes.map(node=>node.text??node.label??String(node.value?.value??"")).join("");
-  assert.deepEqual(table.headers!.map(cell),["Level","Feature","Discipline","Psi","Activation","Duration"]);
-  const rows=table.rows!.map(row=>row.map(cell));assert.ok(rows.every(row=>row.length===6));
-  assert.equal(rows.length,34);
-  assert.equal(new Set(rows.map(row=>row[1])).size,rows.length);
+  const headers=table.headers!.map(cell);assert.deepEqual(headers,["Level","Feature","Discipline","Psi","Activation","Ongoing Duration"]);assert.equal(headers.includes("Duration"),false);
+  const rows=table.rows!.map(row=>row.map(cell));assert.ok(rows.every(row=>row.length===6&&row[5]&&row[5]!== "—"));
+  assert.equal(rows.length,34);assert.equal(new Set(rows.map(row=>row[1])).size,rows.length);
+  assert.deepEqual(rows.map(row=>[row[1],row[5]]),[["Glacial Spike","Until the end of your next turn"],["Ember Bolt","Instantaneous"],["Telekinetic Shove","Varies by tier"],["Static Discharge","Varies by tier"],["Deflection Screen","Varies by tier"],["Empathic Sense","Continuous"],["Snow Chains","Until the end of your next turn"],["Thermal Fracture","Until the start of your next turn"],["Vectored Thrust","Concentration, up to 10 minutes"],["Branching Bolt","Instantaneous"],["Frozen Ground","Concentration, up to 1 minute"],["Cinder Lance","Instantaneous"],["Explosion/Implosion","Until the end of your next turn"],["Electron Burst","Varies by tier"],["Phase Step","Varies by tier"],["Arctic Tempest","Until the end of your next turn"],["Flare","Until the end of your next turn"],["Telekinetic Slam","Varies by tier"],["Forked Lightning","Varies by tier"],["Advanced Training III choice","Varies by feature"],["Advanced Training IV choice","Varies by feature"],["Advanced Training V choice","Varies by feature"],["Mind Shred","Instantaneous"],["Beguile","Varies by tier"],["Mind Lock","Until the end of your next turn"],["Gravitic Press","Concentration, up to 1 minute"],["Barrier","Varies by tier"],["Improved Phase Step","Varies by tier"],["Overload Mastery II","Continuous"],["Inner Reserve","Continuous"],["Absolute Zero","Until the end of your next turn"],["Furnace Strike","Instantaneous"],["Mass Levitation","Concentration, up to 1 minute"],["Ball Lightning","Concentration, up to 1 minute"]]);
   const byFeature=new Map(rows.map(row=>[row[1],row]));
-  for(const [feature,duration] of [["Vectored Thrust","Up to 10 minutes"],["Frozen Ground","Up to 1 minute"],["Mass Levitation","Up to 1 minute"],["Ball Lightning","Up to 1 minute"],["Gravitic Press","Up to 1 minute"],["Beguile","Varies by tier"]])assert.equal(byFeature.get(feature)?.[5],duration);
   assert.equal(byFeature.get("Glacial Spike")?.[4],"Declared before roll · Resolves on hit");
   assert.equal(byFeature.get("Empathic Sense")?.[4],"Passive · Bonus Action scan");
-  assert.ok(rows.every(row=>row[5]&&row[5]!== "—"));
+  assert.notEqual(byFeature.get("Explosion/Implosion")?.[5],"Instantaneous");
+  assert.notEqual(byFeature.get("Phase Step")?.[5],"Instantaneous");
+  assert.notEqual(byFeature.get("Electron Burst")?.[5],"Until the start of your next turn");
+  for(const row of rows.filter(row=>row[5]?.startsWith("Concentration")))assert.match(row[5]!,/^Concentration, up to (?:1 minute|10 minutes)$/);
   assert.match(JSON.stringify(table),/Advanced Training I/);assert.match(JSON.stringify(table),/Advanced Training II/);assert.match(JSON.stringify(table),/Advanced Training pool/);
   assert.doesNotMatch(JSON.stringify(table),/\bAT(?: I| II| pool)?\b/);
   assert.match(JSON.stringify(reference.content),/Discipline 10th-Level Feature/);
+});
+
+test("final rules decisions leave every unapproved authority field unchanged",async()=>{
+  const {authority}=await loadAuthority();const projection=structuredClone(authority) as any;
+  const howToPlay=projection.entities.find((entity:any)=>entity.id==="how_to_play");
+  const howSummary=howToPlay.content.find((block:any)=>blockText(block).includes("Deflection Screen at 5th level"));
+  howSummary.inlines[0].text="Your Discipline grants five features across the subclass progression. Deflection Screen at 5th level and Phase Step at 10th level are universal psionic tools. Advanced Training III, IV, and V at 15th, 18th, and 20th levels grant three choices from the Advanced Training pool regardless of Discipline.";
+  const discipline=projection.entities.find((entity:any)=>entity.id==="common_psionic_discipline");
+  discipline.content[0].inlines[0].text="When you gain this feature at Fighter level 3, choose Intelligence, Wisdom, or Charisma as your Psionic Ability. This choice is separate from your Discipline.";
+  discipline.content[1].inlines[0].text="Your Discipline grants its own features and determines your Manifested Strike’s damage type.";
+  const reference=projection.entities.find((entity:any)=>entity.id==="subclass_feature_reference");
+  const cell=(nodes:any[])=>nodes.map(node=>node.text??node.label??String(node.value?.value??"")).join("");
+  const progression=reference.content.find((block:any)=>block.type==="table"&&block.headers.map(cell).join("|")==="Level|Feature");
+  progression.rows[0][1][0].text="Psionic Discipline, Discipline Signature Save, Psi Reservoir, Psionic Link, Manifested Strike, Overload, Signature Rider, Kinetic Mastery, Discipline 3rd-Level Feature";
+  reference.content.find((block:any)=>blockText(block).startsWith("The second table compares")).inlines[0].text="The second table compares each feature’s Discipline, Psi cost, activation, and duration.";
+  const definitionIndex=reference.content.findIndex((block:any)=>blockText(block).startsWith("Ongoing Duration shows"));assert.ok(definitionIndex>=0);reference.content.splice(definitionIndex,1);
+  const table=reference.content.find((block:any)=>block.type==="table"&&block.headers.map(cell).includes("Ongoing Duration"));
+  table.headers[5][0].text="Duration";
+  const oldDurations=new Map([["Glacial Spike","Varies by tier"],["Deflection Screen","Instantaneous"],["Empathic Sense","Continuous; scan instantaneous"],["Vectored Thrust","Up to 10 minutes"],["Frozen Ground","Up to 1 minute"],["Explosion/Implosion","Instantaneous"],["Electron Burst","Until the start of your next turn"],["Phase Step","Instantaneous"],["Arctic Tempest","Varies by tier"],["Flare","Varies by tier"],["Gravitic Press","Up to 1 minute"],["Absolute Zero","Varies by tier"],["Mass Levitation","Up to 1 minute"],["Ball Lightning","Up to 1 minute"]]);
+  for(const row of table.rows){const oldDuration=oldDurations.get(cell(row[1]));if(oldDuration)row[5][0].text=oldDuration;}
+  assert.equal(sha256(canonicalJson(projection)),"d984f6cf8c24c541967f4ab2940614b9be0b3ea60f107f7f84d2cbf813bc74f0");
 });
 
 test("active authority and approved UI text use full English without contractions",async()=>{
