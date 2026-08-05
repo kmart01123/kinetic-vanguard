@@ -10,7 +10,7 @@
     {"id":"any_value","role":"filter_placeholder","placements":["option"],"text":"Any"},
     {"id":"name_label","role":"control_label","placements":["label"],"text":"Name"},
     {"id":"name_placeholder","role":"placeholder","placements":["option"],"text":"Select a rule by name"},
-    {"id":"filter_instruction","role":"instruction","placements":["status"],"text":"Select at least one classification to show matching rule names."},
+    {"id":"filter_instruction","role":"instruction","placements":["status"],"text":"Every classification is Any, so all rules are available."},
     {"id":"no_matches","role":"empty_state","placements":["status"],"text":"No matches."},
     {"id":"rules_version_label","role":"version_label","placements":["label"],"text":"Rules version"},
     {"id":"application_version_label","role":"version_label","placements":["label"],"text":"Application version"},

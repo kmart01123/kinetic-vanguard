@@ -50,6 +50,24 @@ test("master Name select renders canonical progression and stable renamed routes
   }
 });
 
+test("mobile Category, Topic, Name, and result navigation focus and reveal the selected rule",async()=>{
+  const result=await executeBuild("prototype");const url=pathToFileURL(result.htmlPath).href;
+  for(const engine of desktopBrowsers){
+    const browser=await engine.type.launch({headless:true});
+    try{
+      const page=await browser.newPage({viewport:{width:412,height:915}});await page.goto(url);
+      const assertFocusedAndVisible=async(id:string)=>{
+        await page.waitForFunction(entityId=>{const heading=document.querySelector<HTMLElement>("#entity-"+entityId+" h2");if(!heading)return false;const rect=heading.getBoundingClientRect();return document.activeElement===heading&&rect.top>=-1&&rect.bottom<=innerHeight+1;},id);
+      };
+      await page.selectOption("#category-select","psychokinesis");await assertFocusedAndVisible("telekinetic_shove");
+      await page.selectOption("#topic-select","psychokinesis_mass_levitation_topic");await assertFocusedAndVisible("mass_levitation");
+      await page.selectOption("#name-select","ball_lightning");await assertFocusedAndVisible("ball_lightning");
+      await page.goto(url);await page.locator('input[data-facet="rules_area"][value="electrokinesis"]').check();await page.getByRole("button",{name:"Ball Lightning — Electrokinesis"}).click();await assertFocusedAndVisible("ball_lightning");
+      assert.equal(new URLSearchParams(new URL(page.url()).hash.slice(1)).get("entity"),"ball_lightning");
+    }finally{await browser.close();}
+  }
+});
+
 test("prototype columns and long selected topics fit in desktop browsers", async () => {
   const result = await executeBuild("prototype");
   const url = `${pathToFileURL(result.htmlPath).href}#category=advanced_training&topic=advanced_training_advanced_deflection_screen_topic`;
