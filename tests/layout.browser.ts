@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { pathToFileURL } from "node:url";
-import { chromium, firefox } from "playwright";
+import { chromium, firefox, type Page } from "playwright";
 import { executeBuild } from "../src/build.js";
 import { loadAuthority } from "../src/load.js";
 
@@ -17,6 +17,14 @@ const desktopBrowsers = [
   { name: "Firefox", type: firefox }
 ];
 const nativeSelectIndicatorAllowance = 24;
+
+const readSubclassProgressionLayout=(page:Page)=>page.evaluate(()=>{
+  const table=[...document.querySelectorAll<HTMLTableElement>("#entity-subclass_feature_reference table")].find(candidate=>[...candidate.querySelectorAll("thead th")].map(cell=>cell.textContent).join("|")==="Level|Feature");if(!table)throw new Error("Missing Subclass Feature Reference progression table");
+  const wrapper=table.closest<HTMLElement>(".table-scroll")!,headers=[...table.querySelectorAll<HTMLTableCellElement>("thead th")],levelCells=[...table.querySelectorAll<HTMLTableCellElement>("tr > :first-child")];let levelTextFits=true,levelTextSingleLine=true,levelContentUnclipped=true;
+  for(const cell of levelCells){const style=getComputedStyle(cell),probe=document.createElement("span");probe.textContent=cell.textContent??"";probe.style.cssText="position:fixed;visibility:hidden;white-space:nowrap;inset:0 auto auto 0";probe.style.font=style.font;probe.style.letterSpacing=style.letterSpacing;document.body.append(probe);const naturalWidth=probe.getBoundingClientRect().width;probe.remove();const contentWidth=cell.clientWidth-Number.parseFloat(style.paddingLeft)-Number.parseFloat(style.paddingRight);if(contentWidth+1<naturalWidth)levelTextFits=false;const range=document.createRange();range.selectNodeContents(cell);const lineTops=new Set([...range.getClientRects()].filter(rect=>rect.width>0&&rect.height>0).map(rect=>Math.round(rect.top*100)/100));if(lineTops.size!==1)levelTextSingleLine=false;if(cell.scrollWidth>cell.clientWidth+1||style.textOverflow==="ellipsis")levelContentUnclipped=false;}
+  const tableRect=table.getBoundingClientRect(),wrapperRect=wrapper.getBoundingClientRect();
+  return{headers:headers.map(cell=>cell.textContent),tableWidth:tableRect.width,wrapperWidth:wrapper.clientWidth,scrollable:wrapper.scrollWidth>wrapper.clientWidth+1,tableContained:tableRect.left>=wrapperRect.left-1&&tableRect.right<=wrapperRect.right+1,levelColumnWidth:headers[0]!.getBoundingClientRect().width,featureColumnWidth:headers[1]!.getBoundingClientRect().width,levelTextFits,levelTextSingleLine,levelContentUnclipped,documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
+});
 
 test("master Name select renders canonical progression and stable renamed routes in Chromium and Firefox",async()=>{
   const result=await executeBuild("prototype");const {authority}=await loadAuthority();const url=pathToFileURL(result.htmlPath).href;
@@ -156,13 +164,14 @@ test("prototype deliberately stacks below the two-column breakpoint", async () =
   }
 });
 
-test("Psi Cost Reference shows its duration column on desktop and preserves narrow-screen and print layouts",async()=>{
+test("Subclass Feature Reference keeps both tables readable across screen and print layouts",async()=>{
   const result=await executeBuild("prototype");const url=pathToFileURL(result.htmlPath).href+"#category=common_features&topic=common_features_subclass_feature_reference_topic";
+  const assertProgressionLayout=(layout:Awaited<ReturnType<typeof readSubclassProgressionLayout>>,context:string)=>{assert.deepEqual(layout.headers,["Level","Feature"],context+" progression headers");assert.ok(layout.tableWidth<=layout.wrapperWidth+1,context+" progression table fits its wrapper");assert.equal(layout.scrollable,false,context+" progression table does not scroll horizontally");assert.equal(layout.tableContained,true,context+" progression table remains contained");assert.ok(layout.featureColumnWidth>layout.levelColumnWidth,context+" Feature remains the wider column");assert.equal(layout.levelTextFits,true,context+" Level text fits naturally");assert.equal(layout.levelTextSingleLine,true,context+" Level text remains on one line");assert.equal(layout.levelContentUnclipped,true,context+" Level text is not clipped");assert.equal(layout.documentOverflow,0,context+" progression document overflow");};
   for(const engine of desktopBrowsers){
     const browser=await engine.type.launch({headless:true});
     try{
       const page=await browser.newPage({viewport:{width:412,height:915}});await page.goto(url);
-      for(const width of [412,320]){
+      for(const width of [412,320,761]){
         await page.setViewportSize({width,height:915});
         const layout=await page.evaluate(async()=>{
           const table=document.querySelector<HTMLTableElement>("#psi-cost-reference-table")!,wrapper=table.closest<HTMLElement>(".table-scroll")!,firstRow=table.tBodies[0]!.rows[0]!,style=getComputedStyle(wrapper);
@@ -173,6 +182,7 @@ test("Psi Cost Reference shows its duration column on desktop and preserves narr
           return{headers:[...table.querySelectorAll("th")].map(cell=>cell.textContent),tableClass:table.className,wrapperTabIndex:wrapper.getAttribute("tabindex"),overflowX:style.overflowX,scrollable:table.scrollWidth>wrapper.clientWidth,scrolled:wrapper.scrollLeft>0,lastColumnReachable,durationContentFits,documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,levelWhiteSpace:getComputedStyle(firstRow.cells[0]!).whiteSpace,psiWhiteSpace:getComputedStyle(firstRow.cells[3]!).whiteSpace};
         });
         assert.deepEqual(layout.headers,["Level","Feature","Discipline","Psi","Activation","Ongoing Duration"],engine.name+" "+width+"px headers");assert.equal(layout.tableClass,"quick-reference-table");assert.equal(layout.wrapperTabIndex,"0");assert.ok(["auto","scroll"].includes(layout.overflowX));assert.equal(layout.scrollable,true,engine.name+" "+width+"px horizontal table scroll");assert.equal(layout.scrolled,true,engine.name+" "+width+"px reaches the right edge");assert.equal(layout.lastColumnReachable,true,engine.name+" "+width+"px duration column is fully reachable");assert.equal(layout.durationContentFits,true,engine.name+" "+width+"px duration content is not clipped");assert.equal(layout.documentOverflow,0);assert.equal(layout.levelWhiteSpace,"nowrap");assert.equal(layout.psiWhiteSpace,"nowrap");
+        assertProgressionLayout(await readSubclassProgressionLayout(page),engine.name+" "+width+"px");
       }
       await page.setViewportSize({width:412,height:915});await page.focus("#reference-show");await page.keyboard.press("Tab");
       assert.equal(await page.evaluate(()=>document.activeElement?.id),"reference-level",engine.name+" native filter keyboard order");
@@ -182,9 +192,10 @@ test("Psi Cost Reference shows its duration column on desktop and preserves narr
       await page.selectOption("#reference-show","");await page.selectOption("#reference-level","");await page.setViewportSize({width:1280,height:900});
       const desktopLayout=await page.evaluate(()=>{
         const table=document.querySelector<HTMLTableElement>("#psi-cost-reference-table")!,wrapper=table.closest<HTMLElement>(".table-scroll")!,wrapperRect=wrapper.getBoundingClientRect(),lastColumn=table.tHead!.rows[0]!.cells[5]!.getBoundingClientRect(),tableRect=table.getBoundingClientRect(),durationCells=[...table.tBodies[0]!.rows].map(row=>row.cells[5]!);wrapper.scrollLeft=0;
-        return{tableWidth:tableRect.width,wrapperWidth:wrapper.clientWidth,scrollable:wrapper.scrollWidth>wrapper.clientWidth+1,lastColumnContained:lastColumn.left>=wrapperRect.left-1&&lastColumn.right<=wrapperRect.right+1,lastColumnRatio:lastColumn.width/tableRect.width,durationContentFits:durationCells.every(cell=>cell.scrollWidth<=cell.clientWidth+1&&cell.scrollHeight<=cell.clientHeight+1&&getComputedStyle(cell).textOverflow!=="ellipsis"),documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,nameSelectFits:document.querySelector<HTMLElement>("#name-select")!.scrollWidth<=document.querySelector<HTMLElement>("#name-select")!.clientWidth+1};
+        return{tableWidth:tableRect.width,wrapperWidth:wrapper.clientWidth,scrollable:wrapper.scrollWidth>wrapper.clientWidth+1,lastColumnContained:lastColumn.left>=wrapperRect.left-1&&lastColumn.right<=wrapperRect.right+1,lastColumnRatio:lastColumn.width/tableRect.width,durationContentFits:durationCells.every(cell=>cell.scrollWidth<=cell.clientWidth+1&&cell.scrollHeight<=cell.clientHeight+1&&getComputedStyle(cell).textOverflow!=="ellipsis"),documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,nameSelectFits:document.querySelector<HTMLElement>("#name-select")!.scrollWidth<=document.querySelector<HTMLElement>("#name-select")!.clientWidth+1,mainWidth:document.querySelector<HTMLElement>("main.layout")!.getBoundingClientRect().width};
       });
-      assert.ok(desktopLayout.tableWidth<=desktopLayout.wrapperWidth+1,engine.name+" desktop table fits its wrapper");assert.equal(desktopLayout.scrollable,false,engine.name+" desktop table does not hide the duration column");assert.equal(desktopLayout.lastColumnContained,true,engine.name+" desktop duration column is visible");assert.ok(desktopLayout.lastColumnRatio>=.2,engine.name+" desktop duration column remains readable");assert.equal(desktopLayout.durationContentFits,true,engine.name+" desktop duration content is not clipped");assert.equal(desktopLayout.documentOverflow,0,engine.name+" desktop document overflow");assert.equal(desktopLayout.nameSelectFits,true,engine.name+" desktop Name control still fits");
+      assert.ok(desktopLayout.tableWidth<=desktopLayout.wrapperWidth+1,engine.name+" desktop table fits its wrapper");assert.equal(desktopLayout.scrollable,false,engine.name+" desktop table does not hide the duration column");assert.equal(desktopLayout.lastColumnContained,true,engine.name+" desktop duration column is visible");assert.ok(desktopLayout.lastColumnRatio>=.2,engine.name+" desktop duration column remains readable");assert.equal(desktopLayout.durationContentFits,true,engine.name+" desktop duration content is not clipped");assert.equal(desktopLayout.documentOverflow,0,engine.name+" desktop document overflow");assert.equal(desktopLayout.nameSelectFits,true,engine.name+" desktop Name control still fits");assert.ok(desktopLayout.mainWidth<=1217,engine.name+" Psi sizing remains table-local");
+      assertProgressionLayout(await readSubclassProgressionLayout(page),engine.name+" desktop");
       await page.selectOption("#reference-show","common_features");await page.selectOption("#reference-level","3rd");await page.emulateMedia({media:"print"});await page.setViewportSize({width:1366,height:900});
       const printLayout=await page.evaluate(()=>{
         const table=document.querySelector<HTMLTableElement>("#entity-subclass_feature_reference .quick-reference-table")!,wrapper=table.closest<HTMLElement>(".table-scroll")!,wrapperRect=wrapper.getBoundingClientRect(),tableRect=table.getBoundingClientRect(),headers=[...table.querySelectorAll<HTMLTableCellElement>("th")],lastColumn=headers[5]!.getBoundingClientRect(),durationCells=[...table.tBodies[0]!.rows].map(row=>row.cells[5]!);
@@ -192,6 +203,7 @@ test("Psi Cost Reference shows its duration column on desktop and preserves narr
       });
       assert.equal(printLayout.overflowX,"visible",engine.name+" print overflow");assert.ok(printLayout.tableWidth<=printLayout.wrapperWidth+1,engine.name+" print table width");assert.equal(printLayout.lastColumnContained,true,engine.name+" print Ongoing Duration column");assert.ok(printLayout.lastColumnRatio>=.22,engine.name+" print duration column remains readable");assert.equal(printLayout.durationContentFits,true,engine.name+" print duration content is not clipped");assert.equal(printLayout.documentOverflow,0,engine.name+" print document overflow");
       assert.equal(printLayout.rowDisplays.length,34);assert.ok(printLayout.rowDisplays.every(display=>display==="table-row"),engine.name+" print restores all rows");assert.equal(printLayout.controlsDisplay,"none",engine.name+" print hides table filters");
+      assertProgressionLayout(await readSubclassProgressionLayout(page),engine.name+" print");
     }finally{await browser.close();}
   }
 });
