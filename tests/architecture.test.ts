@@ -30,6 +30,17 @@ test("retired migration sources are absent from the active architecture",async()
   assert.match(await readFile("CHANGELOG.md","utf8"),/migration/i);
 });
 
+test("active CI publication names derive from the canonical rules version",async()=>{
+  const [{authority},workflow]=await Promise.all([loadAuthority(),readFile(".github/workflows/ci.yml","utf8")]);
+  assert.doesNotMatch(workflow,/\b13\.\d+(?:\.\d+)?\b/);
+  assert.match(workflow,/rules_version: \$\{\{ steps\.rules-version\.outputs\.rules_version \}\}/);
+  assert.match(workflow,/name: v\$\{\{ needs\.metadata\.outputs\.rules_version \}\} verification and release build/);
+  assert.match(workflow,/name: kinetic-vanguard-v\$\{\{ needs\.metadata\.outputs\.rules_version \}\}/);
+  assert.match(workflow,/\"rules_version\":\"\$\{\{ needs\.metadata\.outputs\.rules_version \}\}\"/);
+  const artifactTemplate=workflow.match(/name: (kinetic-vanguard-v\$\{\{ needs\.metadata\.outputs\.rules_version \}\})/)?.[1];
+  assert.equal(artifactTemplate?.replace("${{ needs.metadata.outputs.rules_version }}",authority.rules_version),"kinetic-vanguard-v13.1.0");
+});
+
 test("prototype and release builds reflect direct YAML edits",async()=>{
   const temporary=await mkdtemp(join(tmpdir(),"kv-yaml-authority-"));const authorityPath=join(temporary,"KineticVanguard.edited.yaml");const source=await readFile("KineticVanguard.yaml","utf8");const edited=source.replace("title: Kinetic Vanguard","title: Kinetic Vanguard YAML Edit Probe");assert.notEqual(edited,source);await writeFile(authorityPath,edited);
   const previousApproval=process.env.KV_RELEASE_APPROVED;

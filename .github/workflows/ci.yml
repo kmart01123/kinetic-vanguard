@@ -13,8 +13,26 @@ permissions:
   contents: read
 
 jobs:
+  metadata:
+    name: Read canonical rules version
+    runs-on: ubuntu-24.04
+    outputs:
+      rules_version: ${{ steps.rules-version.outputs.rules_version }}
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - id: rules-version
+        name: Read rules version from canonical authority
+        run: |
+          rules_version="$(sed -n 's/^rules_version: //p' KineticVanguard.yaml)"
+          test -n "$rules_version"
+          echo "rules_version=$rules_version" >> "$GITHUB_OUTPUT"
+
   verification:
-    name: v13 verification and release build
+    needs: metadata
+    name: v${{ needs.metadata.outputs.rules_version }} verification and release build
     runs-on: ubuntu-24.04
     timeout-minutes: 20
 
@@ -56,21 +74,22 @@ jobs:
       - name: Test layout
         run: npm run test:layout
 
-      - name: Build authorized v13.0 release
+      - name: Build authorized v${{ needs.metadata.outputs.rules_version }} release
         env:
           KV_RELEASE_APPROVED: "1"
         run: npm run build:release
 
-      - name: Verify release identity
+      - name: Verify v${{ needs.metadata.outputs.rules_version }} release identity
         run: |
           test -f artifacts/KineticVanguard.html
           grep -q '"release_status":"release"' artifacts/KineticVanguard.html
+          grep -q '"rules_version":"${{ needs.metadata.outputs.rules_version }}"' artifacts/KineticVanguard.html
           ! grep -q '<p class="prototype"' artifacts/KineticVanguard.html
 
-      - name: Upload v13.0 publication
+      - name: Upload v${{ needs.metadata.outputs.rules_version }} publication
         uses: actions/upload-artifact@v4
         with:
-          name: kinetic-vanguard-v13.0.1
+          name: kinetic-vanguard-v${{ needs.metadata.outputs.rules_version }}
           if-no-files-found: error
           retention-days: 90
           path: |

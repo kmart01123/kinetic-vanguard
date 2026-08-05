@@ -10,6 +10,14 @@
 - Clarified that every Forked Lightning target makes and resolves its own Charisma saving throw, with Tier 2 disruption limited to targets that fail and Speed 0 limited to a failed save by the primary target.
 - Defined fixed concentration durations for Vectored Thrust (up to 10 minutes) and Frozen Ground, Mass Levitation, Ball Lightning, and Gravitic Press (up to 1 minute), including canonical rendered metadata.
 - Prohibited mixing Medium-or-smaller and Large target groups in a single Mass Levitation activation while preserving each group’s existing target limit.
+- Clarified Ball Lightning entry triggers for voluntary and forced movement on any turn, including the once-per-turn entry limit and the non-triggering effect of moving the orb onto a stationary creature.
+- Led the play procedure with pre-roll rider declaration timing and clarified that Tier 2 Blood Tax replaces the Tier 1 amount rather than adding to it.
+- Restated independent Forked Lightning saving throws and damage at every tier, corrected Frozen Ground’s Tier 0 replacement reference, and aligned Telekinetic Slam flavor with horizontal movement.
+- Added player-facing activation labels and Beguile’s tier-varying duration metadata while preserving internal activation classifications.
+- Made mobile Category, Topic, Name, and filtered-result navigation focus and reveal selected rule headings; no classifications now means every canonical result is available in a compact disclosure.
+- Rendered tier labels as semantic level-three headings and expanded the Psi Cost Reference with full-English activation and duration values in a horizontally scrollable mobile table.
+- Normalized active authority and approved interface text to full English without contractions, with an automated source-level guard.
+- Derived active continuous-integration release labels and artifact naming from the canonical rules version.
 
 ### Removed
 
