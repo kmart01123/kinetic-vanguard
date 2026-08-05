@@ -473,6 +473,75 @@ entities:
               type: text
           - - text: Ongoing Duration
               type: text
+        row_references:
+          - entity_id: glacial_spike
+            reference_level: 3rd
+          - entity_id: ember_bolt
+            reference_level: 3rd
+          - entity_id: telekinetic_shove
+            reference_level: 3rd
+          - entity_id: static_discharge
+            reference_level: 3rd
+          - entity_id: advanced_deflection_screen
+            reference_level: 5th
+          - entity_id: common_empathic_sense
+            reference_level: 7th
+          - entity_id: snow_chains
+            reference_level: 7th
+          - entity_id: thermal_fracture
+            reference_level: 7th
+          - entity_id: vectored_thrust
+            reference_level: 7th
+          - entity_id: branching_bolt
+            reference_level: 7th
+          - entity_id: frozen_ground
+            reference_level: 10th
+          - entity_id: cinder_lance
+            reference_level: 10th
+          - entity_id: explosion_implosion
+            reference_level: 10th
+          - entity_id: electron_burst
+            reference_level: 10th
+          - entity_id: advanced_phase_step
+            reference_level: 10th
+          - entity_id: arctic_tempest
+            reference_level: 15th
+          - entity_id: flare
+            reference_level: 15th
+          - entity_id: telekinetic_slam
+            reference_level: 15th
+          - entity_id: forked_lightning
+            reference_level: 15th
+          - reference_group: advanced_training
+            reference_level: 15th
+          - reference_group: advanced_training
+            reference_level: 18th
+          - reference_group: advanced_training
+            reference_level: 20th
+          - entity_id: advanced_mind_shred
+            reference_level: 15th+
+          - entity_id: advanced_beguile
+            reference_level: 15th+
+          - entity_id: advanced_mind_lock
+            reference_level: 15th+
+          - entity_id: advanced_gravitic_press
+            reference_level: 15th+
+          - entity_id: advanced_barrier
+            reference_level: 15th+
+          - entity_id: advanced_improved_phase_step
+            reference_level: 15th+
+          - entity_id: advanced_overload_mastery_ii
+            reference_level: 18th+
+          - entity_id: advanced_inner_reserve
+            reference_level: 15th+
+          - entity_id: absolute_zero
+            reference_level: 20th
+          - entity_id: furnace_strike
+            reference_level: 20th
+          - entity_id: mass_levitation
+            reference_level: 20th
+          - entity_id: ball_lightning
+            reference_level: 20th
         rows:
           - - - text: 3rd
                 type: text

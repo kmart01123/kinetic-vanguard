@@ -3,6 +3,7 @@ import { codepointCompare } from "./canonical.js";
 
 function duplicateDiagnostics(values:string[],code:string,label:string):Diagnostic[]{const seen=new Set<string>();const diagnostics:Diagnostic[]=[];for(const value of values){if(seen.has(value))diagnostics.push({severity:"error",code,message:`Duplicate ${label}: ${value}`});seen.add(value);}return diagnostics;}
 function vocabulary(authority:Authority,name:string):Set<string>{return new Set((authority.vocabularies[name]??[]).map(value=>value.id));}
+const inlineText=(nodes:any[]|undefined):string=>nodes?.map(node=>node.text??node.label??String(node.value?.value??"")).join("")??"";
 
 export function validateSemantics(authority:Authority):Diagnostic[]{
   const diagnostics:Diagnostic[]=[];
@@ -40,7 +41,26 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
     for(const [area,topicId] of Object.entries(entity.presentation_metadata.canonical_topic_by_area))if(!topicsByArea.get(area)?.includes(topicId))diagnostics.push({severity:"error",code:"presentation.canonical_topic_extra",message:`${entity.id}: invalid canonical mapping ${area} -> ${topicId}`,path});
     const titleKey=`${entity.presentation_metadata.primary_rules_area}\0${entity.title}`;if(titleByGroup.has(titleKey))diagnostics.push({severity:"error",code:"presentation.name_duplicate",message:`Duplicate Name label ${entity.title} in ${entity.presentation_metadata.primary_rules_area}`,path});titleByGroup.add(titleKey);
     if(!entity.content.length)diagnostics.push({severity:"error",code:"coverage.empty_entity",message:`${entity.id}: no rule-significant content`,path});
+    for(const [blockIndex,block] of entity.content.entries()){
+      if(!block.row_references)continue;const referencePath=`${path}/content/${blockIndex}/row_references`;
+      if(entity.id!=="subclass_feature_reference")diagnostics.push({severity:"error",code:"reference.scope",message:`${entity.id}: row references are only valid on Subclass Feature Reference`,path:referencePath});
+      if(block.type!=="table"||!block.rows){diagnostics.push({severity:"error",code:"reference.block_type",message:`${entity.id}: row references require a table`,path:referencePath});continue;}
+      if(block.row_references.length!==block.rows.length)diagnostics.push({severity:"error",code:"reference.row_count",message:`${entity.id}: ${block.row_references.length} row references do not match ${block.rows.length} table rows`,path:referencePath});
+      for(const [rowIndex,reference] of block.row_references.entries()){
+        const row=block.rows[rowIndex];if(!row)continue;const rowPath=`${referencePath}/${rowIndex}`;
+        const displayedLevel=inlineText(row[0]),displayedFeature=inlineText(row[1]);
+        if(reference.reference_level!==displayedLevel)diagnostics.push({severity:"error",code:"reference.level_display",message:`${entity.id}: row ${rowIndex+1} metadata level ${reference.reference_level} differs from ${displayedLevel}`,path:rowPath});
+        if("entity_id" in reference){const referenced=entities.get(reference.entity_id);
+          if(!referenced){diagnostics.push({severity:"error",code:"reference.entity_unknown",message:`${entity.id}: row ${rowIndex+1} references unknown entity ${reference.entity_id}`,path:rowPath});continue;}
+          if(referenced.kind!=="feature")diagnostics.push({severity:"error",code:"reference.entity_kind",message:`${entity.id}: row ${rowIndex+1} references non-feature ${reference.entity_id}`,path:rowPath});
+          if(referenced.title!==displayedFeature)diagnostics.push({severity:"error",code:"reference.feature_display",message:`${entity.id}: row ${rowIndex+1} label ${displayedFeature} differs from ${referenced.title}`,path:rowPath});
+          const referenceLevel=Number(reference.reference_level.match(/^\d+/)?.[0]);if(referenced.level!==referenceLevel)diagnostics.push({severity:"error",code:"reference.entity_level",message:`${entity.id}: row ${rowIndex+1} reference level ${reference.reference_level} differs from ${reference.entity_id} level ${referenced.level}`,path:rowPath});
+        }
+      }
+    }
   }
+  const subclassReference=entities.get("subclass_feature_reference");const annotatedTables=subclassReference?.content.filter(block=>block.row_references)??[];
+  if(annotatedTables.length!==1)diagnostics.push({severity:"error",code:"reference.table_count",message:"Subclass Feature Reference requires exactly one annotated Psi Cost Reference table"});
   diagnostics.push(...duplicateDiagnostics((authority.audits??[]).map(audit=>audit.id),"audit.duplicate","audit ID"));
   for(const audit of authority.audits??[])for(const subjectId of audit.subject_ids)if(!entities.has(subjectId))diagnostics.push({severity:"error",code:"audit.subject_unknown",message:`${audit.id}: unknown subject ${subjectId}`});
   const authorityAudit=(authority.audits??[]).find(audit=>audit.id==="yaml_rules_authority");const authoredEntityIds=[...entities.keys()].sort(codepointCompare);const auditedEntityIds=[...new Set(authorityAudit?.subject_ids??[])].sort(codepointCompare);if(!authorityAudit||JSON.stringify(auditedEntityIds)!==JSON.stringify(authoredEntityIds))diagnostics.push({severity:"error",code:"authority.coverage",message:"YAML authority audit must cover every publishable entity exactly once"});

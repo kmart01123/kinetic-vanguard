@@ -19,6 +19,18 @@
     {"id":"match_count","role":"status_template","placements":["status"],"template":"{count} matches.","slots":{"count":"DerivedOutput"}},
     {"id":"one_match","role":"status_template","placements":["status"],"template":"{count} match.","slots":{"count":"DerivedOutput"}},
     {"id":"filter_cleared","role":"status","placements":["status"],"text":"Classification filters were cleared."},
+    {"id":"reference_show_label","role":"control_label","placements":["label"],"text":"Show"},
+    {"id":"reference_show_all","role":"filter_option","placements":["option"],"text":"All features"},
+    {"id":"reference_show_common","role":"filter_option","placements":["option"],"text":"Common features"},
+    {"id":"reference_show_pyrokinesis","role":"filter_option","placements":["option"],"text":"Pyrokinesis"},
+    {"id":"reference_show_cryokinesis","role":"filter_option","placements":["option"],"text":"Cryokinesis"},
+    {"id":"reference_show_psychokinesis","role":"filter_option","placements":["option"],"text":"Psychokinesis"},
+    {"id":"reference_show_electrokinesis","role":"filter_option","placements":["option"],"text":"Electrokinesis"},
+    {"id":"reference_show_advanced_training","role":"filter_option","placements":["option"],"text":"Advanced Training"},
+    {"id":"reference_level_label","role":"control_label","placements":["label"],"text":"Level"},
+    {"id":"reference_level_all","role":"filter_option","placements":["option"],"text":"All levels"},
+    {"id":"reference_showing_count","role":"status_template","placements":["status"],"template":"Showing {visible_count} of {total_count} features.","slots":{"visible_count":"DerivedOutput","total_count":"DerivedOutput"}},
+    {"id":"reference_no_matches","role":"empty_state","placements":["status"],"text":"No features match the selected filters."},
     {"id":"fact_level","role":"fact_label","placements":["label"],"text":"Level"}
     ,{"id":"fact_psi","role":"fact_label","placements":["label"],"text":"Psi"}
     ,{"id":"fact_activation","role":"fact_label","placements":["label"],"text":"Activation"}

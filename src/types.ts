@@ -41,6 +41,18 @@ export interface InlineNode {
   value?: { kind: string; value?: string | number; count?: number; sides?: number; modifier?: number; unit?: string };
 }
 
+export type ReferenceGroup =
+  | "common_features" | "advanced_training" | "cryokinesis"
+  | "pyrokinesis" | "psychokinesis" | "electrokinesis";
+
+export type ReferenceLevel =
+  | "3rd" | "5th" | "7th" | "10th" | "15th"
+  | "18th" | "20th" | "15th+" | "18th+";
+
+export type TableRowReference =
+  | { entity_id: string; reference_level: ReferenceLevel }
+  | { reference_group: ReferenceGroup; reference_level: ReferenceLevel };
+
 export interface ContentBlock {
   type: "paragraph" | "list" | "note" | "table" | "example" | "tier" | "example_play_section";
   inlines?: InlineNode[];
@@ -49,6 +61,7 @@ export interface ContentBlock {
   items?: InlineNode[][];
   headers?: InlineNode[][];
   rows?: InlineNode[][][];
+  row_references?: TableRowReference[];
   title?: InlineNode[];
   heading?: InlineNode[];
   discipline?: "cryokinesis" | "pyrokinesis" | "psychokinesis" | "electrokinesis";
