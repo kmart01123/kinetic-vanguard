@@ -156,6 +156,18 @@ test("prototype deliberately stacks below the two-column breakpoint", async () =
   }
 });
 
+test("Psi Cost Reference remains horizontally scrollable at mobile width",async()=>{
+  const result=await executeBuild("prototype");const url=pathToFileURL(result.htmlPath).href+"#category=common_features&topic=common_features_subclass_feature_reference_topic";
+  for(const engine of desktopBrowsers){
+    const browser=await engine.type.launch({headless:true});
+    try{
+      const page=await browser.newPage({viewport:{width:412,height:915}});await page.goto(url);
+      const layout=await page.evaluate(()=>{const table=[...document.querySelectorAll("table")].find(candidate=>[...candidate.querySelectorAll("th")].some(cell=>cell.textContent==="Duration"));const wrapper=table?.closest(".table-scroll");if(!table||!wrapper)return null;const style=getComputedStyle(wrapper);return{headers:[...table.querySelectorAll("th")].map(cell=>cell.textContent),wrapperTabIndex:wrapper.getAttribute("tabindex"),overflowX:style.overflowX,scrollable:table.scrollWidth>wrapper.clientWidth,documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};});
+      assert.ok(layout,engine.name+" reference table");assert.deepEqual(layout.headers,["Level","Feature","Discipline","Psi","Activation","Duration"]);assert.equal(layout.wrapperTabIndex,"0");assert.ok(["auto","scroll"].includes(layout.overflowX));assert.equal(layout.scrollable,true);assert.equal(layout.documentOverflow,0);
+    }finally{await browser.close();}
+  }
+});
+
 test("Manifested Strike progression cells render exactly in desktop browsers", async () => {
   const result = await executeBuild("prototype");
   const expectedCells = ["3–4", "1d6", "5–10", "1d8", "11–16", "1d10", "17–20", "1d12"];
@@ -169,7 +181,7 @@ test("Manifested Strike progression cells render exactly in desktop browsers", a
       await page.goto(url);
       const rendered = await page.evaluate(() => {
         const table = [...document.querySelectorAll("table")].find(candidate =>
-          [...candidate.querySelectorAll("th")].map(cell => cell.textContent).join("|") === "Fighter Level|MS Die"
+          [...candidate.querySelectorAll("th")].map(cell => cell.textContent).join("|") === "Fighter Level|Manifested Strike Die"
         )!;
         const prose = [...document.querySelectorAll("article p")].find(paragraph =>
           paragraph.textContent?.startsWith("Manifested Strike die by level:")
@@ -265,7 +277,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
         assert.equal(rendered.contained,true,size+": sections stay within the article");
         assert.equal(rendered.documentOverflow,0,size+": no horizontal page overflow");
         await page.goto(glacialUrl);
-        const inline=page.locator("#entity-common_overload .inline-example");assert.equal(await inline.count(),1,size+": one Overload Glacial example");assert.equal(await inline.locator("h3").textContent(),"Example — Level 11 Cryokinesis (PB 4, Int +3)");assert.equal(await page.locator("#entity-common_example_play .inline-example").count(),0,size+": absent from Example Play");
+        const inline=page.locator("#entity-common_overload .inline-example");assert.equal(await inline.count(),1,size+": one Overload Glacial example");assert.equal(await inline.locator("h3").textContent(),"Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)");assert.equal(await page.locator("#entity-common_example_play .inline-example").count(),0,size+": absent from Example Play");
       }
       await page.emulateMedia({media:"print"});
       await page.goto(exampleUrl);

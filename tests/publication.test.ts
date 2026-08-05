@@ -102,7 +102,7 @@ test("rendered Name options derive level-name-ID order from canonical data and r
   assert.equal(allOptions.some(option=>option.textContent==="Advanced Training I: Deflection Screen"||option.textContent==="Advanced Training II: Phase Step"),false);
   assert.equal(advanced.querySelector('option[value="advanced_deflection_screen"]')?.textContent,"Deflection Screen");
   assert.equal(advanced.querySelector('option[value="advanced_phase_step"]')?.textContent,"Phase Step");
-  const referenceText=document.querySelector("#entity-subclass_feature_reference")?.textContent??"";assert.match(referenceText,/Discipline 10th Feature, Phase Step, Tier 2 Overload/);assert.doesNotMatch(referenceText,/Advanced Training II \(Phase Step\)/);
+  const referenceText=document.querySelector("#entity-subclass_feature_reference")?.textContent??"";assert.match(referenceText,/Discipline 10th-Level Feature, Phase Step, Tier 2 Overload/);assert.doesNotMatch(referenceText,/Advanced Training II \(Phase Step\)/);
   const area=document.querySelector('input[data-facet="rules_area"][value="pyrokinesis"]') as HTMLInputElement;
   area.checked=true;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
   assert.deepEqual(groups().map(group=>group.label),["Pyrokinesis"]);
@@ -124,7 +124,7 @@ test("Example Play keeps four full turns and Overload keeps one Glacial example"
   assert.equal(sections.length,4);assert.deepEqual(sections.map(section=>section.querySelector("h4")?.textContent),["Focused Fire — Level 11 Pyrokinesis","Aerial Repositioning — Level 11 Psychokinesis","Frozen Ground Lockdown — Level 11 Cryokinesis","Room Sweep — Level 11 Electrokinesis"]);
   for(const section of sections){assert.deepEqual([...section.querySelectorAll<HTMLElement>(".example-play-section__phase-title")].map(node=>node.textContent),["Setup","Activation","Rolls or Saves","Damage","Effects","Result"]);assert.equal(section.querySelectorAll("strong,em").length,0);assert.equal(section.querySelectorAll(".example-play-section__phase > p").length,6);}
   for(const [index,fragments] of [[0,["18 + 21 + 11 = 50 fire damage"]],[1,["13 + 10 + 8 = 31 force damage","push the creature 10 feet"]],[2,["12 + 14 + 9 = 35 cold damage","Speed 0"]],[3,["111 lightning damage","three primaries are struck and Sapped"]]] as const)for(const fragment of fragments)assert.ok(sections[index]!.textContent?.includes(fragment),fragment);
-  const overloadDom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_common_overload_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});const inline=overloadDom.window.document.querySelector<HTMLElement>("#entity-common_overload .inline-example")!;assert.equal(overloadDom.window.document.querySelectorAll("#entity-common_overload .inline-example").length,1);assert.equal(inline.querySelector("h3")?.textContent,"Example — Level 11 Cryokinesis (PB 4, Int +3)");assert.match(inline.textContent??"",/Glacial Spike T2.*1d10.*Blood Tax: 2 × Proficiency Bonus = 2 × 4 = 8.*Miss: No effects/s);assert.equal(article.textContent?.includes("Example — Level 11 Cryokinesis (PB 4, Int +3)"),false);
+  const overloadDom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_common_overload_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});const inline=overloadDom.window.document.querySelector<HTMLElement>("#entity-common_overload .inline-example")!;assert.equal(overloadDom.window.document.querySelectorAll("#entity-common_overload .inline-example").length,1);assert.equal(inline.querySelector("h3")?.textContent,"Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)");assert.match(inline.textContent??"",/Glacial Spike T2.*1d10.*Blood Tax: 2 × Proficiency Bonus = 2 × 4 = 8.*Miss: No effects/s);assert.equal(article.textContent?.includes("Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)"),false);
   await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();overloadDom.window.close();
 });
 
@@ -134,7 +134,7 @@ test("generated sections render Manifested Strike progression under its stable a
   const manifested=createDom("common_features_common_manifested_strike_topic");const manifestedDocument=manifested.window.document;
   const manifestedArticle=manifestedDocument.querySelector<HTMLElement>("#entity-common_manifested_strike")!;
   const progression=[...manifestedArticle.querySelectorAll("p")].find(paragraph=>paragraph.textContent?.startsWith("Manifested Strike die by level:"))!;
-  const table=[...manifestedArticle.querySelectorAll("table")].find(candidate=>[...candidate.querySelectorAll("th")].map(cell=>cell.textContent).join("|")==="Fighter Level|MS Die")!;
+  const table=[...manifestedArticle.querySelectorAll("table")].find(candidate=>[...candidate.querySelectorAll("th")].map(cell=>cell.textContent).join("|")==="Fighter Level|Manifested Strike Die")!;
   assert.deepEqual([...table.querySelectorAll("tbody td")].map(cell=>cell.textContent),["3–4","1d6","5–10","1d8","11–16","1d10","17–20","1d12"]);
   const children=[...manifestedArticle.children];const core=children.findIndex(child=>child.textContent?.startsWith("When you take the Attack action"));const progressionPosition=children.indexOf(progression);const tablePosition=children.indexOf(table.parentElement!);
   assert.equal(progressionPosition,core+1);assert.equal(tablePosition,progressionPosition+1);assert.equal((manifestedDocument.querySelector("#topic-select") as HTMLSelectElement).value,"common_features_common_manifested_strike_topic");
@@ -266,12 +266,14 @@ test("feature metadata renders concentration only from structured authority",asy
   const frozen=render(html,"cryokinesis","cryokinesis_frozen_ground_topic");
   const vectored=render(html,"psychokinesis","psychokinesis_vectored_thrust_topic");
   const ball=render(html,"electrokinesis","electrokinesis_ball_lightning_topic");
+  const beguile=render(html,"advanced_training","advanced_training_advanced_beguile_topic");
   for(const [dom,entityId,duration] of [
-    [gravitic,"advanced_gravitic_press","up to 1 minute"],
-    [levitation,"mass_levitation","up to 1 minute"],
-    [frozen,"frozen_ground","up to 1 minute"],
-    [vectored,"vectored_thrust","up to 10 minutes"],
-    [ball,"ball_lightning","up to 1 minute"]
+    [gravitic,"advanced_gravitic_press","Up to 1 minute"],
+    [levitation,"mass_levitation","Up to 1 minute"],
+    [frozen,"frozen_ground","Up to 1 minute"],
+    [vectored,"vectored_thrust","Up to 10 minutes"],
+    [ball,"ball_lightning","Up to 1 minute"],
+    [beguile,"advanced_beguile","Varies by tier"]
   ] as const)assert.ok(metadata(dom.window.document,entityId).some(item=>item.term==="Duration"&&item.value===duration),`${entityId} duration metadata is missing`);
 
   const rider=render(html,"cryokinesis","cryokinesis_glacial_spike_topic");
@@ -300,7 +302,7 @@ test("feature metadata renders concentration only from structured authority",asy
   const metadataCss=html.match(/\.feature-metadata\{([^}]*)\}/)?.[1]??"";
   assert.doesNotMatch(metadataCss,/(?:^|;)width:/);
   await new Promise<void>(resolve=>setImmediate(resolve));
-  for(const dom of [gravitic,levitation,frozen,vectored,ball,rider,manifested,empathic,slam,descriptionOnly])dom.window.close();
+  for(const dom of [gravitic,levitation,frozen,vectored,ball,beguile,rider,manifested,empathic,slam,descriptionOnly])dom.window.close();
 });
 
 

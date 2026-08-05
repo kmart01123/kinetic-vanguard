@@ -102,7 +102,7 @@ entities:
         - common_features
     content:
       - activation:
-          - text: The fighter takes the Attack action and targets the creature three times. Attack 1 is a Manifested Strike with Ember Bolt at Tier 2 for 0 Psi and 8 Blood Tax (2 × PB), paid before the roll. Attack 2 is a Manifested Strike with Cinder Lance at Tier 0 for 3 Psi and no Blood Tax. Attack 3 is a Manifested Strike with Ember Bolt at Tier 0 for 0 Psi and no Blood Tax. Every declared cost remains spent on a miss.
+          - text: The fighter takes the Attack action and targets the creature three times. Attack 1 is a Manifested Strike with Ember Bolt at Tier 2 for 0 Psi and 8 Blood Tax (2 × Proficiency Bonus), paid before the roll. Attack 2 is a Manifested Strike with Cinder Lance at Tier 0 for 3 Psi and no Blood Tax. Attack 3 is a Manifested Strike with Ember Bolt at Tier 0 for 0 Psi and no Blood Tax. Every declared cost remains spent on a miss.
             type: text
         damage:
           - text: Attack 1 rolls 8 on its 1d10, dealing 8 + 4 + 6 from Ember Bolt Tier 2 = 18 fire damage. Attack 2 rolls 6 for the strike and 7 and 4 for Cinder Lance’s two additional base Manifested Strike dice, dealing 6 + 7 + 4 + 4 = 21 fire damage. Attack 3 rolls 5, dealing 5 + 4 + 2 from Ember Bolt Tier 0 = 11 fire damage. The creature takes 18 + 21 + 11 = 50 fire damage in total.
@@ -118,20 +118,20 @@ entities:
           - text: The fighter ends 40 feet from the creature with 7 of 10 Psi, 8 hit points lost to Blood Tax, and no concentration, bonus action, reaction, or movement used. The creature has taken 50 fire damage.
             type: text
         rolls_or_saves:
-          - text: The attack bonus is +10 (+4 Cha, +4 PB, +2 Psionic Focus). The attacks roll 9 + 10 = 19, 13 + 10 = 23, and 7 + 10 = 17; all three hit AC 16. These Ember Bolt and Cinder Lance tiers require no saving throws.
+          - text: The attack bonus is +10 (+4 Charisma, +4 Proficiency Bonus, +2 Psionic Focus). The attacks roll 9 + 10 = 19, 13 + 10 = 23, and 7 + 10 = 17; all three hit Armor Class 16. These Ember Bolt and Cinder Lance tiers require no saving throws.
             type: text
         setup:
-          - text: A level 11 Pyrokinesis fighter begins 40 feet from one hostile creature with AC 16 and no fire resistance or immunity. The fighter has three attacks, one free hand, 10 Psi, PB +4, Cha +4, a 1d10 Manifested Strike die, and enough hit points for Blood Tax.
+          - text: A level 11 Pyrokinesis fighter begins 40 feet from one hostile creature with Armor Class 16 and no fire resistance or immunity. The fighter has three attacks, one free hand, 10 Psi, Proficiency Bonus +4, Charisma +4, a 1d10 Manifested Strike die, and enough hit points for Blood Tax.
             type: text
         title:
           - text: Focused Fire — Level 11 Pyrokinesis
             type: text
         type: example_play_section
       - activation:
-          - text: As a bonus action, the fighter activates standalone Vectored Thrust at Tier 1, spends 2 Psi, takes 4 Blood Tax (1 × PB), and begins concentrating for up to 10 minutes. The startup Blood Tax requires no concentration check. The fighter uses the 30-foot fly speed to move 30 feet from the creature without provoking opportunity attacks, then takes the Attack action. Attack 1 adds Telekinetic Shove at Tier 0 for 0 Psi; attacks 2 and 3 are plain Manifested Strikes.
+          - text: As a bonus action, the fighter activates standalone Vectored Thrust at Tier 1, spends 2 Psi, takes 4 Blood Tax (1 × Proficiency Bonus), and begins concentrating for up to 10 minutes. The startup Blood Tax requires no concentration check. The fighter uses the 30-foot fly speed to move 30 feet from the creature without provoking opportunity attacks, then takes the Attack action. Attack 1 adds Telekinetic Shove at Tier 0 for 0 Psi; attacks 2 and 3 are plain Manifested Strikes.
             type: text
         damage:
-          - text: Attack 1 rolls 7 on its 1d10, dealing 7 + 4 Int + 2 from Telekinetic Shove = 13 force damage. Attack 2 rolls 6, dealing 6 + 4 = 10 force damage. Attack 3 rolls 4, dealing 4 + 4 = 8 force damage. The creature takes 13 + 10 + 8 = 31 force damage in total.
+          - text: Attack 1 rolls 7 on its 1d10, dealing 7 + 4 Intelligence + 2 from Telekinetic Shove = 13 force damage. Attack 2 rolls 6, dealing 6 + 4 = 10 force damage. Attack 3 rolls 4, dealing 4 + 4 = 8 force damage. The creature takes 13 + 10 + 8 = 31 force damage in total.
             type: text
         discipline: psychokinesis
         effects:
@@ -144,20 +144,20 @@ entities:
           - text: The fighter ends flying 30 feet from the creature’s starting position with 8 of 10 Psi, 4 hit points lost to Blood Tax, and concentration on Vectored Thrust. The creature has taken 31 force damage and ends 10 feet from its starting position. The bonus action, movement, and all three attacks are used; no reaction is used.
             type: text
         rolls_or_saves:
-          - text: The attack bonus is +10 (+4 Int, +4 PB, +2 Psionic Focus). The attacks roll 9 + 10 = 19, 12 + 10 = 22, and 7 + 10 = 17; all three hit AC 16. After attack 1 deals damage, the creature rolls 12 against save DC 16 (8 + 4 + 4) and fails its Strength saving throw.
+          - text: The attack bonus is +10 (+4 Intelligence, +4 Proficiency Bonus, +2 Psionic Focus). The attacks roll 9 + 10 = 19, 12 + 10 = 22, and 7 + 10 = 17; all three hit Armor Class 16. After attack 1 deals damage, the creature rolls 12 against Difficulty Class 16 (8 + 4 + 4) and fails its Strength saving throw.
             type: text
         setup:
-          - text: A level 11 Psychokinesis fighter begins within 5 feet of one hostile creature with AC 16. The fighter has three attacks, one free hand, 10 Psi, PB +4, Int +4, a 1d10 Manifested Strike die, enough hit points for Blood Tax, and an open concentration slot.
+          - text: A level 11 Psychokinesis fighter begins within 5 feet of one hostile creature with Armor Class 16. The fighter has three attacks, one free hand, 10 Psi, Proficiency Bonus +4, Intelligence +4, a 1d10 Manifested Strike die, enough hit points for Blood Tax, and an open concentration slot.
             type: text
         title:
           - text: Aerial Repositioning — Level 11 Psychokinesis
             type: text
         type: example_play_section
       - activation:
-          - text: The fighter remains in place and takes the Attack action. Attack 1 is a Manifested Strike with Glacial Spike at Tier 0 for 0 Psi and no Blood Tax. Attack 2 is a Manifested Strike with Glacial Spike at Tier 1 for 0 Psi and 4 Blood Tax (1 × PB), paid before the roll and retained on a miss. Attack 3 is a plain Manifested Strike. No bonus action or reaction is used.
+          - text: The fighter remains in place and takes the Attack action. Attack 1 is a Manifested Strike with Glacial Spike at Tier 0 for 0 Psi and no Blood Tax. Attack 2 is a Manifested Strike with Glacial Spike at Tier 1 for 0 Psi and 4 Blood Tax (1 × Proficiency Bonus), paid before the roll and retained on a miss. Attack 3 is a plain Manifested Strike. No bonus action or reaction is used.
             type: text
         damage:
-          - text: Attack 1 rolls 6 on its 1d10, dealing 6 + 4 Int + 2 from Glacial Spike = 12 cold damage. Attack 2 rolls 8, dealing 8 + 4 + 2 = 14 cold damage. Attack 3 rolls 5, dealing 5 + 4 = 9 cold damage. The creature takes 12 + 14 + 9 = 35 cold damage in total.
+          - text: Attack 1 rolls 6 on its 1d10, dealing 6 + 4 Intelligence + 2 from Glacial Spike = 12 cold damage. Attack 2 rolls 8, dealing 8 + 4 + 2 = 14 cold damage. Attack 3 rolls 5, dealing 5 + 4 = 9 cold damage. The creature takes 12 + 14 + 9 = 35 cold damage in total.
             type: text
         discipline: cryokinesis
         effects:
@@ -170,17 +170,17 @@ entities:
           - text: The fighter ends 20 feet from the creature with 8 Psi, 4 hit points lost to Blood Tax, and concentration on Frozen Ground. The creature has taken 35 cold damage and has Speed 0 in difficult terrain until the end of the fighter’s next turn. No Psi, bonus action, reaction, or movement is used this turn.
             type: text
         rolls_or_saves:
-          - text: The attack bonus is +10 (+4 Int, +4 PB, +2 Psionic Focus). The attacks roll 10 + 10 = 20, 8 + 10 = 18, and 12 + 10 = 22; all three hit AC 16. After attack 2 deals damage, the creature rolls 11 against save DC 16 (8 + 4 + 4) and fails its Constitution saving throw.
+          - text: The attack bonus is +10 (+4 Intelligence, +4 Proficiency Bonus, +2 Psionic Focus). The attacks roll 10 + 10 = 20, 8 + 10 = 18, and 12 + 10 = 22; all three hit Armor Class 16. After attack 2 deals damage, the creature rolls 11 against Difficulty Class 16 (8 + 4 + 4) and fails its Constitution saving throw.
             type: text
         setup:
-          - text: A level 11 Cryokinesis fighter begins 20 feet from one hostile creature with AC 16 inside the 15-foot-radius Frozen Ground Cylinder. The fighter has three attacks, one free hand, PB +4, Int +4, a 1d10 Manifested Strike die, 8 Psi remaining after activating Frozen Ground last turn for 2 Psi, enough hit points for Blood Tax, and concentration on the difficult-terrain area.
+          - text: A level 11 Cryokinesis fighter begins 20 feet from one hostile creature with Armor Class 16 inside the 15-foot-radius Frozen Ground Cylinder. The fighter has three attacks, one free hand, Proficiency Bonus +4, Intelligence +4, a 1d10 Manifested Strike die, 8 Psi remaining after activating Frozen Ground last turn for 2 Psi, enough hit points for Blood Tax, and concentration on the difficult-terrain area.
             type: text
         title:
           - text: Frozen Ground Lockdown — Level 11 Cryokinesis
             type: text
         type: example_play_section
       - activation:
-          - text: The fighter takes the Attack action and resolves each attack before choosing the next target. Attack 1 declares a Manifested Strike with the Static Discharge Signature Rider at Tier 2 for 0 Psi and pays 8 Blood Tax (2 × PB) before the roll. Attack 2 declares Branching Bolt at Tier 0 for 2 Psi. Attack 3 declares Electron Burst at Tier 0 for 2 Psi. The Psi and Blood Tax remain spent if the associated attack misses.
+          - text: The fighter takes the Attack action and resolves each attack before choosing the next target. Attack 1 declares a Manifested Strike with the Static Discharge Signature Rider at Tier 2 for 0 Psi and pays 8 Blood Tax (2 × Proficiency Bonus) before the roll. Attack 2 declares Branching Bolt at Tier 0 for 2 Psi. Attack 3 declares Electron Burst at Tier 0 for 2 Psi. The Psi and Blood Tax remain spent if the associated attack misses.
             type: text
         damage:
           - text: Attack 1 rolls 7 on its 1d10, dealing 7 + 4 = 11 lightning damage to the first primary target; Static Discharge adds 2 damage to it and each of four secondary targets. Attack 2 rolls 6 for 10 strike damage, and Branching Bolt rolls 8 for the second primary target and one secondary target. Attack 3 rolls 5 for 9 strike damage, and Electron Burst rolls 6 + 5 = 11 damage against each failed save. Across the five creatures, the turn deals 111 lightning damage.
@@ -196,10 +196,10 @@ entities:
           - text: The fighter ends in place with 6 Psi, 8 hit points lost to Blood Tax, and no concentration, bonus action, reaction, or movement used. The five creatures have taken 111 lightning damage in total; three primaries are struck and Sapped, and all five cannot take reactions until the start of the fighter’s next turn. Static Discharge is the only Tier 2 rider used, while Branching Bolt and Electron Burst are each used once.
             type: text
         rolls_or_saves:
-          - text: The attack bonus is +10 (+4 Psionic Ability, +4 PB, +2 Psionic Focus). The attacks roll 9 + 10 = 19, 12 + 10 = 22, and 7 + 10 = 17; all three hit AC 16. Each of the five Static Discharge targets rolls 12 against save DC 16 and fails its Charisma saving throw. Each of the five Electron Burst targets rolls 13 against DC 16 and fails its Charisma saving throw.
+          - text: The attack bonus is +10 (+4 Psionic Ability, +4 Proficiency Bonus, +2 Psionic Focus). The attacks roll 9 + 10 = 19, 12 + 10 = 22, and 7 + 10 = 17; all three hit Armor Class 16. Each of the five Static Discharge targets rolls 12 against Difficulty Class 16 and fails its Charisma saving throw. Each of the five Electron Burst targets rolls 13 against Difficulty Class 16 and fails its Charisma saving throw.
             type: text
         setup:
-          - text: A level 11 Electrokinesis fighter faces five hostile creatures with AC 16 clustered so four are within 5 feet of the first primary target, a later secondary target is within 15 feet of the second primary target, and all five fit inside the final 10-foot-radius Sphere. The fighter has three attacks, 10 Psi, PB +4, a +4 Psionic Ability modifier, a 1d10 Manifested Strike die, and enough hit points for Blood Tax.
+          - text: A level 11 Electrokinesis fighter faces five hostile creatures with Armor Class 16 clustered so four are within 5 feet of the first primary target, a later secondary target is within 15 feet of the second primary target, and all five fit inside the final 10-foot-radius Sphere. The fighter has three attacks, 10 Psi, Proficiency Bonus +4, a +4 Psionic Ability modifier, a 1d10 Manifested Strike die, and enough hit points for Blood Tax.
             type: text
         title:
           - text: Room Sweep — Level 11 Electrokinesis
@@ -262,7 +262,7 @@ entities:
                 type: text
             type: paragraph
           - inlines:
-              - text: "Hit: Manifested Strike deals 1d10 + 3, and Glacial Spike adds 2 cold damage, for 1d10 + 5 total. On a failed Con save, the target is Restrained until the end of your next turn."
+              - text: "Hit: Manifested Strike deals 1d10 + 3, and Glacial Spike adds 2 cold damage, for 1d10 + 5 total. On a failed Constitution saving throw, the target is Restrained until the end of your next turn."
                 type: text
             type: paragraph
           - inlines:
@@ -275,7 +275,7 @@ entities:
             type: paragraph
         tier: 2
         title:
-          - text: Example — Level 11 Cryokinesis (PB 4, Int +3)
+          - text: Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)
             type: strong
         type: example
       - inlines:
@@ -317,7 +317,7 @@ entities:
                 type: text
             - - text: Listed cost (0 for Signature Rider)
                 type: text
-            - - text: PB
+            - - text: Proficiency Bonus
                 type: text
             - - text: Paid on declaration, hit or miss
                 type: text
@@ -325,7 +325,7 @@ entities:
                 type: text
             - - text: Listed cost (0 for Signature Rider)
                 type: text
-            - - text: 2 × PB
+            - - text: 2 × Proficiency Bonus
                 type: text
             - - text: Only one Tier 2 rider per Attack action
                 type: text
@@ -333,7 +333,7 @@ entities:
                 type: text
             - - text: Feature cost
                 type: text
-            - - text: PB or 2 × PB
+            - - text: Proficiency Bonus or 2 × Proficiency Bonus
                 type: text
             - - text: Paid when activated
                 type: text
@@ -406,7 +406,7 @@ entities:
                 type: text
           - - - text: 10th
                 type: text
-            - - text: Discipline 10th Feature, Phase Step, Tier 2 Overload
+            - - text: Discipline 10th-Level Feature, Phase Step, Tier 2 Overload
                 type: text
           - - - text: 15th
                 type: text
@@ -436,6 +436,8 @@ entities:
               type: text
           - - text: Activation
               type: text
+          - - text: Duration
+              type: text
         rows:
           - - - text: 3rd
                 type: text
@@ -445,7 +447,9 @@ entities:
                 type: text
             - - text: "0"
                 type: text
-            - - text: Rider
+            - - text: Declared before roll · Resolves on hit
+                type: text
+            - - text: Varies by tier
                 type: text
           - - - text: 3rd
                 type: text
@@ -455,7 +459,9 @@ entities:
                 type: text
             - - text: "0"
                 type: text
-            - - text: Rider
+            - - text: Declared before roll · Resolves on hit
+                type: text
+            - - text: Instantaneous
                 type: text
           - - - text: 3rd
                 type: text
@@ -465,7 +471,9 @@ entities:
                 type: text
             - - text: "0"
                 type: text
-            - - text: Rider
+            - - text: Declared before roll · Resolves on hit
+                type: text
+            - - text: Varies by tier
                 type: text
           - - - text: 3rd
                 type: text
@@ -475,17 +483,21 @@ entities:
                 type: text
             - - text: "0"
                 type: text
-            - - text: Rider
+            - - text: Declared before roll · Resolves on hit
+                type: text
+            - - text: Varies by tier
                 type: text
           - - - text: 5th
                 type: text
             - - text: Deflection Screen
                 type: text
-            - - text: Universal (AT I)
+            - - text: Universal (Advanced Training I)
                 type: text
             - - text: "1"
                 type: text
             - - text: Reaction
+                type: text
+            - - text: Instantaneous
                 type: text
           - - - text: 7th
                 type: text
@@ -495,7 +507,9 @@ entities:
                 type: text
             - - text: "0"
                 type: text
-            - - text: Bonus Action · Limited Uses
+            - - text: Passive · Bonus Action scan
+                type: text
+            - - text: Continuous; scan instantaneous
                 type: text
           - - - text: 7th
                 type: text
@@ -505,7 +519,9 @@ entities:
                 type: text
             - - text: "2"
                 type: text
-            - - text: Rider · Once per Attack action
+            - - text: Declared before roll · Resolves on hit · Once per Attack action
+                type: text
+            - - text: Until the end of your next turn
                 type: text
           - - - text: 7th
                 type: text
@@ -515,7 +531,9 @@ entities:
                 type: text
             - - text: "1"
                 type: text
-            - - text: Rider · Once per Attack action
+            - - text: Declared before roll · Resolves on hit · Once per Attack action
+                type: text
+            - - text: Until the start of your next turn
                 type: text
           - - - text: 7th
                 type: text
@@ -527,6 +545,8 @@ entities:
                 type: text
             - - text: Bonus Action · Concentration
                 type: text
+            - - text: Up to 10 minutes
+                type: text
           - - - text: 7th
                 type: text
             - - text: Branching Bolt
@@ -535,7 +555,9 @@ entities:
                 type: text
             - - text: "2"
                 type: text
-            - - text: Rider · Once per Attack action
+            - - text: Declared before roll · Resolves on hit · Once per Attack action
+                type: text
+            - - text: Instantaneous
                 type: text
           - - - text: 10th
                 type: text
@@ -547,6 +569,8 @@ entities:
                 type: text
             - - text: Action · Concentration
                 type: text
+            - - text: Up to 1 minute
+                type: text
           - - - text: 10th
                 type: text
             - - text: Cinder Lance
@@ -555,7 +579,9 @@ entities:
                 type: text
             - - text: "3"
                 type: text
-            - - text: Rider · Once per Attack action
+            - - text: Declared before roll · Resolves on hit · Once per Attack action
+                type: text
+            - - text: Instantaneous
                 type: text
           - - - text: 10th
                 type: text
@@ -565,7 +591,9 @@ entities:
                 type: text
             - - text: "2"
                 type: text
-            - - text: Rider · Once per Attack action
+            - - text: Declared before roll · Resolves on hit · Once per Attack action
+                type: text
+            - - text: Instantaneous
                 type: text
           - - - text: 10th
                 type: text
@@ -575,17 +603,21 @@ entities:
                 type: text
             - - text: "2"
                 type: text
-            - - text: Rider · Once per Attack action
+            - - text: Declared before roll · Resolves on hit · Once per Attack action
+                type: text
+            - - text: Until the start of your next turn
                 type: text
           - - - text: 10th
                 type: text
             - - text: Phase Step
                 type: text
-            - - text: Universal (AT II)
+            - - text: Universal (Advanced Training II)
                 type: text
             - - text: "1"
                 type: text
             - - text: Bonus Action
+                type: text
+            - - text: Instantaneous
                 type: text
           - - - text: 15th
                 type: text
@@ -597,6 +629,8 @@ entities:
                 type: text
             - - text: Action
                 type: text
+            - - text: Varies by tier
+                type: text
           - - - text: 15th
                 type: text
             - - text: Flare
@@ -605,7 +639,9 @@ entities:
                 type: text
             - - text: "3"
                 type: text
-            - - text: Rider · Once per Attack action
+            - - text: Declared before roll · Resolves on hit · Once per Attack action
+                type: text
+            - - text: Varies by tier
                 type: text
           - - - text: 15th
                 type: text
@@ -617,6 +653,8 @@ entities:
                 type: text
             - - text: Action
                 type: text
+            - - text: Varies by tier
+                type: text
           - - - text: 15th
                 type: text
             - - text: Forked Lightning
@@ -626,6 +664,8 @@ entities:
             - - text: "3"
                 type: text
             - - text: Action
+                type: text
+            - - text: Varies by tier
                 type: text
           - - - text: 15th
                 type: text
@@ -637,6 +677,8 @@ entities:
                 type: text
             - - text: Varies
                 type: text
+            - - text: Varies by feature
+                type: text
           - - - text: 18th
                 type: text
             - - text: Advanced Training IV choice
@@ -646,6 +688,8 @@ entities:
             - - text: Varies
                 type: text
             - - text: Varies
+                type: text
+            - - text: Varies by feature
                 type: text
           - - - text: 20th
                 type: text
@@ -657,85 +701,103 @@ entities:
                 type: text
             - - text: Varies
                 type: text
+            - - text: Varies by feature
+                type: text
           - - - text: 15th+
                 type: text
             - - text: Mind Shred
                 type: text
-            - - text: Universal (AT pool)
+            - - text: Universal (Advanced Training pool)
                 type: text
             - - text: "3"
                 type: text
-            - - text: Rider · Once per Attack action
+            - - text: Declared before roll · Resolves on hit · Once per Attack action
+                type: text
+            - - text: Instantaneous
                 type: text
           - - - text: 15th+
                 type: text
             - - text: Beguile
                 type: text
-            - - text: Universal (AT pool)
+            - - text: Universal (Advanced Training pool)
                 type: text
             - - text: "3"
                 type: text
             - - text: Action · Concentration
+                type: text
+            - - text: Varies by tier
                 type: text
           - - - text: 15th+
                 type: text
             - - text: Mind Lock
                 type: text
-            - - text: Universal (AT pool)
+            - - text: Universal (Advanced Training pool)
                 type: text
             - - text: "3"
                 type: text
-            - - text: Rider · Once per Attack action
+            - - text: Declared before roll · Resolves on hit · Once per Attack action
+                type: text
+            - - text: Until the end of your next turn
                 type: text
           - - - text: 15th+
                 type: text
             - - text: Gravitic Press
                 type: text
-            - - text: Universal (AT pool)
+            - - text: Universal (Advanced Training pool)
                 type: text
             - - text: "3"
                 type: text
             - - text: Action · Concentration
                 type: text
+            - - text: Up to 1 minute
+                type: text
           - - - text: 15th+
                 type: text
             - - text: Barrier
                 type: text
-            - - text: Universal (AT pool)
+            - - text: Universal (Advanced Training pool)
                 type: text
             - - text: "3"
                 type: text
             - - text: Bonus Action
+                type: text
+            - - text: Varies by tier
                 type: text
           - - - text: 15th+
                 type: text
             - - text: Improved Phase Step
                 type: text
-            - - text: Universal (AT pool)
+            - - text: Universal (Advanced Training pool)
                 type: text
             - - text: "3"
                 type: text
             - - text: Bonus Action
                 type: text
+            - - text: Varies by tier
+                type: text
           - - - text: 18th+
                 type: text
             - - text: Overload Mastery II
                 type: text
-            - - text: Universal (AT pool)
+            - - text: Universal (Advanced Training pool)
                 type: text
             - - text: "0"
                 type: text
             - - text: Passive · Requires Psionic Apex
                 type: text
+            - - text: Continuous
+                type: text
           - - - text: 15th+
                 type: text
             - - text: Inner Reserve
                 type: text
-            - - text: Universal (AT pool)
+            - - text: Universal (Advanced Training pool)
                 type: text
             - - text: "0"
                 type: text
             - - text: Passive
+                type: text
+            - - text: Continuous
                 type: text
           - - - text: 20th
                 type: text
@@ -747,6 +809,8 @@ entities:
                 type: text
             - - text: Action
                 type: text
+            - - text: Varies by tier
+                type: text
           - - - text: 20th
                 type: text
             - - text: Furnace Strike
@@ -755,7 +819,9 @@ entities:
                 type: text
             - - text: "5"
                 type: text
-            - - text: Rider · Once per Attack action
+            - - text: Declared before roll · Resolves on hit · Once per Attack action
+                type: text
+            - - text: Instantaneous
                 type: text
           - - - text: 20th
                 type: text
@@ -767,6 +833,8 @@ entities:
                 type: text
             - - text: Action · Concentration
                 type: text
+            - - text: Up to 1 minute
+                type: text
           - - - text: 20th
                 type: text
             - - text: Ball Lightning
@@ -776,6 +844,8 @@ entities:
             - - text: "5"
                 type: text
             - - text: Action · Concentration
+                type: text
+            - - text: Up to 1 minute
                 type: text
         type: table
     id: subclass_feature_reference
@@ -794,11 +864,11 @@ entities:
         - common_features
     content:
       - inlines:
-          - text: Choose Intelligence, Wisdom, or Charisma as your Psionic Ability. You use that ability for Manifested Strike attack and damage rolls, your Psionic save DC, and every subclass feature that refers to your Psionic Ability.
+          - text: Choose Intelligence, Wisdom, or Charisma as your Psionic Ability. You use that ability for Manifested Strike attack and damage rolls, your Psionic saving throw Difficulty Class, and every subclass feature that refers to your Psionic Ability.
             type: text
         type: paragraph
       - inlines:
-          - text: Psionic save DC = 8 + your Proficiency Bonus + your Psionic Ability modifier
+          - text: Psionic saving throw Difficulty Class = 8 + your Proficiency Bonus + your Psionic Ability modifier
             type: text
         type: paragraph
     id: common_psionic_discipline
@@ -946,7 +1016,7 @@ entities:
       - headers:
           - - text: Fighter Level
               type: text
-          - - text: MS Die
+          - - text: Manifested Strike Die
               type: text
         rows:
           - - - text: 3–4
@@ -1231,7 +1301,7 @@ entities:
         - cryokinesis
     content:
       - inlines:
-          - text: "T0 Base: The target’s speed becomes 0 until the end of your next turn (no save). The target must then make a Con save; on a failed save, it is also Restrained until the end of your next turn."
+          - text: "T0 Base: The target’s speed becomes 0 until the end of your next turn (no save). The target must then make a Constitution saving throw; on a failed save, it is also Restrained until the end of your next turn."
             type: text
         type: paragraph
       - inlines:
@@ -1259,11 +1329,11 @@ entities:
         - cryokinesis
     content:
       - inlines:
-          - text: "T0 Base: Create a 15-ft-radius, 20-ft-high Cylinder of icy difficult terrain centered on a point within 60 ft. This effect requires Concentration for up to 1 minute. When a creature enters the Cylinder for the first time on a turn or starts its turn there, it must make a Con save. On a failed save, its Speed becomes 0 until the end of the current turn."
+          - text: "T0 Base: Create a 15-foot-radius, 20-foot-high Cylinder of icy difficult terrain centered on a point within 60 feet. This effect requires Concentration for up to 1 minute. When a creature enters the Cylinder for the first time on a turn or starts its turn there, it must make a Constitution saving throw. On a failed save, its Speed becomes 0 until the end of the current turn."
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: Expand the radius to 25 ft."
+          - text: "T1 Overload: Changes from Tier 0: Expand the radius to 25 feet."
             type: text
         type: paragraph
       - inlines:
@@ -1283,7 +1353,7 @@ entities:
     psi_cost: 2
     publishable: true
     requires_concentration: true
-    concentration_duration: up to 1 minute
+    concentration_duration: Up to 1 minute
     title: Frozen Ground
   - activation: action
     classifications:
@@ -1321,7 +1391,7 @@ entities:
         - cryokinesis
     content:
       - inlines:
-          - text: "T0 Base: Choose one creature within 60 ft. The target must make a Constitution saving throw, taking 10d10 cold damage on a failed save, or half on a successful one. On a failed save, the target’s speed becomes 0 until the end of your next turn."
+          - text: "T0 Base: Choose one creature within 60 feet. The target must make a Constitution saving throw, taking 10d10 cold damage on a failed save, or half on a successful one. On a failed save, the target’s speed becomes 0 until the end of your next turn."
             type: text
         type: paragraph
       - inlines:
@@ -1377,15 +1447,15 @@ entities:
         - pyrokinesis
     content:
       - inlines:
-          - text: "T0 Base: After the triggering hit resolves, the target’s AC is reduced by 1 until the start of your next turn. Thermal Fracture deals no additional damage."
+          - text: "T0 Base: After the triggering hit resolves, the target’s Armor Class is reduced by 1 until the start of your next turn. Thermal Fracture deals no additional damage."
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The AC reduction increases to 2."
+          - text: "T1 Overload: Changes from Tier 0: The Armor Class reduction increases to 2."
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: The AC reduction increases to 3. Thermal Fracture does not stack; use the strongest reduction, or refresh an equal reduction. The triggering hit does not benefit, but subsequent attacks by you or your allies do."
+          - text: "T2 Overload: Changes from Tier 1: The Armor Class reduction increases to 3. Thermal Fracture does not stack; use the strongest reduction, or refresh an equal reduction. The triggering hit does not benefit, but subsequent attacks by you or your allies do."
             type: text
         type: paragraph
     id: thermal_fracture
@@ -1537,7 +1607,7 @@ entities:
     psi_cost: 2
     publishable: true
     requires_concentration: true
-    concentration_duration: up to 10 minutes
+    concentration_duration: Up to 10 minutes
     title: Vectored Thrust
   - activation: on_hit
     classifications:
@@ -1635,7 +1705,7 @@ entities:
     psi_cost: 5
     publishable: true
     requires_concentration: true
-    concentration_duration: up to 1 minute
+    concentration_duration: Up to 1 minute
     title: Mass Levitation
   - activation: on_hit
     classifications:
@@ -1785,7 +1855,7 @@ entities:
     psi_cost: 5
     publishable: true
     requires_concentration: true
-    concentration_duration: up to 1 minute
+    concentration_duration: Up to 1 minute
     title: Ball Lightning
   - activation: reaction
     classifications:
@@ -1833,7 +1903,7 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: Choose either the space you left or the space where you appear. Each creature of your choice within 5 feet of that space must make your Discipline’s signature saving throw against your Psionic save DC. On a failed save, it cannot take reactions until the start of your next turn."
+          - text: "T2 Overload: Changes from Tier 1: Choose either the space you left or the space where you appear. Each creature of your choice within 5 feet of that space must make your Discipline’s signature saving throw against your Psionic saving throw Difficulty Class. On a failed save, it cannot take reactions until the start of your next turn."
             type: text
         type: paragraph
     id: advanced_phase_step
@@ -1883,15 +1953,15 @@ entities:
         - advanced_training
     content:
       - inlines:
-          - text: "T0 Base: Produce the effects of charm person without casting a spell. The target makes a Charisma saving throw against your Psionic save DC. The effect requires Concentration for up to 1 hour. Choose one tier when you activate Beguile; higher tiers replace lower-tier effects rather than stacking with them."
+          - text: "T0 Base: Produce the effects of charm person without casting a spell. The target makes a Charisma saving throw against your Psionic saving throw Difficulty Class. The effect requires Concentration for up to 1 hour. Choose one tier when you activate Beguile; higher tiers replace lower-tier effects rather than stacking with them."
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: Replace the charm person effect with the effects of suggestion without casting a spell. The target makes a Charisma saving throw against your Psionic save DC. The effect requires Concentration for up to 8 hours."
+          - text: "T1 Overload: Changes from Tier 0: Replace the charm person effect with the effects of suggestion without casting a spell. The target makes a Charisma saving throw against your Psionic saving throw Difficulty Class. The effect requires Concentration for up to 8 hours."
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: Replace the suggestion effect with the effects of mass suggestion without casting a spell, affecting up to five creatures you can see within 60 feet. Each target makes a Charisma saving throw against your Psionic save DC. The effect requires Concentration for up to 8 hours."
+          - text: "T2 Overload: Changes from Tier 1: Replace the suggestion effect with the effects of mass suggestion without casting a spell, affecting up to five creatures you can see within 60 feet. Each target makes a Charisma saving throw against your Psionic saving throw Difficulty Class. The effect requires Concentration for up to 8 hours."
             type: text
         type: paragraph
       - inlines:
@@ -1907,6 +1977,7 @@ entities:
     psi_cost: 3
     publishable: true
     requires_concentration: true
+    concentration_duration: Varies by tier
     title: Beguile
   - activation: on_hit
     classifications:
@@ -1966,7 +2037,7 @@ entities:
     psi_cost: 3
     publishable: true
     requires_concentration: true
-    concentration_duration: up to 1 minute
+    concentration_duration: Up to 1 minute
     title: Gravitic Press
   - activation: bonus_action
     classifications:
@@ -2006,7 +2077,7 @@ entities:
         - advanced_training
     content:
       - inlines:
-          - text: "T0 Base: Teleport up to 30 feet to an unoccupied space you can see. Choose either the space you left or the space where you appear as the origin of a 5-foot-radius Sphere. Choose up to three other creatures in the Sphere. Each chosen creature must make your Discipline’s signature saving throw against your Psionic save DC, taking 2d10 damage of your Manifested Strike’s damage type on a failed save or half as much on a successful one. This movement does not provoke Opportunity Attacks, and you are unaffected by the burst."
+          - text: "T0 Base: Teleport up to 30 feet to an unoccupied space you can see. Choose either the space you left or the space where you appear as the origin of a 5-foot-radius Sphere. Choose up to three other creatures in the Sphere. Each chosen creature must make your Discipline’s signature saving throw against your Psionic saving throw Difficulty Class, taking 2d10 damage of your Manifested Strike’s damage type on a failed save or half as much on a successful one. This movement does not provoke Opportunity Attacks, and you are unaffected by the burst."
             type: text
         type: paragraph
       - inlines:
@@ -2104,9 +2175,9 @@ facets:
     requiredness: applicable
     vocabulary: acquisition_modes
 metadata:
-  attribution: Created by NixNinja in collaboration with AI assistants. Special thanks to various muses, great and small.
+  attribution: Created by NixNinja in collaboration with artificial intelligence assistants. Special thanks to various muses, great and small.
   compatibility: Fighter subclass rules reference
-  license: Original Kinetic Vanguard material may be used, copied, modified, and redistributed for non-commercial purposes with credit to NixNinja. Commercial use requires prior written permission. SRD-derived rules text and references are separately governed by the Creative Commons Attribution 4.0 International License.
+  license: Original Kinetic Vanguard material may be used, copied, modified, and redistributed for non-commercial purposes with credit to NixNinja. Commercial use requires prior written permission. System Reference Document-derived rules text and references are separately governed by the Creative Commons Attribution 4.0 International License.
   title: Kinetic Vanguard
 navigation:
   categories:

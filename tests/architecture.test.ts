@@ -47,7 +47,7 @@ test("Manifested Strike owns its progression immediately after the core rule",as
   const manifested=authority.entities.find(item=>item.id==="common_manifested_strike")!;
   const overload=authority.entities.find(item=>item.id==="common_overload")!;
   const progressionIndex=manifested.content.findIndex(block=>block.type==="paragraph"&&block.inlines?.map(node=>node.text).join("")===expectedProse);
-  const tableIndex=manifested.content.findIndex(block=>block.type==="table"&&block.headers?.map(cell=>cell.map(node=>node.text).join("")).join("|")==="Fighter Level|MS Die");
+  const tableIndex=manifested.content.findIndex(block=>block.type==="table"&&block.headers?.map(cell=>cell.map(node=>node.text).join("")).join("|")==="Fighter Level|Manifested Strike Die");
   assert.equal(progressionIndex,1);assert.equal(tableIndex,2);
   const table=manifested.content[tableIndex]!;
   const rows=table.rows!.map(row=>row.map(cell=>cell.map(node=>node.text).join("")));
@@ -126,20 +126,22 @@ test("approved trigger, timing, replacement, and flavor clarifications remain ca
 test("fixed concentration durations are explicit in structured authority and rules text",async()=>{
   const {authority}=await loadAuthority();
   const expected=[
-    ["advanced_gravitic_press","up to 1 minute"],
-    ["ball_lightning","up to 1 minute"],
-    ["frozen_ground","up to 1 minute"],
-    ["mass_levitation","up to 1 minute"],
-    ["vectored_thrust","up to 10 minutes"]
+    ["advanced_beguile","Varies by tier"],
+    ["advanced_gravitic_press","Up to 1 minute"],
+    ["ball_lightning","Up to 1 minute"],
+    ["frozen_ground","Up to 1 minute"],
+    ["mass_levitation","Up to 1 minute"],
+    ["vectored_thrust","Up to 10 minutes"]
   ];
   const features=authority.entities.filter(entity=>entity.concentration_duration!==undefined).sort((a,b)=>a.id.localeCompare(b.id));
   assert.deepEqual(features.map(entity=>[entity.id,entity.concentration_duration]),expected);
   assert.ok(features.every(entity=>entity.requires_concentration===true));
-  for(const entity of features){
+  for(const entity of features.filter(entity=>entity.id!=="advanced_beguile")){
     const rules=entity.content.flatMap(block=>block.inlines??[]).map(inline=>inline.text).join("\n");
-    assert.ok(rules.includes(`requires Concentration for ${entity.concentration_duration}.`),`${entity.id} is missing its canonical maximum duration`);
+    assert.ok(rules.includes(`requires Concentration for ${entity.concentration_duration!.toLowerCase()}.`),`${entity.id} is missing its canonical maximum duration`);
   }
-  assert.equal(authority.entities.find(entity=>entity.id==="advanced_beguile")?.concentration_duration,undefined);
+  const beguile=authority.entities.find(entity=>entity.id==="advanced_beguile")!;const beguileRules=beguile.content.flatMap(block=>block.inlines??[]).map(inline=>inline.text).join("\n");
+  assert.match(beguileRules,/T0 Base:[^\n]+up to 1 hour/);assert.equal((beguileRules.match(/up to 8 hours/g)??[]).length,2);
 });
 
 
@@ -161,6 +163,36 @@ test("Mass Levitation prohibits mixing its creature-size target groups",async()=
   ])assert.ok(rules.includes(mechanic),"Mass Levitation mechanic changed: "+mechanic);
 });
 
+
+test("Psi Cost Reference provides full-English activation and duration values",async()=>{
+  const {authority}=await loadAuthority();const reference=authority.entities.find(entity=>entity.id==="subclass_feature_reference")!;
+  const table=reference.content.find(block=>block.type==="table"&&block.headers?.some(cell=>cell.some(node=>node.text==="Duration")))!;
+  const cell=(nodes:any[])=>nodes.map(node=>node.text??node.label??String(node.value?.value??"")).join("");
+  assert.deepEqual(table.headers!.map(cell),["Level","Feature","Discipline","Psi","Activation","Duration"]);
+  const rows=table.rows!.map(row=>row.map(cell));assert.ok(rows.every(row=>row.length===6));
+  const byFeature=new Map(rows.map(row=>[row[1],row]));
+  for(const [feature,duration] of [["Vectored Thrust","Up to 10 minutes"],["Frozen Ground","Up to 1 minute"],["Mass Levitation","Up to 1 minute"],["Ball Lightning","Up to 1 minute"],["Gravitic Press","Up to 1 minute"],["Beguile","Varies by tier"]])assert.equal(byFeature.get(feature)?.[5],duration);
+  assert.equal(byFeature.get("Glacial Spike")?.[4],"Declared before roll · Resolves on hit");
+  assert.equal(byFeature.get("Empathic Sense")?.[4],"Passive · Bonus Action scan");
+  assert.ok(rows.every(row=>row[5]&&row[5]!== "—"));
+  assert.match(JSON.stringify(table),/Advanced Training I/);assert.match(JSON.stringify(table),/Advanced Training II/);assert.match(JSON.stringify(table),/Advanced Training pool/);
+  assert.doesNotMatch(JSON.stringify(table),/\bAT(?: I| II| pool)?\b/);
+  assert.match(JSON.stringify(reference.content),/Discipline 10th-Level Feature/);
+});
+
+test("active authority and approved UI text use full English without contractions",async()=>{
+  const {authority}=await loadAuthority();const ui=JSON.parse(await readFile("ui/approved-ui-text.json","utf8"));
+  const strings:string[]=[authority.metadata.title,authority.metadata.attribution,authority.metadata.license];
+  for(const facet of authority.facets)strings.push(facet.label);
+  for(const vocabulary of Object.values(authority.vocabularies))for(const item of vocabulary)strings.push(item.label);
+  for(const category of authority.navigation.categories){strings.push(category.label);for(const topic of category.topics)strings.push(topic.title);}
+  const collect=(value:any):void=>{if(Array.isArray(value)){value.forEach(collect);return;}if(!value||typeof value!=="object")return;for(const [key,child] of Object.entries(value)){if((key==="text"||key==="label")&&typeof child==="string")strings.push(child);else collect(child);}};
+  for(const entity of authority.entities){strings.push(entity.title);if(entity.concentration_duration)strings.push(entity.concentration_duration);collect(entity.content);}
+  for(const token of ui.tokens)strings.push(token.text??token.template);
+  const contractions=/\b(?:can['’]t|won['’]t|don['’]t|doesn['’]t|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|it['’]s|that['’]s|there['’]s|you['’](?:re|ve|ll|d)|we['’](?:re|ve|ll|d)|they['’](?:re|ve|ll|d)|couldn['’]t|wouldn['’]t|shouldn['’]t|mustn['’]t|haven['’]t|hasn['’]t|hadn['’]t|didn['’]t)\b/iu;
+  const abbreviations=/(?:\b(?:ft|AT|PB|AC|DC|MS)\b|\b(?:Con|Str|Dex|Int|Cha) saves?\b)/u;
+  for(const text of strings){assert.doesNotMatch(text,contractions,text);assert.doesNotMatch(text,abbreviations,text);}
+});
 
 test("Common rules do not leak into discipline Browse topics",async()=>{
   const {authority}=await loadAuthority();const entities=new Map(authority.entities.map(entity=>[entity.id,entity]));
@@ -188,7 +220,7 @@ test("example turns use one plain-text six-phase authority contract",async()=>{
     for(const field of ["heading","title",...phases]){assert.ok(section[field].length>0);assert.ok(section[field].every((node:any)=>node.type==="text"),section.title[0].text+" "+field+" must use plain text");}
   }
   const overloadExamples=overload.content.filter(block=>block.type==="example") as any[];
-  assert.equal(overloadExamples.length,1);assert.equal(overloadExamples[0].title.map((node:any)=>node.text).join(""),"Example — Level 11 Cryokinesis (PB 4, Int +3)");
+  assert.equal(overloadExamples.length,1);assert.equal(overloadExamples[0].title.map((node:any)=>node.text).join(""),"Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)");
   assert.doesNotMatch(JSON.stringify(sections),/Example assumptions:|Full Attack Turn|Sustained Turn|type":"(?:strong|emphasis)"/);
 });
 
@@ -223,7 +255,7 @@ test("tiered rules use an ordered, cumulative hierarchy without changing mechani
   assert.doesNotMatch(absoluteZero,/repeat(?:s| the)? (?:save|saving throw)/i);
 
   const snowChains=rulesFor("snow_chains");
-  for(const mechanic of ["speed becomes 0 until the end of your next turn (no save)","make a Con save","Restrained until the end of your next turn","cannot take reactions until the start of your next turn","Stunned condition until the end of your next turn"])assert.ok(snowChains.includes(mechanic),"Snow Chains mechanic changed: "+mechanic);
+  for(const mechanic of ["speed becomes 0 until the end of your next turn (no save)","make a Constitution saving throw","Restrained until the end of your next turn","cannot take reactions until the start of your next turn","Stunned condition until the end of your next turn"])assert.ok(snowChains.includes(mechanic),"Snow Chains mechanic changed: "+mechanic);
   assert.match(snowChains,/Stunned condition[^.]+replaces the Restrained condition retained by Tier 1/);
 
   const frozenGround=rulesFor("frozen_ground");
