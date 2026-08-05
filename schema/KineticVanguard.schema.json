@@ -59,12 +59,18 @@
         {"type":"object","additionalProperties":false,"required":["type","value"],"properties":{"type":{"const":"typed_value"},"value":{"$ref":"#/$defs/typedValue"}}}
       ]
     },
+    "tableRowReference": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["entity_id","reference_level"],"properties":{"entity_id":{"$ref":"#/$defs/id"},"reference_level":{"enum":["3rd","5th","7th","10th","15th","18th","20th","15th+","18th+"]}}},
+        {"type":"object","additionalProperties":false,"required":["reference_group","reference_level"],"properties":{"reference_group":{"enum":["common_features","advanced_training","cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]},"reference_level":{"enum":["3rd","5th","7th","10th","15th","18th","20th","15th+","18th+"]}}}
+      ]
+    },
     "block": {
       "oneOf": [
         {"type":"object","additionalProperties":false,"required":["type","inlines"],"properties":{"type":{"const":"paragraph"},"inlines":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}}},
         {"type":"object","additionalProperties":false,"required":["type","style","items"],"properties":{"type":{"const":"list"},"style":{"enum":["ordered","unordered"]},"items":{"type":"array","items":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"minItems":1}}},
         {"type":"object","additionalProperties":false,"required":["type","kind","inlines"],"properties":{"type":{"const":"note"},"kind":{"enum":["note","warning"]},"inlines":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}}},
-        {"type":"object","additionalProperties":false,"required":["type","headers","rows"],"properties":{"type":{"const":"table"},"headers":{"type":"array","items":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"minItems":1},"rows":{"type":"array","items":{"type":"array","items":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}},"minItems":1}}},
+        {"type":"object","additionalProperties":false,"required":["type","headers","rows"],"properties":{"type":{"const":"table"},"headers":{"type":"array","items":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"minItems":1},"rows":{"type":"array","items":{"type":"array","items":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}},"minItems":1},"row_references":{"type":"array","items":{"$ref":"#/$defs/tableRowReference"},"minItems":1}}},
         {"type":"object","additionalProperties":false,"required":["type","tier","heading","body"],"properties":{"type":{"const":"tier"},"tier":{"type":"integer","minimum":0},"heading":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"body":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1}}},
         {"type":"object","additionalProperties":false,"required":["type","tier","title","body"],"properties":{"type":{"const":"example"},"tier":{"type":"integer","minimum":0},"title":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"body":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1}}},
         {"type":"object","additionalProperties":false,"required":["type","discipline","heading","title","setup","activation","rolls_or_saves","damage","effects","result"],"properties":{"type":{"const":"example_play_section"},"discipline":{"enum":["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]},"heading":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"title":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"setup":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"activation":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"rolls_or_saves":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"damage":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"effects":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"result":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}}}
@@ -80,7 +86,7 @@
       "properties": {
         "id":{"$ref":"#/$defs/id"},"title":{"type":"string","minLength":1},"short_title":{"type":"string","minLength":1},
         "publishable":{"const":true},"kind":{"$ref":"#/$defs/id"},
-        "level":{"type":"integer","minimum":1,"maximum":20},"progression_section":{"enum":["foundation","reference"]},"psi_cost":{"type":"integer","minimum":0},"activation":{"$ref":"#/$defs/id"},"requires_concentration":{"type":"boolean"},
+        "level":{"type":"integer","minimum":1,"maximum":20},"progression_section":{"enum":["foundation","reference"]},"psi_cost":{"type":"integer","minimum":0},"activation":{"$ref":"#/$defs/id"},"requires_concentration":{"type":"boolean"},"concentration_duration":{"type":"string","minLength":1},
         "content":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1},
         "classifications":{"$ref":"#/$defs/classifications"},
         "presentation_metadata":{"type":"object","additionalProperties":false,"required":["primary_rules_area","canonical_topic_by_area"],"properties":{"primary_rules_area":{"$ref":"#/$defs/id"},"canonical_topic_by_area":{"type":"object","additionalProperties":{"$ref":"#/$defs/id"}}}},
