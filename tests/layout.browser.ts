@@ -5,6 +5,7 @@ import { chromium, firefox, type Page } from "playwright";
 import { executeBuild } from "../src/build.js";
 import { loadAuthority } from "../src/load.js";
 
+const defaultReferenceFragment="#category=common_features&topic=common_features_how_to_play_topic";
 const desktopViewports = [
   { width: 1640, height: 860 },
   { width: 1440, height: 900 },
@@ -27,7 +28,7 @@ const readSubclassProgressionLayout=(page:Page)=>page.evaluate(()=>{
 });
 
 test("master Name select renders canonical progression and stable renamed routes in Chromium and Firefox",async()=>{
-  const result=await executeBuild("prototype");const {authority}=await loadAuthority();const url=pathToFileURL(result.htmlPath).href;
+  const result=await executeBuild("prototype");const {authority}=await loadAuthority();const url=pathToFileURL(result.htmlPath).href+defaultReferenceFragment;
   const rulesAreas=authority.vocabularies.rules_areas!;const expectedGroups=[...rulesAreas].sort((a,b)=>a.order-b.order).map(area=>area.label);
   const featureIds=new Set(authority.entities.filter(entity=>entity.kind==="feature").map(entity=>entity.id));
   const expectedFeatures=Object.fromEntries(rulesAreas.map(area=>[area.label,authority.entities.filter(entity=>entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area===area.id).sort((a,b)=>Number(a.level)-Number(b.level)||(a.title<b.title?-1:a.title>b.title?1:0)||(a.id<b.id?-1:a.id>b.id?1:0)).map(entity=>entity.id)]));
@@ -59,7 +60,7 @@ test("master Name select renders canonical progression and stable renamed routes
 });
 
 test("mobile Category, Topic, Name, and result navigation focus and reveal the selected rule",async()=>{
-  const result=await executeBuild("prototype");const url=pathToFileURL(result.htmlPath).href;
+  const result=await executeBuild("prototype");const url=pathToFileURL(result.htmlPath).href+defaultReferenceFragment;
   for(const engine of desktopBrowsers){
     const browser=await engine.type.launch({headless:true});
     try{
@@ -145,7 +146,7 @@ test("prototype deliberately stacks below the two-column breakpoint", async () =
   const page = await browser.newPage({ viewport: { width: 760, height: 900 } });
 
   try {
-    await page.goto(pathToFileURL(result.htmlPath).href);
+    await page.goto(pathToFileURL(result.htmlPath).href+defaultReferenceFragment);
     await page.waitForSelector("#rules-content article");
     const layout = await page.evaluate(() => {
       const sidebar = document.querySelector<HTMLElement>(".controls")!.getBoundingClientRect();
@@ -336,7 +337,7 @@ test("Rules area filtering is immediate, canonical, progressive, and history-saf
   const expected=["Telekinetic Shove — Psychokinesis","Vectored Thrust — Psychokinesis","Explosion/Implosion — Psychokinesis","Telekinetic Slam — Psychokinesis","Mass Levitation — Psychokinesis"];
   try{
     for(const viewport of [{width:1366,height:768},{width:390,height:844}]){
-      const page=await browser.newPage({viewport});await page.goto(pathToFileURL(result.htmlPath).href);
+      const page=await browser.newPage({viewport});await page.goto(pathToFileURL(result.htmlPath).href+defaultReferenceFragment);
       const psychokinesis=page.locator(`input[data-facet="rules_area"][value="psychokinesis"]`),common=page.locator(`input[data-facet="rules_area"][value="common_features"]`);
       await psychokinesis.check();await page.locator(`#filter-root[data-filter-settled="true"]`).waitFor();
       const labels=()=>page.locator("#filter-results button").allTextContents();assert.deepEqual(await labels(),expected);assert.equal(await common.isChecked(),false);
@@ -364,4 +365,74 @@ test("concentration metadata ribbon wraps without overflow on desktop and mobile
       if(viewport.width===390)assert.ok(rendered.lineCount>1,`${size}: metadata should wrap cleanly at the mobile width`);await page.close();
     }
   }finally{await browser.close();}
+});
+
+test("Start Here is a contained single-column experience across engines, breakpoints, input, forced colors, reduced motion, and print",async()=>{
+  const result=await executeBuild("prototype"),base=pathToFileURL(result.htmlPath).href,homeUrl=base+"#home";
+  const widths=[320,412,760,761,1280,1366];
+  for(const engine of desktopBrowsers){
+    const browser=await engine.type.launch({headless:true});
+    const page=await browser.newPage({viewport:{width:1366,height:1000}});
+    try{
+      await page.goto(homeUrl);assert.equal(await page.evaluate(()=>document.activeElement===document.body),true,engine.name+" initial focus");
+      for(const width of widths){
+        await page.setViewportSize({width,height:1000});
+        const observed=await page.evaluate(()=>{
+          const main=document.querySelector<HTMLElement>("main.layout")!,content=document.querySelector<HTMLElement>("#rules-content")!,guide=document.querySelector<HTMLElement>('.home-guide[data-onboarding-id="start_here"]')!,controls=document.querySelector<HTMLElement>(".controls")!,nav=document.querySelector<HTMLElement>(".view-nav")!;
+          const mainRect=main.getBoundingClientRect(),contentRect=content.getBoundingClientRect(),guideRect=guide.getBoundingClientRect(),navRect=nav.getBoundingClientRect(),gridColumns=getComputedStyle(main).gridTemplateColumns.trim().split(/\s+/).filter(Boolean);
+          const blocks=[...guide.querySelectorAll<HTMLElement>("h2,h3,h4,p,li,dd,button")].filter(element=>getComputedStyle(element).display!=="none");
+          return{
+            view:main.dataset.view,homeClass:main.classList.contains("layout--home"),controlsHidden:controls.hidden,controlsDisplay:getComputedStyle(controls).display,
+            gridColumnCount:gridColumns.length,contentContained:contentRect.left>=mainRect.left-1&&contentRect.right<=mainRect.right+1,guideContained:guideRect.left>=contentRect.left-1&&guideRect.right<=contentRect.right+1,
+            guideWidth:guideRect.width,textContained:blocks.every(element=>element.scrollWidth<=element.clientWidth+1),documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,
+            navContained:navRect.left>=-1&&navRect.right<=innerWidth+1,navContentContained:nav.scrollWidth<=nav.clientWidth+1,
+            pageHeading:guide.querySelector(":scope > h2")?.textContent,sectionCount:guide.querySelectorAll(":scope > .home-section").length,cardCount:guide.querySelectorAll(".home-card-list .home-card").length
+          };
+        });
+        const context=`${engine.name} ${width}px`;
+        assert.equal(observed.view,"home",context+" view");assert.equal(observed.homeClass,true,context+" home class");assert.equal(observed.controlsHidden,true,context+" native control hiding");assert.equal(observed.controlsDisplay,"none",context+" hidden controls layout");
+        assert.equal(observed.gridColumnCount,1,context+" single grid column");assert.equal(observed.contentContained,true,context+" content in main");assert.equal(observed.guideContained,true,context+" guide in content");assert.equal(observed.textContained,true,context+" text containment");assert.equal(observed.documentOverflow,0,context+" document overflow");
+        assert.equal(observed.navContained,true,context+" view navigation viewport containment");assert.equal(observed.navContentContained,true,context+" view navigation content containment");assert.equal(observed.pageHeading,"Start Here",context+" page heading");assert.equal(observed.sectionCount,5,context+" section count");assert.equal(observed.cardCount,4,context+" Discipline card count");
+        if(width>=1280)assert.ok(observed.guideWidth<=900,context+" comfortable reading width");
+      }
+
+      await page.setViewportSize({width:412,height:915});await page.goto(homeUrl);
+      await page.keyboard.press("Tab");assert.equal(await page.evaluate(()=>document.activeElement?.classList.contains("skip")),true,engine.name+" skip link first");
+      const homeSkipBefore=await page.evaluate(()=>({hash:location.hash,length:history.length}));await page.keyboard.press("Enter");
+      const homeSkipAfter=await page.evaluate(()=>({hash:location.hash,length:history.length,view:document.querySelector<HTMLElement>("main.layout")?.dataset.view,active:document.activeElement?.id}));
+      assert.deepEqual(homeSkipAfter,{...homeSkipBefore,view:"home",active:"rules-content"},engine.name+" home skip link preserves route and history");
+      await page.focus(".skip");
+      assert.equal(await page.evaluate(()=>document.activeElement?.classList.contains("skip")),true,engine.name+" skip link can regain focus after activation");
+      await page.keyboard.press("Tab");assert.equal(await page.evaluate(()=>document.activeElement?.id),"view-start-here",engine.name+" Start Here view control order");
+      await page.keyboard.press("Tab");assert.equal(await page.evaluate(()=>document.activeElement?.id),"view-rules-reference",engine.name+" Rules Reference view control order");
+      await page.keyboard.press("Tab");assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute("data-onboarding-link-id")),"primary_build",engine.name+" hidden reference controls skipped");
+      const focusStyle=await page.evaluate(()=>{const style=getComputedStyle(document.activeElement as Element);return{outlineStyle:style.outlineStyle,outlineWidth:parseFloat(style.outlineWidth)};});
+      assert.notEqual(focusStyle.outlineStyle,"none",engine.name+" visible keyboard focus style");assert.ok(focusStyle.outlineWidth>0,engine.name+" visible keyboard focus width");
+      await page.keyboard.press("Enter");
+      const buildFocus=await page.evaluate(()=>{const heading=document.querySelector<HTMLElement>("#build_checklist_heading")!,rect=heading.getBoundingClientRect();return{active:document.activeElement===heading,visible:rect.top>=-1&&rect.bottom<=innerHeight+1};});
+      assert.equal(buildFocus.active,true,engine.name+" Build path focus");assert.equal(buildFocus.visible,true,engine.name+" Build path reveal");
+
+      await page.emulateMedia({forcedColors:"active"});await page.focus('[data-onboarding-link-id="primary_basic_turn"]');
+      const forced=await page.evaluate(()=>{const control=document.activeElement as HTMLElement,card=document.querySelector<HTMLElement>(".home-card")!,style=getComputedStyle(control),cardStyle=getComputedStyle(card);return{query:matchMedia("(forced-colors: active)").matches,outlineStyle:style.outlineStyle,outlineWidth:parseFloat(style.outlineWidth),cardBorderStyle:cardStyle.borderTopStyle,cardBorderWidth:parseFloat(cardStyle.borderTopWidth)};});
+      assert.equal(forced.query,true,engine.name+" forced-colors media");assert.notEqual(forced.outlineStyle,"none",engine.name+" forced-colors focus");assert.ok(forced.outlineWidth>0,engine.name+" forced-colors outline");assert.notEqual(forced.cardBorderStyle,"none",engine.name+" forced-colors card boundary");assert.ok(forced.cardBorderWidth>0,engine.name+" forced-colors card border");
+
+      await page.emulateMedia({forcedColors:"none",reducedMotion:"reduce"});
+      const reduced=await page.evaluate(()=>{const guide=document.querySelector<HTMLElement>(".home-guide")!,styles=[...guide.querySelectorAll<HTMLElement>("*")].map(element=>getComputedStyle(element));return{query:matchMedia("(prefers-reduced-motion: reduce)").matches,scrollBehavior:getComputedStyle(document.documentElement).scrollBehavior,noAnimations:styles.every(style=>style.animationDuration==="0s"||style.animationDuration===""),noTransitions:styles.every(style=>style.transitionDuration==="0s"||style.transitionDuration==="")};});
+      assert.equal(reduced.query,true,engine.name+" reduced-motion media");assert.equal(reduced.scrollBehavior,"auto",engine.name+" reduced-motion scrolling");assert.equal(reduced.noAnimations,true,engine.name+" reduced-motion animations");assert.equal(reduced.noTransitions,true,engine.name+" reduced-motion transitions");
+
+      await page.emulateMedia({media:"print",reducedMotion:"no-preference"});await page.setViewportSize({width:1366,height:1000});
+      const printed=await page.evaluate(()=>{
+        const guide=document.querySelector<HTMLElement>(".home-guide")!,sections=[...guide.querySelectorAll<HTMLElement>(".home-section")];
+        return{navDisplay:getComputedStyle(document.querySelector<HTMLElement>(".view-nav")!).display,primaryDisplay:getComputedStyle(document.querySelector<HTMLElement>(".home-primary-paths")!).display,controlsDisplay:getComputedStyle(document.querySelector<HTMLElement>(".controls")!).display,guideDisplay:getComputedStyle(guide).display,documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,sectionsAvoidBreaks:sections.every(section=>getComputedStyle(section).breakInside==="avoid")};
+      });
+      assert.equal(printed.navDisplay,"none",engine.name+" print view navigation");assert.equal(printed.primaryDisplay,"none",engine.name+" print primary navigation");assert.equal(printed.controlsDisplay,"none",engine.name+" print reference controls");assert.notEqual(printed.guideDisplay,"none",engine.name+" print onboarding content");assert.equal(printed.documentOverflow,0,engine.name+" print overflow");assert.equal(printed.sectionsAvoidBreaks,true,engine.name+" print section breaks");
+
+      await page.emulateMedia({media:"screen",forcedColors:"none",reducedMotion:"no-preference"});await page.click("#view-rules-reference");await page.waitForSelector("#entity-how_to_play");
+      assert.equal(await page.locator("main.layout").getAttribute("data-view"),"reference",engine.name+" Rules Reference activation");assert.equal(await page.locator(".controls").isVisible(),true,engine.name+" reference controls restored");assert.equal(await page.locator("#entity-how_to_play h2").textContent(),"How to Play This Subclass",engine.name+" default reference topic");
+      const referenceSkipBefore=await page.evaluate(()=>({hash:location.hash,length:history.length}));await page.focus(".skip");await page.keyboard.press("Enter");
+      const referenceSkipAfter=await page.evaluate(()=>({hash:location.hash,length:history.length,view:document.querySelector<HTMLElement>("main.layout")?.dataset.view,active:document.activeElement?.id,heading:document.querySelector("#entity-how_to_play h2")?.textContent}));
+      assert.deepEqual(referenceSkipAfter,{...referenceSkipBefore,view:"reference",active:"rules-content",heading:"How to Play This Subclass"},engine.name+" reference skip link preserves route and history");
+      await page.click("#view-start-here");assert.equal(await page.locator("main.layout").getAttribute("data-view"),"home",engine.name+" Start Here return");assert.equal(await page.evaluate(()=>document.activeElement?.id),"start_here_heading",engine.name+" Start Here return focus");
+    }finally{await browser.close();}
+  }
 });
