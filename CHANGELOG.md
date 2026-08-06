@@ -1,6 +1,6 @@
 # Changelog
 
-## 13.2.0 — Unreleased
+## 13.2.0 — 2026-08-06
 
 ### Changed
 
@@ -10,6 +10,7 @@
 - Added a new default Start Here experience with three primary paths, four Discipline cards, a basic-turn orientation, a build checklist, a short glossary, and direct canonical destinations into the complete rules.
 - Added persistent Start Here and Rules Reference navigation while preserving existing category, topic, entity, and filter deep links, browser-history restoration, keyboard and mobile focus behavior, offline operation, and readable print output.
 - Kept onboarding outside the 44 publishable rules entities and made it orientation and navigation only; it does not change subclass mechanics.
+- Refreshed the README’s release and development status, added a recurring release checklist and pull-request review step, and added an automated guard against stale development-version and artifact wording.
 
 ## 13.1.0 — 2026-08-05
 
