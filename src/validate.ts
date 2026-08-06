@@ -5,6 +5,29 @@ function duplicateDiagnostics(values:string[],code:string,label:string):Diagnost
 function vocabulary(authority:Authority,name:string):Set<string>{return new Set((authority.vocabularies[name]??[]).map(value=>value.id));}
 const inlineText=(nodes:any[]|undefined):string=>nodes?.map(node=>node.text??node.label??String(node.value?.value??"")).join("")??"";
 
+interface LocatedValue<T>{path:string;value:T}
+function collectOnboardingIds(value:unknown,path="/onboarding",result:LocatedValue<string>[]=[]):LocatedValue<string>[] {
+  if(Array.isArray(value)){value.forEach((item,index)=>collectOnboardingIds(item,`${path}/${index}`,result));return result;}
+  if(!value||typeof value!=="object")return result;
+  for(const [key,child] of Object.entries(value)){
+    const childPath=`${path}/${key}`;
+    if(key==="id"&&typeof child==="string")result.push({path:childPath,value:child});
+    else collectOnboardingIds(child,childPath,result);
+  }
+  return result;
+}
+function collectOnboardingDestinations(value:unknown,path="/onboarding",result:LocatedValue<any>[]=[]):LocatedValue<any>[] {
+  if(Array.isArray(value)){value.forEach((item,index)=>collectOnboardingDestinations(item,`${path}/${index}`,result));return result;}
+  if(!value||typeof value!=="object")return result;
+  const object=value as Record<string,unknown>;
+  if(typeof object.kind==="string"&&(typeof object.section_id==="string"||typeof object.category_id==="string"||typeof object.entity_id==="string"))result.push({path,value:object});
+  for(const [key,child] of Object.entries(object))collectOnboardingDestinations(child,`${path}/${key}`,result);
+  return result;
+}
+function collectOnboardingStrings(value:unknown,result:string[]=[]):string[]{
+  if(typeof value==="string"){result.push(value);return result;}if(Array.isArray(value)){value.forEach(item=>collectOnboardingStrings(item,result));return result;}if(value&&typeof value==="object")Object.values(value).forEach(item=>collectOnboardingStrings(item,result));return result;
+}
+
 export function validateSemantics(authority:Authority):Diagnostic[]{
   const diagnostics:Diagnostic[]=[];
   const entities=new Map(authority.entities.map(entity=>[entity.id,entity]));
@@ -20,6 +43,37 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
     if(!category.topics.some(topic=>topic.id===category.default_topic_id))diagnostics.push({severity:"error",code:"navigation.default_topic",message:`Category ${category.id} has an invalid default topic`});
     for(const topic of category.topics){if(topicToArea.has(topic.id))diagnostics.push({severity:"error",code:"navigation.topic_duplicate",message:`Duplicate topic ID ${topic.id}`});topicToArea.set(topic.id,category.id);topicEntities.set(topic.id,new Set(topic.entity_ids));for(const id of topic.entity_ids)if(!entities.has(id))diagnostics.push({severity:"error",code:"navigation.entity_unknown",message:`Topic ${topic.id} references unknown entity ${id}`});}
   }
+  const onboardingIds=collectOnboardingIds(authority.onboarding);diagnostics.push(...duplicateDiagnostics(onboardingIds.map(item=>item.value),"onboarding.id_duplicate","onboarding ID"));
+  for(const item of onboardingIds)if(entities.has(item.value))diagnostics.push({severity:"error",code:"onboarding.entity_collision",message:`Onboarding ID ${item.value} collides with a publishable entity`,path:item.path});
+  if(authority.entities.length!==44)diagnostics.push({severity:"error",code:"onboarding.entity_boundary",message:`Onboarding must remain outside the 44-entity publication boundary; found ${authority.entities.length} entities`,path:"/entities"});
+  const sectionIds=new Set([authority.onboarding.basic_turn.id,authority.onboarding.build_checklist.id,authority.onboarding.disciplines.id,authority.onboarding.glossary.id,authority.onboarding.next_destinations.id]);
+  for(const {path,value:destination} of collectOnboardingDestinations(authority.onboarding)){
+    if(destination.kind==="onboarding_section"){
+      if(!sectionIds.has(destination.section_id))diagnostics.push({severity:"error",code:"onboarding.section_unknown",message:`Unknown onboarding section ${destination.section_id}`,path});
+      continue;
+    }
+    if(destination.kind==="category"){
+      const targetCategory=categories.get(destination.category_id);
+      if(!targetCategory)diagnostics.push({severity:"error",code:"onboarding.category_unknown",message:`Unknown onboarding category ${destination.category_id}`,path});
+      else if(!targetCategory.topics.some(topic=>topic.id===targetCategory.default_topic_id))diagnostics.push({severity:"error",code:"onboarding.category_route",message:`Onboarding category ${destination.category_id} has no resolvable default topic`,path});
+      continue;
+    }
+    if(destination.kind==="entity"){
+      const targetEntity=entities.get(destination.entity_id);
+      if(!targetEntity){diagnostics.push({severity:"error",code:"onboarding.entity_unknown",message:`Unknown onboarding entity ${destination.entity_id}`,path});continue;}
+      const primaryArea=targetEntity.presentation_metadata.primary_rules_area,targetCategory=categories.get(primaryArea);
+      const containingTopics=targetCategory?.topics.filter(topic=>topic.entity_ids.includes(targetEntity.id))??[];
+      const canonicalTopic=targetEntity.presentation_metadata.canonical_topic_by_area[primaryArea]??containingTopics.sort((a,b)=>a.order-b.order)[0]?.id;
+      if(!canonicalTopic||!containingTopics.some(topic=>topic.id===canonicalTopic))diagnostics.push({severity:"error",code:"onboarding.entity_route",message:`Onboarding entity ${destination.entity_id} has no resolvable canonical route`,path});
+    }
+  }
+  const disciplineCategories=authority.onboarding.disciplines.cards.map(card=>card.destination.kind==="category"?card.destination.category_id:"").sort(codepointCompare);
+  const requiredDisciplines=["cryokinesis","electrokinesis","psychokinesis","pyrokinesis"].sort(codepointCompare);
+  if(JSON.stringify(disciplineCategories)!==JSON.stringify(requiredDisciplines))diagnostics.push({severity:"error",code:"onboarding.disciplines",message:"Onboarding must target each Discipline category exactly once",path:"/onboarding/disciplines/cards"});
+  const internalPaths=authority.onboarding.primary_paths.filter(path=>path.destination.kind==="onboarding_section").map(path=>path.destination.kind==="onboarding_section"?path.destination.section_id:"").sort(codepointCompare);
+  const referencePaths=authority.onboarding.primary_paths.filter(path=>path.destination.kind==="category"&&path.destination.category_id===authority.navigation.default_category_id);
+  if(JSON.stringify(internalPaths)!==JSON.stringify([authority.onboarding.basic_turn.id,authority.onboarding.build_checklist.id].sort(codepointCompare))||referencePaths.length!==1)diagnostics.push({severity:"error",code:"onboarding.primary_paths",message:"Onboarding primary paths must target Build Checklist, Basic Turn, and the default Rules Reference exactly once",path:"/onboarding/primary_paths"});
+  if(collectOnboardingStrings(authority.onboarding).some(value=>/(?:https?:|www\.|mailto:)/iu.test(value)))diagnostics.push({severity:"error",code:"onboarding.external_url",message:"Onboarding must not contain raw external URLs",path:"/onboarding"});
   const rulesAreas=vocabulary(authority,"rules_areas"),entityKinds=vocabulary(authority,"entity_kinds"),roles=vocabulary(authority,"feature_roles"),modes=vocabulary(authority,"acquisition_modes");
   const titleByGroup=new Set<string>();
   for(const [index,entity] of authority.entities.entries()){

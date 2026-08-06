@@ -9,16 +9,18 @@ export function clientRuntime(model: any): void {
   const categories: Map<string,any> = new Map(model.authority.navigation.categories.map((category: any) => [category.id, category]));
   const indexed = model.filterIndex.entities;
   const indexedById:Map<string,any>=new Map(indexed.map((item:any)=>[item.id,item]));
-  const state: any = { category: model.authority.navigation.default_category_id, topic: "", classifications: {}, entity: null, resultRoute: null, focusOrigin: "fragment" };
+  const state: any = { view: "home", category: model.authority.navigation.default_category_id, topic: "", classifications: {}, entity: null, resultRoute: null, focusOrigin: "fragment" };
+  const homeFragment=String(model.policy.home_fragment);
   const category = () => categories.get(state.category) as any;
   const categoryTopics = (categoryId=state.category) => [...(categories.get(categoryId)?.topics ?? [])].sort((a:any,b:any)=>a.order-b.order);
+  const defaultTopic = (categoryId=state.category) => categories.get(categoryId)?.default_topic_id??categoryTopics(categoryId)[0]?.id??"";
   const topic = () => categoryTopics().find((item: any) => item.id === state.topic);
   function normalizeNavigation(requestedCategory:any=state.category,requestedTopic:any=state.topic):boolean {
     const nextCategory=typeof requestedCategory==="string"&&categories.has(requestedCategory)?requestedCategory:model.authority.navigation.default_category_id;
     const options=categoryTopics(nextCategory);const requestedIsValid=typeof requestedTopic==="string"&&options.some((item:any)=>item.id===requestedTopic);
-    const nextTopic=requestedIsValid?requestedTopic:(options[0]?.id??"");const corrected=nextCategory!==requestedCategory||nextTopic!==requestedTopic;
+    const nextTopic=requestedIsValid?requestedTopic:defaultTopic(nextCategory);let corrected=nextCategory!==requestedCategory||nextTopic!==requestedTopic;
     state.category=nextCategory;state.topic=nextTopic;
-    if(state.entity&&!topic()?.entity_ids.includes(state.entity)){state.entity=null;state.resultRoute=null;}
+    if(state.entity){if(!topic()?.entity_ids.includes(state.entity)){state.entity=null;state.resultRoute=null;corrected=true;}else if(corrected)state.resultRoute=state.topic;}
     return corrected;
   }
   const match = (item: any, selections = state.classifications) => Object.entries(selections).every(([facet, raw]: any) => {
@@ -28,14 +30,16 @@ export function clientRuntime(model: any): void {
   const matches = () => indexed.filter((item: any) => match(item));
   const hasSelections = () => Object.values(state.classifications).some((value: any) => Array.isArray(value) ? value.length : Boolean(value));
   const isMobile = () => typeof matchMedia === "function" && matchMedia("(max-width: 760px)").matches;
-  const safeState = () => ({ category: state.category, topic: state.topic, classifications: structuredClone(state.classifications), entity: state.entity, resultRoute: state.resultRoute, focusOrigin: state.focusOrigin });
-  const fragment = () => {
-    const parameters = new URLSearchParams(); parameters.set("category", state.category); parameters.set("topic", state.topic);
-    const filters = Object.entries(state.classifications).filter(([,value]: any) => Array.isArray(value) ? value.length : value).map(([facet,value]: any) => `${facet}:${(Array.isArray(value)?value:[value]).join(",")}`).join(";");
-    if (filters) parameters.set("filters", filters); if (state.entity) parameters.set("entity", state.entity);
+  const safeState = () => ({ view: state.view, category: state.category, topic: state.topic, classifications: structuredClone(state.classifications), entity: state.entity, resultRoute: state.resultRoute, focusOrigin: state.focusOrigin });
+  const referenceFragment = (categoryId=state.category,topicId=state.topic,classifications:any=state.classifications,entityId:string|null=state.entity) => {
+    const parameters = new URLSearchParams(); parameters.set("category", categoryId); parameters.set("topic", topicId);
+    const filters = Object.entries(classifications).filter(([,value]: any) => Array.isArray(value) ? value.length : value).map(([facet,value]: any) => `${facet}:${(Array.isArray(value)?value:[value]).join(",")}`).join(";");
+    if (filters) parameters.set("filters", filters); if (entityId) parameters.set("entity", entityId);
     return `#${parameters.toString()}`;
   };
+  const fragment = () => state.view==="home"?`#${homeFragment}`:referenceFragment();
   const writeHistory = (mode: "push"|"replace") => history[mode === "push" ? "pushState" : "replaceState"](safeState(), "", fragment());
+  const ordinaryActivation = (event:MouseEvent) => !event.defaultPrevented&&event.button===0&&!event.metaKey&&!event.ctrlKey&&!event.shiftKey&&!event.altKey;
   function syncNameSelection(): void { const select=get("name-select") as HTMLSelectElement;select.value=state.entity&&indexedById.has(state.entity)?state.entity:""; }
   function announce(message: string): void {
     const region=get("filter-live"); get("filter-root").setAttribute("data-filter-settled","false"); region.textContent="";
@@ -96,6 +100,39 @@ export function clientRuntime(model: any): void {
     const heading=(focusEntity?document.querySelector("#entity-"+CSS.escape(focusEntity)+" h2"):main.querySelector("article h2")) as HTMLElement|null;const mobile=isMobile();
     if(heading&&(focusMode==="result"||(focusMode==="mobile"&&mobile))){if(mobile){heading.focus({preventScroll:true});heading.scrollIntoView({block:"start"});}else heading.focus();}
   }
+  const canonicalText=(element:HTMLElement,text:string,path:string)=>{element.textContent=text;element.dataset.sourcePath=path;return element;};
+  const appendCanonicalParagraph=(parent:HTMLElement,text:string,path:string,className?:string)=>{const paragraph=canonicalText(document.createElement("p"),text,path);if(className)paragraph.className=className;parent.append(paragraph);return paragraph;};
+  const focusHeading=(heading:HTMLElement|null)=>{if(!heading)return;heading.focus({preventScroll:true});if(typeof heading.scrollIntoView==="function")heading.scrollIntoView({block:"start"});};
+  function syncViewChrome():void {const home=state.view==="home",main=document.querySelector<HTMLElement>("main.layout")!,controls=document.querySelector<HTMLElement>("aside.controls")!,content=get("rules-content"),startLink=get("view-start-here"),referenceLink=get("view-rules-reference");controls.hidden=home;main.dataset.view=state.view;main.classList.toggle("layout--home",home);main.classList.toggle("layout--reference",!home);content.classList.toggle("home",home);content.classList.toggle("rules",!home);startLink.setAttribute("href",`#${homeFragment}`);referenceLink.setAttribute("href",referenceFragment());for(const [link,active] of [[startLink,home],[referenceLink,!home]] as const)if(active)link.setAttribute("aria-current","page");else link.removeAttribute("aria-current");}
+  function categoryHref(categoryId:string):string {const target=categories.get(categoryId);return target?referenceFragment(target.id,target.default_topic_id,{},null):referenceFragment(model.authority.navigation.default_category_id,defaultTopic(model.authority.navigation.default_category_id),{},null);}
+  function entityHref(entityId:string):string {const item=indexedById.get(entityId);if(!item)return categoryHref(model.authority.navigation.default_category_id);const area=item.primary_rules_area;return referenceFragment(area,item.routes[area],{},entityId);}
+  function focusOnboardingSection(sectionId:string):void {const section=document.getElementById(sectionId),heading=section?.querySelector<HTMLElement>(":scope > h3")??null;focusHeading(heading);}
+  function destinationControl(link:any,path:string):HTMLButtonElement|HTMLAnchorElement {const destination=link.destination;let control:HTMLButtonElement|HTMLAnchorElement;if(destination.kind==="onboarding_section"){const button=document.createElement("button");button.type="button";button.addEventListener("click",()=>focusOnboardingSection(destination.section_id));control=button;}else{const anchor=document.createElement("a");anchor.href=destination.kind==="category"?categoryHref(destination.category_id):entityHref(destination.entity_id);anchor.addEventListener("click",event=>{if(!ordinaryActivation(event))return;event.preventDefault();if(destination.kind==="category")openCategory(destination.category_id);else openEntity(destination.entity_id,"onboarding");});control=anchor;}canonicalText(control,link.title,path+".title");control.dataset.onboardingLinkId=link.id;control.dataset.destinationKind=destination.kind;return control;}
+  function appendDestinationList(parent:HTMLElement,links:any[],path:string):void {const list=document.createElement("ul");list.className="home-links";links.forEach((link,index)=>{const item=document.createElement("li");item.append(destinationControl(link,`${path}.${index}`));list.append(item);});parent.append(list);}
+  function homeSection(section:any,path:string):HTMLElement {const element=document.createElement("section");element.id=section.id;element.className="home-section";element.dataset.onboardingId=section.id;const heading=canonicalText(document.createElement("h3"),section.title,path+".title");heading.id=section.id+"_heading";heading.tabIndex=-1;element.append(heading);return element;}
+  function renderHome(focusPage=false):void {
+    const onboarding=model.authority.onboarding;syncViewChrome();const root=get("rules-content");root.textContent="";
+    const guide=document.createElement("div");guide.className="home-guide";guide.dataset.onboardingId=onboarding.id;
+    const heading=canonicalText(document.createElement("h2"),onboarding.title,"onboarding.title");heading.id=onboarding.id+"_heading";heading.tabIndex=-1;
+    const introduction=document.createElement("div");introduction.className="home-introduction";
+    appendCanonicalParagraph(introduction,onboarding.introduction.summary,"onboarding.introduction.summary");
+    appendCanonicalParagraph(introduction,onboarding.introduction.no_psi_note,"onboarding.introduction.no_psi_note","home-key-point");
+    appendCanonicalParagraph(introduction,onboarding.introduction.orientation,"onboarding.introduction.orientation");guide.append(heading,introduction);
+    const primary=document.createElement("ul");primary.className="home-primary-paths";
+    onboarding.primary_paths.forEach((link:any,index:number)=>{const item=document.createElement("li");item.className="home-card";item.append(destinationControl(link,`onboarding.primary_paths.${index}`));if(link.description)appendCanonicalParagraph(item,link.description,`onboarding.primary_paths.${index}.description`,"home-card__description");primary.append(item);});guide.append(primary);
+    const disciplines=homeSection(onboarding.disciplines,"onboarding.disciplines"),disciplineCards=document.createElement("ul");disciplineCards.className="home-card-list";
+    onboarding.disciplines.cards.forEach((link:any,index:number)=>{const card=document.createElement("li");card.className="home-card";const title=document.createElement("h4");title.className="home-card__title";title.append(destinationControl(link,`onboarding.disciplines.cards.${index}`));card.append(title);if(link.description)appendCanonicalParagraph(card,link.description,`onboarding.disciplines.cards.${index}.description`,"home-card__description");disciplineCards.append(card);});disciplines.append(disciplineCards);guide.append(disciplines);
+    const basic=homeSection(onboarding.basic_turn,"onboarding.basic_turn"),steps=document.createElement("ol");
+    onboarding.basic_turn.steps.forEach((text:string,index:number)=>{const item=canonicalText(document.createElement("li"),text,`onboarding.basic_turn.steps.${index}`);steps.append(item);});basic.append(steps);
+    const reminders=document.createElement("ul");onboarding.basic_turn.reminders.forEach((text:string,index:number)=>{const item=canonicalText(document.createElement("li"),text,`onboarding.basic_turn.reminders.${index}`);reminders.append(item);});basic.append(reminders);
+    appendDestinationList(basic,onboarding.basic_turn.destinations,"onboarding.basic_turn.destinations");guide.append(basic);
+    const build=homeSection(onboarding.build_checklist,"onboarding.build_checklist"),checklist=document.createElement("ol");checklist.className="home-checklist";
+    onboarding.build_checklist.items.forEach((link:any,index:number)=>{const item=document.createElement("li");item.append(destinationControl(link,`onboarding.build_checklist.items.${index}`));checklist.append(item);});build.append(checklist);guide.append(build);
+    const glossary=homeSection(onboarding.glossary,"onboarding.glossary"),definitions=document.createElement("dl");definitions.className="home-glossary";
+    onboarding.glossary.entries.forEach((entry:any,index:number)=>{const term=document.createElement("dt");term.append(destinationControl(entry,`onboarding.glossary.entries.${index}`));const definition=canonicalText(document.createElement("dd"),entry.definition,`onboarding.glossary.entries.${index}.definition`);definitions.append(term,definition);});glossary.append(definitions);guide.append(glossary);
+    const next=homeSection(onboarding.next_destinations,"onboarding.next_destinations");appendDestinationList(next,onboarding.next_destinations.items,"onboarding.next_destinations.items");guide.append(next);
+    root.append(guide);if(focusPage)focusHeading(heading);
+  }
   function renderNameOptions(): void {
     const select=get("name-select") as HTMLSelectElement;select.textContent="";const placeholder=document.createElement("option");placeholder.value="";placeholder.textContent=String(ui.get("name_placeholder"));select.append(placeholder);
     for(const area of model.filterIndex.name_groups){const names=area.entity_ids.map((id:string)=>indexedById.get(id)).filter((item:any)=>item&&match(item));if(!names.length)continue;const group=document.createElement("optgroup");group.label=area.label;for(const item of names){const option=document.createElement("option");option.value=item.id;option.textContent=item.title;group.append(option);}select.append(group);}
@@ -122,22 +159,42 @@ export function clientRuntime(model: any): void {
     if(shouldAnnounce)announce(result.length===1?String(ui.get("one_match")).replace("{count}",String(result.length)):result.length?String(ui.get("match_count")).replace("{count}",String(result.length)):String(ui.get("no_matches")));
   }
   function resultArea(item:any):string{return item.primary_rules_area;}
-  function openEntity(id:string,origin:"name"|"result"):void {
-    const item=indexedById.get(id);if(!item)return;const area=origin==="name"?item.primary_rules_area:resultArea(item);const route=item.routes[area];if(state.entity===id&&state.category===area&&state.topic===route){syncNameSelection();return;}state.category=area;state.topic=route;state.classifications={};state.entity=id;state.resultRoute=route;state.focusOrigin=origin;writeHistory("push");renderNavigation();renderFacets();renderResults(false);renderNameOptions();renderTopic(id,origin==="result"?"result":"mobile");if(origin==="name")announce(String(ui.get("filter_cleared")));
+  function renderReference(focusEntity?:string,focusMode:"none"|"result"|"mobile"="none"):void {syncViewChrome();renderNavigation();renderNameOptions();renderFacets();renderResults(false);renderTopic(focusEntity,focusMode);}
+  function renderView(focusMode:"none"|"home"|"reference"="none"):void {if(state.view==="home")renderHome(focusMode==="home");else renderReference(state.entity??undefined,focusMode==="reference"?"result":"none");}
+  function openCategory(id:string):void {const target=categories.get(id);if(!target)return;const route=target.default_topic_id;if(state.view==="reference"&&state.category===id&&state.topic===route&&state.entity===null&&!hasSelections())return;state.view="reference";state.category=id;state.topic=route;state.classifications={};state.entity=null;state.resultRoute=null;state.focusOrigin="onboarding";writeHistory("push");renderReference(undefined,"result");}
+  function openEntity(id:string,origin:"name"|"result"|"onboarding"):void {
+    const item=indexedById.get(id);if(!item)return;const area=origin==="name"?item.primary_rules_area:resultArea(item);const route=item.routes[area];if(state.view==="reference"&&state.entity===id&&state.category===area&&state.topic===route){syncNameSelection();return;}state.view="reference";state.category=area;state.topic=route;state.classifications={};state.entity=id;state.resultRoute=route;state.focusOrigin=origin;writeHistory("push");renderReference(id,origin==="name"?"mobile":"result");if(origin==="name")announce(String(ui.get("filter_cleared")));
   }
+  function openHome():void {if(state.view==="home")return;state.view="home";state.focusOrigin="view";writeHistory("push");renderHome(true);}
+  function openReference():void {if(state.view==="reference")return;state.view="reference";state.focusOrigin="view";writeHistory("push");renderReference(state.entity??undefined,"result");}
   function parseFragment():boolean {
-    let corrected=false;const parameters=new URLSearchParams(location.hash.slice(1));const requestedCategory=parameters.get("category");const requestedTopic=parameters.get("topic");if(normalizeNavigation(requestedCategory,requestedTopic))corrected=true;state.classifications={};
-    const filters=parameters.get("filters");if(filters)for(const pair of filters.split(";")){const [facetId,raw]=pair.split(":");if(!facetId||!raw){corrected=true;continue;}const facet=model.authority.facets.find((candidate:any)=>candidate.id===facetId);if(!facet){corrected=true;continue;}const allowed=new Set(model.authority.vocabularies[facet.vocabulary].map((value:any)=>value.id));const values=raw.split(",").filter((value:string)=>allowed.has(value));if(!values.length){corrected=true;continue;}state.classifications[facetId]=facet.cardinality==="multi"?values.slice(0,allowed.size):values[0];}
-    const entityId=parameters.get("entity");if(entityId&&entities.has(entityId)){state.entity=entityId;const currentTopic=topic();if(!currentTopic.entity_ids.includes(entityId)){const item=indexed.find((candidate:any)=>candidate.id===entityId);state.category=item.primary_rules_area;state.topic=item.routes[item.primary_rules_area];state.classifications={};corrected=true;}}else{if(entityId)corrected=true;state.entity=null;}return corrected;
+    let corrected=false;const raw=location.hash.slice(1);state.focusOrigin="fragment";state.classifications={};state.entity=null;state.resultRoute=null;
+    if(raw===""||raw===homeFragment){state.view="home";normalizeNavigation(model.authority.navigation.default_category_id,defaultTopic(model.authority.navigation.default_category_id));return false;}
+    state.view="reference";const parameters=new URLSearchParams(raw),requestedCategory=parameters.get("category"),requestedTopic=parameters.get("topic");if(normalizeNavigation(requestedCategory,requestedTopic))corrected=true;
+    const filters=parameters.get("filters");if(filters)for(const pair of filters.split(";")){const [facetId,rawValue]=pair.split(":");if(!facetId||!rawValue){corrected=true;continue;}const facet=model.authority.facets.find((candidate:any)=>candidate.id===facetId);if(!facet){corrected=true;continue;}const allowed=new Set(model.authority.vocabularies[facet.vocabulary].map((value:any)=>value.id));const values=[...new Set<string>(rawValue.split(",").filter((value:string)=>allowed.has(value)))];if(!values.length){corrected=true;continue;}state.classifications[facetId]=facet.cardinality==="multi"?values.slice(0,allowed.size):values[0];}
+    const entityId=parameters.get("entity");if(entityId&&entities.has(entityId)){state.entity=entityId;const currentTopic=topic();if(!currentTopic.entity_ids.includes(entityId)){const item=indexedById.get(entityId);state.category=item.primary_rules_area;state.topic=item.routes[item.primary_rules_area];state.classifications={};corrected=true;}state.resultRoute=state.topic;}else if(entityId)corrected=true;return corrected;
+  }
+  function classificationsAreValid(value:any):boolean {
+    if(!value||typeof value!=="object"||Array.isArray(value))return false;
+    return Object.entries(value).every(([id,selection]:any)=>{
+      const facet=model.authority.facets.find((candidate:any)=>candidate.id===id);
+      if(!facet)return false;
+      const allowed=new Set<string>(model.authority.vocabularies[facet.vocabulary].map((item:any)=>item.id));
+      if(facet.cardinality==="multi")return Array.isArray(selection)&&selection.length===new Set(selection).size&&selection.every((item:any)=>typeof item==="string"&&allowed.has(item));
+      return typeof selection==="string"&&(selection===""||allowed.has(selection));
+    });
   }
   function restore(snapshot:any):void {
-    const fields=new Set(model.policy.history_state_fields);const facetIds=new Set(model.authority.facets.map((facet:any)=>facet.id));const validFilters=snapshot?.classifications&&typeof snapshot.classifications==="object"&&!Array.isArray(snapshot.classifications)&&Object.entries(snapshot.classifications).every(([id,value]:any)=>facetIds.has(id)&&(typeof value==="string"||Array.isArray(value)));const validFocus=model.policy.focus_origins.includes(snapshot?.focusOrigin);const validEntity=snapshot?.entity===null||entities.has(snapshot?.entity);
-    if(!snapshot||Object.keys(snapshot).some(key=>!fields.has(key))||!validFilters||!validFocus||!validEntity){initialize();return;}Object.assign(state,snapshot);normalizeNavigation();renderNavigation();renderFacets();renderResults(false);renderNameOptions();renderTopic();
+    const fields=new Set(model.policy.history_state_fields),keys=Object.keys(snapshot??{}),validFields=keys.length===fields.size&&keys.every(key=>fields.has(key)),validView=model.policy.application_views.includes(snapshot?.view),validFilters=classificationsAreValid(snapshot?.classifications),validFocus=model.policy.focus_origins.includes(snapshot?.focusOrigin),validEntity=snapshot?.entity===null||entities.has(snapshot?.entity),validResultRoute=snapshot?.entity===null?snapshot?.resultRoute===null:typeof snapshot?.resultRoute==="string"&&snapshot.resultRoute===snapshot.topic;
+    if(!snapshot||!validFields||!validView||!validFilters||!validFocus||!validEntity||!validResultRoute){initialize();return;}Object.assign(state,snapshot);const corrected=normalizeNavigation();renderView();if(corrected)writeHistory("replace");
   }
-  function initialize():void {const corrected=parseFragment();renderNavigation();renderNameOptions();renderFacets();renderResults(false);renderTopic();writeHistory("replace");if(corrected)announce(String(ui.get("filter_instruction")));}
-  get("category-select").addEventListener("change",event=>{normalizeNavigation((event.target as HTMLSelectElement).value,"");state.entity=null;state.resultRoute=null;state.focusOrigin="category";syncNameSelection();renderNavigation();renderTopic(undefined,"mobile");writeHistory("push");announce(category().label);});
-  get("topic-select").addEventListener("change",event=>{normalizeNavigation(state.category,(event.target as HTMLSelectElement).value);state.entity=null;state.resultRoute=null;state.focusOrigin="topic";syncNameSelection();renderTopic(undefined,"mobile");writeHistory("push");announce(topic()?.title??category().label);});
+  function initialize():void {const corrected=parseFragment();renderView();writeHistory("replace");if(corrected&&state.view==="reference")announce(String(ui.get("filter_instruction")));}
+  get("category-select").addEventListener("change",event=>{normalizeNavigation((event.target as HTMLSelectElement).value,"");state.entity=null;state.resultRoute=null;state.focusOrigin="category";syncNameSelection();renderNavigation();renderTopic(undefined,"mobile");writeHistory("push");syncViewChrome();announce(category().label);});
+  get("topic-select").addEventListener("change",event=>{normalizeNavigation(state.category,(event.target as HTMLSelectElement).value);state.entity=null;state.resultRoute=null;state.focusOrigin="topic";syncNameSelection();renderTopic(undefined,"mobile");writeHistory("push");syncViewChrome();announce(topic()?.title??category().label);});
   get("name-select").addEventListener("change",event=>openEntity((event.target as HTMLSelectElement).value,"name"));
-  get("facet-controls").addEventListener("change",()=>{readFacetControls();state.entity=null;state.focusOrigin="result";renderNameOptions();writeHistory("push");renderResults(true);});
+  get("facet-controls").addEventListener("change",()=>{readFacetControls();state.entity=null;state.resultRoute=null;state.focusOrigin="result";renderNameOptions();writeHistory("push");syncViewChrome();renderResults(true);});
+  document.querySelector<HTMLAnchorElement>(".skip")!.addEventListener("click",event=>{if(!ordinaryActivation(event))return;event.preventDefault();const content=get("rules-content");content.focus({preventScroll:true});content.scrollIntoView({block:"start"});});
+  get("view-start-here").addEventListener("click",event=>{if(!ordinaryActivation(event))return;event.preventDefault();openHome();});
+  get("view-rules-reference").addEventListener("click",event=>{if(!ordinaryActivation(event))return;event.preventDefault();openReference();});
   addEventListener("popstate",event=>restore(event.state));initialize();
 }

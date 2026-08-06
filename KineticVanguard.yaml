@@ -1879,7 +1879,7 @@ entities:
         - psychokinesis
     content:
       - inlines:
-          - text: "T0 Base: This effect requires Concentration for up to 1 minute. When you activate this feature, choose one target group within 60 feet: up to five Medium or smaller creatures, or up to two Large creatures. You cannot choose creatures from both groups as part of the same activation. Huge or larger creatures are immune. Each target must make a Strength saving throw. On a failed save, it is lifted 30 feet into the air and Restrained while hovering. On a successful save, it is unaffected. At the start of each affected creature’s turn, it repeats the saving throw. On a successful save, it descends safely and the effect ends for that creature. While you maintain concentration, creatures that remain Restrained continue to hover. If your concentration ends, all affected creatures fall."
+          - text: "T0 Base: This effect requires Concentration for up to 1 minute. When you activate this feature, you have five target slots to spend on creatures you can see within 60 feet. A Medium or smaller creature costs one slot, and a Large creature costs two slots. You can choose any combination whose total cost does not exceed five slots. A creature can be chosen only once. Unused slots are lost. Huge or larger creatures are immune. Each target must make a Strength saving throw. On a failed save, it is lifted 30 feet into the air and Restrained while hovering. On a successful save, it is unaffected. At the start of each affected creature’s turn, it repeats the saving throw. On a successful repeat save, the effect ends for that creature, and it falls from its current position. While you maintain concentration, creatures that remain Restrained continue to hover. If your concentration ends, all affected creatures fall."
             type: text
         type: paragraph
       - inlines:
@@ -1887,7 +1887,7 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: At the start of each levitated creature’s turn, it first repeats the Strength saving throw from Tier 0. On a successful save, it descends safely and takes no damage from this tier. On a failed save, it remains levitated and takes force damage equal to twice your Psionic Ability modifier."
+          - text: "T2 Overload: Changes from Tier 1: At the start of each levitated creature’s turn, it first repeats the Strength saving throw from Tier 0. On a successful save, the effect ends for that creature, it falls from its current position, and it takes no force damage from this tier. On a failed save, it remains levitated and takes force damage equal to twice your Psionic Ability modifier."
             type: text
         type: paragraph
     id: mass_levitation
@@ -2369,9 +2369,9 @@ facets:
     requiredness: applicable
     vocabulary: acquisition_modes
 metadata:
-  attribution: Created by NixNinja in collaboration with artificial intelligence assistants. Special thanks to various muses, great and small.
+  attribution: Created by NixNinja in collaboration with artificial intelligence assistants. Special thanks to various muses, great and small. This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
   compatibility: Fighter subclass rules reference
-  license: Original Kinetic Vanguard material may be used, copied, modified, and redistributed for non-commercial purposes with credit to NixNinja. Commercial use requires prior written permission. System Reference Document-derived rules text and references are separately governed by the Creative Commons Attribution 4.0 International License.
+  license: Original Kinetic Vanguard rules, examples, and editorial text are licensed under CC BY-NC-SA 4.0, available at https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode. Software and tooling are licensed under BSD-3-Clause. SRD 5.2.1-derived material remains licensed under CC BY 4.0. See LICENSE.md and NOTICE.md for scope and attribution.
   title: Kinetic Vanguard
 navigation:
   categories:
@@ -2626,7 +2626,7 @@ navigation:
           order: 4
           title: Ball Lightning
   default_category_id: common_features
-rules_version: 13.1.0
+rules_version: 13.2.0
 schema_version: 1.0.0
 vocabularies:
   acquisition_modes:
@@ -2675,3 +2675,187 @@ vocabularies:
     - id: electrokinesis
       label: Electrokinesis
       order: 5
+onboarding:
+  basic_turn:
+    destinations:
+      - destination:
+          entity_id: how_to_play
+          kind: entity
+        id: basic_turn_full_procedure
+        title: Full turn procedure
+      - destination:
+          entity_id: common_overload
+          kind: entity
+        id: basic_turn_overload
+        title: Overload and Blood Tax
+    id: basic_turn
+    reminders:
+      - Your Signature Rider costs no Psi and can be used repeatedly.
+      - Other riders normally cost their listed Psi and can each be used once per Attack action.
+      - Manifested Strike itself is never Overloaded.
+    steps:
+      - Replace one weapon attack with a Manifested Strike.
+      - Immediately before the attack roll, optionally declare one legal rider.
+      - Optionally choose an available Overload tier and pay its Blood Tax.
+      - Resolve the strike and rider. On a miss, the rider does not resolve, but declared Psi and Blood Tax remain spent.
+    title: Basic Turn
+  build_checklist:
+    id: build_checklist
+    items:
+      - destination:
+          entity_id: common_psionic_discipline
+          kind: entity
+        id: build_choose_discipline
+        title: Choose one permanent Kinetic Discipline and choose Intelligence, Wisdom, or Charisma as your Psionic Ability.
+      - destination:
+          entity_id: common_psi_reservoir
+          kind: entity
+        id: build_record_psi
+        title: Calculate and record your maximum Psi Points.
+      - destination:
+          entity_id: common_manifested_strike
+          kind: entity
+        id: build_record_manifested_strike
+        title: Record your Manifested Strike range, attack bonus, damage formula, and current damage die.
+      - destination:
+          entity_id: common_signature_rider
+          kind: entity
+        id: build_record_signature_rider
+        title: Record your Discipline’s Signature Rider.
+      - destination:
+          entity_id: common_kinetic_mastery
+          kind: entity
+        id: build_record_kinetic_mastery
+        title: Record your Discipline’s Kinetic Mastery.
+      - destination:
+          entity_id: common_manifested_strike
+          kind: entity
+        id: build_remember_free_hand
+        title: Remember that Manifested Strike requires the free use of one hand.
+    title: Build Checklist
+  disciplines:
+    cards:
+      - description: Focused fire damage and offensive pressure.
+        destination:
+          category_id: pyrokinesis
+          kind: category
+        id: discipline_pyrokinesis
+        title: Pyrokinesis
+      - description: Slowing, restraint, and battlefield control.
+        destination:
+          category_id: cryokinesis
+          kind: category
+        id: discipline_cryokinesis
+        title: Cryokinesis
+      - description: Force damage, forced movement, and personal mobility.
+        destination:
+          category_id: psychokinesis
+          kind: category
+        id: discipline_psychokinesis
+        title: Psychokinesis
+      - description: Chained damage and enemy disruption.
+        destination:
+          category_id: electrokinesis
+          kind: category
+        id: discipline_electrokinesis
+        title: Electrokinesis
+    id: choose_your_discipline
+    title: Choose Your Discipline
+  glossary:
+    entries:
+      - definition: A ranged psionic attack that can replace a weapon attack during the Attack action.
+        destination:
+          entity_id: common_manifested_strike
+          kind: entity
+        id: term_manifested_strike
+        title: Manifested Strike
+      - definition: An on-hit feature declared for a Manifested Strike before the attack roll.
+        destination:
+          entity_id: how_to_play
+          kind: entity
+        id: term_rider
+        title: Rider
+      - definition: Your Discipline’s 3rd-level rider. It costs no Psi and can be used repeatedly.
+        destination:
+          entity_id: common_signature_rider
+          kind: entity
+        id: term_signature_rider
+        title: Signature Rider
+      - definition: The resource spent by subclass features that list a Psi cost. Manifested Strike itself costs no Psi.
+        destination:
+          entity_id: common_psi_reservoir
+          kind: entity
+        id: term_psi
+        title: Psi
+      - definition: Overload strengthens a rider or standalone psionic feature by making you take Blood Tax.
+        destination:
+          entity_id: common_overload
+          kind: entity
+        id: term_overload_blood_tax
+        title: Overload and Blood Tax
+    id: terms_to_know
+    title: Terms to Know
+  id: start_here
+  introduction:
+    no_psi_note: Manifested Strike costs no Psi. You can use it even when you have no Psi Points remaining.
+    orientation: This page introduces the subclass. The linked rules provide the complete mechanics.
+    summary: A Kinetic Vanguard is a Fighter who replaces weapon attacks with ranged psionic Manifested Strikes, enhances those strikes with riders, and can take psychic damage called Blood Tax to Overload psionic techniques.
+  next_destinations:
+    id: where_to_go_next
+    items:
+      - destination:
+          entity_id: how_to_play
+          kind: entity
+        id: next_full_turn_procedure
+        title: Full turn procedure
+      - destination:
+          entity_id: common_example_play
+          kind: entity
+        id: next_example_turns
+        title: Complete example turns
+      - destination:
+          entity_id: subclass_feature_reference
+          kind: entity
+        id: next_subclass_reference
+        title: Subclass progression and feature reference
+      - destination:
+          entity_id: common_psionic_discipline
+          kind: entity
+        id: next_discipline_selection
+        title: Discipline and Psionic Ability selection
+      - destination:
+          entity_id: common_overload
+          kind: entity
+        id: next_overload
+        title: Overload and Blood Tax
+      - destination:
+          entity_id: common_psi_reservoir
+          kind: entity
+        id: next_psi_reservoir
+        title: Psi Reservoir
+      - destination:
+          category_id: common_features
+          kind: category
+        id: next_complete_reference
+        title: Complete Rules Reference
+    title: Where to Go Next
+  primary_paths:
+    - description: Choose your Discipline and Psionic Ability, then record your Psi, Manifested Strike, Signature Rider, Kinetic Mastery, and free-hand requirement.
+      destination:
+        kind: onboarding_section
+        section_id: build_checklist
+      id: primary_build
+      title: Build a Kinetic Vanguard
+    - description: See the basic Manifested Strike, rider, Overload, and resolution sequence.
+      destination:
+        kind: onboarding_section
+        section_id: basic_turn
+      id: primary_basic_turn
+      title: Learn how a normal turn works
+    - description: Open the complete searchable and filterable rules publication.
+      destination:
+        category_id: common_features
+        kind: category
+      id: primary_full_reference
+      title: Open the full Rules Reference
+  title: Start Here

@@ -6,6 +6,7 @@ import { executeBuild } from "../src/build.js";
 import { loadAuthority } from "../src/load.js";
 import { buildFilterIndex } from "../src/validate.js";
 
+const defaultReferenceFragment="#category=common_features&topic=common_features_how_to_play_topic";
 const styledAdditionOperators=/[˖∔⊕⊞➕⨁⨢⨣⨤⨥⨦⨧⨨⨭⨮⨹⨺⩱⩲⩳⩴⩵⩶⩷⩸﬩]/u;
 const hasAlternateAddition=(value:string)=>/\bplus\b/iu.test(value)||[...value].some(character=>character!=="+"&&(character.normalize("NFKC")==="+"||styledAdditionOperators.test(character)));
 const assertAsciiTableAddition=(values:string[],source:string)=>{for(const value of values)assert.equal(hasAlternateAddition(value),false,`${source} table cell uses a non-ASCII addition operator: ${value}`);};
@@ -235,7 +236,7 @@ test("table formulae use literal ASCII + in source and rendered output",async()=
 
 test("paragraph text beginning with Example is not classified heuristically",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const marker='"text":"Resolve attacks one at a time.';const replacement='"text":"Example ordinary paragraph. Resolve attacks one at a time.';const modified=html.replace(marker,replacement);assert.notEqual(modified,html);
-  const dom=new JSDOM(modified,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
+  const dom=new JSDOM(modified,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html"+defaultReferenceFragment,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const document=dom.window.document;assert.match(document.querySelector("article p")?.textContent??"",/^Example ordinary paragraph\./);assert.equal(document.querySelector("article .example-play-section,.inline-example"),null);
   await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
 });
@@ -246,7 +247,7 @@ test("release build fails closed before emitting deployable output",async()=>{aw
 test("committed Name selection opens exactly once, preserves history state, and remains synchronized",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   let pushCount=0;
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value.replace(/[^a-zA-Z0-9_-]/g,"_")};const push=window.history.pushState.bind(window.history);window.history.pushState=(...args:any[])=>{pushCount++;return push(...args);};}});
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html"+defaultReferenceFragment,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value.replace(/[^a-zA-Z0-9_-]/g,"_")};const push=window.history.pushState.bind(window.history);window.history.pushState=(...args:any[])=>{pushCount++;return push(...args);};}});
   const document=dom.window.document;assert.equal(document.querySelectorAll("#category-select option").length,6);assert.ok(document.querySelector("#rules-content article"));
   const name=document.querySelector("#name-select") as HTMLSelectElement;assert.equal(document.querySelector("#name-open"),null);assert.equal(name.value,"");
   const area=document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement;const kind=document.querySelector("#facet-entity_kind") as HTMLSelectElement;const role=document.querySelector("#facet-feature_role") as HTMLSelectElement;const acquisition=document.querySelector("#facet-acquisition_mode") as HTMLSelectElement;const initialArticle=document.querySelector("#rules-content article");
@@ -271,7 +272,7 @@ test("committed Name selection opens exactly once, preserves history state, and 
 
 test("Any classifications expose the complete canonical result set in a compact disclosure",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();const index=buildFilterIndex(authority);
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html"+defaultReferenceFragment,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const document=dom.window.document;const disclosure=document.querySelector<HTMLDetailsElement>("#filter-results details.results__all")!;
   assert.ok(disclosure);assert.equal(disclosure.open,false);assert.equal(disclosure.querySelector("summary")?.textContent,index.entities.length+" matches.");
   const buttons=[...disclosure.querySelectorAll<HTMLButtonElement>("button")];assert.equal(buttons.length,index.entities.length);
@@ -282,7 +283,7 @@ test("Any classifications expose the complete canonical result set in a compact 
 
 test("classification controls implement AND across facets and metadata-only results",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html"+defaultReferenceFragment,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const document=dom.window.document;const area=document.querySelector('input[data-facet="rules_area"][value="electrokinesis"]') as HTMLInputElement;area.checked=true;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
   const role=document.querySelector("#facet-feature_role") as HTMLSelectElement;role.value="rider";role.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
   const labels=[...document.querySelectorAll("#filter-results button")].map(button=>button.textContent);
@@ -381,7 +382,129 @@ test("Browse topics are category-scoped and invalid category/topic state is norm
   assert.ok(!topicTitles(common.window.document).includes("Overload"));assert.equal((common.window.document.querySelector("#topic-select") as HTMLSelectElement).value,"cryokinesis_glacial_spike_topic");assert.equal(common.window.document.querySelector("#rules-content article h2")?.textContent,"Glacial Spike");
   const invalid=createDom("#category=psychokinesis&topic=common_features_common_overload_topic");const invalidDocument=invalid.window.document;
   assert.ok(!topicTitles(invalidDocument).includes("Overload"));assert.equal((invalidDocument.querySelector("#topic-select") as HTMLSelectElement).value,"psychokinesis_telekinetic_shove_topic");assert.equal(invalidDocument.querySelector("#rules-content article h2")?.textContent,"Telekinetic Shove");assert.equal(new URLSearchParams(invalid.window.location.hash.slice(1)).get("topic"),"psychokinesis_telekinetic_shove_topic");
-  const staleState={category:"cryokinesis",topic:"common_features_common_overload_topic",classifications:{},entity:"common_overload",resultRoute:"common_features_common_overload_topic",focusOrigin:"history"};
+  const staleState={view:"reference",category:"cryokinesis",topic:"common_features_common_overload_topic",classifications:{},entity:"common_overload",resultRoute:"common_features_common_overload_topic",focusOrigin:"history"};
   invalid.window.dispatchEvent(new invalid.window.PopStateEvent("popstate",{state:staleState}));assert.equal((invalidDocument.querySelector("#topic-select") as HTMLSelectElement).value,"cryokinesis_glacial_spike_topic");assert.equal(invalidDocument.querySelector("#rules-content article h2")?.textContent,"Glacial Spike");assert.ok(!invalidDocument.querySelector("#entity-common_overload"));
+  assert.equal(invalid.window.location.hash,"#category=cryokinesis&topic=cryokinesis_glacial_spike_topic");assert.equal(invalid.window.history.state.entity,null);assert.equal(invalid.window.history.state.resultRoute,null);assert.equal(invalid.window.history.state.focusOrigin,"history");
   await new Promise<void>(resolve=>setImmediate(resolve));common.window.close();invalid.window.close();
+});
+
+function installOnboardingBrowserShims(window:any):void {
+  window.structuredClone=globalThis.structuredClone;
+  window.CSS={escape:(value:string)=>value.replace(/[^a-zA-Z0-9_-]/g,"_")};
+  Object.defineProperty(window.HTMLElement.prototype,"scrollIntoView",{configurable:true,value(){}});
+}
+
+const settleOnboarding=()=>new Promise<void>(resolve=>setImmediate(resolve));
+
+test("Start Here owns empty and home fragments while existing deep links keep the reference contract",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
+  const makeDom=(fragment:string,counters?:{pushes:number;replaces:number})=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html${fragment}`,beforeParse(window:any){
+    installOnboardingBrowserShims(window);
+    if(counters){const push=window.history.pushState.bind(window.history),replace=window.history.replaceState.bind(window.history);window.history.pushState=(...args:any[])=>{counters.pushes++;return push(...args);};window.history.replaceState=(...args:any[])=>{counters.replaces++;return replace(...args);};}
+  }});
+  const assertHome=(dom:JSDOM)=>{
+    const document=dom.window.document,layout=document.querySelector<HTMLElement>("main.layout")!,controls=document.querySelector<HTMLElement>(".controls")!;
+    assert.equal(layout.dataset.view,"home");assert.equal(layout.classList.contains("layout--home"),true);assert.equal(controls.hidden,true);
+    assert.equal(document.querySelector("#start_here_heading")?.textContent,"Start Here");assert.equal(document.querySelector("#rules-content article"),null);
+    assert.equal(document.querySelector("#view-start-here")?.getAttribute("aria-current"),"page");assert.equal(document.querySelector("#view-rules-reference")?.hasAttribute("aria-current"),false);
+    assert.equal(document.activeElement,document.body);assert.equal(new URLSearchParams(dom.window.location.hash.slice(1)).has("category"),false);assert.equal(new URLSearchParams(dom.window.location.hash.slice(1)).has("topic"),false);
+  };
+
+  const counters={pushes:0,replaces:0},empty=makeDom("",counters);assertHome(empty);assert.equal(empty.window.location.hash,"#home");assert.deepEqual(counters,{pushes:0,replaces:1});assert.equal(empty.window.history.length,1);
+  (empty.window.document.querySelector(".skip") as HTMLElement).click();assert.equal(empty.window.document.activeElement?.id,"rules-content");assert.equal(empty.window.location.hash,"#home");assert.deepEqual(counters,{pushes:0,replaces:1});assert.equal(empty.window.history.length,1);
+  const explicitHome=makeDom("#home");assertHome(explicitHome);assert.equal(explicitHome.window.location.hash,"#home");
+
+  const category=makeDom("#category=cryokinesis&topic=cryokinesis_frozen_ground_topic");
+  assert.equal(category.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"reference");assert.equal(category.window.document.querySelector("#entity-frozen_ground h2")?.textContent,"Frozen Ground");assert.equal(category.window.document.querySelector<HTMLElement>(".controls")?.hidden,false);assert.equal(category.window.document.activeElement,category.window.document.body);
+  assert.equal(category.window.location.hash,"#category=cryokinesis&topic=cryokinesis_frozen_ground_topic");
+  const categoryHash=category.window.location.hash;(category.window.document.querySelector(".skip") as HTMLElement).click();assert.equal(category.window.document.activeElement?.id,"rules-content");assert.equal(category.window.location.hash,categoryHash);assert.equal(category.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"reference");assert.equal(category.window.document.querySelector("#entity-frozen_ground h2")?.textContent,"Frozen Ground");
+
+  const entity=makeDom("#entity=ball_lightning"),entityRoute=new URLSearchParams(entity.window.location.hash.slice(1));
+  assert.equal(entity.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"reference");assert.equal(entityRoute.get("category"),"electrokinesis");assert.equal(entityRoute.get("topic"),"electrokinesis_ball_lightning_topic");assert.equal(entityRoute.get("entity"),"ball_lightning");
+  assert.equal(entity.window.location.hash,"#category=electrokinesis&topic=electrokinesis_ball_lightning_topic&entity=ball_lightning");
+  assert.equal((entity.window.document.querySelector("#name-select") as HTMLSelectElement).value,"ball_lightning");assert.equal(entity.window.document.querySelector("#entity-ball_lightning h2")?.textContent,"Ball Lightning");assert.equal(entity.window.document.activeElement,entity.window.document.body);
+
+  const filtered=makeDom("#category=psychokinesis&topic=psychokinesis_telekinetic_shove_topic&filters=rules_area:psychokinesis;feature_role:rider");
+  assert.equal(filtered.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"reference");assert.equal((filtered.window.document.querySelector('input[data-facet="rules_area"][value="psychokinesis"]') as HTMLInputElement).checked,true);assert.equal((filtered.window.document.querySelector("#facet-feature_role") as HTMLSelectElement).value,"rider");
+
+  assert.equal(filtered.window.location.hash,"#category=psychokinesis&topic=psychokinesis_telekinetic_shove_topic&filters=rules_area%3Apsychokinesis%3Bfeature_role%3Arider");
+  const deduplicated=makeDom("#category=pyrokinesis&topic=pyrokinesis_ember_bolt_topic&filters=rules_area:pyrokinesis,pyrokinesis");
+  assert.equal(deduplicated.window.location.hash,"#category=pyrokinesis&topic=pyrokinesis_ember_bolt_topic&filters=rules_area%3Apyrokinesis");assert.deepEqual(deduplicated.window.history.state.classifications,{rules_area:["pyrokinesis"]});
+  const invalid=makeDom("#not-a-canonical-route"),invalidRoute=new URLSearchParams(invalid.window.location.hash.slice(1));
+  assert.equal(invalid.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"reference");assert.equal(invalidRoute.get("category"),"common_features");assert.equal(invalidRoute.get("topic"),"common_features_how_to_play_topic");assert.equal(invalid.window.document.querySelector("#entity-how_to_play h2")?.textContent,"How to Play This Subclass");
+
+  assert.equal(invalid.window.location.hash,"#category=common_features&topic=common_features_how_to_play_topic");
+  for(const dom of [empty,explicitHome,category,entity,filtered,deduplicated,invalid]){await settleOnboarding();dom.window.close();}
+});
+
+test("view navigation is idempotent and browser history restores the complete reference snapshot",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const counters={pushes:0,replaces:0};
+  const fragment="#category=advanced_training&topic=advanced_training_advanced_deflection_screen_topic&filters=rules_area:advanced_training;entity_kind:feature;feature_role:standalone;acquisition_mode:granted&entity=advanced_deflection_screen";
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html${fragment}`,beforeParse(window:any){installOnboardingBrowserShims(window);const push=window.history.pushState.bind(window.history),replace=window.history.replaceState.bind(window.history);window.history.pushState=(...args:any[])=>{counters.pushes++;return push(...args);};window.history.replaceState=(...args:any[])=>{counters.replaces++;return replace(...args);};}});
+  const document=dom.window.document,layout=document.querySelector<HTMLElement>("main.layout")!;
+  assert.deepEqual(counters,{pushes:0,replaces:1});assert.equal(layout.dataset.view,"reference");assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,"advanced_deflection_screen");
+  (document.querySelector("#view-start-here") as HTMLElement).click();assert.equal(layout.dataset.view,"home");assert.equal(dom.window.location.hash,"#home");assert.equal(counters.pushes,1);assert.equal(document.activeElement?.id,"start_here_heading");
+  (document.querySelector("#view-start-here") as HTMLElement).click();assert.equal(counters.pushes,1);assert.equal(dom.window.location.hash,"#home");
+
+  const back=new Promise<void>(resolve=>dom.window.addEventListener("popstate",()=>resolve(),{once:true}));dom.window.history.back();await back;
+  assert.equal(layout.dataset.view,"reference");assert.equal((document.querySelector("#category-select") as HTMLSelectElement).value,"advanced_training");assert.equal((document.querySelector("#topic-select") as HTMLSelectElement).value,"advanced_training_advanced_deflection_screen_topic");
+  assert.equal((document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement).checked,true);assert.equal((document.querySelector("#facet-entity_kind") as HTMLSelectElement).value,"feature");assert.equal((document.querySelector("#facet-feature_role") as HTMLSelectElement).value,"standalone");assert.equal((document.querySelector("#facet-acquisition_mode") as HTMLSelectElement).value,"granted");
+  assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,"advanced_deflection_screen");assert.ok(document.querySelector("#entity-advanced_deflection_screen"));assert.equal(counters.pushes,1);
+  assert.equal(dom.window.location.hash,"#category=advanced_training&topic=advanced_training_advanced_deflection_screen_topic&filters=rules_area%3Aadvanced_training%3Bentity_kind%3Afeature%3Bfeature_role%3Astandalone%3Bacquisition_mode%3Agranted&entity=advanced_deflection_screen");assert.equal(dom.window.history.state.resultRoute,"advanced_training_advanced_deflection_screen_topic");assert.equal(dom.window.history.state.focusOrigin,"fragment");
+
+  const forward=new Promise<void>(resolve=>dom.window.addEventListener("popstate",()=>resolve(),{once:true}));dom.window.history.forward();await forward;
+  assert.equal(layout.dataset.view,"home");assert.equal(dom.window.location.hash,"#home");assert.equal(counters.pushes,1);assert.notEqual(document.activeElement?.id,"start_here_heading");
+  (document.querySelector("#view-rules-reference") as HTMLElement).click();assert.equal(layout.dataset.view,"reference");assert.equal(counters.pushes,2);assert.equal((document.querySelector("#category-select") as HTMLSelectElement).value,"advanced_training");assert.equal((document.querySelector("#topic-select") as HTMLSelectElement).value,"advanced_training_advanced_deflection_screen_topic");assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,"advanced_deflection_screen");assert.equal((document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement).checked,true);assert.equal(document.activeElement,document.querySelector("#entity-advanced_deflection_screen > h2"));
+  assert.equal(dom.window.history.state.resultRoute,"advanced_training_advanced_deflection_screen_topic");assert.equal(dom.window.history.state.focusOrigin,"view");
+  (document.querySelector("#view-rules-reference") as HTMLElement).click();assert.equal(counters.pushes,2);
+  await settleOnboarding();dom.window.close();
+});
+
+test("history restoration rejects invalid classifications and canonicalizes repaired routes",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const fragment="#category=common_features&topic=common_features_how_to_play_topic";
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html${fragment}`,beforeParse(window:any){installOnboardingBrowserShims(window);}});
+  const document=dom.window.document,baseState=structuredClone(dom.window.history.state);
+  const invalidClassifications=[{entity_kind:"bogus"},{entity_kind:["feature"]},{rules_area:"common_features"},{rules_area:["common_features","common_features"]}];
+  for(const classifications of invalidClassifications){
+    const snapshot={...baseState,classifications,focusOrigin:"history"};
+    dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate",{state:snapshot}));
+    assert.deepEqual(dom.window.history.state.classifications,{});assert.equal((document.querySelector("#facet-entity_kind") as HTMLSelectElement).value,"");assert.equal((document.querySelector('input[data-facet="rules_area"][value="common_features"]') as HTMLInputElement).checked,false);assert.ok(document.querySelector("#entity-how_to_play"));
+  }
+  const repaired={...baseState,topic:"missing_topic",entity:"how_to_play",resultRoute:"missing_topic",focusOrigin:"history"};
+  dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate",{state:repaired}));
+  assert.equal(dom.window.location.hash,"#category=common_features&topic=common_features_how_to_play_topic&entity=how_to_play");
+  assert.equal(dom.window.history.state.topic,"common_features_how_to_play_topic");assert.equal(dom.window.history.state.resultRoute,"common_features_how_to_play_topic");assert.equal(dom.window.history.state.focusOrigin,"history");
+  assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,"how_to_play");assert.ok(document.querySelector("#entity-how_to_play"));assert.equal(document.activeElement,document.body);
+  await settleOnboarding();dom.window.close();
+});
+
+test("Start Here renders semantic canonical sections and every destination exposes and activates its canonical route",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();const index=buildFilterIndex(authority);
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#home",beforeParse(window:any){installOnboardingBrowserShims(window);}});
+  const document=dom.window.document,onboarding=authority.onboarding,layout=document.querySelector<HTMLElement>("main.layout")!,home=document.querySelector<HTMLElement>('.home-guide[data-onboarding-id="start_here"]')!;
+  assert.ok(home);assert.equal(layout.dataset.view,"home");assert.equal(document.querySelector<HTMLElement>(".controls")?.hidden,true);assert.equal(document.querySelector(".skip")?.getAttribute("href"),"#rules-content");
+  assert.equal(home.querySelector(":scope > h2")?.id,"start_here_heading");assert.equal(home.querySelector(":scope > h2")?.textContent,onboarding.title);
+  for(const text of Object.values(onboarding.introduction))assert.ok(home.textContent?.includes(text));
+  for(const section of [onboarding.disciplines,onboarding.basic_turn,onboarding.build_checklist,onboarding.glossary,onboarding.next_destinations]){const element=home.querySelector<HTMLElement>(`#${section.id}`)!;assert.ok(element);assert.equal(element.classList.contains("home-section"),true);assert.equal(element.querySelector(":scope > h3")?.textContent,section.title);}
+  assert.equal(home.querySelectorAll(".home-card-list .home-card").length,4);assert.equal(home.querySelectorAll(".home-card__title").length,4);assert.equal(home.querySelectorAll(".home-checklist > li").length,6);assert.equal(home.querySelectorAll(".home-glossary > dt").length,5);assert.equal(home.querySelectorAll(".home-glossary > dd").length,5);
+  const headingLevels=[...document.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6")].map(heading=>Number(heading.tagName.slice(1)));assert.equal(home.querySelectorAll("h1").length,0);assert.equal(home.querySelectorAll("h2").length,1);for(let position=1;position<headingLevels.length;position++)assert.ok(headingLevels[position]!<=headingLevels[position-1]!+1,`heading level skipped at position ${position}`);
+
+  const internal=onboarding.primary_paths.filter(path=>path.destination.kind==="onboarding_section");
+  for(const path of internal){const control=document.querySelector<HTMLElement>(`[data-onboarding-link-id="${path.id}"]`)!;assert.equal(control.tagName,"BUTTON");assert.equal(control.getAttribute("data-destination-kind"),"onboarding_section");assert.ok(control.textContent?.includes(path.title));control.click();assert.equal(document.activeElement?.id,`${path.destination.kind==="onboarding_section"?path.destination.section_id:""}_heading`);assert.equal(layout.dataset.view,"home");}
+
+  const links=[...onboarding.primary_paths,...onboarding.disciplines.cards,...onboarding.basic_turn.destinations,...onboarding.build_checklist.items,...onboarding.glossary.entries,...onboarding.next_destinations.items].filter(link=>link.destination.kind!=="onboarding_section");
+  const categoryById=new Map(authority.navigation.categories.map(category=>[category.id,category])),entryById=new Map(index.entities.map(entry=>[entry.id,entry]));
+  const destination=(value:any)=>{
+    if(value.kind==="category"){const category=categoryById.get(value.category_id)!;return{fragment:`#category=${category.id}&topic=${category.default_topic_id}`,entityId:category.topics.find(topic=>topic.id===category.default_topic_id)!.entity_ids[0]!};}
+    const entry=entryById.get(value.entity_id)!;const area=entry.primary_rules_area,topic=entry.routes[area]!;return{fragment:`#category=${area}&topic=${topic}&entity=${entry.id}`,entityId:entry.id};
+  };
+  assert.equal(new Set(links.map(link=>link.id)).size,links.length);
+  for(const link of links){
+    const expected=destination(link.destination),control=document.querySelector<HTMLAnchorElement>(`[data-onboarding-link-id="${link.id}"]`)!;
+    assert.equal(control.tagName,"A",link.id);assert.equal(control.getAttribute("data-destination-kind"),link.destination.kind,link.id);assert.equal(control.getAttribute("href"),expected.fragment,link.id);assert.ok(control.textContent?.includes(link.title),link.id);
+    control.click();assert.equal(layout.dataset.view,"reference",link.id);assert.equal(document.querySelector<HTMLElement>(".controls")?.hidden,false,link.id);const heading=document.querySelector<HTMLElement>(`#entity-${expected.entityId} > h2`)!;assert.ok(heading,link.id);assert.equal(document.activeElement,heading,link.id);
+    if(link.destination.kind==="entity")assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,link.destination.entity_id,link.id);
+    (document.querySelector("#view-start-here") as HTMLElement).click();assert.equal(layout.dataset.view,"home",link.id);assert.equal(document.activeElement?.id,"start_here_heading",link.id);
+  }
+  await settleOnboarding();dom.window.close();
 });

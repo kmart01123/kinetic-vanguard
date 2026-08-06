@@ -97,3 +97,24 @@ jobs:
             artifacts/build-manifest.json
             artifacts/filtered-search-integrity.json
             artifacts/coverage-ledger.json
+            LICENSE.md
+            LICENSE-CODE
+            LICENSE-CONTENT
+            NOTICE.md
+
+  main_branch_gate:
+    name: Main branch gate
+    needs:
+      - metadata
+      - verification
+    if: ${{ always() }}
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Require successful verification
+        env:
+          METADATA_RESULT: ${{ needs.metadata.result }}
+          VERIFICATION_RESULT: ${{ needs.verification.result }}
+        run: |
+          test "$METADATA_RESULT" = "success"
+          test "$VERIFICATION_RESULT" = "success"

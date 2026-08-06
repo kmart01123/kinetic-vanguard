@@ -3,6 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "description": "Schema-first deterministic static rules reference for Kinetic Vanguard",
+  "license": "SEE LICENSE IN LICENSE.md",
   "type": "module",
   "packageManager": "npm@11.16.0",
   "engines": {

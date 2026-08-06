@@ -13,13 +13,70 @@ async function filesUnder(root:string):Promise<string[]>{const entries=await rea
 const inlineText=(nodes:any[]|undefined)=>nodes?.map(node=>node.text??node.label??"").join("")??"";
 const blockText=(block:any):string=>[inlineText(block.inlines),...(block.items??[]).map((item:any[])=>inlineText(item)),...(block.body??[]).map((item:any)=>blockText(item))].filter(Boolean).join("\n");
 const entityRules=(entity:any)=>entity.content.map((block:any)=>blockText(block)).filter(Boolean).join("\n");
+const ownedOnboardingIds=(value:any,result:string[]=[]):string[]=>{if(Array.isArray(value)){value.forEach(item=>ownedOnboardingIds(item,result));return result;}if(!value||typeof value!=="object")return result;for(const [key,child] of Object.entries(value)){if(key==="id"&&typeof child==="string")result.push(child);else ownedOnboardingIds(child,result);}return result;};
+const onboardingDestinations=(value:any,result:any[]=[]):any[]=>{if(Array.isArray(value)){value.forEach(item=>onboardingDestinations(item,result));return result;}if(!value||typeof value!=="object")return result;if(typeof value.kind==="string"&&(typeof value.section_id==="string"||typeof value.category_id==="string"||typeof value.entity_id==="string"))result.push(value);for(const child of Object.values(value))onboardingDestinations(child,result);return result;};
+const onboardingStrings=(value:any,result:string[]=[]):string[]=>{if(typeof value==="string"){result.push(value);return result;}if(Array.isArray(value)){value.forEach(item=>onboardingStrings(item,result));return result;}if(value&&typeof value==="object")Object.values(value).forEach(item=>onboardingStrings(item,result));return result;};
 
 test("YAML authority is schema-valid, semantically valid, and complete",async()=>{
   const loaded=await loadAuthority();const diagnostics=[...loaded.diagnostics,...validateSemantics(loaded.authority)];
   assert.deepEqual(diagnostics,[]);
-  assert.equal(loaded.authority.rules_version,"13.1.0");
+  assert.equal(loaded.authority.rules_version,"13.2.0");
   const audit=loaded.authority.audits?.find(item=>item.id==="yaml_rules_authority")!;
   assert.deepEqual([...audit.subject_ids].sort(),loaded.authority.entities.map(entity=>entity.id).sort());
+});
+
+test("top-level onboarding is canonical, complete, resolvable, and outside the 44-entity rules domain",async()=>{
+  const {authority}=await loadAuthority();const onboarding=authority.onboarding;
+  assert.equal(onboarding.id,"start_here");assert.equal(onboarding.title,"Start Here");
+  assert.deepEqual({primary:onboarding.primary_paths.length,disciplines:onboarding.disciplines.cards.length,steps:onboarding.basic_turn.steps.length,reminders:onboarding.basic_turn.reminders.length,basicDestinations:onboarding.basic_turn.destinations.length,checklist:onboarding.build_checklist.items.length,glossary:onboarding.glossary.entries.length,next:onboarding.next_destinations.items.length},{primary:3,disciplines:4,steps:4,reminders:3,basicDestinations:2,checklist:6,glossary:5,next:7});
+  assert.deepEqual(onboarding.primary_paths.map(item=>item.destination),[
+    {kind:"onboarding_section",section_id:"build_checklist"},
+    {kind:"onboarding_section",section_id:"basic_turn"},
+    {kind:"category",category_id:"common_features"}
+  ]);
+  assert.deepEqual(onboarding.disciplines.cards.map(item=>[item.title,item.destination]),[
+    ["Pyrokinesis",{kind:"category",category_id:"pyrokinesis"}],
+    ["Cryokinesis",{kind:"category",category_id:"cryokinesis"}],
+    ["Psychokinesis",{kind:"category",category_id:"psychokinesis"}],
+    ["Electrokinesis",{kind:"category",category_id:"electrokinesis"}]
+  ]);
+  assert.deepEqual(onboarding.basic_turn.destinations.map(item=>item.destination),[{kind:"entity",entity_id:"how_to_play"},{kind:"entity",entity_id:"common_overload"}]);
+  assert.deepEqual(onboarding.build_checklist.items.map(item=>item.destination.kind==="entity"?item.destination.entity_id:null),["common_psionic_discipline","common_psi_reservoir","common_manifested_strike","common_signature_rider","common_kinetic_mastery","common_manifested_strike"]);
+  assert.deepEqual(onboarding.glossary.entries.map(item=>item.destination.kind==="entity"?item.destination.entity_id:null),["common_manifested_strike","how_to_play","common_signature_rider","common_psi_reservoir","common_overload"]);
+  assert.deepEqual(onboarding.next_destinations.items.map(item=>item.destination),[
+    {kind:"entity",entity_id:"how_to_play"},{kind:"entity",entity_id:"common_example_play"},{kind:"entity",entity_id:"subclass_feature_reference"},{kind:"entity",entity_id:"common_psionic_discipline"},{kind:"entity",entity_id:"common_overload"},{kind:"entity",entity_id:"common_psi_reservoir"},{kind:"category",category_id:"common_features"}
+  ]);
+
+  const ids=ownedOnboardingIds(onboarding);assert.equal(ids.length,33);assert.equal(new Set(ids).size,ids.length);
+  const entityIds=new Set(authority.entities.map(entity=>entity.id));assert.equal(authority.entities.length,44);assert.ok(ids.every(id=>!entityIds.has(id)));assert.ok(!entityIds.has(onboarding.id));
+  const auditedIds=new Set(authority.audits?.flatMap(audit=>audit.subject_ids)??[]);assert.ok(ids.every(id=>!auditedIds.has(id)));
+
+  const categories=new Map(authority.navigation.categories.map(category=>[category.id,category]));
+  const sectionIds=new Set([onboarding.disciplines.id,onboarding.basic_turn.id,onboarding.build_checklist.id,onboarding.glossary.id,onboarding.next_destinations.id]);
+  const destinations=onboardingDestinations(onboarding);assert.equal(destinations.length,27);
+  for(const destination of destinations){
+    if(destination.kind==="onboarding_section"){assert.ok(sectionIds.has(destination.section_id),destination.section_id);continue;}
+    if(destination.kind==="category"){const category=categories.get(destination.category_id);assert.ok(category,destination.category_id);assert.ok(category!.topics.some(topic=>topic.id===category!.default_topic_id),destination.category_id);continue;}
+    const entity=authority.entities.find(candidate=>candidate.id===destination.entity_id);assert.ok(entity,destination.entity_id);assert.equal(entity!.publishable,true);const category=categories.get(entity!.presentation_metadata.primary_rules_area);assert.ok(category,destination.entity_id);const topics=category!.topics.filter(topic=>topic.entity_ids.includes(entity!.id)).sort((a,b)=>a.order-b.order);const route=entity!.presentation_metadata.canonical_topic_by_area[category!.id]??topics[0]?.id;assert.ok(route&&topics.some(topic=>topic.id===route),destination.entity_id);
+  }
+  assert.deepEqual(Object.fromEntries(["pyrokinesis","cryokinesis","psychokinesis","electrokinesis"].map(id=>[id,categories.get(id)?.default_topic_id])),{pyrokinesis:"pyrokinesis_ember_bolt_topic",cryokinesis:"cryokinesis_glacial_spike_topic",psychokinesis:"psychokinesis_telekinetic_shove_topic",electrokinesis:"electrokinesis_static_discharge_topic"});
+  assert.doesNotMatch(onboardingStrings(onboarding).join("\n"),/(?:https?:|www\.|mailto:)/iu);
+});
+
+test("onboarding semantic mutations produce focused diagnostics",async()=>{
+  const {authority}=await loadAuthority();
+  const expectCode=(code:string,mutate:(candidate:any)=>void)=>{const candidate=structuredClone(authority) as any;mutate(candidate);const diagnostics=validateSemantics(candidate);assert.ok(diagnostics.some(item=>item.code===code),code+": "+diagnostics.map(item=>item.code).join(", "));};
+  expectCode("onboarding.id_duplicate",candidate=>{candidate.onboarding.primary_paths[1].id=candidate.onboarding.primary_paths[0].id;});
+  expectCode("onboarding.entity_collision",candidate=>{candidate.onboarding.id="how_to_play";});
+  expectCode("onboarding.entity_boundary",candidate=>{candidate.entities.pop();});
+  expectCode("onboarding.section_unknown",candidate=>{candidate.onboarding.primary_paths[0].destination.section_id="missing_section";});
+  expectCode("onboarding.category_unknown",candidate=>{candidate.onboarding.disciplines.cards[0].destination.category_id="missing_category";});
+  expectCode("onboarding.category_route",candidate=>{candidate.navigation.categories.find((category:any)=>category.id==="common_features").default_topic_id="missing_topic";});
+  expectCode("onboarding.entity_unknown",candidate=>{candidate.onboarding.build_checklist.items[0].destination.entity_id="missing_entity";});
+  expectCode("onboarding.entity_route",candidate=>{candidate.navigation.categories.find((category:any)=>category.id==="common_features").topics.find((topic:any)=>topic.id==="common_features_common_manifested_strike_topic").entity_ids=[];});
+  expectCode("onboarding.disciplines",candidate=>{candidate.onboarding.disciplines.cards[0].destination.category_id="cryokinesis";});
+  expectCode("onboarding.primary_paths",candidate=>{candidate.onboarding.primary_paths[2].destination.category_id="advanced_training";});
+  expectCode("onboarding.external_url",candidate=>{candidate.onboarding.introduction.orientation="Read https://example.invalid for more rules.";});
 });
 
 test("retired migration sources are absent from the active architecture",async()=>{
@@ -42,7 +99,7 @@ test("active CI publication names derive from the canonical rules version",async
   assert.match(workflow,/name: kinetic-vanguard-v\$\{\{ needs\.metadata\.outputs\.rules_version \}\}/);
   assert.match(workflow,/\"rules_version\":\"\$\{\{ needs\.metadata\.outputs\.rules_version \}\}\"/);
   const artifactTemplate=workflow.match(/name: (kinetic-vanguard-v\$\{\{ needs\.metadata\.outputs\.rules_version \}\})/)?.[1];
-  assert.equal(artifactTemplate?.replace("${{ needs.metadata.outputs.rules_version }}",authority.rules_version),"kinetic-vanguard-v13.1.0");
+  assert.equal(artifactTemplate?.replace("${{ needs.metadata.outputs.rules_version }}",authority.rules_version),"kinetic-vanguard-v13.2.0");
 });
 
 test("prototype and release builds reflect direct YAML edits",async()=>{
@@ -52,7 +109,7 @@ test("prototype and release builds reflect direct YAML edits",async()=>{
     const prototypeRoot=join(temporary,"prototype"),releaseRoot=join(temporary,"release");
     const prototype=await executeBuild("prototype",prototypeRoot,authorityPath);process.env.KV_RELEASE_APPROVED="1";const release=await executeBuild("release",releaseRoot,authorityPath);
     for(const result of [prototype,release]){const html=await readFile(result.htmlPath,"utf8");assert.match(html,/Kinetic Vanguard YAML Edit Probe/);assert.doesNotMatch(html,/Kinetic_Vanguard\.md|npm run migrate|edit (?:the )?Markdown/i);assert.equal(result.manifest.build_identity.canonical_rules_authority,authorityPath);assert.deepEqual(result.manifest.declared_inputs.filter((input:any)=>input.role==="rules_authority").map((input:any)=>input.path),[authorityPath]);}
-    const coverage=JSON.parse(await readFile(join(prototypeRoot,"coverage-ledger.json"),"utf8"));const {authority}=await loadAuthority(authorityPath);assert.equal(coverage.entity_count,authority.entities.length);assert.deepEqual(coverage.entities.map((entity:any)=>entity.entity_id),authority.entities.map(entity=>entity.id));assert.ok(coverage.entities.every((entity:any)=>entity.content_block_count>0&&entity.destinations.length>0));
+    const coverage=JSON.parse(await readFile(join(prototypeRoot,"coverage-ledger.json"),"utf8"));const {authority}=await loadAuthority(authorityPath);assert.equal(coverage.version,3);assert.equal(coverage.entity_count,44);assert.equal(coverage.entity_count,authority.entities.length);assert.deepEqual(coverage.entities.map((entity:any)=>entity.entity_id),authority.entities.map(entity=>entity.id));assert.ok(coverage.entities.every((entity:any)=>entity.content_block_count>0&&entity.destinations.length>0));assert.equal(coverage.entities.some((entity:any)=>entity.entity_id===authority.onboarding.id),false);assert.deepEqual(coverage.onboarding,{authority_path:authorityPath+"#/onboarding",onboarding_id:"start_here",section_ids:["choose_your_discipline","basic_turn","build_checklist","terms_to_know","where_to_go_next"],destination_ids:[...authority.onboarding.primary_paths,...authority.onboarding.disciplines.cards,...authority.onboarding.basic_turn.destinations,...authority.onboarding.build_checklist.items,...authority.onboarding.glossary.entries,...authority.onboarding.next_destinations.items].map(item=>item.id)});
   }finally{if(previousApproval===undefined)delete process.env.KV_RELEASE_APPROVED;else process.env.KV_RELEASE_APPROVED=previousApproval;await rm(temporary,{recursive:true,force:true});}
 });
 test("Manifested Strike owns its progression immediately after the core rule",async()=>{
@@ -238,22 +295,98 @@ test("fixed concentration durations are explicit in structured authority and rul
 });
 
 
-test("Mass Levitation prohibits mixing its creature-size target groups",async()=>{
+test("Mass Levitation uses five target slots, repeat-save falls, and preserves every other mechanic",async()=>{
   const {authority}=await loadAuthority();
   const feature=authority.entities.find(entity=>entity.id==="mass_levitation")!;
-  const rules=feature.content.flatMap(block=>block.inlines??[]).map(inline=>inline.text).join("\n");
-  assert.match(rules,/choose one target group within 60 feet: up to five Medium or smaller creatures, or up to two Large creatures\./);
-  assert.match(rules,/You cannot choose creatures from both groups as part of the same activation\./);
-  for(const mechanic of [
-    "Huge or larger creatures are immune",
-    "Each target must make a Strength saving throw",
-    "lifted 30 feet into the air and Restrained while hovering",
-    "At the start of each affected creature’s turn, it repeats the saving throw",
-    "On a successful save, it descends safely and the effect ends for that creature",
-    "move each creature still levitated by this feature up to 15 feet in any direction",
-    "This is forced movement; the creature remains lifted and Restrained",
-    "takes force damage equal to twice your Psionic Ability modifier"
-  ])assert.ok(rules.includes(mechanic),"Mass Levitation mechanic changed: "+mechanic);
+  const tiers=feature.content.map(block=>blockText(block));assert.equal(tiers.length,3);
+  const tier0=tiers[0]!,tier1=tiers[1]!,tier2=tiers[2]!;
+  for(const targetRule of [
+    "When you activate this feature, you have five target slots to spend on creatures you can see within 60 feet.",
+    "A Medium or smaller creature costs one slot, and a Large creature costs two slots.",
+    "You can choose any combination whose total cost does not exceed five slots.",
+    "A creature can be chosen only once.",
+    "Unused slots are lost.",
+    "Huge or larger creatures are immune."
+  ])assert.ok(tier0.includes(targetRule),"Mass Levitation target rule missing: "+targetRule);
+
+  type Target={id:string;size:"medium_or_smaller"|"large"|"huge_or_larger"};
+  const medium=(id:string):Target=>({id,size:"medium_or_smaller"});
+  const large=(id:string):Target=>({id,size:"large"});
+  const huge=(id:string):Target=>({id,size:"huge_or_larger"});
+  const slotCost=(targets:Target[])=>targets.reduce((total,target)=>total+(target.size==="medium_or_smaller"?1:target.size==="large"?2:Number.POSITIVE_INFINITY),0);
+  const canChoose=(targets:Target[])=>new Set(targets.map(target=>target.id)).size===targets.length&&targets.every(target=>target.size!=="huge_or_larger")&&slotCost(targets)<=5;
+  const repeated=medium("repeated");
+  const cases:Array<{label:string;targets:Target[];cost:number;legal:boolean}>=[
+    {label:"five Medium-or-smaller creatures",targets:[medium("m1"),medium("m2"),medium("m3"),medium("m4"),medium("m5")],cost:5,legal:true},
+    {label:"two Large creatures",targets:[large("l1"),large("l2")],cost:4,legal:true},
+    {label:"one Large creature and three Medium-or-smaller creatures",targets:[large("l1"),medium("m1"),medium("m2"),medium("m3")],cost:5,legal:true},
+    {label:"two Large creatures and one Medium-or-smaller creature",targets:[large("l1"),large("l2"),medium("m1")],cost:5,legal:true},
+    {label:"three Large creatures exceed five slots",targets:[large("l1"),large("l2"),large("l3")],cost:6,legal:false},
+    {label:"two Large and two Medium-or-smaller creatures exceed five slots",targets:[large("l1"),large("l2"),medium("m1"),medium("m2")],cost:6,legal:false},
+    {label:"one creature cannot be selected twice",targets:[repeated,repeated],cost:2,legal:false},
+    {label:"Huge or larger creatures remain immune",targets:[huge("h1")],cost:Number.POSITIVE_INFINITY,legal:false}
+  ];
+  for(const selection of cases){
+    assert.equal(slotCost(selection.targets),selection.cost,selection.label+" slot cost");
+    assert.equal(canChoose(selection.targets),selection.legal,selection.label);
+  }
+
+  assert.deepEqual({
+    id:feature.id,
+    title:feature.title,
+    level:feature.level,
+    kind:feature.kind,
+    activation:feature.activation,
+    psi_cost:feature.psi_cost,
+    publishable:feature.publishable,
+    requires_concentration:feature.requires_concentration,
+    concentration_duration:feature.concentration_duration,
+    classifications:feature.classifications,
+    presentation_metadata:feature.presentation_metadata
+  },{
+    id:"mass_levitation",
+    title:"Mass Levitation",
+    level:20,
+    kind:"feature",
+    activation:"action",
+    psi_cost:5,
+    publishable:true,
+    requires_concentration:true,
+    concentration_duration:"Up to 1 minute",
+    classifications:{entity_kind:"feature",feature_role:"standalone",rules_area:["psychokinesis"]},
+    presentation_metadata:{canonical_topic_by_area:{},primary_rules_area:"psychokinesis"}
+  });
+
+  const obsoleteRulings=[
+    ["choose one","target group"].join(" "),
+    ["cannot choose creatures","from both groups"].join(" "),
+    ["descends","safely"].join(" "),
+    ["safe","descent"].join(" "),
+    ["takes no damage","from this tier"].join(" ")
+  ];
+  const activeMassRules=tiers.join("\n").toLowerCase();
+  for(const obsolete of obsoleteRulings)assert.ok(!activeMassRules.includes(obsolete),"Superseded Mass Levitation ruling remains: "+obsolete);
+
+  const repeatStart="At the start of each affected creature’s turn, it repeats the saving throw.";
+  const initialSuccessStart=tier0.indexOf("On a successful save, it is unaffected.");
+  assert.ok(initialSuccessStart>=0&&initialSuccessStart<tier0.indexOf(repeatStart));
+  const initialSuccess=tier0.slice(initialSuccessStart,tier0.indexOf(repeatStart));
+  assert.equal(initialSuccess,"On a successful save, it is unaffected. ");
+  assert.doesNotMatch(initialSuccess,/lifted|Restrained|hover|fall/iu);
+  assert.match(tier0,/On a failed save, it is lifted 30 feet into the air and Restrained while hovering\./u);
+  assert.match(tier0,/At the start of each affected creature’s turn, it repeats the saving throw\. On a successful repeat save, the effect ends for that creature, and it falls from its current position\./u,"A successful repeat save uses the normal falling rules from the creature’s current position");
+  assert.match(tier0,/If your concentration ends, all affected creatures fall\./u);
+  assert.match(tier1,/Levitated creatures have Disadvantage on repeat saving throws against this feature\..*At the start of each of your turns, you can move each creature still levitated by this feature up to 15 feet.*This is forced movement/u);
+  assert.ok(tier0.includes("falls from its current position"),"A creature moved by Tier 1 falls from its resulting current position on a successful repeat save");
+  assert.match(tier2,/it first repeats the Strength saving throw from Tier 0\. On a successful save, the effect ends for that creature, it falls from its current position, and it takes no force damage from this tier\. On a failed save, it remains levitated and takes force damage equal to twice your Psionic Ability modifier\./u);
+
+  assert.equal(tier0,"T0 Base: This effect requires Concentration for up to 1 minute. When you activate this feature, you have five target slots to spend on creatures you can see within 60 feet. A Medium or smaller creature costs one slot, and a Large creature costs two slots. You can choose any combination whose total cost does not exceed five slots. A creature can be chosen only once. Unused slots are lost. Huge or larger creatures are immune. Each target must make a Strength saving throw. On a failed save, it is lifted 30 feet into the air and Restrained while hovering. On a successful save, it is unaffected. At the start of each affected creature’s turn, it repeats the saving throw. On a successful repeat save, the effect ends for that creature, and it falls from its current position. While you maintain concentration, creatures that remain Restrained continue to hover. If your concentration ends, all affected creatures fall.");
+  assert.equal(tier1,"T1 Overload: Changes from Tier 0: Levitated creatures have Disadvantage on repeat saving throws against this feature. At the start of each of your turns, you can move each creature still levitated by this feature up to 15 feet in any direction to an unoccupied space you can see. This is forced movement; the creature remains lifted and Restrained.");
+  assert.equal(tier2,"T2 Overload: Changes from Tier 1: At the start of each levitated creature’s turn, it first repeats the Strength saving throw from Tier 0. On a successful save, the effect ends for that creature, it falls from its current position, and it takes no force damage from this tier. On a failed save, it remains levitated and takes force damage equal to twice your Psionic Ability modifier.");
+
+  const psychokinesis=authority.navigation.categories.find(category=>category.id==="psychokinesis")!;
+  const topic=psychokinesis.topics.find(candidate=>candidate.id==="psychokinesis_mass_levitation_topic")!;
+  assert.deepEqual(topic,{entity_ids:["mass_levitation"],id:"psychokinesis_mass_levitation_topic",order:4,title:"Mass Levitation"});
 });
 
 
@@ -296,6 +429,27 @@ test("Psi Cost Reference defines complete tier-aware Ongoing Duration values",as
 
 test("final rules decisions leave every unapproved authority field unchanged",async()=>{
   const {authority}=await loadAuthority();const projection=structuredClone(authority) as any;
+  delete projection.onboarding;
+  projection.rules_version="<approved rules version>";
+  projection.metadata.attribution="Created by NixNinja in collaboration with artificial intelligence assistants. Special thanks to various muses, great and small.";
+  projection.metadata.license="Original Kinetic Vanguard material may be used, copied, modified, and redistributed for non-commercial purposes with credit to NixNinja. Commercial use requires prior written permission. System Reference Document-derived rules text and references are separately governed by the Creative Commons Attribution 4.0 International License.";
+  const massLevitation=projection.entities.find((entity:any)=>entity.id==="mass_levitation");
+  massLevitation.content[0].inlines[0].text=massLevitation.content[0].inlines[0].text.replace(
+    /When you activate this feature,.*?(?=Each target must make a Strength saving throw\.)/u,
+    "<approved Mass Levitation targeting> "
+  );
+  const tier0BeforeOutcomeNormalization=massLevitation.content[0].inlines[0].text;
+  massLevitation.content[0].inlines[0].text=tier0BeforeOutcomeNormalization.replace(
+    "On a successful repeat save, the effect ends for that creature, and it falls from its current position.",
+    "<approved Mass Levitation Tier 0 successful repeat-save outcome>"
+  );
+  assert.notEqual(massLevitation.content[0].inlines[0].text,tier0BeforeOutcomeNormalization);
+  const tier2BeforeOutcomeNormalization=massLevitation.content[2].inlines[0].text;
+  massLevitation.content[2].inlines[0].text=tier2BeforeOutcomeNormalization.replace(
+    "On a successful save, the effect ends for that creature, it falls from its current position, and it takes no force damage from this tier.",
+    "<approved Mass Levitation Tier 2 successful repeat-save outcome>"
+  );
+  assert.notEqual(massLevitation.content[2].inlines[0].text,tier2BeforeOutcomeNormalization);
   const howToPlay=projection.entities.find((entity:any)=>entity.id==="how_to_play");
   const howSummary=howToPlay.content.find((block:any)=>blockText(block).includes("Deflection Screen at 5th level"));
   howSummary.inlines[0].text="Your Discipline grants five features across the subclass progression. Deflection Screen at 5th level and Phase Step at 10th level are universal psionic tools. Advanced Training III, IV, and V at 15th, 18th, and 20th levels grant three choices from the Advanced Training pool regardless of Discipline.";
@@ -312,7 +466,7 @@ test("final rules decisions leave every unapproved authority field unchanged",as
   table.headers[5][0].text="Duration";
   const oldDurations=new Map([["Glacial Spike","Varies by tier"],["Deflection Screen","Instantaneous"],["Empathic Sense","Continuous; scan instantaneous"],["Vectored Thrust","Up to 10 minutes"],["Frozen Ground","Up to 1 minute"],["Explosion/Implosion","Instantaneous"],["Electron Burst","Until the start of your next turn"],["Phase Step","Instantaneous"],["Arctic Tempest","Varies by tier"],["Flare","Varies by tier"],["Gravitic Press","Up to 1 minute"],["Absolute Zero","Varies by tier"],["Mass Levitation","Up to 1 minute"],["Ball Lightning","Up to 1 minute"]]);
   for(const row of table.rows){const oldDuration=oldDurations.get(cell(row[1]));if(oldDuration)row[5][0].text=oldDuration;}
-  assert.equal(sha256(canonicalJson(projection)),"85cd1efc3ada1edeb4c9802ea4842a5f1a5bd758fc5c66c7260de42939bbf436");
+  assert.equal(sha256(canonicalJson(projection)),"19a17b024da7cea260e31eacf2b382abab426eefb548479823a3705a8dd5d406");
 });
 
 test("active authority and approved UI text use full English without contractions",async()=>{
@@ -321,8 +475,11 @@ test("active authority and approved UI text use full English without contraction
   for(const facet of authority.facets)strings.push(facet.label);
   for(const vocabulary of Object.values(authority.vocabularies))for(const item of vocabulary)strings.push(item.label);
   for(const category of authority.navigation.categories){strings.push(category.label);for(const topic of category.topics)strings.push(topic.title);}
-  const collect=(value:any):void=>{if(Array.isArray(value)){value.forEach(collect);return;}if(!value||typeof value!=="object")return;for(const [key,child] of Object.entries(value)){if((key==="text"||key==="label")&&typeof child==="string")strings.push(child);else collect(child);}};
+  const userFacingKeys=new Set(["text","label","title","description","summary","no_psi_note","orientation","definition"]);
+  const collect=(value:any):void=>{if(Array.isArray(value)){for(const child of value)if(typeof child==="string")strings.push(child);else collect(child);return;}if(!value||typeof value!=="object")return;for(const [key,child] of Object.entries(value)){if(userFacingKeys.has(key)&&typeof child==="string")strings.push(child);else collect(child);}};
   for(const entity of authority.entities){strings.push(entity.title);if(entity.concentration_duration)strings.push(entity.concentration_duration);collect(entity.content);}
+  collect(authority.onboarding);
+  for(const text of [...authority.onboarding.basic_turn.steps,...authority.onboarding.basic_turn.reminders])assert.ok(strings.includes(text),`Missing onboarding language-guard coverage for: ${text}`);
   for(const token of ui.tokens)strings.push(token.text??token.template);
   const contractions=/\b(?:can['’]t|won['’]t|don['’]t|doesn['’]t|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|it['’]s|that['’]s|there['’]s|you['’](?:re|ve|ll|d)|we['’](?:re|ve|ll|d)|they['’](?:re|ve|ll|d)|couldn['’]t|wouldn['’]t|shouldn['’]t|mustn['’]t|haven['’]t|hasn['’]t|hadn['’]t|didn['’]t)\b/iu;
   const abbreviations=/(?:\b(?:ft|AT|PB|AC|DC|MS)\b|\b(?:Con|Str|Dex|Int|Cha) saves?\b)/u;
