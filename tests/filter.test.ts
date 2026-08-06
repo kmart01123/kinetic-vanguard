@@ -9,6 +9,13 @@ const select=(index:any,selections:Record<string,string[]>)=>index.entities.filt
 
 test("integrity covers every identity, vector, vocabulary, and route",async()=>{const {authority}=await loadAuthority();const index=buildFilterIndex(authority);const report=buildIntegrity(authority,index);assert.equal(report.all_passed,true);assert.equal(index.entities.length,authority.entities.length);});
 
+test("onboarding does not enter filtered identities, Name groups, or progression ordering",async()=>{
+  const {authority}=await loadAuthority();const index=buildFilterIndex(authority);const withoutOnboarding=structuredClone(authority) as any;delete withoutOnboarding.onboarding;const baseline=buildFilterIndex(withoutOnboarding);
+  assert.equal(authority.entities.length,44);assert.equal(index.entities.length,44);assert.deepEqual(index.entities,baseline.entities);assert.deepEqual(index.name_groups,baseline.name_groups);
+  const ownedIds:string[]=[];const collect=(value:any):void=>{if(Array.isArray(value)){value.forEach(collect);return;}if(!value||typeof value!=="object")return;for(const [key,child] of Object.entries(value)){if(key==="id"&&typeof child==="string")ownedIds.push(child);else collect(child);}};collect(authority.onboarding);
+  const indexedIds=new Set(index.entities.map(item=>item.id)),nameIds=index.name_groups.flatMap(group=>group.entity_ids);assert.equal(nameIds.length,44);assert.equal(new Set(nameIds).size,44);assert.ok(ownedIds.every(id=>!indexedIds.has(id)&&!nameIds.includes(id)));
+});
+
 test("independently-authored provisional correctness cases agree",async()=>{
   const {authority}=await loadAuthority();const index=buildFilterIndex(authority);const corpus=YAML.parse(await readFile("tests/filtered-search-correctness.yaml","utf8"));
   for(const item of corpus.cases){if(item.expected_set==="all_publishable_entities"){assert.deepEqual(select(index,item.selections),authority.entities.map(entity=>entity.id).sort(),item.id);continue;}if(item.expected_state==="instruction")continue;assert.deepEqual(select(index,item.selections),[...item.expected_result_ids].sort(),item.id);for(const id of item.must_not_include)assert.ok(!select(index,item.selections).includes(id),`${item.id} unexpectedly included ${id}`);}

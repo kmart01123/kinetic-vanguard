@@ -9,3 +9,6 @@ constraints:
   - schema_path: "/properties/facets/items/properties/cardinality"
     rationale: "Facet cardinality is required application behavior."
     authority_owner: "Kinetic Vanguard maintainers"
+  - schema_path: "/$defs/onboardingDestination/properties/kind"
+    rationale: "Closed onboarding destination kinds define application navigation without creating publishable rules entities."
+    authority_owner: "Kinetic Vanguard maintainers"

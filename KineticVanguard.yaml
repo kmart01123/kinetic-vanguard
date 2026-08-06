@@ -2675,3 +2675,187 @@ vocabularies:
     - id: electrokinesis
       label: Electrokinesis
       order: 5
+onboarding:
+  basic_turn:
+    destinations:
+      - destination:
+          entity_id: how_to_play
+          kind: entity
+        id: basic_turn_full_procedure
+        title: Full turn procedure
+      - destination:
+          entity_id: common_overload
+          kind: entity
+        id: basic_turn_overload
+        title: Overload and Blood Tax
+    id: basic_turn
+    reminders:
+      - Your Signature Rider costs no Psi and can be used repeatedly.
+      - Other riders normally cost their listed Psi and can each be used once per Attack action.
+      - Manifested Strike itself is never Overloaded.
+    steps:
+      - Replace one weapon attack with a Manifested Strike.
+      - Immediately before the attack roll, optionally declare one legal rider.
+      - Optionally choose an available Overload tier and pay its Blood Tax.
+      - Resolve the strike and rider. On a miss, the rider does not resolve, but declared Psi and Blood Tax remain spent.
+    title: Basic Turn
+  build_checklist:
+    id: build_checklist
+    items:
+      - destination:
+          entity_id: common_psionic_discipline
+          kind: entity
+        id: build_choose_discipline
+        title: Choose one permanent Kinetic Discipline and choose Intelligence, Wisdom, or Charisma as your Psionic Ability.
+      - destination:
+          entity_id: common_psi_reservoir
+          kind: entity
+        id: build_record_psi
+        title: Calculate and record your maximum Psi Points.
+      - destination:
+          entity_id: common_manifested_strike
+          kind: entity
+        id: build_record_manifested_strike
+        title: Record your Manifested Strike range, attack bonus, damage formula, and current damage die.
+      - destination:
+          entity_id: common_signature_rider
+          kind: entity
+        id: build_record_signature_rider
+        title: Record your Discipline’s Signature Rider.
+      - destination:
+          entity_id: common_kinetic_mastery
+          kind: entity
+        id: build_record_kinetic_mastery
+        title: Record your Discipline’s Kinetic Mastery.
+      - destination:
+          entity_id: common_manifested_strike
+          kind: entity
+        id: build_remember_free_hand
+        title: Remember that Manifested Strike requires the free use of one hand.
+    title: Build Checklist
+  disciplines:
+    cards:
+      - description: Focused fire damage and offensive pressure.
+        destination:
+          category_id: pyrokinesis
+          kind: category
+        id: discipline_pyrokinesis
+        title: Pyrokinesis
+      - description: Slowing, restraint, and battlefield control.
+        destination:
+          category_id: cryokinesis
+          kind: category
+        id: discipline_cryokinesis
+        title: Cryokinesis
+      - description: Force damage, forced movement, and personal mobility.
+        destination:
+          category_id: psychokinesis
+          kind: category
+        id: discipline_psychokinesis
+        title: Psychokinesis
+      - description: Chained damage and enemy disruption.
+        destination:
+          category_id: electrokinesis
+          kind: category
+        id: discipline_electrokinesis
+        title: Electrokinesis
+    id: choose_your_discipline
+    title: Choose Your Discipline
+  glossary:
+    entries:
+      - definition: A ranged psionic attack that can replace a weapon attack during the Attack action.
+        destination:
+          entity_id: common_manifested_strike
+          kind: entity
+        id: term_manifested_strike
+        title: Manifested Strike
+      - definition: An on-hit feature declared for a Manifested Strike before the attack roll.
+        destination:
+          entity_id: how_to_play
+          kind: entity
+        id: term_rider
+        title: Rider
+      - definition: Your Discipline’s 3rd-level rider. It costs no Psi and can be used repeatedly.
+        destination:
+          entity_id: common_signature_rider
+          kind: entity
+        id: term_signature_rider
+        title: Signature Rider
+      - definition: The resource spent by subclass features that list a Psi cost. Manifested Strike itself costs no Psi.
+        destination:
+          entity_id: common_psi_reservoir
+          kind: entity
+        id: term_psi
+        title: Psi
+      - definition: Overload strengthens a rider or standalone psionic feature by making you take Blood Tax.
+        destination:
+          entity_id: common_overload
+          kind: entity
+        id: term_overload_blood_tax
+        title: Overload and Blood Tax
+    id: terms_to_know
+    title: Terms to Know
+  id: start_here
+  introduction:
+    no_psi_note: Manifested Strike costs no Psi. You can use it even when you have no Psi Points remaining.
+    orientation: This page introduces the subclass. The linked rules provide the complete mechanics.
+    summary: A Kinetic Vanguard is a Fighter who replaces weapon attacks with ranged psionic Manifested Strikes, enhances those strikes with riders, and can take psychic damage called Blood Tax to Overload psionic techniques.
+  next_destinations:
+    id: where_to_go_next
+    items:
+      - destination:
+          entity_id: how_to_play
+          kind: entity
+        id: next_full_turn_procedure
+        title: Full turn procedure
+      - destination:
+          entity_id: common_example_play
+          kind: entity
+        id: next_example_turns
+        title: Complete example turns
+      - destination:
+          entity_id: subclass_feature_reference
+          kind: entity
+        id: next_subclass_reference
+        title: Subclass progression and feature reference
+      - destination:
+          entity_id: common_psionic_discipline
+          kind: entity
+        id: next_discipline_selection
+        title: Discipline and Psionic Ability selection
+      - destination:
+          entity_id: common_overload
+          kind: entity
+        id: next_overload
+        title: Overload and Blood Tax
+      - destination:
+          entity_id: common_psi_reservoir
+          kind: entity
+        id: next_psi_reservoir
+        title: Psi Reservoir
+      - destination:
+          category_id: common_features
+          kind: category
+        id: next_complete_reference
+        title: Complete Rules Reference
+    title: Where to Go Next
+  primary_paths:
+    - description: Choose your Discipline and Psionic Ability, then record your Psi, Manifested Strike, Signature Rider, Kinetic Mastery, and free-hand requirement.
+      destination:
+        kind: onboarding_section
+        section_id: build_checklist
+      id: primary_build
+      title: Build a Kinetic Vanguard
+    - description: See the basic Manifested Strike, rider, Overload, and resolution sequence.
+      destination:
+        kind: onboarding_section
+        section_id: basic_turn
+      id: primary_basic_turn
+      title: Learn how a normal turn works
+    - description: Open the complete searchable and filterable rules publication.
+      destination:
+        category_id: common_features
+        kind: category
+      id: primary_full_reference
+      title: Open the full Rules Reference
+  title: Start Here

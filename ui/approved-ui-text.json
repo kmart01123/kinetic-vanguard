@@ -2,7 +2,10 @@
   "version": 1,
   "tokens": [
     {"id":"prototype_banner","role":"release_status_notice","placements":["banner"],"text":"NON-RELEASE PROTOTYPE"},
-    {"id":"skip_to_content","role":"navigation","placements":["link"],"text":"Skip to rules content"},
+    {"id":"skip_to_content","role":"navigation","placements":["link"],"text":"Skip to main content"},
+    {"id":"view_navigation_label","role":"navigation","placements":["aria-label"],"text":"Publication views"},
+    {"id":"view_start_here","role":"navigation","placements":["link"],"text":"Start Here"},
+    {"id":"view_rules_reference","role":"navigation","placements":["link"],"text":"Rules Reference"},
     {"id":"browse_heading","role":"section_heading","placements":["heading","aria-label"],"text":"Browse rules"},
     {"id":"filter_heading","role":"section_heading","placements":["heading"],"text":"Filtered search"},
     {"id":"category_label","role":"control_label","placements":["label"],"text":"Category"},

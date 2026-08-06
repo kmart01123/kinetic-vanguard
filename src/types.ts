@@ -106,6 +106,56 @@ export interface Topic { id: string; title: string; entity_ids: string[]; order:
 export interface Category { id: string; label: string; order: number; default_topic_id: string; topics: Topic[] }
 export interface VocabularyValue { id: string; label: string; order: number }
 
+export type OnboardingDestination =
+  | { kind: "onboarding_section"; section_id: string }
+  | { kind: "category"; category_id: string }
+  | { kind: "entity"; entity_id: string };
+
+export interface OnboardingLink {
+  id: string;
+  title: string;
+  description?: string;
+  destination: OnboardingDestination;
+}
+
+export interface Onboarding {
+  id: string;
+  title: string;
+  introduction: {
+    summary: string;
+    no_psi_note: string;
+    orientation: string;
+  };
+  primary_paths: OnboardingLink[];
+  disciplines: {
+    id: string;
+    title: string;
+    cards: OnboardingLink[];
+  };
+  basic_turn: {
+    id: string;
+    title: string;
+    steps: string[];
+    reminders: string[];
+    destinations: OnboardingLink[];
+  };
+  build_checklist: {
+    id: string;
+    title: string;
+    items: OnboardingLink[];
+  };
+  glossary: {
+    id: string;
+    title: string;
+    entries: Array<OnboardingLink & { definition: string }>;
+  };
+  next_destinations: {
+    id: string;
+    title: string;
+    items: OnboardingLink[];
+  };
+}
+
 export interface Authority {
   schema_version: string;
   rules_version: string;
@@ -118,6 +168,7 @@ export interface Authority {
   }>;
   entities: Entity[];
   navigation: { default_category_id: string; categories: Category[] };
+  onboarding: Onboarding;
   audits?: Array<{id:string; assertion:string; subject_ids:string[]}>;
 }
 
