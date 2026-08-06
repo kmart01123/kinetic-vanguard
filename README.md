@@ -1,16 +1,39 @@
-# Kinetic Vanguard v13 rules reference
+# Kinetic Vanguard rules reference
 
-`KineticVanguard.yaml` is the sole canonical rules authority. All rule wording, balance, metadata, tables, examples, and feature changes are authored directly in YAML.
+Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighter subclass based on System Reference Document 5.2.1 material. The complete player-facing publication is generated as one self-contained, offline-capable HTML file.
 
-Prototype and authorized release HTML are generated from that YAML after schema and semantic validation. `Kinetic_Vanguard.md` was retired after the completed v12.1.0-to-v13 migration; Git history and tagged releases preserve the legacy source and architecture review record.
+`KineticVanguard.yaml` is the sole canonical rules authority. All rule wording, mechanics, metadata, tables, examples, and onboarding content are authored there and validated before publication. The README summarizes the project and contributor workflow; it is not a second rules source.
 
 ## Release status
 
-Kinetic Vanguard **v13.0.1** is the current patch release. The publication is one self-contained, offline-capable file: `KineticVanguard.html`.
+- Current published release: **v13.1.0**
+- Current development line: **v13.2.0**
+- Development branch: `13.2.0`
+- Draft pull request: [#12](https://github.com/kmart01123/kinetic-vanguard/pull/12)
+- Canonical rules authority: `KineticVanguard.yaml`
 
-The schema, semantic, publication, filter, accessibility, determinism, and Chromium/Firefox layout suites remain release-blocking.
+Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v13.1.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v13.1.0).
+
+Version 13.2.0 adds the new-player **Start Here** experience and revises Mass Levitation to use five target slots with normal falling after a successful repeat save. It also establishes the project’s split licensing and a stable required CI gate for the protected `main` branch. Detailed changes belong in `CHANGELOG.md` and the generated publication rather than being duplicated here.
+
+## Publication interface
+
+Opening the publication without a deep link shows **Start Here**, which introduces the subclass’s basic loop and links into the canonical rules. Existing category, topic, entity, and filter deep links continue to open the complete Rules Reference directly.
+
+The Rules Reference provides:
+
+- Category and Topic browsing;
+- a canonical Name selector;
+- global classification filters with stable ordering and history restoration;
+- local Show and Level filters in the Subclass Feature Reference;
+- responsive desktop, tablet, mobile, and print layouts;
+- keyboard, focus, forced-colors, and reduced-motion support.
+
+The browser application makes no runtime network requests and does not store character state, run calculators, or replace the rules with inferred behavior.
 
 ## Commands
+
+Development uses Node.js `24.18.1` and npm `11.16.0`.
 
 ```text
 npm ci
@@ -30,29 +53,35 @@ An authorized release build uses:
 KV_RELEASE_APPROVED=1 npm run build:release
 ```
 
-It writes `artifacts/KineticVanguard.html` with `release_status: release` and no prototype banner. GitHub Actions runs the authorized release build only after all verification steps pass and uploads the publication plus its build manifest and integrity reports as the `kinetic-vanguard-v13.0.1` artifact.
-
-The completed one-time Markdown migration command has been removed and is not part of normal development. Contributors edit `KineticVanguard.yaml` directly; there is no Markdown synchronization step.
+It writes `artifacts/KineticVanguard.html` with `release_status: release` and no prototype banner. CI derives workflow labels and the `kinetic-vanguard-v<rules_version>` artifact name from the canonical `rules_version`; there is no separately maintained active artifact version.
 
 ## Architecture
 
-The build parses restricted YAML 1.2, validates the canonical JSON Schema, performs semantic navigation, classification, authority-coverage, and route checks, constructs immutable filter and route projections, and emits:
+The build parses restricted YAML 1.2, validates the canonical JSON Schema, performs semantic navigation, classification, authority-coverage, route, text, and release-identity checks, constructs immutable projections, and emits:
 
 - release or prototype HTML;
-- filtered-search integrity report;
-- YAML entity-to-route coverage ledger;
-- deterministic build manifest.
+- a filtered-search integrity report;
+- a YAML entity-to-route coverage ledger;
+- a deterministic build manifest.
 
-The browser application contains only native finite selectors, checkboxes, buttons, and links. It makes no runtime network request and does not use local persistence, free-text search, a rules catch-all view, character state, or calculators.
+The top-level onboarding authority is canonical and validated but remains outside the 44 publishable rules entities, Name index, classification results, and progression order.
 
-## Filtering and progression ordering
+The completed one-time Markdown migration has been retired. Contributors edit `KineticVanguard.yaml` directly; there is no Markdown synchronization step.
 
-The Rules area filter is canonical: it matches only an entity’s `presentation_metadata.primary_rules_area`, which is also the source of the visible result suffix. Additional selector-reachable routes recorded in `classifications.rules_area` remain available for browsing but do not broaden filtered results. Different facet groups use AND; selected values within the multi-select Rules area group use OR.
+## Licensing
 
-Filtered results use this exact comparator: Rules area vocabulary order, progression section (`foundation`, `levelled`, `reference`), earliest `level`, primary-area topic/source order, feature-role vocabulary order, title codepoint order, then entity-ID codepoint order. The generated Name index preserves Rules area vocabulary order and, within each group, uses progression section, numeric earliest `level`, bare title codepoint order, then entity-ID codepoint order. The browser filters and renders that preordered index, including after classification changes.
+Kinetic Vanguard uses component-based licensing:
 
-`level` is the structured earliest acquisition/availability level. Selectable high-tier Advanced Training entries therefore use level 15, except Overload Mastery II, whose Psionic Apex prerequisite makes its earliest level 18. An entity without a level must declare `progression_section`; foundational or automatically applicable mechanics sort before level-gated entries, while supplemental/reference entries sort after them. Semantic validation rejects missing or conflicting section metadata.
+- software and technical implementation: BSD 3-Clause;
+- original Kinetic Vanguard rules, examples, and editorial content: CC BY-NC-SA 4.0;
+- SRD 5.2.1-derived material: CC BY 4.0.
 
-## Known follow-up
+The NonCommercial and ShareAlike terms do not restrict or relicense SRD-derived material. See `LICENSE.md`, `LICENSE-CODE`, `LICENSE-CONTENT`, and `NOTICE.md` for the exact boundaries and required attribution.
 
-Forked Lightning needs explicit failed-save wording for non-primary targets. The issue is tracked separately and does not block the v13.0 publication.
+## Development and release discipline
+
+Changes reach `main` through pull requests. The active `Protect main` ruleset requires an up-to-date branch, resolved review conversations, and the stable `Main branch gate`; it blocks force pushes and deletion. Squash merge is the normal merge method.
+
+At the start of every development line, before a release PR leaves draft, and during publication, complete `RELEASE_CHECKLIST.md`. The checklist requires an explicit README review against canonical authority, the changelog, open issues, CI, build outputs, release assets, and current branch-protection settings.
+
+Frozen release branches and annotated release tags are immutable historical references. Publication workflows verify the exact frozen commit before creating or updating a GitHub Release.
