@@ -30,7 +30,7 @@ test("README and release process stay synchronized with canonical development st
   assert.ok(development, "README declares the current development line");
   if (development[1] !== "None") {
     assert.equal(development[1], `v${authority.rules_version}`);
-    assert.match(readme, new RegExp(`^- Development branch: \\`${authority.rules_version.replaceAll(".", "\\.")}\\`$`, "m"));
+    assert.ok(readme.split("\n").includes(`- Development branch: \`${authority.rules_version}\``));
     assert.match(readme, /^- Draft pull request: /m);
   }
 
