@@ -98,6 +98,98 @@ jobs:
             artifacts/filtered-search-integrity.json
             artifacts/coverage-ledger.json
 
+  # BEGIN TEMPORARY LICENSING APPLIER
+  apply_licensing:
+    name: Apply approved split licensing
+    if: ${{ github.event_name == 'pull_request' && github.head_ref == '13.2.0' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      actions: write
+
+    steps:
+      - name: Check out shared development branch
+        uses: actions/checkout@v7
+        with:
+          ref: 13.2.0
+          fetch-depth: 0
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.1
+          cache: npm
+          cache-dependency-path: package-lock.json
+
+      - name: Use repository npm version
+        run: npm install --global npm@11.16.0
+
+      - name: Apply approved license model
+        run: python .github/apply-v13.2.0-licensing.py
+
+      - name: Remove one-shot implementation files and temporary CI job
+        run: |
+          rm .github/apply-v13.2.0-licensing.py
+          rm .github/workflows/apply-v13.2.0-licensing.yml
+          python - <<'PY'
+          from pathlib import Path
+          path = Path('.github/workflows/ci.yml')
+          text = path.read_text(encoding='utf-8')
+          start_marker = '  # BEGIN TEMPORARY LICENSING APPLIER\n'
+          end_marker = '  # END TEMPORARY LICENSING APPLIER\n'
+          start = text.index(start_marker)
+          end = text.index(end_marker, start) + len(end_marker)
+          path.write_text(text[:start] + text[end:], encoding='utf-8')
+          PY
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install browser engines
+        run: npx playwright install --with-deps chromium firefox
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Validate
+        run: npm run validate
+
+      - name: Test
+        run: npm test
+
+      - name: Build prototype
+        run: npm run build
+
+      - name: Test determinism
+        run: npm run test:determinism
+
+      - name: Test layout
+        run: npm run test:layout
+
+      - name: Build authorized release
+        env:
+          KV_RELEASE_APPROVED: "1"
+        run: npm run build:release
+
+      - name: Check patch formatting
+        run: git diff --check
+
+      - name: Commit verified licensing change
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add LICENSE.md LICENSE-CODE LICENSE-CONTENT NOTICE.md KineticVanguard.yaml src/render.ts .github/workflows/ci.yml tests/license-contract.test.ts CHANGELOG.md
+          git add -A -- .github/apply-v13.2.0-licensing.py .github/workflows/apply-v13.2.0-licensing.yml
+          git commit -m "chore: adopt split project licensing"
+          git push origin HEAD:13.2.0
+
+      - name: Run normal CI on the committed head
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run ci.yml --ref 13.2.0
+  # END TEMPORARY LICENSING APPLIER
+
   main_branch_gate:
     name: Main branch gate
     needs:
