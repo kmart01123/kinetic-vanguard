@@ -180,19 +180,15 @@ jobs:
       - name: Check patch formatting
         run: git diff --check
 
-      - name: Commit verified licensing change
+      - name: Commit and push verified non-workflow changes
         run: |
+          git checkout HEAD -- .github/workflows/ci.yml .github/workflows/apply-v13.2.0-licensing.yml
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add LICENSE.md LICENSE-CODE LICENSE-CONTENT NOTICE.md KineticVanguard.yaml src/render.ts .github/workflows/ci.yml tests/license-contract.test.ts tests/architecture.test.ts CHANGELOG.md
-          git add -A -- .github/apply-v13.2.0-licensing.py .github/fix-v13.2.0-license-test.py .github/fix-v13.2.0-license-layout.py .github/workflows/apply-v13.2.0-licensing.yml
+          git add LICENSE.md LICENSE-CODE LICENSE-CONTENT NOTICE.md KineticVanguard.yaml src/render.ts tests/license-contract.test.ts tests/architecture.test.ts CHANGELOG.md
+          git add -A -- .github/apply-v13.2.0-licensing.py .github/fix-v13.2.0-license-test.py .github/fix-v13.2.0-license-layout.py
           git commit -m "chore: adopt split project licensing"
           git push origin HEAD:13.2.0
-
-      - name: Run normal CI on the committed head
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run ci.yml --ref 13.2.0
   # END TEMPORARY LICENSING APPLIER
 
   main_branch_gate:
