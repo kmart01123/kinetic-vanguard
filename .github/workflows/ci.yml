@@ -188,6 +188,8 @@ jobs:
           git add LICENSE.md LICENSE-CODE LICENSE-CONTENT NOTICE.md KineticVanguard.yaml src/render.ts tests/license-contract.test.ts tests/architecture.test.ts CHANGELOG.md
           git add -A -- .github/apply-v13.2.0-licensing.py .github/fix-v13.2.0-license-test.py .github/fix-v13.2.0-license-layout.py
           git commit -m "chore: adopt split project licensing"
+          git fetch origin 13.2.0
+          git rebase origin/13.2.0
           git push origin HEAD:13.2.0
   # END TEMPORARY LICENSING APPLIER
 
