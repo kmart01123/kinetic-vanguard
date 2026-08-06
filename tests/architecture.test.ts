@@ -474,9 +474,10 @@ test("active authority and approved UI text use full English without contraction
   for(const vocabulary of Object.values(authority.vocabularies))for(const item of vocabulary)strings.push(item.label);
   for(const category of authority.navigation.categories){strings.push(category.label);for(const topic of category.topics)strings.push(topic.title);}
   const userFacingKeys=new Set(["text","label","title","description","summary","no_psi_note","orientation","definition"]);
-  const collect=(value:any):void=>{if(Array.isArray(value)){value.forEach(collect);return;}if(!value||typeof value!=="object")return;for(const [key,child] of Object.entries(value)){if(userFacingKeys.has(key)&&typeof child==="string")strings.push(child);else collect(child);}};
+  const collect=(value:any):void=>{if(Array.isArray(value)){for(const child of value)if(typeof child==="string")strings.push(child);else collect(child);return;}if(!value||typeof value!=="object")return;for(const [key,child] of Object.entries(value)){if(userFacingKeys.has(key)&&typeof child==="string")strings.push(child);else collect(child);}};
   for(const entity of authority.entities){strings.push(entity.title);if(entity.concentration_duration)strings.push(entity.concentration_duration);collect(entity.content);}
   collect(authority.onboarding);
+  for(const text of [...authority.onboarding.basic_turn.steps,...authority.onboarding.basic_turn.reminders])assert.ok(strings.includes(text),`Missing onboarding language-guard coverage for: ${text}`);
   for(const token of ui.tokens)strings.push(token.text??token.template);
   const contractions=/\b(?:can['’]t|won['’]t|don['’]t|doesn['’]t|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|it['’]s|that['’]s|there['’]s|you['’](?:re|ve|ll|d)|we['’](?:re|ve|ll|d)|they['’](?:re|ve|ll|d)|couldn['’]t|wouldn['’]t|shouldn['’]t|mustn['’]t|haven['’]t|hasn['’]t|hadn['’]t|didn['’]t)\b/iu;
   const abbreviations=/(?:\b(?:ft|AT|PB|AC|DC|MS)\b|\b(?:Con|Str|Dex|Int|Cha) saves?\b)/u;
