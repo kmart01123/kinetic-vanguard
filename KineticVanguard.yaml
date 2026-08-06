@@ -1879,7 +1879,7 @@ entities:
         - psychokinesis
     content:
       - inlines:
-          - text: "T0 Base: This effect requires Concentration for up to 1 minute. When you activate this feature, choose one target group within 60 feet: up to five Medium or smaller creatures, or up to two Large creatures. You cannot choose creatures from both groups as part of the same activation. Huge or larger creatures are immune. Each target must make a Strength saving throw. On a failed save, it is lifted 30 feet into the air and Restrained while hovering. On a successful save, it is unaffected. At the start of each affected creature’s turn, it repeats the saving throw. On a successful save, it descends safely and the effect ends for that creature. While you maintain concentration, creatures that remain Restrained continue to hover. If your concentration ends, all affected creatures fall."
+          - text: "T0 Base: This effect requires Concentration for up to 1 minute. When you activate this feature, you have five target slots to spend on creatures you can see within 60 feet. A Medium or smaller creature costs one slot, and a Large creature costs two slots. You can choose any combination whose total cost does not exceed five slots. A creature can be chosen only once. Unused slots are lost. Huge or larger creatures are immune. Each target must make a Strength saving throw. On a failed save, it is lifted 30 feet into the air and Restrained while hovering. On a successful save, it is unaffected. At the start of each affected creature’s turn, it repeats the saving throw. On a successful repeat save, the effect ends for that creature, and it falls from its current position. While you maintain concentration, creatures that remain Restrained continue to hover. If your concentration ends, all affected creatures fall."
             type: text
         type: paragraph
       - inlines:
@@ -1887,7 +1887,7 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: At the start of each levitated creature’s turn, it first repeats the Strength saving throw from Tier 0. On a successful save, it descends safely and takes no damage from this tier. On a failed save, it remains levitated and takes force damage equal to twice your Psionic Ability modifier."
+          - text: "T2 Overload: Changes from Tier 1: At the start of each levitated creature’s turn, it first repeats the Strength saving throw from Tier 0. On a successful save, the effect ends for that creature, it falls from its current position, and it takes no force damage from this tier. On a failed save, it remains levitated and takes force damage equal to twice your Psionic Ability modifier."
             type: text
         type: paragraph
     id: mass_levitation
@@ -2626,7 +2626,7 @@ navigation:
           order: 4
           title: Ball Lightning
   default_category_id: common_features
-rules_version: 13.1.0
+rules_version: 13.2.0
 schema_version: 1.0.0
 vocabularies:
   acquisition_modes:
