@@ -431,6 +431,8 @@ test("final rules decisions leave every unapproved authority field unchanged",as
   const {authority}=await loadAuthority();const projection=structuredClone(authority) as any;
   delete projection.onboarding;
   projection.rules_version="<approved rules version>";
+  projection.metadata.attribution="Created by NixNinja in collaboration with artificial intelligence assistants. Special thanks to various muses, great and small.";
+  projection.metadata.license="Original Kinetic Vanguard material may be used, copied, modified, and redistributed for non-commercial purposes with credit to NixNinja. Commercial use requires prior written permission. System Reference Document-derived rules text and references are separately governed by the Creative Commons Attribution 4.0 International License.";
   const massLevitation=projection.entities.find((entity:any)=>entity.id==="mass_levitation");
   massLevitation.content[0].inlines[0].text=massLevitation.content[0].inlines[0].text.replace(
     /When you activate this feature,.*?(?=Each target must make a Strength saving throw\.)/u,

@@ -2369,9 +2369,9 @@ facets:
     requiredness: applicable
     vocabulary: acquisition_modes
 metadata:
-  attribution: Created by NixNinja in collaboration with artificial intelligence assistants. Special thanks to various muses, great and small.
+  attribution: Created by NixNinja in collaboration with artificial intelligence assistants. Special thanks to various muses, great and small. This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
   compatibility: Fighter subclass rules reference
-  license: Original Kinetic Vanguard material may be used, copied, modified, and redistributed for non-commercial purposes with credit to NixNinja. Commercial use requires prior written permission. System Reference Document-derived rules text and references are separately governed by the Creative Commons Attribution 4.0 International License.
+  license: Original Kinetic Vanguard rules, examples, and editorial text are licensed under CC BY-NC-SA 4.0, available at https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode. Software and tooling are licensed under BSD-3-Clause. SRD 5.2.1-derived material remains licensed under CC BY 4.0. See LICENSE.md and NOTICE.md for scope and attribution.
   title: Kinetic Vanguard
 navigation:
   categories:

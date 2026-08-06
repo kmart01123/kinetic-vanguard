@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Adopted component-based licensing: BSD-3-Clause for software and tooling, CC BY-NC-SA 4.0 for original Kinetic Vanguard content, and CC BY 4.0 for SRD 5.2.1-derived material, with exact SRD attribution in repository notices and generated publications.
 - Revised Mass Levitation to use five target slots: a Medium or smaller creature costs one slot, a Large creature costs two slots, and any mixed combination costing no more than five slots is legal. Each creature can be chosen only once, unused slots are lost, and Huge or larger creatures remain immune.
 - Changed a successful Mass Levitation repeat save to end the effect and make the creature fall normally from its current position. A successful initial save still leaves the target unaffected, and every other Mass Levitation mechanic is preserved.
 - Added a new default Start Here experience with three primary paths, four Discipline cards, a basic-turn orientation, a build checklist, a short glossary, and direct canonical destinations into the complete rules.
