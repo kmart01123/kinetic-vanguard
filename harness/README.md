@@ -44,7 +44,7 @@ Damage produces separate primary-target and aggregate-cluster DPR rows. Headline
 KV as % of comparator = 100 × KV aggregate / comparator aggregate
 ```
 
-Expected order is Eldritch Knight ≤ Battle Master. COLD is below EK, IDEAL includes both boundaries, HOT is above BM, reversed order is ORDER CHECK, and a zero denominator is N/A.
+Expected order is Eldritch Knight ≤ Battle Master. COLD is below EK, IDEAL includes both boundaries, HOT is above BM, reversed order is ORDER CHECK, and a zero denominator is N/A. `Boundary Delta %` is the signed percentage from the violated boundary: negative below EK for COLD, positive above BM for HOT, and `0.00` inside IDEAL.
 
 ## Control method
 
@@ -52,7 +52,7 @@ The control headline metric is `roster-adjusted whole-package control stick %`. 
 
 This is a best-available reliability envelope, not a condition-value or severity score. It does not assert that different conditions are equal and never converts control into DPR.
 
-Expected order is Battle Master ≤ Eldritch Knight. COLD is below BM, IDEAL includes both boundaries, HOT is above EK, reversed order is ORDER CHECK, and a zero denominator is N/A. Percentages remain ordinary KV/BM and KV/EK ratios.
+Expected order is Battle Master ≤ Eldritch Knight. COLD is below BM, IDEAL includes both boundaries, HOT is above EK, reversed order is ORDER CHECK, and a zero denominator is N/A. Percentages remain ordinary KV/BM and KV/EK ratios. `Boundary Delta %` is negative below BM for COLD, positive above EK for HOT, and `0.00` inside IDEAL.
 
 ## Primary comparators
 
@@ -63,7 +63,7 @@ These are explicitly non-SRD comparator assumptions. No non-SRD rulebook prose i
 
 ## Output and provenance
 
-Filenames derive from YAML `rules_version`, for example `kv-14-1-0-damage-comparison-matrix.csv`. Every matrix is emitted as CSV, Markdown, and self-contained HTML from one row model. Band text is visible in every format; HTML color is supplemental. Provenance includes rules version, authority digest, roster digest, config digest, seed, trial setting, aggregation, and review status.
+Filenames derive from YAML `rules_version`, for example `kv-14-1-0-damage-comparison-matrix.csv`. Every matrix is emitted as CSV, Markdown, and self-contained HTML from one row model. Band text and the signed `Boundary Delta %` tuning distance are visible in every format; HTML color is supplemental. Provenance includes rules version, authority digest, roster digest, config digest, seed, trial setting, aggregation, and review status.
 
 Generated outputs, caches, virtual environments, and `.codex-import/` are ignored and are not official source.
 

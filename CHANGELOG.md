@@ -6,7 +6,7 @@
 
 - Restored maintained damage and control benchmark harness source with a shared validated projection from the real root `KineticVanguard.yaml`.
 - Added pinned SRD 5.2.1 target data, separately declared frozen Battle Master and Eldritch Knight comparator assumptions, verified legacy provenance, and a legacy-to-current migration map.
-- Added versioned CSV, Markdown, and self-contained HTML damage/control matrices, exact COLD/IDEAL/HOT/ORDER CHECK/N/A boundary handling, aggregate-derived ratios, and a per-target control selection-audit CSV.
+- Added versioned CSV, Markdown, and self-contained HTML damage/control matrices, exact COLD/IDEAL/HOT/ORDER CHECK/N/A boundary handling, signed `Boundary Delta %` tuning distance, aggregate-derived ratios, and a per-target control selection-audit CSV.
 - Added fast authority, mutation, completeness, aggregation, classification, output-consistency, and fixed-input smoke tests to ordinary CI.
 
 ### Changed

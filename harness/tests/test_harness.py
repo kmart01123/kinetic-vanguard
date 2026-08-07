@@ -77,6 +77,22 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(row["KV as % of EK"],"125.00")
         self.assertEqual(row["KV as % of BM"],"50.00")
         self.assertEqual(row["Band"],"IDEAL")
+        self.assertEqual(row["Boundary Delta %"],"0.00")
+
+    def test_boundary_delta_quantifies_hot_and_cold_tuning_distance(self)->None:
+        cases=[
+            ("damage",8,10,20,"COLD","-20.00"),
+            ("damage",24,10,20,"HOT","+20.00"),
+            ("damage",15,10,20,"IDEAL","0.00"),
+            ("control",8,20,10,"COLD","-20.00"),
+            ("control",24,20,10,"HOT","+20.00"),
+            ("control",15,20,10,"IDEAL","0.00"),
+            ("damage",15,20,10,"ORDER CHECK","N/A"),
+            ("control",15,20,0,"N/A","N/A"),
+        ]
+        for kind,kv,ek,bm,band,delta in cases:
+            with self.subTest(kind=kind,band=band):
+                row=matrix_row({},kv,ek,bm,kind);self.assertEqual(row["Band"],band);self.assertEqual(row["Boundary Delta %"],delta)
 
     def test_csv_markdown_html_are_one_row_model_and_visible_band(self)->None:
         row=matrix_row({"Level":7,"Discipline":"cryokinesis"},10,8,20,"damage")

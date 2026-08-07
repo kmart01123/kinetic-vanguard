@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Any, Iterable
 
 BANDS = {"COLD", "IDEAL", "HOT", "ORDER CHECK", "N/A"}
-VALUE_COLUMNS = ["KV", "Eldritch Knight", "Battle Master", "KV as % of EK", "KV as % of BM", "Band"]
+VALUE_COLUMNS = ["KV", "Eldritch Knight", "Battle Master", "KV as % of EK", "KV as % of BM", "Band", "Boundary Delta %"]
 
 
 def _display_value(value: float) -> float:
@@ -43,14 +43,27 @@ def classify_control(kv: float, eldritch_knight: float, battle_master: float) ->
     return "HOT"
 
 
+def _boundary_delta(kv: float, eldritch_knight: float, battle_master: float, kind: str, band: str) -> str:
+    if band == "IDEAL":
+        return "0.00"
+    if band not in {"COLD", "HOT"}:
+        return "N/A"
+    if kind == "damage":
+        boundary = battle_master if band == "HOT" else eldritch_knight
+    else:
+        boundary = eldritch_knight if band == "HOT" else battle_master
+    return "N/A" if boundary == 0 else f"{100.0 * (kv - boundary) / boundary:+.2f}"
+
+
 def matrix_row(metadata: dict[str, Any], kv: float, eldritch_knight: float, battle_master: float, kind: str) -> dict[str, str]:
     displayed = [_display_value(value) for value in (kv, eldritch_knight, battle_master)]
     classifier = classify_damage if kind == "damage" else classify_control
+    band = classifier(*displayed)
     row = {key: str(value) for key, value in metadata.items()}
     row.update({
         "KV": f"{displayed[0]:.6f}", "Eldritch Knight": f"{displayed[1]:.6f}", "Battle Master": f"{displayed[2]:.6f}",
         "KV as % of EK": _percentage(displayed[0], displayed[1]), "KV as % of BM": _percentage(displayed[0], displayed[2]),
-        "Band": classifier(*displayed)
+        "Band": band, "Boundary Delta %": _boundary_delta(*displayed, kind, band)
     })
     return row
 
@@ -81,7 +94,8 @@ def write_matrix(output_dir: Path, rules_version: str, kind: str, rows: Iterable
         writer = csv.DictWriter(stream, fieldnames=columns);writer.writeheader();writer.writerows(rows)
     provenance_lines = [f"- {key}: `{value}`" for key, value in provenance.items()]
     limitation = "Control values are a best-available reliability envelope, not a severity-weighted score; different conditions are not treated as equally valuable." if kind == "control" else "Damage percentages are computed from the displayed aggregate raw values, never from averaged target-level percentages."
-    md = f"# Kinetic Vanguard {rules_version} {kind.title()} Comparison Matrix\n\n{limitation}\n\n## Provenance\n\n" + "\n".join(provenance_lines) + "\n\n" + _markdown_table(columns, rows) + "\n"
+    distance_note = "Boundary Delta % measures tuning distance from the permitted band: positive is percent above the HOT boundary, negative is percent below the COLD boundary, and 0.00 is inside IDEAL."
+    md = f"# Kinetic Vanguard {rules_version} {kind.title()} Comparison Matrix\n\n{limitation}\n\n{distance_note}\n\n## Provenance\n\n" + "\n".join(provenance_lines) + "\n\n" + _markdown_table(columns, rows) + "\n"
     md_path.write_text(md, encoding="utf-8")
     colors = {"COLD":"#dbeafe","IDEAL":"#dcfce7","HOT":"#ffedd5","ORDER CHECK":"#e5e7eb","N/A":"#e5e7eb"}
     head = "".join(f"<th>{html.escape(column)}</th>" for column in columns)
@@ -93,6 +107,6 @@ def write_matrix(output_dir: Path, rules_version: str, kind: str, rows: Iterable
             cells.append(f"<td{style}>{html.escape(value)}</td>")
         body.append("<tr>"+"".join(cells)+"</tr>")
     prov="".join(f"<li><strong>{html.escape(str(key))}:</strong> {html.escape(str(value))}</li>" for key,value in provenance.items())
-    document=f"""<!doctype html><html lang="en"><meta charset="utf-8"><title>Kinetic Vanguard {html.escape(rules_version)} {kind.title()} Comparison Matrix</title><style>body{{font:16px system-ui;margin:2rem;color:#111827}}table{{border-collapse:collapse}}th,td{{border:1px solid #9ca3af;padding:.45rem;text-align:right}}th:first-child,td:first-child{{text-align:left}}</style><h1>Kinetic Vanguard {html.escape(rules_version)} {kind.title()} Comparison Matrix</h1><p>{html.escape(limitation)}</p><h2>Provenance</h2><ul>{prov}</ul><table><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table></html>"""
+    document=f"""<!doctype html><html lang="en"><meta charset="utf-8"><title>Kinetic Vanguard {html.escape(rules_version)} {kind.title()} Comparison Matrix</title><style>body{{font:16px system-ui;margin:2rem;color:#111827}}table{{border-collapse:collapse}}th,td{{border:1px solid #9ca3af;padding:.45rem;text-align:right}}th:first-child,td:first-child{{text-align:left}}</style><h1>Kinetic Vanguard {html.escape(rules_version)} {kind.title()} Comparison Matrix</h1><p>{html.escape(limitation)}</p><p>{html.escape(distance_note)}</p><h2>Provenance</h2><ul>{prov}</ul><table><thead><tr>{head}</tr></thead><tbody>{''.join(body)}</tbody></table></html>"""
     html_path.write_text(document, encoding="utf-8")
     return {"csv":csv_path,"markdown":md_path,"html":html_path}
