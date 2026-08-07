@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "application_views": ["home","reference","calculator"],
   "home_fragment": "home",
   "calculator_fragment": "calculator",
@@ -11,7 +11,7 @@
   "name_activation_focus": "retain_native_select_focus_on_desktop_and_focus_heading_on_mobile",
   "settling_interval_ms": 0,
   "settled_state_hook": "data-filter-settled",
-  "history_state_fields": ["view","category","topic","classifications","entity","resultRoute","calculatorSelection","fighterLevel","psiModifier","focusOrigin"],
+  "history_state_fields": ["view","category","topic","classifications","entity","resultRoute","calculatorFeatureGroup","calculatorSelection","fighterLevel","psiModifier","focusOrigin"],
   "focus_origins": ["category","topic","name","result","history","fragment","view","onboarding"],
   "fragment_keys": ["category","topic","filters","entity"]
 }

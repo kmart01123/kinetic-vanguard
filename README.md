@@ -73,7 +73,7 @@ The Rules Reference provides:
 - responsive desktop, tablet, mobile, and print layouts;
 - keyboard, focus, forced-colors, and reduced-motion support.
 
-The Calculator opens with Manifested Strike and derives its attack, damage, and save Difficulty Class, along with total Psi Points, Psi costs, on-hit rider tier results, and supported standalone feature tier results, from Skill / Feature, Fighter Level, and Psionic Ability Modifier selections. Longform hit, damage, and saving throw calculations use full term names, parenthesized component values, `+` operators, and an `=` result matching the retained compact total. Every selection updates the displayed calculations immediately.
+The Calculator opens on a dedicated Manifested Strike landing card and derives its attack, damage, and save Difficulty Class, along with total Psi Points, Psi costs, on-hit rider tier results, and supported standalone feature tier results, from Feature Group, Skill / Feature, Fighter Level, and Psionic Ability Modifier selections. Feature Group scopes the supported choices to a discipline or Advanced Training without changing any calculations. Longform hit, damage, and saving throw calculations use full term names, parenthesized component values, `+` operators, and an `=` result matching the retained compact total. Every selection updates the displayed calculations immediately.
 
 The browser application makes no runtime network requests, does not store character state, and does not replace the rules with inferred behavior.
 

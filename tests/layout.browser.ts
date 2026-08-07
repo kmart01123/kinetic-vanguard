@@ -373,9 +373,9 @@ test("concentration metadata ribbon wraps without overflow on desktop and mobile
   }finally{await browser.close();}
 });
 
-test("calculator keeps exactly three native selects and one live result contained on desktop and mobile",async()=>{
+test("calculator keeps exactly four native selects and one live result contained on desktop and mobile",async()=>{
   const result=await executeBuild("prototype"),url=pathToFileURL(result.htmlPath).href+"#calculator";
-  const viewports=[{name:"desktop",width:1280,height:1000,columns:3},{name:"mobile",width:390,height:844,columns:1}] as const;
+  const viewports=[{name:"desktop",width:1280,height:1000,columns:4},{name:"mobile",width:390,height:844,columns:1}] as const;
   const assertPsiFacts=(candidate:{factTexts:string[];factLabels:string[]},cost:number,total:number,context:string)=>{
     const psiCostIndex=candidate.factTexts.indexOf(`Psi cost: ${cost}`);
     assert.notEqual(psiCostIndex,-1,context+" Psi cost");assert.equal(candidate.factTexts[psiCostIndex+1],`Total Psi Points: ${total}`,context+" total Psi Points follows Psi cost");
@@ -417,8 +417,8 @@ test("calculator keeps exactly three native selects and one live result containe
         });
         const context=`${engine.name} ${viewport.name}`;
         assert.equal(initial.view,"calculator",context+" view");
-        assert.deepEqual(initial.visibleSelectIds,["calculator-feature","calculator-level","calculator-psi-modifier"],context+" exactly three visible native selects");
-        assert.equal(initial.featureValue,"common_manifested_strike",context+" Manifested Strike default");assert.equal(initial.levelValue,"20",context+" level 20 default");assert.equal(initial.summaryExists,false,context+" no separate Manifested Strike summary");
+        assert.deepEqual(initial.visibleSelectIds,["calculator-feature-group","calculator-feature","calculator-level","calculator-psi-modifier"],context+" exactly four visible native selects");
+        assert.equal(initial.featureValue,"",context+" feature placeholder default");assert.equal(initial.levelValue,"20",context+" level 20 default");assert.equal(initial.summaryExists,false,context+" no separate Manifested Strike summary");
         assert.equal(initial.gridColumnCount,viewport.columns,context+" control columns");assert.equal(initial.resultCardCount,1,context+" result card count");assert.deepEqual(initial.tiers,[],context+" default has no rider tiers");assert.equal(initial.heading,"Manifested Strike",context+" default feature");
         assert.deepEqual(initial.tierHeadings,[],context+" default has no tier headings");assert.equal(initial.saveCount,0,context+" default has no rider save");assert.equal(initial.saveTiers,undefined,context+" default has no save scope");
         assert.equal(initial.triggerCount,0,context+" default has no rider trigger");assert.equal(initial.factsCount,0,context+" default has no rider facts");
@@ -427,8 +427,14 @@ test("calculator keeps exactly three native selects and one live result containe
         assert.equal(initial.breakdownCount,2,context+" Manifested Strike breakdown pair");
         assert.equal(initial.triggerHasSaveDc,false,context+" no rider trigger save DC");
         assert.equal(initial.controlsContained,true,context+" calculator containment");assert.equal(initial.documentOverflow,0,context+" initial horizontal overflow");
-        if(viewport.columns===3)assert.ok(Math.max(...initial.fieldTops)-Math.min(...initial.fieldTops)<=1,context+" controls share one row");
+        if(viewport.columns===4)assert.ok(Math.max(...initial.fieldTops)-Math.min(...initial.fieldTops)<=1,context+" controls share one row");
         else for(let index=1;index<initial.fieldTops.length;index++)assert.ok(initial.fieldTops[index]!>=initial.fieldBottoms[index-1]!-1,context+` control ${index+1} stacks below control ${index}`);
+
+        await page.focus("#calculator-feature-group");await page.selectOption("#calculator-feature-group","psychokinesis");
+        assert.equal(await page.evaluate(()=>document.activeElement?.id),"calculator-feature-group",context+" feature group focus retained");
+        const filtered=await page.evaluate(()=>{const feature=document.querySelector<HTMLSelectElement>("#calculator-feature")!,result=document.querySelector<HTMLElement>("#calculator-feature-results")!;return{featureValue:feature.value,optionValues:[...feature.options].map(option=>option.value),heading:result.querySelector(":scope > h3")?.textContent,documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};});
+        assert.equal(filtered.featureValue,"",context+" filtered placeholder retained");assert.deepEqual(filtered.optionValues,["","telekinetic_shove","explosion_implosion","telekinetic_slam","mass_levitation"],context+" canonical Psychokinesis options");assert.equal(filtered.heading,"Manifested Strike",context+" filtered landing card");assert.equal(filtered.documentOverflow,0,context+" filtered horizontal overflow");
+        await page.selectOption("#calculator-feature-group","");assert.equal(await page.evaluate(()=>document.activeElement?.id),"calculator-feature-group",context+" All feature group focus retained");
 
         await page.focus("#calculator-psi-modifier");await page.selectOption("#calculator-psi-modifier","4");
         assert.equal(await page.evaluate(()=>document.activeElement?.id),"calculator-psi-modifier",context+" default modifier focus retained");

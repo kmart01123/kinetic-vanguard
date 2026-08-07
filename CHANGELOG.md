@@ -13,6 +13,7 @@
 
 ### Changed
 
+- Added a Calculator Feature Group filter for the four disciplines and Advanced Training, with a separate unselected Manifested Strike landing card and canonical classification-backed feature grouping. This changes Calculator navigation only, not rules or calculations.
 - Advanced the authority schema to 2.1.0 with canonical structured discipline, mastery, targeting, resistance-bypass, restriction, duration, repeat-save, and control-outcome fields under the shared Calculator mechanics area.
 - Started the 14.1.0 rules-development line without changing player-facing Calculator scope or exposing benchmark tools in the offline publication.
 - Reimplemented damage and comparator selection as deterministic exact observed-state policies and completed independent numerical review with documented differences. Historical seeds and trial settings remain compatibility metadata; the current review does not inherit or claim the v12.0.0 Monte Carlo certification.
