@@ -76,6 +76,9 @@ jobs:
       - name: Test harnesses
         run: npm run test:harness
 
+      - name: Verify README benchmark matrices
+        run: npm run readme:benchmarks:check
+
       - name: Build prototype
         run: npm run build
 

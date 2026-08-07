@@ -14,6 +14,22 @@ const compareVersions = (left: string, right: string): number => {
   return 0;
 };
 
+const readReleaseStatus = (source: string): { published: string; development: string } => {
+  const publishedLines = [...source.matchAll(/^- Current published release:.*$/gm)];
+  const developmentLines = [...source.matchAll(/^- Current development line:.*$/gm)];
+  assert.equal(publishedLines.length, 1, "README has exactly one published-release line");
+  assert.equal(developmentLines.length, 1, "README has exactly one development-line entry");
+  const published = [...source.matchAll(/^- Current published release: \*\*v(\d+\.\d+\.\d+)\*\*$/gm)].map(
+    (match) => match[1]!
+  );
+  const development = [...source.matchAll(/^- Current development line: \*\*(v\d+\.\d+\.\d+|None)\*\*$/gm)].map(
+    (match) => match[1]!
+  );
+  assert.equal(published.length, 1, "README published-release line is well formed");
+  assert.equal(development.length, 1, "README development-line entry is well formed");
+  return { published: published[0]!, development: development[0]! };
+};
+
 test("README and release process stay synchronized with canonical development status", async () => {
   const [{ authority }, readme, checklist, pullRequestTemplate] = await Promise.all([
     loadAuthority(),
@@ -22,14 +38,11 @@ test("README and release process stay synchronized with canonical development st
     readFile(".github/pull_request_template.md", "utf8")
   ]);
 
-  const published = readme.match(/^- Current published release: \*\*v(\d+\.\d+\.\d+)\*\*$/m);
-  assert.ok(published, "README declares the current published release");
-  assert.ok(compareVersions(published[1]!, authority.rules_version) <= 0, "published release cannot be newer than canonical authority");
+  const { published, development } = readReleaseStatus(readme);
+  assert.ok(compareVersions(published, authority.rules_version) <= 0, "published release cannot be newer than canonical authority");
 
-  const development = readme.match(/^- Current development line: \*\*(v\d+\.\d+\.\d+|None)\*\*$/m);
-  assert.ok(development, "README declares the current development line");
-  if (development[1] !== "None") {
-    assert.equal(development[1], `v${authority.rules_version}`);
+  if (development !== "None") {
+    assert.equal(development, `v${authority.rules_version}`);
     assert.ok(readme.split("\n").includes(`- Development branch: \`${authority.rules_version}\``));
     assert.match(readme, /^- Implementation pull request: /m);
   }
@@ -62,4 +75,128 @@ test("README and release process stay synchronized with canonical development st
   assert.match(pullRequestTemplate, /RELEASE_CHECKLIST\.md/);
   assert.match(pullRequestTemplate, /README\.md/);
   assert.match(pullRequestTemplate, /Main branch gate/);
+});
+
+test("README exposes one synchronized headline balance snapshot", async () => {
+  const [{ authority }, readme, packageJsonSource, workflow, benchmarkConfigSource] = await Promise.all([
+    loadAuthority(),
+    readFile("README.md", "utf8"),
+    readFile("package.json", "utf8"),
+    readFile(".github/workflows/ci.yml", "utf8"),
+    readFile("harness/config/benchmark.json", "utf8")
+  ]);
+  const packageJson = JSON.parse(packageJsonSource) as {
+    readonly scripts?: Readonly<Record<string, string>>;
+  };
+  const benchmarkConfig = JSON.parse(benchmarkConfigSource) as {
+    readonly methodology: { readonly status: string };
+    readonly kv_profile: { readonly id: string };
+  };
+
+  const beginMarker = "<!-- BEGIN GENERATED BALANCE MATRICES -->";
+  const endMarker = "<!-- END GENERATED BALANCE MATRICES -->";
+  const occurrences = (source: string, value: string): number => source.split(value).length - 1;
+  assert.equal(occurrences(readme, beginMarker), 1, "README has exactly one balance-region start marker");
+  assert.equal(occurrences(readme, endMarker), 1, "README has exactly one balance-region end marker");
+
+  const begin = readme.indexOf(beginMarker);
+  const end = readme.indexOf(endMarker);
+  const publication = readme.indexOf("## Publication interface");
+  assert.ok(begin >= 0 && end > begin, "generated balance-region markers are ordered");
+  assert.ok(publication > end, "balance snapshot appears before implementation-oriented README sections");
+  const precedingLevelTwoHeadings = [...readme.slice(0, begin).matchAll(/^## (.+)$/gm)].map(
+    (match) => match[1]
+  );
+  assert.deepEqual(
+    precedingLevelTwoHeadings,
+    ["Release status"],
+    "balance snapshot stays near the top, immediately after release orientation"
+  );
+
+  const region = readme.slice(begin, end + endMarker.length);
+  const { published, development } = readReleaseStatus(readme);
+  assert.ok(region.includes(`canonical rules **v${authority.rules_version}**`));
+  if (development === "None") {
+    assert.ok(region.includes("**Published snapshot**"));
+    assert.equal(published, authority.rules_version);
+  } else {
+    assert.equal(development, `v${authority.rules_version}`);
+    assert.ok(region.includes("**Unreleased development snapshot**"));
+    assert.ok(region.includes(`current published release **v${published}**`));
+  }
+  assert.ok(region.includes(`Profile: \`${benchmarkConfig.kv_profile.id}\`.`));
+  assert.ok(region.includes(`Numerical review status: \`${benchmarkConfig.methodology.status}\`.`));
+  assert.match(region, /exact analytical full-roster results, not Monte Carlo estimates/i);
+
+  for (const heading of [
+    "Balance benchmark snapshot",
+    "Damage benchmark",
+    "Primary-target DPR",
+    "Aggregate cluster DPR",
+    "Control benchmark"
+  ]) {
+    assert.match(region, new RegExp(`^#{2,4} ${heading}$`, "m"));
+  }
+  assert.equal(occurrences(region, "| Fighter level |"), 3, "snapshot has two damage matrices and one control matrix");
+  assert.match(region, /KV DPR \(C1 \/ C3 \/ C6\)/);
+  assert.match(region, /KV as % of EK \(C1 \/ C3 \/ C6\)/);
+  assert.match(region, /KV as % of BM \(C1 \/ C3 \/ C6\)/);
+  assert.match(region, /Band \(C1 \/ C3 \/ C6\)/);
+  assert.match(region, /KV control %/);
+  for (const comparator of ["Eldritch Knight", "Battle Master"]) {
+    assert.match(region, new RegExp(comparator));
+  }
+
+  const primaryStart = region.indexOf("#### Primary-target DPR");
+  const aggregateStart = region.indexOf("#### Aggregate cluster DPR");
+  const controlStart = region.indexOf("### Control benchmark");
+  assert.ok(primaryStart >= 0 && aggregateStart > primaryStart && controlStart > aggregateStart);
+  const primary = region.slice(primaryStart, aggregateStart);
+  const aggregate = region.slice(aggregateStart, controlStart);
+  const control = region.slice(controlStart);
+  const dataRowCount = (tableSection: string): number =>
+    [...tableSection.matchAll(/^\| \d+ \|/gm)].length;
+  assert.equal(dataRowCount(primary), 16, "primary-target matrix has every level/discipline row");
+  assert.equal(dataRowCount(aggregate), 16, "aggregate-cluster matrix has every level/discipline row");
+  assert.equal(dataRowCount(control), 16, "control matrix has every level/discipline row");
+
+  const damage = region.slice(region.indexOf("### Damage benchmark"), controlStart);
+  assert.match(damage, /expected comparator order: Eldritch Knight ≤ Battle Master/);
+  assert.match(control, /expected comparator order: Battle Master ≤ Eldritch Knight/);
+  assert.match(control, /Ratios remain ordinary KV\/comparator percentages and are not mathematically inverted/);
+  for (const section of [damage, control]) {
+    for (const band of ["COLD", "IDEAL", "HOT", "ORDER CHECK", "N/A"]) {
+      assert.ok(section.includes(`\`${band}\``), `${band} is defined in each matrix legend`);
+    }
+  }
+
+  for (const source of [
+    "[`KineticVanguard.yaml`](KineticVanguard.yaml)",
+    "[maintained harness guide](harness/README.md)",
+    "[methodology configuration](harness/config/benchmark.json)",
+    "[SRD target roster](harness/data/srd_targets.csv)",
+    "[comparator assumptions](harness/comparators/fighter-subclasses.json)",
+    "[`LICENSE.md`](LICENSE.md)",
+    "[`NOTICE.md`](NOTICE.md)"
+  ]) {
+    assert.ok(region.includes(source), `snapshot links to ${source}`);
+  }
+  assert.match(region, /not affiliated with or endorsed by Wizards of the Coast/i);
+  assert.match(
+    region,
+    /No project license purports to grant rights in Wizards-owned material outside the System Reference Document/
+  );
+  assert.match(region, /LICENSE\.md.*component boundaries.*NOTICE\.md.*attribution and notices/s);
+  assert.doesNotMatch(region, /Hunter(?: Ranger)?|Open Hand(?: Monk)?/i);
+
+  assert.match(
+    packageJson.scripts?.["readme:benchmarks"] ?? "",
+    /^python3 -m harness\.readme_matrices --write(?:\s|$)/
+  );
+  assert.match(
+    packageJson.scripts?.["readme:benchmarks:check"] ?? "",
+    /^python3 -m harness\.readme_matrices --check(?:\s|$)/
+  );
+  assert.match(workflow, /^\s+- name: Verify README benchmark matrices$/m);
+  assert.match(workflow, /^\s+run: npm run readme:benchmarks:check$/m);
 });

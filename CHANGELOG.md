@@ -9,6 +9,7 @@
 - Added versioned CSV, Markdown, and self-contained HTML damage/control matrices, exact COLD/IDEAL/HOT/ORDER CHECK/N/A boundary handling, signed `Boundary Delta %` tuning distance, aggregate-derived ratios, and a per-target control selection-audit CSV.
 - Added fast authority, mutation, completeness, aggregation, classification, output-consistency, and fixed-input smoke tests to ordinary CI.
 - Added a repository-wide licensing audit, build-manifest legal-asset hashes, complete deployable legal bundles, and embedded licensing/attribution notices for standalone publications and benchmark reports.
+- Added synchronized near-top README damage and control matrices with separate primary-target and aggregate-cluster damage views, explicit COLD/IDEAL/HOT/ORDER CHECK/N/A semantics, canonical release-state labeling, and deterministic full analytical regeneration and CI checking.
 
 ### Changed
 
