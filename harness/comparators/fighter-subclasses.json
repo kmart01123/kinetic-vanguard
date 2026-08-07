@@ -6,24 +6,50 @@
     "battle_master": {
       "ability_modifier": 5,
       "weapon": {"count": 2, "sides": 6, "damage_type": "slashing", "great_weapon_fighting": true},
-      "attack_bonus_adjustment": 0,
-      "great_weapon_master_damage_per_turn": 5,
+      "magic_weapon_bonus_by_level": {"7": 1, "11": 2, "15": 2, "20": 3},
+      "great_weapon_master_attack_action_bonus": "proficiency_bonus",
+      "graze_damage": 5,
+      "hew_critical_bonus_attack_once_per_round": true,
       "superiority_die_by_level": {"7": 8, "11": 10, "15": 10, "20": 12},
-      "maneuver_uses_over_three_rounds": {"7": 5, "11": 5, "15": 6, "20": 6}
+      "superiority_pool_by_level": {"7": 5, "11": 5, "15": 6, "20": 6},
+      "relentless_minimum_level": 15,
+      "relentless_die": 8,
+      "tactical_policy": {
+        "objective": "maximum_expected_damage_over_benchmark_horizon",
+        "maneuver_choice_timing": "after_observed_attack_roll_result",
+        "on_hit_die_effect": "damage",
+        "on_miss_die_effect": "attack_roll_bonus",
+        "maneuver_die_consumption": "on_use_before_die_result",
+        "maximum_maneuver_dice_per_attack": 1,
+        "relentless_die_options": "same_as_superiority_die",
+        "relentless_uses_per_turn": 1,
+        "relentless_superiority_pool_cost": 0,
+        "relentless_refresh": "start_of_next_turn",
+        "hew_choice_timing": "after_observed_critical"
+      }
     },
     "eldritch_knight": {
-      "ability_modifier": 5,
+      "regular_attack_ability_modifier": 5,
+      "true_strike_ability_modifier_by_level": {"7": 3, "11": 3, "15": 5, "20": 5},
       "weapon": {"count": 1, "sides": 8, "damage_type": "slashing", "great_weapon_fighting": false},
-      "attack_bonus_adjustment": 0,
+      "magic_weapon_bonus_by_level": {"7": 1, "11": 2, "15": 2, "20": 3},
+      "dueling_damage_bonus": 2,
       "true_strike_damage_by_level": {"7": {"count": 1, "sides": 6}, "11": {"count": 2, "sides": 6}, "15": {"count": 2, "sides": 6}, "20": {"count": 3, "sides": 6}},
-      "true_strike_uses_over_three_rounds": 3,
-      "true_strike_damage_type": "radiant"
+      "true_strike_uses_per_attack_action": 1,
+      "true_strike_damage_type": "radiant",
+      "tactical_policy": {
+        "objective": "maximum_expected_damage_over_benchmark_horizon",
+        "true_strike_choice_timing": "before_attack_roll",
+        "decision_information": "observed_state_only",
+        "true_strike_use_count": "exactly_configured_per_attack_action"
+      }
     }
   },
   "control": {
     "battle_master": {
       "minimum_level": 7,
       "attack_ability_modifier": 5,
+      "magic_weapon_bonus_by_level": {"7": 1, "11": 2, "15": 2, "20": 3},
       "save_dc_base": 8,
       "save_ability_modifier": 5,
       "magic_resistance_applies": false,
@@ -37,8 +63,9 @@
     "eldritch_knight": {
       "minimum_level": 7,
       "attack_ability_modifier": 5,
+      "magic_weapon_bonus_by_level": {"7": 1, "11": 2, "15": 2, "20": 3},
       "save_dc_base": 8,
-      "save_ability_modifier": 5,
+      "save_ability_modifier_by_level": {"7": 3, "11": 3, "15": 5, "20": 5},
       "magic_resistance_applies": true,
       "scenarios": [
         {"id": "blindness_deafness", "minimum_level": 7, "save": "constitution", "conditions": ["blinded"]},

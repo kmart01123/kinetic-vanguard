@@ -20,5 +20,49 @@
     "pages": 364,
     "roster_rows": 28
   },
-  "current_certification_status": "PORTED_UNDER_REVIEW"
+  "historical_certification": {
+    "rules_version": "12.0.0",
+    "carried_forward_in": "12.1.0",
+    "status": "PRESERVED_PROVENANCE_ONLY"
+  },
+  "current_numerical_review": {
+    "rules_version": "14.1.0",
+    "status": "REVIEWED_WITH_DOCUMENTED_DIFFERENCES",
+    "review_date": "2026-08-07",
+    "durable_record": "GitHub PR #20",
+    "evaluator": "exact_analytical_enumeration",
+    "fresh_monte_carlo_certification": false,
+    "damage": {
+      "preserved_policy_rows": 336,
+      "historical_trials_per_row": 25000,
+      "fixed_policy_primary_mean_absolute_dpr_delta": 0.0323168649,
+      "fixed_policy_primary_maximum_absolute_dpr_delta": 0.1760340171,
+      "fixed_policy_aggregate_mean_absolute_dpr_delta": 0.0374950681,
+      "fixed_policy_aggregate_maximum_absolute_dpr_delta": 0.34012,
+      "adaptive_aggregate_rows_improved": 123,
+      "adaptive_aggregate_rows_equal": 213,
+      "adaptive_aggregate_rows_regressed": 0,
+      "adaptive_primary_rows_lower_for_aggregate_objective": 9
+    },
+    "control": {
+      "historical_rows_accounted": 1212,
+      "like_for_like_rows": 1181,
+      "historical_trials_per_row": 250000,
+      "like_for_like_mean_absolute_percentage_point_delta": 0.0532515,
+      "like_for_like_maximum_absolute_percentage_point_delta": 0.3128,
+      "corrected_kraken_rows": 3,
+      "retired_beguile_rows": 28,
+      "selection_winners_recomputed": 168,
+      "matrix_aggregates_recomputed": 16,
+      "reviewed_level_7_order_check_rows": 4
+    },
+    "comparators": {
+      "target_build_points": 56,
+      "independent_reference_maximum_absolute_dpr_delta": 1.14e-13,
+      "eldritch_knight_targets_changed": 13,
+      "eldritch_knight_mean_dpr_delta": 0.345503015604,
+      "battle_master_targets_changed": 28,
+      "battle_master_mean_dpr_delta": 2.606555720195
+    }
+  }
 }

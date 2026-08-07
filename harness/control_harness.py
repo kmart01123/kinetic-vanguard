@@ -13,33 +13,42 @@ from .comparison_report import matrix_row,write_matrix
 from .model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_ROSTER,Target,attack_probabilities,file_sha256,load_comparators,load_config,load_targets,save_success_probability,target_is_eligible
 
 
-def _effect_available(target:Target,conditions:list[str],outcomes:list[str])->bool:
+def _effect_available(target:Target,effect:dict[str,Any],target_role:str)->bool:
+    role=effect.get("target_role","all")
+    if role not in {"all",target_role}:return False
+    dependency=effect.get("requires_condition")
+    if dependency and dependency.lower() in target.condition_immunities:return False
+    conditions=list(effect.get("conditions",[]));outcomes=list(effect.get("outcomes",[]))
     return bool(outcomes) or any(condition.lower() not in target.condition_immunities for condition in conditions)
 
 
-def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int)->dict[str,Any]:
+def _comparator_effect_available(target:Target,scenario:dict[str,Any])->bool:
+    conditions=list(scenario.get("conditions",[]));outcomes=list(scenario.get("outcomes",[]))
+    return bool(outcomes) or any(condition.lower() not in target.condition_immunities for condition in conditions)
+
+
+def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int,target_role:str="primary")->dict[str,Any]:
     feature=model.feature(entity_id,target.level,tier);control=next((item for item in feature.get("control_tiers",[]) if int(item["tier"])==tier),None)
     if control is None:raise ValueError(f"Configured control scenario {entity_id} Tier {tier} lacks canonical control mechanics")
     eligible=target_is_eligible(target,control.get("maximum_size"),control.get("required_creature_type"))
     profile=config["kv_profile"];psi_modifier=int(profile["psionic_ability_modifier"]);bonus=model.kv_attack_bonus(target.level,psi_modifier)+int(profile["archery_attack_bonus"])
-    reach=attack_probabilities(bonus,target.ac)[1]+attack_probabilities(bonus,target.ac)[2] if control.get("hit_gated") else 1.0
-    conditions=list(control.get("conditions",[]));outcomes=list(control.get("outcomes",[]));available=_effect_available(target,conditions,outcomes)
-    if not eligible or not available:named=0.0
-    elif control["application"]=="no_save":named=reach
-    else:
+    probabilities=attack_probabilities(bonus,target.ac);reach=probabilities[1]+probabilities[2] if control.get("hit_gated") else 1.0;failed=0.0;repeat_failed=0.0
+    if control["application"]=="failed_save":
         save=control["save"];save=model.disciplines[discipline_id]["signature_save"] if save=="discipline_signature" else save
-        failed=1-save_success_probability(target,save,model.kv_save_dc(target.level,psi_modifier))
-        named=reach if control.get("control_on_reach") else reach*failed
-    mastery=model.disciplines[discipline_id]["mastery"];mastery_available=bool(mastery["control_outcomes"]) and control.get("hit_gated") and not feature.get("replaces_mastery")
+        failed=1-save_success_probability(target,save,model.kv_save_dc(target.level,psi_modifier));repeat_failed=1-save_success_probability(target,save,model.kv_save_dc(target.level,psi_modifier),bool(control.get("repeat_save_disadvantage")))
+    effects=[effect for effect in control["effects"] if eligible and _effect_available(target,effect,target_role)]
+    def effect_probability(effect:dict[str,Any])->float:return reach*failed if effect["gate"]=="on_failed_save" else reach
+    named=max((effect_probability(effect) for effect in effects),default=0.0)
+    mastery=model.disciplines[discipline_id]["mastery"];mastery_available=target_role=="primary" and bool(mastery["control_outcomes"]) and control.get("hit_gated") and not feature.get("replaces_mastery")
     if mastery.get("maximum_size") and not target_is_eligible(target,mastery["maximum_size"]):mastery_available=False
-    mastery_value=reach if mastery_available else 0.0
-    whole=max(named,mastery_value)
-    repeat=whole
-    if eligible and available and int(control.get("repeat_saves",0)):
-        save=control["save"];save=model.disciplines[discipline_id]["signature_save"] if save=="discipline_signature" else save
-        repeat_success=save_success_probability(target,save,model.kv_save_dc(target.level,psi_modifier),bool(control.get("repeat_save_disadvantage")))
-        repeat=named*((1-repeat_success)**int(control["repeat_saves"]));repeat=max(repeat,mastery_value)
-    return {"build":discipline_id,"scenario":f"{entity_id}:T{tier}","eligible":eligible,"reach":100*reach,"named":100*named,"mastery":100*mastery_value,"whole":100*whole,"after_repeats":100*repeat}
+    mastery_value=reach if mastery_available else 0.0;whole=max(named,mastery_value);repeat_count=int(config["methodology"]["rounds"])-1 if control.get("repeat_save_trigger")=="start_of_affected_turn" else 0
+    after=[]
+    for effect in effects:
+        value=effect_probability(effect)
+        if repeat_count and effect["gate"]=="on_failed_save":value=reach*failed*(repeat_failed**repeat_count)
+        after.append(value)
+    repeat=max([mastery_value,*after]);suffix=f":{target_role}" if target_role!="primary" else ""
+    return {"build":discipline_id,"scenario":f"{entity_id}:T{tier}{suffix}","eligible":eligible,"reach":100*reach,"named":100*named,"mastery":100*mastery_value,"whole":100*whole,"after_repeats":100*repeat}
 
 
 def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str)->dict[str,Any]:
@@ -52,13 +61,13 @@ def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,di
 
 def _comparator_scenario(model:AuthorityModel,comparators:dict[str,Any],target:Target,build_id:str,scenario:dict[str,Any])->dict[str,Any]:
     row=comparators["control"][build_id];minimum=int(scenario.get("minimum_level",row["minimum_level"]));eligible=target.level>=minimum and target_is_eligible(target,scenario.get("maximum_size"))
-    conditions=list(scenario.get("conditions",[]));outcomes=list(scenario.get("outcomes",[]));available=_effect_available(target,conditions,outcomes)
-    pb=model.progression("proficiency_bonus",target.level);bonus=pb+int(row["attack_ability_modifier"]);reach=1.0
+    available=_comparator_effect_available(target,scenario)
+    pb=model.progression("proficiency_bonus",target.level);weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(target.level)]);bonus=pb+int(row["attack_ability_modifier"])+weapon_bonus;reach=1.0
     if scenario.get("hit_gated"):
         probabilities=attack_probabilities(bonus,target.ac);reach=probabilities[1]+probabilities[2]
     if not eligible or not available:value=0.0
     else:
-        dc=int(row["save_dc_base"])+pb+int(row["save_ability_modifier"]);normal_fail=1-save_success_probability(target,scenario["save"],dc,False,bool(row["magic_resistance_applies"]))
+        save_modifier=int(row["save_ability_modifier_by_level"][str(target.level)]) if "save_ability_modifier_by_level" in row else int(row["save_ability_modifier"]);dc=int(row["save_dc_base"])+pb+save_modifier;normal_fail=1-save_success_probability(target,scenario["save"],dc,False,bool(row["magic_resistance_applies"]))
         if scenario.get("primer_hit_disadvantage"):
             primer=attack_probabilities(bonus,target.ac);primer_hit=primer[1]+primer[2];disadvantaged_fail=1-save_success_probability(target,scenario["save"],dc,True,bool(row["magic_resistance_applies"]));value=reach*(primer_hit*disadvantaged_fail+(1-primer_hit)*normal_fail)
         else:value=reach*normal_fail
@@ -85,9 +94,10 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,tri
                 feature=model.features[entry["entity_id"]]
                 if target.level<int(feature["minimum_level"]):continue
                 for tier in entry["tiers"]:
-                    try:values.append(_kv_scenario(model,config,target,discipline,entry["entity_id"],int(tier)))
-                    except Exception as error:
-                        if "unavailable" not in str(error):raise
+                    for target_role in entry.get("target_roles",["primary"]):
+                        try:values.append(_kv_scenario(model,config,target,discipline,entry["entity_id"],int(tier),str(target_role)))
+                        except Exception as error:
+                            if "unavailable" not in str(error):raise
             best=_best(values);detail.extend({"Level":target.level,"Target":target.name,**value} for value in values)
             audit.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"Build":"kinetic_vanguard","Selected Scenario":best["scenario"],"Whole-package control stick %":f"{best['whole']:.6f}","Eligible":best["eligible"]})
             envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":best["whole"],"Eldritch Knight":comparator_best["eldritch_knight"]["whole"],"Battle Master":comparator_best["battle_master"]["whole"]})
@@ -107,7 +117,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,tri
     for (level,discipline),values in sorted(groups.items()):
         mean=lambda key:sum(float(item[key]) for item in values)/len(values)
         rows.append(matrix_row({"Level":level,"Discipline":discipline,"Metric":config["control_matrix"]["metric"],"Profile":config["kv_profile"]["id"]},mean("KV"),mean("Eldritch Knight"),mean("Battle Master"),"control"))
-    provenance={"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"roster_sha256":file_sha256(DEFAULT_ROSTER),"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"trials":trials,"seed":seed,"aggregation":config["control_matrix"]["aggregation"],"status":"PORTED_UNDER_REVIEW"}
+    provenance={"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"roster_sha256":file_sha256(DEFAULT_ROSTER),"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"trials":trials,"seed":seed,"evaluator":"exact_analytical_enumeration","trial_seed_role":"historical_compatibility_metadata","aggregation":config["control_matrix"]["aggregation"],"status":config["methodology"]["status"]}
     paths=write_matrix(output_dir,model.rules_version,"control",rows,provenance) if write_headline else {}
     return {"rules_version":model.rules_version,"detail_rows":len(detail),"audit_rows":len(audit),"matrix_rows":len(rows),"paths":paths}
 

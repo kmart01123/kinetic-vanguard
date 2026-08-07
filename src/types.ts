@@ -166,19 +166,25 @@ export interface HarnessTargeting {
   kind:"fixed_additional"|"proficiency_bonus_additional"|"cluster_remainder";
   additional_targets?:number;
 }
+export type HarnessControlDuration="instantaneous"|"until_end_current_turn"|"until_start_next_turn"|"until_end_next_turn"|"while_in_area"|"one_minute_concentration"|"one_hour"|"eight_hours";
+export interface HarnessControlEffect {
+  gate:"on_reach"|"on_failed_save"|"while_in_area";
+  conditions?:HarnessCondition[];
+  outcomes?:HarnessControlOutcome[];
+  duration:HarnessControlDuration;
+  target_role?:"primary"|"secondary"|"all";
+  requires_condition?:HarnessCondition;
+}
 export interface HarnessControlTier {
   tier:0|1|2;
   application:"failed_save"|"no_save";
   save?:CalculatorSave|"discipline_signature";
   hit_gated?:boolean;
-  control_on_reach?:boolean;
-  conditions?:HarnessCondition[];
-  outcomes?:HarnessControlOutcome[];
+  effects:HarnessControlEffect[];
   maximum_size?:HarnessSize;
   required_creature_type?:"humanoid";
-  repeat_saves?:number;
+  repeat_save_trigger?:"start_of_affected_turn";
   repeat_save_disadvantage?:boolean;
-  duration:"instantaneous"|"until_end_current_turn"|"until_start_next_turn"|"until_end_next_turn"|"one_minute_concentration"|"one_hour"|"eight_hours"|"twenty_four_hours";
 }
 export interface HarnessFeatureRule {
   entity_id:string;
@@ -189,11 +195,16 @@ export interface HarnessFeatureRule {
   replaces_mastery?:boolean;
   requires_additional_target?:boolean;
   targeting_by_tier?:HarnessTargeting[];
+  armor_class_reduction_by_tier?:Array<{tier:0|1|2;value:number}>;
+  damage_repetition?:"remaining_round_starts";
+  damage_timing?:"start_of_affected_turn_after_repeat_save";
+  starts_persistent_zone?:boolean;
   control_tiers?:HarnessControlTier[];
 }
 export interface HarnessMechanics {
+  action_economy:{standalone_psionic_action_limit_per_turn:1;action_surge_allows_additional_standalone_psionic_action:false};
   manifested_strike:{entity_id:"common_manifested_strike";damage_type_source:"discipline";holdout_damage_type:"force";holdout_damage_divisor:2;critical_dice_multiplier:2;attack_bonus:{base:number;components:Array<"psionic_ability_modifier"|"proficiency_bonus"|"psionic_focus">};save_dc:{base:number;components:Array<"psionic_ability_modifier"|"proficiency_bonus"|"psionic_focus">}};
-  overload:{entity_id:"common_overload";blood_tax_per_tier:{base:number;proficiency_bonus_multiplier:number};tier_two_limit_per_attack_action:1};
+  overload:{entity_id:"common_overload";blood_tax_per_tier:{base:number;proficiency_bonus_multiplier:number};tier_two_limit_per_attack_action:1;mastery:{minimum_level:18;uses_per_rest:1;blood_tax_divisor:2;minimum_per_overload:1}};
   disciplines:HarnessDiscipline[];
   feature_rules:HarnessFeatureRule[];
 }

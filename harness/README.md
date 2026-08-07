@@ -1,6 +1,6 @@
 # Kinetic Vanguard maintained benchmark harnesses
 
-Status: **ported for v14.1 and awaiting current-output certification review**. The historical v12.0.0 certification is provenance, not a certification of current 14.1 results.
+Status: **REVIEWED_WITH_DOCUMENTED_DIFFERENCES for v14.1**. Independent damage, control, and comparator review completed on 2026-08-07. This is not a fresh Monte Carlo certification; the historical v12.0.0 certification remains provenance only.
 
 `KineticVanguard.yaml` is the sole Kinetic Vanguard rules authority. Python never parses feature prose and contains no parallel KV progression, Psi, save, damage, condition, tier, or targeting tables. `src/harness-authority.ts` uses the repository's restricted YAML loader plus canonical schema and semantic validation, then projects the real authority to Python by stable entity ID. Missing, duplicate, unavailable, or inconsistent mechanics stop the run.
 
@@ -9,7 +9,7 @@ Status: **ported for v14.1 and awaiting current-output certification review**. T
 The benchmark keeps four distinct input layers:
 
 1. **Kinetic Vanguard authority:** root `KineticVanguard.yaml`, projected by stable entity ID only after canonical schema and semantic validation.
-2. **Benchmark methodology:** project-authored seeds, profiles, aggregation, target clustering, and scenario policy in `config/benchmark.json`, plus the Python simulation/reporting code.
+2. **Benchmark methodology:** project-authored seeds, profiles, base Fighter progression/mechanics, aggregation, target clustering, and scenario policy in `config/benchmark.json`, plus the Python simulation/reporting code.
 3. **SRD target data:** the pinned 28-row SRD 5.2.1 roster and provenance in `data/srd_targets.csv`.
 4. **Third-party comparator assumptions:** minimal independently expressed Battle Master and Eldritch Knight numerical packages in `comparators/fighter-subclasses.json`.
 
@@ -43,9 +43,20 @@ Use `--matrix-only` to omit detailed CSVs or `--no-matrix` to omit the compact m
 
 ## Damage method
 
-The headline profile is `official_default_25_percent_hp`: 25% of fixed-HP budget for voluntary Blood Tax and Advanced Training disabled, matching the historical default policy. The harness retains levels 7, 11, 15, and 20; three rounds; the historical Attack-action counts; equal target weighting; cluster sizes 1, 3, and 6; no target death; legal configured positioning; and SRD defense handling.
+The headline profile is `official_default_25_percent_hp`: 25% of fixed-HP budget for voluntary Blood Tax, Advanced Training disabled, and every configured attack replaced by Manifested Strike, matching the historical default policy. Because the profile supplies no Kinetic Vanguard weapon packet, this is not a global optimization of every legal Fighter weapon/Manifested Strike mix. The harness retains levels 7, 11, 15, and 20; three rounds; the historical action-slot counts; equal target weighting; cluster sizes 1, 3, and 6; no target death; legal configured positioning; and SRD defense handling.
 
-The maintained port analytically enumerates d20, save, and expected-die outcomes after selecting legal packages from YAML. The historical seeds and trial counts remain in provenance for reproducibility and comparison tooling, but current analytical rows do not claim fresh Monte Carlo certification. This intentional implementation change removes sampling noise from fast gates; independent numerical review against the historical simulator remains required before certification.
+For comparators, every configured action slot is an Attack action. Kinetic Vanguard can instead spend one slot on its canonically capped standalone psionic Action; the slot count is therefore not an unconditional Attack-action count. Studied Attacks is granted only by a resolved miss after hit-instead effects and expires at the end of the next turn if unused. At level 20, Combat Prowess is an optimal decision after an observed attack-roll miss; using it resolves that miss as a hit, prevents that miss from establishing Studied Attacks, and the once-per-turn use resets at the start of the next turn. If an attack-roll bonus such as Precision Attack or Relentless is applied first but the modified roll still misses, Combat Prowess remains eligible.
+
+The planner optimizes each target, discipline, and cluster independently using that scenario’s known defenses, then averages those per-target envelopes across the roster. Its lexicographic objective is aggregate damage followed by primary-target damage. Pre-roll declarations can use only legally observed state; the planner has no lookahead into unobserved outcomes, and Combat Prowess is the only modeled post-roll Kinetic Vanguard decision. General rider conditions and save outcomes do not feed back into damage, and ally-turn accuracy and damage are excluded. Thermal Fracture’s Armor Class reduction is the one explicit self-attack feedback exception modeled by the damage planner. The `Selection` field ends with `representative=locally-modal-path|policy=observed-state-adaptive`: its listed declarations follow the locally most-probable resolution at each branch only to make the adaptive result inspectable. It is neither the complete policy nor a claim that the displayed path is the globally most-probable complete path.
+
+The maintained evaluator analytically enumerates d20, save, and damage-die outcomes. Historical seeds and trial counts remain compatibility metadata, while generated provenance identifies `exact_analytical_enumeration` as the evaluator. Current output is `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`, not freshly Monte Carlo-certified.
+
+### Numerical review evidence
+
+- Exact reevaluation of all 336 preserved historical policies agrees with the 25,000-trial rows at sampling scale: primary DPR mean absolute delta `0.0323169` and maximum `0.176034` (`0.289663%`); aggregate DPR mean absolute delta `0.0374951` and maximum `0.340120` (`0.281098%`).
+- The clean observed-state policy improves aggregate damage in 123 rows, ties 213, and regresses in none. Nine rows trade lower primary-target damage for higher aggregate damage under the declared aggregate-first objective; the largest is level-20 Lich Psychokinesis, cluster 3 (primary `-6.26215`, aggregate `+2.06485`).
+- Reviewed differences come from corrected struck-target parity for Branching Bolt and Electron Burst, state-aware Thermal Fracture decisions, and optimal observed-state Studied Attacks, Combat Prowess, and Overload Mastery timing. Historical outputs were not normalized back into the implementation.
+- The fixed benchmark limits still apply: 28 equally weighted SRD targets, three rounds, legal configured positioning, no target death or ally damage, Advanced Training disabled, and delayed Mass Levitation target-turn damage excluded.
 
 Damage produces separate primary-target and aggregate-cluster DPR rows. Headline percentages use displayed equal-weight roster aggregate values:
 
@@ -63,11 +74,15 @@ This is a best-available reliability envelope, not a condition-value or severity
 
 Expected order is Battle Master ≤ Eldritch Knight. COLD is below BM, IDEAL includes both boundaries, HOT is above EK, reversed order is ORDER CHECK, and a zero denominator is N/A. Percentages remain ordinary KV/BM and KV/EK ratios. `Boundary Delta %` is negative below BM for COLD, positive above EK for HOT, and `0.00` inside IDEAL.
 
+Independent review accounted for all 1,212 historical control rows: 1,181 like-for-like analytical rows differ from the 250,000-trial results by `0.0532515` percentage points on average and at most `0.3128`; three Kraken rows are documented canonical corrections, and 28 Beguile rows were retired because suggestion and mass suggestion do not impose Charmed. All 168 selected winners and all 16 matrix aggregates were recomputed independently.
+
+The reviewed matrix has four expected `ORDER CHECK` rows, one for each discipline at level 7: Eldritch Knight is `41.25` while Battle Master is `48.65625`. These rows reflect the frozen canonical comparator inputs (including the level-7 Eldritch Knight Intelligence modifier and Battle Master save/weapon values); they are an ordering diagnostic, not a failure or a tuning target.
+
 ## Primary comparators
 
-- Battle Master damage consumes only an ability modifier, weapon dice/type, Great Weapon Fighting flag, attack adjustment, configured Great Weapon Master bonus allowance, superiority-die size by level, and three-round use budget.
+- Battle Master damage consumes only the declared ability, weapon, magic-bonus, Great Weapon Fighting, Great Weapon Master, Graze, superiority-die, Relentless, Hew, and tactical-policy inputs. Within the frozen three-round horizon, it maximizes expected damage from legally observed state: after an observed attack roll it may retain its resources or use at most one superiority/Relentless die; that die adds damage on a hit or modifies the attack roll on a miss and is consumed before its outcome is known. A failed attack-roll bonus can still be followed by Combat Prowess. Relentless is one zero-pool-cost d8 per turn, Hew is an optional once-per-round bonus attack after an observed critical, and the Great Weapon Master proficiency bonus applies to every hit made as part of an Attack action but not to Hew's bonus attack.
 - Battle Master control consumes only minimum level, attack/save numbers, Magic Resistance policy, and the selected scenario IDs with probability-relevant save, hit gate, size limit, condition, or outcome fields.
-- Eldritch Knight damage consumes only an ability modifier, weapon dice/type, attack adjustment, configured True Strike extra-damage dice/type, and three-round use count.
+- Eldritch Knight damage consumes only the declared regular/True Strike ability modifiers, weapon and magic-bonus inputs, Dueling bonus, True Strike damage, and tactical policy. It uses exactly the configured number of True Strikes in each Attack action and chooses their positions before the current attack roll from observed state only; Studied Attacks and optional post-miss Combat Prowess can therefore change later choices, but no choice sees an unrolled attack or damage die.
 - Eldritch Knight control consumes only minimum level, attack/save numbers, Magic Resistance policy, and the selected scenario IDs with probability-relevant save, condition, and primer-hit fields.
 
 The comparator model identifies the 2024 fifth-edition ruleset. Scenario IDs identify only the frozen packages actually evaluated; they are not comprehensive maneuver, spell, or subclass inventories. No subclass descriptions, feature prose, maneuver descriptions, spell descriptions, sourcebook tables, flavor, or copied character-building instructions are retained.
@@ -78,7 +93,7 @@ Hunter Ranger and Open Hand Monk are excluded from primary matrices.
 
 ## Output and provenance
 
-Filenames derive from YAML `rules_version`, for example `kv-14-1-0-damage-comparison-matrix.csv`. Every matrix is emitted as CSV, Markdown, and self-contained HTML from one row model. Band text and the signed `Boundary Delta %` tuning distance are visible in every format; HTML color is supplemental. Provenance includes rules version, authority digest, roster digest, methodology-config digest, comparator-config digest, seed, trial setting, aggregation, and review status.
+Filenames derive from YAML `rules_version`, for example `kv-14-1-0-damage-comparison-matrix.csv`. Every matrix is emitted as CSV, Markdown, and self-contained HTML from one row model. Band text and the signed `Boundary Delta %` tuning distance are visible in every format; HTML color is supplemental. Provenance includes rules version, authority digest, roster digest, methodology-config digest, comparator-config digest, evaluator, compatibility-only seed/trial settings, aggregation, and review status.
 
 Generated outputs, caches, virtual environments, and `.codex-import/` are ignored and are not official source.
 
