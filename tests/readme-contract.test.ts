@@ -43,8 +43,14 @@ test("README and release process stay synchronized with canonical development st
 
   if (development !== "None") {
     assert.equal(development, `v${authority.rules_version}`);
-    assert.ok(readme.split("\n").includes(`- Development branch: \`${authority.rules_version}\``));
-    assert.match(readme, /^- Implementation pull request: /m);
+  }
+
+  for (const field of ["Development branch", "Release candidate branch", "Implementation pull request", "Release candidate status"]) {
+    assert.doesNotMatch(
+      readme,
+      new RegExp(`^- ${field.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}:`, "m"),
+      `README must not track mutable ${field.toLowerCase()} metadata`
+    );
   }
 
   for (const heading of ["Release status", "Publication interface", "Commands", "Architecture", "Licensing", "Development and release discipline"]) {
@@ -71,6 +77,7 @@ test("README and release process stay synchronized with canonical development st
   assert.match(checklist, /Protect main/);
   assert.match(checklist, /LICENSE\.md/);
   assert.match(checklist, /NOTICE\.md/);
+  assert.match(checklist, /mutable branch and pull-request pointers/i);
 
   assert.match(pullRequestTemplate, /RELEASE_CHECKLIST\.md/);
   assert.match(pullRequestTemplate, /README\.md/);
