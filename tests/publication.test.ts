@@ -605,7 +605,7 @@ const calculatorStandaloneFeatures=[
   ["telekinetic_slam","Telekinetic Slam",15] as const,["mass_levitation","Mass Levitation",20] as const,
   ["forked_lightning","Forked Lightning",15] as const,["ball_lightning","Ball Lightning",20] as const
 ] as const;
-const calculatorFeatures=[["common_manifested_strike","Manifested Strike",3] as const,...calculatorRiders,...calculatorStandaloneFeatures] as const;
+const calculatorFeatures=[...calculatorRiders,...calculatorStandaloneFeatures] as const;
 const normalizedCalculatorText=(element:Element)=>element.textContent?.replace(/\s+/g," ").trim()??"";
 const exactCalculatorTextCount=(root:Element,expected:string)=>[root,...root.querySelectorAll("*")].filter(element=>normalizedCalculatorText(element)===expected).length;
 const assertCalculatorText=(root:Element,expected:string)=>assert.ok([root,...root.querySelectorAll("*")].some(element=>normalizedCalculatorText(element).includes(expected)),`Missing calculator text: ${expected}`);
@@ -632,20 +632,21 @@ const assertCalculatorPsiTotal=(root:Element,total:number)=>{
 };
 const assertCalculatorPsiFacts=(root:Element,cost:number,total:number)=>{assert.equal(exactCalculatorTextCount(root,`Psi cost: ${cost}`),1);assertCalculatorPsiTotal(root,total);};
 
-test("calculator exposes exactly three native selects, twenty-one feature choices, and the required Manifested Strike level 20 defaults",async()=>{
+test("calculator exposes four native selects, twenty supported feature choices, and the required Manifested Strike landing defaults",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
   const root=dom.window.document.querySelector<HTMLElement>("#calculator-root")!;assert.ok(root);assert.equal(dom.window.location.hash,"#calculator");
-  const feature=root.querySelector<HTMLSelectElement>("#calculator-feature")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!;
-  assert.deepEqual([...root.querySelectorAll("select")],[feature,level,modifier]);assert.deepEqual([feature,level,modifier].map(control=>control.tagName),["SELECT","SELECT","SELECT"]);
+  const featureGroup=root.querySelector<HTMLSelectElement>("#calculator-feature-group")!,feature=root.querySelector<HTMLSelectElement>("#calculator-feature")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!;
+  assert.deepEqual([...root.querySelectorAll("select")],[featureGroup,feature,level,modifier]);assert.deepEqual([featureGroup,feature,level,modifier].map(control=>control.tagName),["SELECT","SELECT","SELECT","SELECT"]);
   const labelText=(control:HTMLSelectElement)=>{const label=root.querySelector<HTMLLabelElement>(`label[for="${control.id}"]`)!;assert.ok(label);const clone=label.cloneNode(true) as HTMLLabelElement;clone.querySelector(`#${control.id}`)?.remove();return clone.textContent?.trim();};
-  assert.deepEqual([feature,level,modifier].map(labelText),["Skill / Feature","Fighter Level","Psionic Ability Modifier"]);
-  assert.equal(feature.value,"common_manifested_strike");assert.equal(level.value,"20");assert.equal(modifier.value,"5");assert.equal(modifier.selectedOptions[0]?.textContent?.trim(),"+5");
-  for(const control of [feature,level,modifier])assert.equal(control.getAttribute("aria-controls"),"calculator-feature-results");
+  assert.deepEqual([featureGroup,feature,level,modifier].map(labelText),["Feature Group","Skill / Feature","Fighter Level","Psionic Ability Modifier"]);
+  assert.deepEqual([...featureGroup.options].map(option=>[option.value,option.textContent?.trim()]),[["","All"],["cryokinesis","Cryokinesis"],["pyrokinesis","Pyrokinesis"],["psychokinesis","Psychokinesis"],["electrokinesis","Electrokinesis"],["advanced_training","Advanced Training"]]);
+  assert.equal(featureGroup.value,"");assert.equal(feature.value,"");assert.equal(feature.selectedOptions[0]?.textContent?.trim(),"Select a skill / feature");assert.equal(level.value,"20");assert.equal(modifier.value,"5");assert.equal(modifier.selectedOptions[0]?.textContent?.trim(),"+5");
+  for(const control of [featureGroup,feature,level,modifier])assert.equal(control.getAttribute("aria-controls"),"calculator-feature-results");
   assert.deepEqual([...modifier.options].map(option=>option.textContent?.trim()),["+0","+1","+2","+3","+4","+5"]);
   assert.equal(root.querySelector("#target-ac,[name='target-ac'],[aria-label='Target AC']"),null);assert.doesNotMatch(root.textContent??"",/Target AC|hit chance/iu);
   assert.equal([...root.querySelectorAll("button")].some(button=>/^(?:Apply|Calculate)$/iu.test(button.textContent?.trim()??"")),false);
-  assert.equal(feature.options.length,21);assert.deepEqual([...feature.options].map(option=>option.value).sort(),calculatorFeatures.map(([id])=>id).sort());
+  assert.equal(feature.options.length,21);assert.deepEqual([...feature.options].map(option=>option.value).sort(),["",...calculatorFeatures.map(([id])=>id)].sort());assert.equal([...feature.options].some(option=>option.value==="common_manifested_strike"),false);
   for(const [id,title,minimumLevel] of calculatorFeatures){
     const option=[...feature.options].find(candidate=>candidate.value===id)!;assert.ok(option);assert.equal(option.textContent?.trim(),title);assert.equal(option.disabled,minimumLevel>20,id);
   }
@@ -670,6 +671,28 @@ test("calculator exposes exactly three native selects, twenty-one feature choice
   assert.deepEqual([...results.querySelectorAll(".calculator__effects")].map(section=>section.getAttribute("aria-label")),["Target and effect","Target and effect","Target and effect"]);
   assert.equal(exactCalculatorTextCount(results,"Target and effect"),0);
   assert.doesNotMatch(results.textContent??"",/\bT[012] (?:Base|Overload):|Changes from Tier/iu);
+  await settleOnboarding();dom.window.close();
+});
+
+test("calculator feature groups project canonical primary rules areas and preserve or clear selection state correctly",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
+  const document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!,featureGroup=root.querySelector<HTMLSelectElement>("#calculator-feature-group")!,feature=root.querySelector<HTMLSelectElement>("#calculator-feature")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!,results=root.querySelector<HTMLElement>("#calculator-feature-results")!;
+  const entityById=new Map(authority.entities.map(entity=>[entity.id,entity])),areaById=new Map(authority.vocabularies.rules_areas!.map(area=>[area.id,area]));
+  const sortedSupported=[...authority.calculator.features].sort((left,right)=>{const leftEntity=entityById.get(left.entity_id)!,rightEntity=entityById.get(right.entity_id)!,leftArea=areaById.get(leftEntity.presentation_metadata.primary_rules_area)!,rightArea=areaById.get(rightEntity.presentation_metadata.primary_rules_area)!;return leftArea.order-rightArea.order||Number(leftEntity.level)-Number(rightEntity.level)||leftEntity.title.localeCompare(rightEntity.title);});
+  const expectedByGroup=new Map<string,string[]>();for(const item of sortedSupported){const area=entityById.get(item.entity_id)!.presentation_metadata.primary_rules_area,ids=expectedByGroup.get(area)??[];ids.push(item.entity_id);expectedByGroup.set(area,ids);}
+  const change=(control:HTMLSelectElement,value:string)=>{control.value=value;assert.equal(control.value,value);control.dispatchEvent(new dom.window.Event("change",{bubbles:true}));};
+  const optionIds=()=>[...feature.options].map(option=>option.value).filter(Boolean);
+  assert.deepEqual(optionIds(),sortedSupported.map(item=>item.entity_id));assert.equal(optionIds().includes("common_manifested_strike"),false);
+  for(const group of ["cryokinesis","pyrokinesis","psychokinesis","electrokinesis","advanced_training"]){
+    change(featureGroup,group);assert.deepEqual(optionIds(),expectedByGroup.get(group),group);assert.equal(feature.value,"");assert.equal(results.querySelector(":scope > h3")?.textContent,"Manifested Strike");
+  }
+  change(featureGroup,"pyrokinesis");change(feature,"cinder_lance");assert.equal(results.querySelector(":scope > h3")?.textContent,"Cinder Lance");const riderText=normalizedCalculatorText(results);
+  change(featureGroup,"");assert.equal(feature.value,"cinder_lance");assert.equal(results.querySelector(":scope > h3")?.textContent,"Cinder Lance");assert.equal(normalizedCalculatorText(results),riderText);
+  change(featureGroup,"pyrokinesis");assert.equal(feature.value,"cinder_lance");change(level,"11");change(modifier,"4");featureGroup.focus();change(featureGroup,"cryokinesis");
+  assert.equal(document.activeElement,featureGroup);assert.equal(feature.value,"");assert.equal(level.value,"11");assert.equal(modifier.value,"4");assert.equal(results.querySelector(":scope > h3")?.textContent,"Manifested Strike");assertCalculatorText(results,"Hit: 1d20 + 10");assertCalculatorText(results,"Damage: 1d10 + 4");assertCalculatorText(results,"Psionic Save DC: 16");
+  change(level,"17");assertCalculatorText(results,"Hit: 1d20 + 13");assertCalculatorText(results,"Damage: 1d12 + 4");change(modifier,"5");assertCalculatorText(results,"Hit: 1d20 + 14");assertCalculatorText(results,"Damage: 1d12 + 5");
+  assert.deepEqual({group:dom.window.history.state.calculatorFeatureGroup,selection:dom.window.history.state.calculatorSelection,level:dom.window.history.state.fighterLevel,modifier:dom.window.history.state.psiModifier},{group:"cryokinesis",selection:"",level:17,modifier:5});
   await settleOnboarding();dom.window.close();
 });
 

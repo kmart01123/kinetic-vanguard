@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "tokens": [
     {"id":"prototype_banner","role":"release_status_notice","placements":["banner"],"text":"NON-RELEASE PROTOTYPE"},
     {"id":"skip_to_content","role":"navigation","placements":["link"],"text":"Skip to main content"},
@@ -9,7 +9,10 @@
     {"id":"view_calculator","role":"navigation","placements":["link"],"text":"Calculator"},
     {"id":"calculator_heading","role":"section_heading","placements":["heading"],"text":"Calculator"},
     {"id":"calculator_controls_heading","role":"section_heading","placements":["heading"],"text":"Calculator controls"},
+    {"id":"calculator_feature_group_label","role":"control_label","placements":["label"],"text":"Feature Group"},
+    {"id":"calculator_feature_group_all","role":"filter_option","placements":["option"],"text":"All"},
     {"id":"calculator_feature_label","role":"control_label","placements":["label"],"text":"Skill / Feature"},
+    {"id":"calculator_feature_placeholder","role":"placeholder","placements":["option"],"text":"Select a skill / feature"},
     {"id":"calculator_level_label","role":"control_label","placements":["label"],"text":"Fighter Level"},
     {"id":"calculator_modifier_label","role":"control_label","placements":["label"],"text":"Psionic Ability Modifier"},
     {"id":"calculator_manifested_strike_heading","role":"section_heading","placements":["heading"],"text":"Manifested Strike"},
