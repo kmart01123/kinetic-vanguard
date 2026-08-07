@@ -2,6 +2,10 @@
   "version": 1,
   "inputs": [
     {"path":"KineticVanguard.yaml","role":"rules_authority"},
+    {"path":"LICENSE.md","role":"component_license_index"},
+    {"path":"LICENSE-CODE","role":"software_license"},
+    {"path":"LICENSE-CONTENT","role":"original_content_license_notice"},
+    {"path":"NOTICE.md","role":"attribution_notice"},
     {"path":"schema/KineticVanguard.schema.json","role":"canonical_schema"},
     {"path":"schema/rules-adjacent-constraints.yaml","role":"schema_constraint_register"},
     {"path":"policy/rules-versioning.md","role":"rules_version_policy"},
@@ -54,6 +58,7 @@
     {"path":"tests/filter.test.ts","role":"test_source"},
     {"path":"tests/harness-authority.test.ts","role":"test_source"},
     {"path":"tests/layout.browser.ts","role":"test_source"},
-    {"path":"tests/publication.test.ts","role":"test_source"}
+    {"path":"tests/publication.test.ts","role":"test_source"},
+    {"path":"tests/license-contract.test.ts","role":"test_source"}
   ]
 }

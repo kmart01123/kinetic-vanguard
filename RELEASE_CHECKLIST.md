@@ -25,14 +25,18 @@ Use this checklist for every development line and release. The README is a maint
   - `.github/workflows/ci.yml` and artifact naming;
   - actual build commands and output paths;
   - current interface, browser, accessibility, offline, and print guarantees;
-  - `LICENSE.md` and `NOTICE.md`.
+  - `LICENSE.md` and `NOTICE.md`;
+  - `docs/licensing-audit.md` and any documented unresolved maintainer/legal questions.
 - [ ] Confirm the README does not describe an older active release, obsolete artifact name, or resolved follow-up.
 - [ ] Confirm the README summarizes the project without duplicating canonical rules text.
 - [ ] Run `npm run harness:validate` and `npm run test:harness`.
 - [ ] Confirm harness outputs derive filenames and provenance from canonical `rules_version` and authority digest.
+- [ ] Confirm every harness CSV carries structured component/SRD/comparator notices and matrix Markdown/HTML exposes the same licensing-and-notices section.
 - [ ] Confirm `.codex-import/`, generated benchmark results, caches, virtual environments, and downloaded archives are absent from tracked files and `build/inputs.json`.
 - [ ] Confirm BM/EK assumptions remain minimal and isolated under `harness/comparators/`, absent from canonical YAML, separately hashed in report provenance, and covered by the third-party notice.
 - [ ] Record current harness certification/review status honestly; historical certification does not automatically carry forward.
+- [ ] Confirm the build manifest declares and hashes `LICENSE.md`, `LICENSE-CODE`, `LICENSE-CONTENT`, and `NOTICE.md`.
+- [ ] Confirm generated HTML retains scoped copyright, exact SRD attribution, the SRD modification/disclaimer notices, canonical license URLs, and no blanket license claim.
 - [ ] Run the complete validation suite and `git diff --check`.
 - [ ] Confirm all review conversations are resolved.
 - [ ] Confirm the branch is up to date with `main`.
@@ -47,6 +51,7 @@ Use this checklist for every development line and release. The README is a maint
 - [ ] Add an idempotent publication workflow that verifies the frozen commit.
 - [ ] Create or verify the annotated `vX.Y.Z` tag.
 - [ ] Publish or update the GitHub Release and upload all required assets.
+- [ ] If `npm run promote` is used, confirm the deployable contains the HTML plus all four legal assets and no stale files.
 - [ ] Update `README.md`:
   - promote the new version to current published release;
   - link the permanent tag and GitHub Release;
