@@ -6,15 +6,11 @@ Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighte
 
 ## Release status
 
-- Current published release: **v14.0.0**
-- Current development line: **v14.1.0**
-- Development branch: `14.1.0`
-- Release candidate branch: `release-prep/14.1.0`
-- Implementation pull request: [#28 — Release Kinetic Vanguard v14.1.0](https://github.com/kmart01123/kinetic-vanguard/pull/28)
-- Release candidate status: feature-complete after merged PRs #20, #24, #25, #26, and #27; final release metadata and publication remain.
+- Current published release: **v14.1.0**
+- Current development line: **None**
 - Canonical rules authority: `KineticVanguard.yaml`
 
-Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v14.0.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.0.0).
+Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v14.1.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.1.0).
 
 Version 14.0.0 introduced the deterministic offline Calculator, advanced the authority schema to 2.0.0 for semantic rule and example structure, made Barrier require Concentration at Tier 0 and Tier 1, aligned Explosion/Implosion Tier 1 geometry, and made the canonical rules version the publication’s sole product version. Detailed changes belong in `CHANGELOG.md` and the generated publication rather than being duplicated here.
 
@@ -23,7 +19,7 @@ Version 14.1.0 restores maintained damage and control benchmark harness source. 
 <!-- BEGIN GENERATED BALANCE MATRICES -->
 ## Balance benchmark snapshot
 
-**Unreleased development snapshot** — canonical rules **v14.1.0**; current published release **v14.0.0**.
+**Published snapshot** — canonical rules **v14.1.0**.
 
 Profile: `official_default_25_percent_hp`. Numerical review status: `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`. These are exact analytical full-roster results, not Monte Carlo estimates.
 
