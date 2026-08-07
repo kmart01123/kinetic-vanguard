@@ -7,12 +7,16 @@ Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighte
 ## Release status
 
 - Current published release: **v14.0.0**
-- Current development line: **None**
+- Current development line: **v14.1.0**
+- Development branch: `14.1.0`
+- Implementation pull request: [#20 — v14.1: Restore YAML-driven damage and control harnesses](https://github.com/kmart01123/kinetic-vanguard/pull/20), implementing [issue #19](https://github.com/kmart01123/kinetic-vanguard/issues/19)
 - Canonical rules authority: `KineticVanguard.yaml`
 
 Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v14.0.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.0.0).
 
 Version 14.0.0 introduced the deterministic offline Calculator, advanced the authority schema to 2.0.0 for semantic rule and example structure, made Barrier require Concentration at Tier 0 and Tier 1, aligned Explosion/Implosion Tier 1 geometry, and made the canonical rules version the publication’s sole product version. Detailed changes belong in `CHANGELOG.md` and the generated publication rather than being duplicated here.
+
+Version 14.1.0 restores maintained damage and control benchmark harness source. The harnesses use the same validated canonical mechanics as the Calculator where their needs overlap, retain Battle Master and Eldritch Knight as the primary comparators, and produce versioned CSV, Markdown, and self-contained HTML matrices. Benchmark tooling remains developer-only and is not part of the player-facing Calculator.
 
 ## Publication interface
 
@@ -43,9 +47,13 @@ npm test
 npm run build
 npm run test:determinism
 npm run test:layout
+npm run harness:validate
+npm run test:harness
 ```
 
+Optional full-roster commands are `npm run harness:damage -- --output-dir harness/results/damage` and `npm run harness:control -- --output-dir harness/results/control`. Generated results are ignored. See `harness/README.md` for methodology, provenance, matrix interpretation, and current numerical-review status.
 `npm run build` writes the development publication to `artifacts/KineticVanguard.prototype.html`. It always carries a visible and accessibility-exposed `NON-RELEASE PROTOTYPE` identity.
+
 
 An authorized release build uses:
 
@@ -68,6 +76,8 @@ The top-level onboarding authority is canonical and validated but remains outsid
 
 The completed one-time Markdown migration has been retired. Contributors edit `KineticVanguard.yaml` directly; there is no Markdown synchronization step.
 
+The maintained Python harnesses consume a deterministic runtime projection emitted by the existing TypeScript YAML loader and semantic validator. Kinetic Vanguard mechanics remain exclusively in YAML; project-authored methodology remains in `harness/config/`; minimal BM/EK third-party comparator parameters remain isolated in `harness/comparators/`; and pinned SRD roster data remains in `harness/data/`.
+
 ## Licensing
 
 Kinetic Vanguard uses component-based licensing:
@@ -77,6 +87,8 @@ Kinetic Vanguard uses component-based licensing:
 - SRD 5.2.1-derived material: CC BY 4.0.
 
 The NonCommercial and ShareAlike terms do not restrict or relicense SRD-derived material. See `LICENSE.md`, `LICENSE-CODE`, `LICENSE-CONTENT`, and `NOTICE.md` for the exact boundaries and required attribution.
+
+Battle Master and Eldritch Knight are unofficial third-party comparative benchmarks, not project rules content. The project licenses do not grant rights in Wizards-owned material outside the SRD; see `NOTICE.md`.
 
 ## Development and release discipline
 

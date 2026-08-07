@@ -84,9 +84,37 @@
         "tiers":{"type":"array","items":{"$ref":"#/$defs/calculatorTier"},"minItems":3,"maxItems":3}
       }
     },
+    "harnessMastery": {
+      "type":"object","additionalProperties":false,"required":["kind","control_outcomes"],
+      "properties":{"kind":{"enum":["graze","slow","push","sap"]},"damage":{"const":"psionic_ability_modifier"},"damage_required":{"type":"boolean"},"maximum_size":{"enum":["tiny","small","medium","large","huge","gargantuan"]},"control_outcomes":{"type":"array","items":{"enum":["speed_reduction","forced_movement","attack_disadvantage"]},"uniqueItems":true}}
+    },
+    "harnessDiscipline": {
+      "type":"object","additionalProperties":false,"required":["id","damage_type","signature_save","mastery"],
+      "properties":{"id":{"enum":["pyrokinesis","cryokinesis","psychokinesis","electrokinesis"]},"damage_type":{"enum":["fire","cold","force","lightning"]},"signature_save":{"enum":["strength","constitution","dexterity","charisma"]},"mastery":{"$ref":"#/$defs/harnessMastery"}}
+    },
+    "harnessTargeting": {
+      "type":"object","additionalProperties":false,"required":["tier","kind"],
+      "properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"kind":{"enum":["fixed_additional","proficiency_bonus_additional","cluster_remainder"]},"additional_targets":{"type":"integer","minimum":1}}
+    },
+    "harnessControlEffect": {
+      "type":"object","additionalProperties":false,"required":["gate","duration"],
+      "properties":{"gate":{"enum":["on_reach","on_failed_save","while_in_area"]},"conditions":{"type":"array","items":{"enum":["blinded","charmed","incapacitated","prone","restrained","stunned"]},"uniqueItems":true},"outcomes":{"type":"array","items":{"enum":["attack_disadvantage","forced_movement","movement_option_denial","reaction_denial","speed_reduction","speed_zero"]},"uniqueItems":true},"duration":{"enum":["instantaneous","until_end_current_turn","until_start_next_turn","until_end_next_turn","while_in_area","one_minute_concentration","one_hour","eight_hours"]},"target_role":{"enum":["primary","secondary","all"]},"requires_condition":{"enum":["blinded","charmed","incapacitated","prone","restrained","stunned"]}}
+    },
+    "harnessControlTier": {
+      "type":"object","additionalProperties":false,"required":["tier","application","effects"],
+      "properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"application":{"enum":["failed_save","no_save"]},"save":{"enum":["strength","constitution","dexterity","intelligence","charisma","discipline_signature"]},"hit_gated":{"type":"boolean"},"effects":{"type":"array","items":{"$ref":"#/$defs/harnessControlEffect"},"minItems":1},"maximum_size":{"enum":["tiny","small","medium","large","huge","gargantuan"]},"required_creature_type":{"enum":["humanoid"]},"repeat_save_trigger":{"const":"start_of_affected_turn"},"repeat_save_disadvantage":{"type":"boolean"}}
+    },
+    "harnessFeatureRule": {
+      "type":"object","additionalProperties":false,"required":["entity_id","discipline_ids","damage_type","repeatability"],
+      "properties":{"entity_id":{"$ref":"#/$defs/id"},"discipline_ids":{"type":"array","items":{"enum":["pyrokinesis","cryokinesis","psychokinesis","electrokinesis"]},"minItems":1,"uniqueItems":true},"damage_type":{"enum":["discipline","cold","fire","force","lightning","psychic"]},"repeatability":{"enum":["unlimited","once_per_attack_action"]},"ignore_resistance_tiers":{"type":"array","items":{"type":"integer","minimum":0,"maximum":2},"uniqueItems":true},"replaces_mastery":{"type":"boolean"},"requires_additional_target":{"type":"boolean"},"targeting_by_tier":{"type":"array","items":{"$ref":"#/$defs/harnessTargeting"}},"armor_class_reduction_by_tier":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["tier","value"],"properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"value":{"type":"integer","minimum":1}}}},"damage_repetition":{"const":"remaining_round_starts"},"damage_timing":{"const":"start_of_affected_turn_after_repeat_save"},"starts_persistent_zone":{"type":"boolean"},"control_tiers":{"type":"array","items":{"$ref":"#/$defs/harnessControlTier"},"minItems":1}}
+    },
+    "harnessMechanics": {
+      "type":"object","additionalProperties":false,"required":["action_economy","manifested_strike","overload","disciplines","feature_rules"],
+      "properties":{"action_economy":{"type":"object","additionalProperties":false,"required":["standalone_psionic_action_limit_per_turn","action_surge_allows_additional_standalone_psionic_action"],"properties":{"standalone_psionic_action_limit_per_turn":{"const":1},"action_surge_allows_additional_standalone_psionic_action":{"const":false}}},"manifested_strike":{"type":"object","additionalProperties":false,"required":["entity_id","damage_type_source","holdout_damage_type","holdout_damage_divisor","critical_dice_multiplier","attack_bonus","save_dc"],"properties":{"entity_id":{"const":"common_manifested_strike"},"damage_type_source":{"const":"discipline"},"holdout_damage_type":{"const":"force"},"holdout_damage_divisor":{"const":2},"critical_dice_multiplier":{"const":2},"attack_bonus":{"type":"object","additionalProperties":false,"required":["base","components"],"properties":{"base":{"type":"integer"},"components":{"type":"array","items":{"enum":["psionic_ability_modifier","proficiency_bonus","psionic_focus"]},"minItems":1,"uniqueItems":true}}},"save_dc":{"type":"object","additionalProperties":false,"required":["base","components"],"properties":{"base":{"type":"integer"},"components":{"type":"array","items":{"enum":["psionic_ability_modifier","proficiency_bonus","psionic_focus"]},"minItems":1,"uniqueItems":true}}}}},"overload":{"type":"object","additionalProperties":false,"required":["entity_id","blood_tax_per_tier","tier_two_limit_per_attack_action","mastery"],"properties":{"entity_id":{"const":"common_overload"},"blood_tax_per_tier":{"type":"object","additionalProperties":false,"required":["base","proficiency_bonus_multiplier"],"properties":{"base":{"type":"integer"},"proficiency_bonus_multiplier":{"type":"integer","minimum":1}}},"tier_two_limit_per_attack_action":{"const":1},"mastery":{"type":"object","additionalProperties":false,"required":["minimum_level","uses_per_rest","blood_tax_divisor","minimum_per_overload"],"properties":{"minimum_level":{"const":18},"uses_per_rest":{"const":1},"blood_tax_divisor":{"const":2},"minimum_per_overload":{"const":1}}}}},"disciplines":{"type":"array","items":{"$ref":"#/$defs/harnessDiscipline"},"minItems":4,"maxItems":4},"feature_rules":{"type":"array","items":{"$ref":"#/$defs/harnessFeatureRule"},"minItems":20}}
+    },
     "calculator": {
       "type":"object","additionalProperties":false,
-      "required":["default_feature_id","default_fighter_level","default_psionic_ability_modifier","fighter_level_minimum","fighter_level_maximum","psionic_ability_modifier_minimum","psionic_ability_modifier_maximum","proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels","features"],
+      "required":["default_feature_id","default_fighter_level","default_psionic_ability_modifier","fighter_level_minimum","fighter_level_maximum","psionic_ability_modifier_minimum","psionic_ability_modifier_maximum","proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels","harness_mechanics","features"],
       "properties":{
         "default_feature_id":{"$ref":"#/$defs/id"},
         "default_fighter_level":{"type":"integer","minimum":3,"maximum":20},
@@ -100,6 +128,7 @@
         "psionic_focus_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
         "manifested_strike_die_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
         "tier_minimum_levels":{"type":"array","items":{"$ref":"#/$defs/calculatorTierMinimumLevel"},"minItems":3,"maxItems":3},
+        "harness_mechanics":{"$ref":"#/$defs/harnessMechanics"},
         "features":{"type":"array","items":{"$ref":"#/$defs/calculatorFeature"},"minItems":1}
       }
     },

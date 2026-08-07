@@ -53,6 +53,11 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: "3.13"
+
       - name: Install browser engines
         run: npx playwright install --with-deps chromium firefox
 
@@ -64,6 +69,12 @@ jobs:
 
       - name: Test
         run: npm test
+
+      - name: Validate harness authority projection
+        run: npm run harness:validate
+
+      - name: Test harnesses
+        run: npm run test:harness
 
       - name: Build prototype
         run: npm run build

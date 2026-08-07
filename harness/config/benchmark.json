@@ -1,0 +1,248 @@
+{
+  "format_version": 1,
+  "methodology": {
+    "status": "REVIEWED_WITH_DOCUMENTED_DIFFERENCES",
+    "historical_source": "Kinetic Vanguard v12.1.0 carry-forward of certified v12.0.0 methodology",
+    "levels": [
+      7,
+      11,
+      15,
+      20
+    ],
+    "rounds": 3,
+    "cluster_sizes": [
+      1,
+      3,
+      6
+    ],
+    "target_weighting": "equal_weight_within_level",
+    "target_death": false,
+    "ally_turns": false,
+    "legal_positioning_assumed": true,
+    "legendary_resistance": "metadata_only",
+    "damage_default_trials": 25000,
+    "control_default_trials": 250000,
+    "smoke_trials": 32,
+    "damage_seed": 1151001,
+    "control_seed": 1000001
+  },
+  "fighter_progression": {
+    "7": {
+      "attacks_per_action": 2,
+      "action_slots_by_round": [
+        2,
+        1,
+        1
+      ],
+      "studied_attacks": false,
+      "combat_prowess": false
+    },
+    "11": {
+      "attacks_per_action": 3,
+      "action_slots_by_round": [
+        2,
+        1,
+        1
+      ],
+      "studied_attacks": false,
+      "combat_prowess": false
+    },
+    "15": {
+      "attacks_per_action": 3,
+      "action_slots_by_round": [
+        2,
+        1,
+        1
+      ],
+      "studied_attacks": true,
+      "combat_prowess": false
+    },
+    "20": {
+      "attacks_per_action": 4,
+      "action_slots_by_round": [
+        2,
+        2,
+        1
+      ],
+      "studied_attacks": true,
+      "combat_prowess": true
+    }
+  },
+  "fighter_mechanics": {
+    "studied_attacks": {
+      "trigger": "resolved_miss_after_hit_instead_effects",
+      "benefit": "advantage_on_next_attack_against_same_target",
+      "expiry": "end_of_next_turn"
+    },
+    "combat_prowess": {
+      "trigger": "attack_roll_miss",
+      "effect": "hit_instead",
+      "uses_per_turn": 1,
+      "reset": "start_of_next_turn",
+      "activation_policy": "optimal_after_observed_miss",
+      "eligible_after_failed_attack_roll_bonus": true
+    }
+  },
+  "kv_profile": {
+    "id": "official_default_25_percent_hp",
+    "psionic_ability_modifier": 5,
+    "constitution_modifier": 3,
+    "hit_point_model": {
+      "first_level_base": 10,
+      "later_level_average": 6
+    },
+    "archery_attack_bonus": 2,
+    "blood_tax_hp_fraction": 0.25,
+    "advanced_training_policy": "disabled",
+    "attack_replacement_policy": "all_manifested_strikes"
+  },
+  "control_matrix": {
+    "metric": "roster-adjusted whole-package control stick %",
+    "aggregation": "per-target best legal scenario then equal-weight roster mean",
+    "kv_scenarios": {
+      "pyrokinesis": [
+        {
+          "entity_id": "flare",
+          "tiers": [
+            0,
+            1,
+            2
+          ]
+        }
+      ],
+      "cryokinesis": [
+        {
+          "entity_id": "glacial_spike",
+          "tiers": [
+            0,
+            1,
+            2
+          ]
+        },
+        {
+          "entity_id": "snow_chains",
+          "tiers": [
+            0,
+            1,
+            2
+          ]
+        },
+        {
+          "entity_id": "frozen_ground",
+          "tiers": [
+            0,
+            2
+          ]
+        },
+        {
+          "entity_id": "arctic_tempest",
+          "tiers": [
+            0,
+            2
+          ]
+        },
+        {
+          "entity_id": "absolute_zero",
+          "tiers": [
+            0,
+            1,
+            2
+          ]
+        }
+      ],
+      "psychokinesis": [
+        {
+          "entity_id": "telekinetic_shove",
+          "tiers": [
+            0,
+            1,
+            2
+          ]
+        },
+        {
+          "entity_id": "explosion_implosion",
+          "tiers": [
+            0,
+            1
+          ],
+          "target_roles": [
+            "primary",
+            "secondary"
+          ]
+        },
+        {
+          "entity_id": "telekinetic_slam",
+          "tiers": [
+            0,
+            1,
+            2
+          ]
+        },
+        {
+          "entity_id": "mass_levitation",
+          "tiers": [
+            0,
+            1
+          ]
+        }
+      ],
+      "electrokinesis": [
+        {
+          "entity_id": "static_discharge",
+          "tiers": [
+            2
+          ]
+        },
+        {
+          "entity_id": "electron_burst",
+          "tiers": [
+            2
+          ]
+        },
+        {
+          "entity_id": "forked_lightning",
+          "tiers": [
+            2
+          ],
+          "target_roles": [
+            "primary",
+            "secondary"
+          ]
+        },
+        {
+          "entity_id": "ball_lightning",
+          "tiers": [
+            2
+          ]
+        }
+      ]
+    }
+  },
+  "damage_matrix": {
+    "control_feedback": {
+      "rider_conditions_and_save_outcomes": "excluded_from_damage",
+      "ally_turn_accuracy_and_damage": "excluded",
+      "modeled_self_attack_exception": "thermal_fracture_ac_reduction"
+    },
+    "optimization": {
+      "scope": "per_target_discipline_cluster",
+      "objective": [
+        "aggregate_damage",
+        "primary_damage"
+      ],
+      "decision_timing": {
+        "pre_roll_declarations": "optimize_from_legally_observed_state",
+        "unobserved_outcome_lookahead": false,
+        "post_roll_decisions": [
+          "combat_prowess"
+        ]
+      }
+    },
+    "excluded_stateful_features": [
+      {
+        "entity_id": "mass_levitation",
+        "reason": "Follow-up damage occurs only after each affected creature starts its turn and fails its repeat save; the three-round damage benchmark excludes that stateful target-turn process."
+      }
+    ]
+  }
+}

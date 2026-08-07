@@ -1,0 +1,29 @@
+Level,Target,CR,AC,STR,DEX,CON,INT,WIS,CHA,Magic Resistance,Legendary Resistance,Size,Creature Type,Condition Immunities,Damage Resistances,Damage Immunities,Damage Vulnerabilities,HP,Source,Source Page,Source URL
+7,Air Elemental,5,15,2,5,2,-2,0,-2,False,0,Large,Elemental,Exhaustion; Grappled; Paralyzed; Petrified; Poisoned; Prone; Restrained; Unconscious,bludgeoning; lightning; piercing; slashing,poison; thunder,,90,SRD 5.2.1,258,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+7,Troll,5,15,4,1,5,-2,-1,-2,False,0,Large,Giant,,,,,94,SRD 5.2.1,333,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+7,Chimera,6,14,4,0,4,-4,2,0,False,0,Large,Monstrosity,,,,,114,SRD 5.2.1,273,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+7,Mage,6,15,-1,2,0,6,4,0,False,0,Medium,Humanoid,,,,,81,SRD 5.2.1,305,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+7,Young Black Dragon,7,18,4,5,3,1,3,2,False,0,Large,Dragon,,,acid,,127,SRD 5.2.1,264,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+7,Stone Giant,7,17,6,5,8,0,4,-1,False,0,Huge,Giant,,,,,126,SRD 5.2.1,330,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+7,Hydra,8,15,5,1,5,-4,0,-2,False,0,Huge,Monstrosity,Blinded; Charmed; Deafened; Frightened; Stunned; Unconscious,,,,184,SRD 5.2.1,300,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+7,Young Green Dragon,8,18,4,4,3,3,4,2,False,0,Large,Dragon,Poisoned,,poison,,136,SRD 5.2.1,293,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+11,Aboleth,10,17,5,3,6,8,6,4,False,3,Large,Aberration,,,,,150,SRD 5.2.1,258,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+11,Stone Golem,10,18,6,-1,5,-4,0,-5,True,0,Large,Construct,Charmed; Exhaustion; Frightened; Paralyzed; Petrified; Poisoned,,poison; psychic,,220,SRD 5.2.1,330,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+11,Deva,10,17,4,4,4,3,9,9,True,0,Medium,Celestial,Charmed; Exhaustion; Frightened,radiant,,,229,SRD 5.2.1,279,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+11,Archmage,12,17,0,2,1,9,6,3,True,0,Medium,Humanoid,Charmed,,psychic,,170,SRD 5.2.1,305,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+11,Adult White Dragon,13,18,6,5,6,-1,6,1,False,3,Huge,Dragon,,,cold,,200,SRD 5.2.1,340,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+11,Vampire,13,16,4,9,9,3,7,9,False,3,Medium,Undead,,necrotic,,,195,SRD 5.2.1,335,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+15,Adult Black Dragon,14,19,6,7,5,2,6,4,False,3,Huge,Dragon,,,acid,,195,SRD 5.2.1,264,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+15,Adult Green Dragon,15,19,6,6,5,4,7,4,False,3,Huge,Dragon,Poisoned,,poison,,207,SRD 5.2.1,294,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+15,Mummy Lord,15,17,4,0,3,5,9,3,True,3,Medium,Undead,Charmed; Exhaustion; Frightened; Paralyzed; Poisoned,,necrotic; poison,fire,187,SRD 5.2.1,309,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+15,Purple Worm,15,18,9,-2,11,-5,4,-3,False,0,Gargantuan,Monstrosity,,,,,247,SRD 5.2.1,316,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+15,Iron Golem,16,20,7,-1,5,-4,0,-5,True,0,Large,Construct,Charmed; Exhaustion; Frightened; Paralyzed; Petrified; Poisoned,,fire; poison; psychic,,252,SRD 5.2.1,302,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+15,Marilith,16,16,9,5,10,4,8,10,True,0,Large,Fiend,Poisoned,cold; fire; lightning,poison,,220,SRD 5.2.1,306,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+20,Balor,19,19,8,2,12,5,9,6,True,3,Huge,Fiend,Charmed; Frightened; Poisoned,cold; lightning,fire; poison,,287,SRD 5.2.1,261,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+20,Pit Fiend,20,21,8,8,7,6,10,7,True,4,Large,Fiend,Poisoned,cold,fire; poison,,337,SRD 5.2.1,314,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+20,Ancient White Dragon,20,20,8,6,8,0,7,4,False,4,Gargantuan,Dragon,,,cold,,333,SRD 5.2.1,341,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+20,Ancient Black Dragon,21,22,8,9,7,3,9,6,False,4,Gargantuan,Dragon,,,acid,,367,SRD 5.2.1,265,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+20,Lich,21,20,0,10,10,12,9,3,False,4,Medium,Undead,Charmed; Exhaustion; Frightened; Paralyzed; Poisoned,cold; lightning,necrotic; poison,,315,SRD 5.2.1,304,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+20,Solar,21,21,8,6,8,7,7,10,True,4,Large,Celestial,Charmed; Exhaustion; Frightened; Poisoned,,poison; radiant,,297,SRD 5.2.1,326,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+20,Kraken,23,18,17,7,15,6,11,5,False,4,Gargantuan,Monstrosity,Frightened; Grappled; Paralyzed; Restrained,,cold; lightning,,481,SRD 5.2.1,303,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
+20,Tarrasque,30,25,10,9,10,5,9,9,True,6,Gargantuan,Monstrosity,Charmed; Deafened; Frightened; Paralyzed; Poisoned,bludgeoning; piercing; slashing,fire; poison,,697,SRD 5.2.1,331,https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
