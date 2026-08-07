@@ -30,11 +30,13 @@ Use this checklist for every development line and release. The README is a maint
   - `docs/licensing-audit.md` and any documented unresolved maintainer/legal questions.
 - [ ] Confirm the README does not describe an older active release, obsolete artifact name, or resolved follow-up.
 - [ ] Confirm the README summarizes the project without duplicating canonical rules text.
-- [ ] After any intentional authority, methodology, roster, or comparator change, run `npm run readme:benchmarks`, investigate the numerical diff, and commit the synchronized README region; never normalize a difference merely to match an old snapshot.
+- [ ] After any intentional authority, methodology, roster, comparator, classification, or reporting change, run `npm run readme:benchmarks`, investigate the numerical diff, and commit the synchronized README region; never normalize a difference merely to match an old snapshot.
 - [ ] Run `npm run readme:benchmarks:check` and confirm it completes fresh full-roster exact analytical evaluation without relying on a tracked golden result or Monte Carlo sampling.
 - [ ] Run `npm run harness:validate` and `npm run test:harness`.
 - [ ] Confirm harness outputs derive filenames and provenance from canonical `rules_version` and authority digest.
 - [ ] Confirm every harness CSV carries structured component/SRD/comparator notices and matrix Markdown/HTML exposes the same licensing-and-notices section.
+- [ ] Confirm comparison-matrix CSVs retain benchmark type/scope, raw KV/Battle Master/Eldritch Knight aggregates, both ordinary ratios, explicit lower/upper comparator identities and boundary values, classification, signed `Boundary Delta %`, and provenance.
+- [ ] Keep README limited to the single-target damage and Control Reliability heat matrices; attach the complete generated comparison CSVs to the release or summarize/link them from the release writeup.
 - [ ] Confirm `.codex-import/`, generated benchmark results, caches, virtual environments, and downloaded archives are absent from tracked files and `build/inputs.json`.
 - [ ] Confirm BM/EK assumptions remain minimal and isolated under `harness/comparators/`, absent from canonical YAML, separately hashed in report provenance, and covered by the third-party notice.
 - [ ] Record current harness certification/review status honestly; historical certification does not automatically carry forward.

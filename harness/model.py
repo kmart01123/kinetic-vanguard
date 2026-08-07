@@ -129,13 +129,14 @@ def _weapon(value:Any,label:str)->dict[str,Any]:
 def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
     with path.open(encoding="utf-8") as stream:data=json.load(stream)
     data=_object(data,"comparator config");_exact_keys(data,{"format_version","source_ruleset","primary_comparator_ids","damage","control"},"comparator config")
-    expected=["battle_master","eldritch_knight"]
+    expected={"battle_master","eldritch_knight"}
     if data["format_version"]!=1:raise ValueError("Unsupported comparator format version")
     if data["source_ruleset"]!="2024 fifth-edition rules":raise ValueError("Unsupported comparator source ruleset")
-    if data["primary_comparator_ids"]!=expected:raise ValueError("Primary comparators must be Battle Master and Eldritch Knight")
+    primary=data["primary_comparator_ids"]
+    if not isinstance(primary,list) or len(primary)!=len(expected) or any(not isinstance(item,str) for item in primary) or set(primary)!=expected:raise ValueError("Primary comparators must be Battle Master and Eldritch Knight")
     damage=_object(data["damage"],"damage comparators");control=_object(data["control"],"control comparators")
-    if set(damage)!=set(expected):raise ValueError("Damage comparator set is incomplete or unsupported")
-    if set(control)!=set(expected):raise ValueError("Control comparator set is incomplete or unsupported")
+    if set(damage)!=expected:raise ValueError("Damage comparator set is incomplete or unsupported")
+    if set(control)!=expected:raise ValueError("Control comparator set is incomplete or unsupported")
     bm=_object(damage["battle_master"],"damage.battle_master");_exact_keys(bm,{"ability_modifier","weapon","magic_weapon_bonus_by_level","great_weapon_master_attack_action_bonus","graze_damage","hew_critical_bonus_attack_once_per_round","superiority_die_by_level","superiority_pool_by_level","relentless_minimum_level","relentless_die","tactical_policy"},"damage.battle_master")
     for key in ("ability_modifier","graze_damage","relentless_minimum_level","relentless_die"):_integer(bm[key],f"damage.battle_master.{key}",0)
     _weapon(bm["weapon"],"damage.battle_master.weapon");_level_map(bm["magic_weapon_bonus_by_level"],"damage.battle_master.magic_weapon_bonus_by_level");_level_map(bm["superiority_die_by_level"],"damage.battle_master.superiority_die_by_level");_level_map(bm["superiority_pool_by_level"],"damage.battle_master.superiority_pool_by_level")

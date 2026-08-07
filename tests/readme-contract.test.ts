@@ -130,44 +130,62 @@ test("README exposes one synchronized headline balance snapshot", async () => {
 
   for (const heading of [
     "Balance benchmark snapshot",
-    "Damage benchmark",
-    "Primary-target DPR",
-    "Aggregate cluster DPR",
-    "Control benchmark"
+    "Single-Target Damage",
+    "Control Reliability"
   ]) {
-    assert.match(region, new RegExp(`^#{2,4} ${heading}$`, "m"));
+    assert.match(region, new RegExp("^#{2,4} " + heading.replace(/[.*+?^$(){}|[\]\\]/g, "\\$&") + "$", "m"));
   }
-  assert.equal(occurrences(region, "| Fighter level |"), 3, "snapshot has two damage matrices and one control matrix");
-  assert.match(region, /KV DPR \(C1 \/ C3 \/ C6\)/);
-  assert.match(region, /KV as % of EK \(C1 \/ C3 \/ C6\)/);
-  assert.match(region, /KV as % of BM \(C1 \/ C3 \/ C6\)/);
-  assert.match(region, /Band \(C1 \/ C3 \/ C6\)/);
-  assert.match(region, /KV control %/);
+
+  const tableHeader = "| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |";
+  assert.equal(occurrences(region, tableHeader), 2, "snapshot has one single-target damage matrix and one control matrix");
+  assert.doesNotMatch(region, /^#### Cluster size /m);
+
+  const lines = region.split("\n");
+  const headerIndexes = lines.flatMap((line, index) => line === tableHeader ? [index] : []);
+  const expectedLevels = ["7", "11", "15", "20"];
+  const publicResult = /^(?:IDEAL|N\/A|COLD \(-\d+(?:\.\d+)?%\)|HOT \(\+\d+(?:\.\d+)?%\))$/;
+  let sawCold = false;
+  let sawHot = false;
+  for (const headerIndex of headerIndexes) {
+    assert.equal(lines[headerIndex + 1], "|---|---|---|---|---|");
+    const rows = lines.slice(headerIndex + 2, headerIndex + 6);
+    assert.equal(rows.length, 4);
+    rows.forEach((row, rowIndex) => {
+      const cells = row.split("|").slice(1, -1).map((cell) => cell.trim());
+      assert.equal(cells.length, 5, "heat row has one level and four discipline results");
+      assert.equal(cells[0], expectedLevels[rowIndex]);
+      for (const cell of cells.slice(1)) {
+        assert.match(cell, publicResult, "README heat cell contains only a public balance result");
+        sawCold ||= cell.startsWith("COLD ");
+        sawHot ||= cell.startsWith("HOT ");
+      }
+    });
+  }
+  assert.ok(sawCold, "current snapshot exposes COLD results");
+  assert.ok(sawHot, "current snapshot exposes HOT results");
+
+  const damageStart = region.indexOf("### Single-Target Damage");
+  const controlStart = region.indexOf("### Control Reliability");
+  assert.ok(damageStart >= 0 && controlStart > damageStart);
+  assert.match(region, /primary-target DPR at cluster size 1/);
+  assert.match(region, /This single-target benchmark evaluates each configured control package/);
+  assert.match(region, /All other primary-target and aggregate-cluster results remain in the generated detailed release reports/);
+  assert.match(region, /Battle Master and Eldritch Knight define the comparison envelope/);
+  assert.match(region, /IDEAL.*falls between.*inclusive/s);
+  assert.match(region, /COLD.*below both.*HOT.*above both/s);
+  assert.match(region, /signed distance outside the nearest envelope boundary/);
+  assert.match(region, /N\/A.*reserved for a comparison that cannot be evaluated/);
+  assert.match(
+    region,
+    /Control Reliability measures how often the configured control package takes effect\. It does not measure the relative severity, duration, area, or strategic value of different control effects\. A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered\./
+  );
+  assert.match(region, /Detailed release CSV, Markdown, and HTML reports retain raw/);
+  assert.doesNotMatch(region, /ORDER CHECK/);
+  assert.doesNotMatch(region, /KV DPR|KV control %|KV as % of EK|KV as % of BM/);
+  assert.doesNotMatch(region, /IDEAL \([^)]*%\)/);
+  assert.doesNotMatch(region, /COLD \(\+|HOT \(-/);
   for (const comparator of ["Eldritch Knight", "Battle Master"]) {
     assert.match(region, new RegExp(comparator));
-  }
-
-  const primaryStart = region.indexOf("#### Primary-target DPR");
-  const aggregateStart = region.indexOf("#### Aggregate cluster DPR");
-  const controlStart = region.indexOf("### Control benchmark");
-  assert.ok(primaryStart >= 0 && aggregateStart > primaryStart && controlStart > aggregateStart);
-  const primary = region.slice(primaryStart, aggregateStart);
-  const aggregate = region.slice(aggregateStart, controlStart);
-  const control = region.slice(controlStart);
-  const dataRowCount = (tableSection: string): number =>
-    [...tableSection.matchAll(/^\| \d+ \|/gm)].length;
-  assert.equal(dataRowCount(primary), 16, "primary-target matrix has every level/discipline row");
-  assert.equal(dataRowCount(aggregate), 16, "aggregate-cluster matrix has every level/discipline row");
-  assert.equal(dataRowCount(control), 16, "control matrix has every level/discipline row");
-
-  const damage = region.slice(region.indexOf("### Damage benchmark"), controlStart);
-  assert.match(damage, /expected comparator order: Eldritch Knight ≤ Battle Master/);
-  assert.match(control, /expected comparator order: Battle Master ≤ Eldritch Knight/);
-  assert.match(control, /Ratios remain ordinary KV\/comparator percentages and are not mathematically inverted/);
-  for (const section of [damage, control]) {
-    for (const band of ["COLD", "IDEAL", "HOT", "ORDER CHECK", "N/A"]) {
-      assert.ok(section.includes(`\`${band}\``), `${band} is defined in each matrix legend`);
-    }
   }
 
   for (const source of [
