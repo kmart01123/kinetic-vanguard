@@ -50,6 +50,513 @@ audits:
     id: example_play_common_system
     subject_ids:
       - common_example_play
+calculator:
+  default_feature_id: common_manifested_strike
+  default_fighter_level: 20
+  default_psionic_ability_modifier: 5
+  fighter_level_minimum: 3
+  fighter_level_maximum: 20
+  psionic_ability_modifier_minimum: 0
+  psionic_ability_modifier_maximum: 5
+  proficiency_bonus_bands:
+    - minimum_level: 3
+      maximum_level: 4
+      value: 2
+    - minimum_level: 5
+      maximum_level: 8
+      value: 3
+    - minimum_level: 9
+      maximum_level: 12
+      value: 4
+    - minimum_level: 13
+      maximum_level: 16
+      value: 5
+    - minimum_level: 17
+      maximum_level: 20
+      value: 6
+  psi_point_bands:
+    - minimum_level: 3
+      maximum_level: 4
+      value: 4
+    - minimum_level: 5
+      maximum_level: 6
+      value: 6
+    - minimum_level: 7
+      maximum_level: 8
+      value: 7
+    - minimum_level: 9
+      maximum_level: 10
+      value: 9
+    - minimum_level: 11
+      maximum_level: 12
+      value: 10
+    - minimum_level: 13
+      maximum_level: 14
+      value: 12
+    - minimum_level: 15
+      maximum_level: 16
+      value: 13
+    - minimum_level: 17
+      maximum_level: 18
+      value: 15
+    - minimum_level: 19
+      maximum_level: 20
+      value: 16
+  psionic_focus_bands:
+    - minimum_level: 3
+      maximum_level: 8
+      value: 1
+    - minimum_level: 9
+      maximum_level: 16
+      value: 2
+    - minimum_level: 17
+      maximum_level: 20
+      value: 3
+  manifested_strike_die_bands:
+    - minimum_level: 3
+      maximum_level: 4
+      value: 6
+    - minimum_level: 5
+      maximum_level: 10
+      value: 8
+    - minimum_level: 11
+      maximum_level: 16
+      value: 10
+    - minimum_level: 17
+      maximum_level: 20
+      value: 12
+  tier_minimum_levels:
+    - tier: 0
+      minimum_level: 3
+    - tier: 1
+      minimum_level: 3
+    - tier: 2
+      minimum_level: 10
+  features:
+    - entity_id: glacial_spike
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: fixed
+            resolution: always
+            value: 2
+        - tier: 1
+          damage:
+            kind: fixed
+            resolution: always
+            value: 2
+          save: constitution
+        - tier: 2
+          damage:
+            kind: fixed
+            resolution: always
+            value: 2
+          save: constitution
+    - entity_id: snow_chains
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: none
+            resolution: always
+          save: constitution
+        - tier: 1
+          damage:
+            kind: none
+            resolution: always
+          save: constitution
+        - tier: 2
+          damage:
+            kind: none
+            resolution: always
+          save: constitution
+    - entity_id: ember_bolt
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: fixed
+            resolution: always
+            value: 2
+        - tier: 1
+          damage:
+            kind: fixed
+            resolution: always
+            value: 4
+        - tier: 2
+          damage:
+            kind: fixed
+            resolution: always
+            value: 6
+    - entity_id: thermal_fracture
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: none
+            resolution: always
+        - tier: 1
+          damage:
+            kind: none
+            resolution: always
+        - tier: 2
+          damage:
+            kind: none
+            resolution: always
+    - entity_id: cinder_lance
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: manifested_strike_dice
+            resolution: always
+            count: 2
+        - tier: 1
+          damage:
+            kind: manifested_strike_dice
+            resolution: always
+            count: 3
+        - tier: 2
+          damage:
+            kind: manifested_strike_dice
+            resolution: always
+            count: 4
+    - entity_id: flare
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: dice
+            resolution: always
+            count: 3
+            sides: 10
+          save: dexterity
+        - tier: 1
+          damage:
+            kind: dice
+            resolution: always
+            count: 4
+            sides: 10
+        - tier: 2
+          damage:
+            kind: dice
+            resolution: always
+            count: 5
+            sides: 10
+    - entity_id: furnace_strike
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: dice
+            resolution: always
+            count: 5
+            sides: 10
+        - tier: 1
+          damage:
+            kind: dice
+            resolution: always
+            count: 7
+            sides: 10
+        - tier: 2
+          damage:
+            kind: dice
+            resolution: always
+            count: 9
+            sides: 10
+    - entity_id: telekinetic_shove
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: fixed
+            resolution: always
+            value: 2
+          save: strength
+        - tier: 1
+          damage:
+            kind: fixed
+            resolution: always
+            value: 2
+          save: strength
+        - tier: 2
+          damage:
+            kind: fixed
+            resolution: always
+            value: 2
+          save: strength
+    - entity_id: explosion_implosion
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: none
+            resolution: always
+          save: strength
+        - tier: 1
+          damage:
+            kind: none
+            resolution: always
+          save: strength
+        - tier: 2
+          damage:
+            kind: psionic_ability_modifier
+            resolution: failed_save
+          save: strength
+    - entity_id: static_discharge
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: fixed
+            resolution: always
+            value: 2
+        - tier: 1
+          damage:
+            kind: fixed
+            resolution: always
+            value: 2
+        - tier: 2
+          damage:
+            kind: fixed
+            resolution: always
+            value: 2
+          save: charisma
+    - entity_id: branching_bolt
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: manifested_strike_dice
+            resolution: always
+            count: 1
+        - tier: 1
+          damage:
+            kind: manifested_strike_dice
+            resolution: always
+            count: 1
+        - tier: 2
+          damage:
+            kind: manifested_strike_dice
+            resolution: always
+            count: 1
+    - entity_id: electron_burst
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 2
+            sides: 8
+          save: charisma
+        - tier: 1
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 3
+            sides: 8
+          save: charisma
+        - tier: 2
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 4
+            sides: 8
+          save: charisma
+    - entity_id: advanced_mind_shred
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: dice
+            resolution: always
+            count: 2
+            sides: 8
+        - tier: 1
+          damage:
+            kind: dice
+            resolution: always
+            count: 3
+            sides: 8
+        - tier: 2
+          damage:
+            kind: dice
+            resolution: always
+            count: 4
+            sides: 8
+    - entity_id: advanced_mind_lock
+      delivery: on_hit_rider
+      tiers:
+        - tier: 0
+          damage:
+            kind: none
+            resolution: always
+        - tier: 1
+          damage:
+            kind: none
+            resolution: always
+          save: intelligence
+        - tier: 2
+          damage:
+            kind: none
+            resolution: always
+          save: intelligence
+    - entity_id: arctic_tempest
+      delivery: standalone
+      tiers:
+        - tier: 0
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 8
+            sides: 10
+          save: constitution
+        - tier: 1
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 10
+            sides: 10
+          save: constitution
+        - tier: 2
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 12
+            sides: 10
+          save: constitution
+    - entity_id: absolute_zero
+      delivery: standalone
+      tiers:
+        - tier: 0
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 10
+            sides: 10
+          save: constitution
+        - tier: 1
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 12
+            sides: 10
+          save: constitution
+        - tier: 2
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 14
+            sides: 10
+          save: constitution
+    - entity_id: telekinetic_slam
+      delivery: standalone
+      tiers:
+        - tier: 0
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 8
+            sides: 10
+          save: strength
+        - tier: 1
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 10
+            sides: 10
+          save: strength
+        - tier: 2
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 12
+            sides: 10
+          save: strength
+    - entity_id: mass_levitation
+      delivery: standalone
+      tiers:
+        - tier: 0
+          damage:
+            kind: none
+            resolution: always
+          save: strength
+        - tier: 1
+          damage:
+            kind: none
+            resolution: always
+          save: strength
+        - tier: 2
+          damage:
+            kind: psionic_ability_modifier
+            resolution: failed_save
+            multiplier: 2
+          save: strength
+    - entity_id: forked_lightning
+      delivery: standalone
+      tiers:
+        - tier: 0
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 8
+            sides: 8
+          secondary_damage:
+            kind: dice
+            resolution: half_on_success
+            count: 4
+            sides: 8
+          save: charisma
+        - tier: 1
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 10
+            sides: 8
+          secondary_damage:
+            kind: dice
+            resolution: half_on_success
+            count: 5
+            sides: 8
+          save: charisma
+        - tier: 2
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 12
+            sides: 8
+          secondary_damage:
+            kind: dice
+            resolution: half_on_success
+            count: 6
+            sides: 8
+          save: charisma
+    - entity_id: ball_lightning
+      delivery: standalone
+      tiers:
+        - tier: 0
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 4
+            sides: 8
+          save: charisma
+        - tier: 1
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 4
+            sides: 8
+          save: charisma
+        - tier: 2
+          damage:
+            kind: dice
+            resolution: half_on_success
+            count: 4
+            sides: 8
+          save: charisma
 entities:
   - classifications:
       entity_kind: system
@@ -88,26 +595,82 @@ entities:
               type: text
         style: unordered
         type: list
-      - inlines:
-          - text: Passive and triggered features are not riders unless their text says otherwise. Advanced Training riders include Mind Shred and Mind Lock. A Manifested Strike can carry either one Discipline rider or one Advanced Training rider, never both. A rider that uses Manifested Strike dice always uses the base die for your Fighter level.
-            type: text
-        type: paragraph
-      - inlines:
-          - text: You can mix weapon attacks and Manifested Strikes in any order within the Attack action. After each attack resolves, you can choose a different target, rider, Overload tier, or damage-type option for the next attack. A per-Attack-action limit remains spent once used. Action Surge creates a new Attack action and refreshes those limits, including the limit of one Tier 2 rider per Attack action.
-            type: text
-        type: paragraph
+      - items:
+          - - text: "Feature classification: "
+              type: strong
+            - text: Passive and triggered features are not riders unless their text says otherwise.
+              type: text
+          - - text: "Advanced Training riders: "
+              type: strong
+            - text: Advanced Training riders include Mind Shred and Mind Lock.
+              type: text
+          - - text: "Rider exclusivity: "
+              type: strong
+            - text: A Manifested Strike can carry either one Discipline rider or one Advanced Training rider, never both.
+              type: text
+          - - text: "Manifested Strike dice: "
+              type: strong
+            - text: A rider that uses Manifested Strike dice always uses the base die for your Fighter level.
+              type: text
+        style: unordered
+        type: list
+      - items:
+          - - text: "Attack order: "
+              type: strong
+            - text: You can mix weapon attacks and Manifested Strikes in any order within the Attack action.
+              type: text
+          - - text: "Next attack: "
+              type: strong
+            - text: After each attack resolves, you can choose a different target, rider, Overload tier, or damage-type option for the next attack.
+              type: text
+          - - text: "Spent limits: "
+              type: strong
+            - text: A per-Attack-action limit remains spent once used.
+              type: text
+          - - text: "Action Surge: "
+              type: strong
+            - text: Action Surge creates a new Attack action and refreshes those limits, including the limit of one Tier 2 rider per Attack action.
+              type: text
+        style: unordered
+        type: list
       - inlines:
           - text: "Rider Target Parity: When a rider creates a chain, arc, burst, Sphere, or other multi-creature effect centered on or originating from the creature struck by Manifested Strike, the struck creature is included among the affected creatures unless the effect’s geometry makes a particular movement impossible. Every affected creature otherwise resolves the same rider damage, saving throw, conditions, and applicable effects."
             type: text
         type: paragraph
+      - items:
+          - - text: "Standalone Action limit: "
+              type: strong
+            - text: You can activate only one standalone psionic feature that requires an Action on each of your turns.
+              type: text
+          - - text: "Action Surge: "
+              type: strong
+            - text: Action Surge can grant another Attack action, but it cannot be used to activate a second standalone psionic Action feature.
+              type: text
+        style: unordered
+        type: list
       - inlines:
-          - text: You can activate only one standalone psionic feature that requires an Action on each of your turns. Action Surge can grant another Attack action, but it cannot be used to activate a second standalone psionic Action feature. Unless a feature says otherwise, damage from a hit resolves before any saving throw imposed by a rider on that hit.
+          - text: Unless a feature says otherwise, damage from a hit resolves before any saving throw imposed by a rider on that hit.
             type: text
         type: paragraph
       - inlines:
-          - text: "Short Disruption Timing: Unless a feature says otherwise, reaction denial and attack-roll disadvantage imposed by an instantaneous Kinetic Vanguard feature last until the start of your next turn. Conditions use the duration stated by the feature. Zones and recurring-save effects use their own timing."
+          - text: "Short Disruption Timing:"
             type: text
         type: paragraph
+      - items:
+          - - text: "Reaction denial and attack-roll Disadvantage: "
+              type: strong
+            - text: Unless a feature says otherwise, reaction denial and attack-roll disadvantage imposed by an instantaneous Kinetic Vanguard feature last until the start of your next turn.
+              type: text
+          - - text: "Conditions: "
+              type: strong
+            - text: Conditions use the duration stated by the feature.
+              type: text
+          - - text: "Zones and recurring saves: "
+              type: strong
+            - text: Zones and recurring-save effects use their own timing.
+              type: text
+        style: unordered
+        type: list
       - inlines:
           - text: At Fighter level 3, choose one Kinetic Discipline; this choice is permanent. Your chosen Discipline grants five features across the subclass progression. Deflection Screen at 5th level and Phase Step at 10th level are universal psionic tools. Advanced Training III, IV, and V at 15th, 18th, and 20th levels grant three choices from the Advanced Training pool regardless of Discipline.
             type: text
@@ -126,105 +689,506 @@ entities:
         - common_features
     content:
       - activation:
-          - text: You take the Attack action and resolve three attacks against the same creature, one at a time. Immediately before attack 1, you declare Ember Bolt at Tier 2. It costs 0 Psi, and you pay 8 Blood Tax (2 × Proficiency Bonus). Immediately before attack 2, you declare Cinder Lance at Tier 0 and pay 3 Psi and no Blood Tax. Immediately before attack 3, you declare Ember Bolt at Tier 0; it costs 0 Psi and no Blood Tax. Each declared cost remains spent if its attack misses.
-            type: text
+          - inlines:
+              - text: You take the Attack action and resolve three attacks against the same creature, one at a time.
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Attack 1: "
+                  type: strong
+                - text: Immediately before attack 1, you declare Ember Bolt at Tier 2. It costs 0 Psi, and you pay 8 Blood Tax (2 × Proficiency Bonus).
+                  type: text
+              - - text: "Attack 2: "
+                  type: strong
+                - text: Immediately before attack 2, you declare Cinder Lance at Tier 0 and pay 3 Psi and no Blood Tax.
+                  type: text
+              - - text: "Attack 3: "
+                  type: strong
+                - text: Immediately before attack 3, you declare Ember Bolt at Tier 0; it costs 0 Psi and no Blood Tax.
+                  type: text
+            style: ordered
+            type: list
+          - inlines:
+              - text: Each declared cost remains spent if its attack misses.
+                type: text
+            type: paragraph
         damage:
-          - text: Attack 1 rolls 8 on its 1d10 and deals 8 + 4 + 6 from Ember Bolt at Tier 2 = 18 fire damage. Attack 2 rolls 6 for Manifested Strike and 7 and 4 for Cinder Lance’s two additional base Manifested Strike dice, dealing 6 + 7 + 4 + 4 = 21 fire damage. Attack 3 rolls 5 and deals 5 + 4 + 2 from Ember Bolt at Tier 0 = 11 fire damage. The total is 18 + 21 + 11 = 50 fire damage.
-            type: text
+          - items:
+              - - text: "Attack 1: "
+                  type: strong
+                - text: Rolls 8 on its 1d10 and deals 8 + 4 + 6 from Ember Bolt at Tier 2 = 18 fire damage.
+                  type: text
+              - - text: "Attack 2: "
+                  type: strong
+                - text: Rolls 6 for Manifested Strike and 7 and 4 for Cinder Lance’s two additional base Manifested Strike dice, dealing 6 + 7 + 4 + 4 = 21 fire damage.
+                  type: text
+              - - text: "Attack 3: "
+                  type: strong
+                - text: Rolls 5 and deals 5 + 4 + 2 from Ember Bolt at Tier 0 = 11 fire damage.
+                  type: text
+            style: ordered
+            type: list
+          - inlines:
+              - text: The total is 18 + 21 + 11 = 50 fire damage.
+                type: text
+            type: paragraph
         discipline: pyrokinesis
         effects:
-          - text: These rider tiers add only focused damage. They cause no forced movement, Speed change, condition, or area effect.
-            type: text
+          - inlines:
+              - text: These rider tiers add only focused damage. They cause no forced movement, Speed change, condition, or area effect.
+                type: text
+            type: paragraph
         heading:
           - text: Pyrokinesis
             type: text
         result:
-          - text: You end 40 feet from the creature with 7 of 10 Psi and 8 Hit Points lost to Blood Tax. You used your Attack action and all three attacks, but no concentration, bonus action, reaction, or movement. The creature has taken 50 fire damage.
-            type: text
+          - items:
+              - - text: "Resources: "
+                  type: strong
+                - text: You end 40 feet from the creature with 7 of 10 Psi and 8 Hit Points lost to Blood Tax.
+                  type: text
+              - - text: "Action economy: "
+                  type: strong
+                - text: You used your Attack action and all three attacks, but no concentration, bonus action, reaction, or movement.
+                  type: text
+              - - text: "Outcome: "
+                  type: strong
+                - text: The creature has taken 50 fire damage.
+                  type: text
+            style: unordered
+            type: list
         rolls_or_saves:
-          - text: Your attack bonus is +10 (+4 Charisma, +4 Proficiency Bonus, +2 Psionic Focus). You roll 9 + 10 = 19, 13 + 10 = 23, and 7 + 10 = 17; all three attacks hit Armor Class 16. These Ember Bolt and Cinder Lance tiers require no saving throws.
-            type: text
+          - inlines:
+              - text: Your attack bonus is +10 (+4 Charisma, +4 Proficiency Bonus, +2 Psionic Focus).
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Attack 1: "
+                  type: strong
+                - text: You roll 9 + 10 = 19 and hit Armor Class 16.
+                  type: text
+              - - text: "Attack 2: "
+                  type: strong
+                - text: You roll 13 + 10 = 23 and hit Armor Class 16.
+                  type: text
+              - - text: "Attack 3: "
+                  type: strong
+                - text: You roll 7 + 10 = 17 and hit Armor Class 16.
+                  type: text
+            style: ordered
+            type: list
+          - inlines:
+              - text: These Ember Bolt and Cinder Lance tiers require no saving throws.
+                type: text
+            type: paragraph
         setup:
-          - text: You are a level 11 Pyrokinesis fighter 40 feet from one hostile creature with Armor Class 16 and no fire resistance or immunity. You have three attacks, one free hand, 10 Psi, Proficiency Bonus +4, Charisma +4, a 1d10 Manifested Strike die, and enough Hit Points to pay Blood Tax.
-            type: text
+          - items:
+              - - text: "Situation: "
+                  type: strong
+                - text: You are a level 11 Pyrokinesis fighter 40 feet from one hostile creature with Armor Class 16 and no fire resistance or immunity.
+                  type: text
+              - - text: "Resources: "
+                  type: strong
+                - text: You have three attacks, one free hand, 10 Psi, Proficiency Bonus +4, Charisma +4, a 1d10 Manifested Strike die, and enough Hit Points to pay Blood Tax.
+                  type: text
+            style: unordered
+            type: list
         title:
           - text: Focused Fire — Level 11 Pyrokinesis
             type: text
         type: example_play_section
       - activation:
-          - text: As a bonus action, you activate standalone Vectored Thrust at Tier 1. You spend 2 Psi, take 4 Blood Tax (1 × Proficiency Bonus), and begin concentrating for up to 10 minutes. The startup Blood Tax requires no concentration saving throw. You use the 30-foot fly Speed to move to a point 30 feet from the creature’s starting position, then take the Attack action. Immediately before attack 1, you declare Telekinetic Shove at Tier 0; it costs 0 Psi. Attacks 2 and 3 are plain Manifested Strikes.
-            type: text
+          - items:
+              - - text: "Vectored Thrust: "
+                  type: strong
+                - text: As a bonus action, you activate standalone Vectored Thrust at Tier 1. You spend 2 Psi, take 4 Blood Tax (1 × Proficiency Bonus), and begin concentrating for up to 10 minutes. The startup Blood Tax requires no concentration saving throw.
+                  type: text
+              - - text: "Movement: "
+                  type: strong
+                - text: You use the 30-foot fly Speed to move to a point 30 feet from the creature’s starting position, then take the Attack action.
+                  type: text
+              - - text: "Attack 1: "
+                  type: strong
+                - text: Immediately before attack 1, you declare Telekinetic Shove at Tier 0; it costs 0 Psi.
+                  type: text
+              - - text: "Attacks 2 and 3: "
+                  type: strong
+                - text: Attacks 2 and 3 are plain Manifested Strikes.
+                  type: text
+            style: ordered
+            type: list
         damage:
-          - text: Attack 1 rolls 7 on its 1d10 and deals 7 + 4 Intelligence + 2 from Telekinetic Shove = 13 force damage. Attack 2 rolls 6 and deals 6 + 4 = 10 force damage. Attack 3 rolls 4 and deals 4 + 4 = 8 force damage. The total is 13 + 10 + 8 = 31 force damage.
-            type: text
+          - items:
+              - - text: "Attack 1: "
+                  type: strong
+                - text: Rolls 7 on its 1d10 and deals 7 + 4 Intelligence + 2 from Telekinetic Shove = 13 force damage.
+                  type: text
+              - - text: "Attack 2: "
+                  type: strong
+                - text: Rolls 6 and deals 6 + 4 = 10 force damage.
+                  type: text
+              - - text: "Attack 3: "
+                  type: strong
+                - text: Rolls 4 and deals 4 + 4 = 8 force damage.
+                  type: text
+            style: ordered
+            type: list
+          - inlines:
+              - text: The total is 13 + 10 + 8 = 31 force damage.
+                type: text
+            type: paragraph
         discipline: psychokinesis
         effects:
-          - text: The failed Strength saving throw lets you push the creature 10 feet horizontally in a direction you choose. Telekinetic Shove replaces Push mastery for that hit, so the creature moves only once. Vectored Thrust remains active while you maintain concentration, and the flight provokes no Opportunity Attacks.
-            type: text
+          - items:
+              - - text: "Forced movement: "
+                  type: strong
+                - text: The failed Strength saving throw lets you push the creature 10 feet horizontally in a direction you choose.
+                  type: text
+              - - text: "Mastery replacement: "
+                  type: strong
+                - text: Telekinetic Shove replaces Push mastery for that hit, so the creature moves only once.
+                  type: text
+              - - text: "Duration: "
+                  type: strong
+                - text: Vectored Thrust remains active while you maintain concentration.
+                  type: text
+              - - text: "Opportunity Attacks: "
+                  type: strong
+                - text: The flight provokes no Opportunity Attacks.
+                  type: text
+            style: unordered
+            type: list
         heading:
           - text: Psychokinesis
             type: text
         result:
-          - text: You end flying 30 feet from the creature’s starting position with 8 of 10 Psi and 4 Hit Points lost to Blood Tax. You are concentrating on Vectored Thrust. The creature has taken 31 force damage and ends 10 feet from its starting position. You used your bonus action, movement, Attack action, and all three attacks; your reaction remains unused.
-            type: text
+          - items:
+              - - text: "Position and resources: "
+                  type: strong
+                - text: You end flying 30 feet from the creature’s starting position with 8 of 10 Psi and 4 Hit Points lost to Blood Tax.
+                  type: text
+              - - text: "Concentration: "
+                  type: strong
+                - text: You are concentrating on Vectored Thrust.
+                  type: text
+              - - text: "Outcome: "
+                  type: strong
+                - text: The creature has taken 31 force damage and ends 10 feet from its starting position.
+                  type: text
+              - - text: "Action economy: "
+                  type: strong
+                - text: You used your bonus action, movement, Attack action, and all three attacks; your reaction remains unused.
+                  type: text
+            style: unordered
+            type: list
         rolls_or_saves:
-          - text: Your attack bonus is +10 (+4 Intelligence, +4 Proficiency Bonus, +2 Psionic Focus). You roll 9 + 10 = 19, 12 + 10 = 22, and 7 + 10 = 17; all three attacks hit Armor Class 16. After attack 1 deals damage, the creature rolls 12 against Difficulty Class 16 (8 + 4 + 4) and fails its Strength saving throw.
-            type: text
+          - inlines:
+              - text: Your attack bonus is +10 (+4 Intelligence, +4 Proficiency Bonus, +2 Psionic Focus).
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Attack 1: "
+                  type: strong
+                - text: You roll 9 + 10 = 19 and hit Armor Class 16.
+                  type: text
+              - - text: "Attack 2: "
+                  type: strong
+                - text: You roll 12 + 10 = 22 and hit Armor Class 16.
+                  type: text
+              - - text: "Attack 3: "
+                  type: strong
+                - text: You roll 7 + 10 = 17 and hit Armor Class 16.
+                  type: text
+              - - text: "Telekinetic Shove save: "
+                  type: strong
+                - text: After attack 1 deals damage, the creature rolls 12 against Difficulty Class 16 (8 + 4 + 4) and fails its Strength saving throw.
+                  type: text
+            style: ordered
+            type: list
         setup:
-          - text: You are a level 11 Psychokinesis fighter within 5 feet of one hostile creature with Armor Class 16. You have three attacks, one free hand, 10 Psi, Proficiency Bonus +4, Intelligence +4, a 1d10 Manifested Strike die, enough Hit Points to pay Blood Tax, and an open concentration slot.
-            type: text
+          - items:
+              - - text: "Situation: "
+                  type: strong
+                - text: You are a level 11 Psychokinesis fighter within 5 feet of one hostile creature with Armor Class 16.
+                  type: text
+              - - text: "Resources: "
+                  type: strong
+                - text: You have three attacks, one free hand, 10 Psi, Proficiency Bonus +4, Intelligence +4, a 1d10 Manifested Strike die, enough Hit Points to pay Blood Tax, and an open concentration slot.
+                  type: text
+            style: unordered
+            type: list
         title:
           - text: Aerial Repositioning — Level 11 Psychokinesis
             type: text
         type: example_play_section
       - activation:
-          - text: You remain in place and take the Attack action. Immediately before attack 1, you declare Glacial Spike at Tier 0; it costs 0 Psi and no Blood Tax. Immediately before attack 2, you declare Glacial Spike at Tier 1; it costs 0 Psi, and you pay 4 Blood Tax (1 × Proficiency Bonus). That Blood Tax remains spent if the attack misses. Attack 3 is a plain Manifested Strike.
-            type: text
+          - inlines:
+              - text: You remain in place and take the Attack action.
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Attack 1: "
+                  type: strong
+                - text: Immediately before attack 1, you declare Glacial Spike at Tier 0; it costs 0 Psi and no Blood Tax.
+                  type: text
+              - - text: "Attack 2: "
+                  type: strong
+                - text: Immediately before attack 2, you declare Glacial Spike at Tier 1; it costs 0 Psi, and you pay 4 Blood Tax (1 × Proficiency Bonus). That Blood Tax remains spent if the attack misses.
+                  type: text
+              - - text: "Attack 3: "
+                  type: strong
+                - text: Attack 3 is a plain Manifested Strike.
+                  type: text
+            style: ordered
+            type: list
         damage:
-          - text: Attack 1 rolls 6 on its 1d10 and deals 6 + 4 Intelligence + 2 from Glacial Spike = 12 cold damage. Attack 2 rolls 8 and deals 8 + 4 + 2 = 14 cold damage. Attack 3 rolls 5 and deals 5 + 4 = 9 cold damage. The total is 12 + 14 + 9 = 35 cold damage.
-            type: text
+          - items:
+              - - text: "Attack 1: "
+                  type: strong
+                - text: Rolls 6 on its 1d10 and deals 6 + 4 Intelligence + 2 from Glacial Spike = 12 cold damage.
+                  type: text
+              - - text: "Attack 2: "
+                  type: strong
+                - text: Rolls 8 and deals 8 + 4 + 2 = 14 cold damage.
+                  type: text
+              - - text: "Attack 3: "
+                  type: strong
+                - text: Rolls 5 and deals 5 + 4 = 9 cold damage.
+                  type: text
+            style: ordered
+            type: list
+          - inlines:
+              - text: The total is 12 + 14 + 9 = 35 cold damage.
+                type: text
+            type: paragraph
         discipline: cryokinesis
         effects:
-          - text: Attack 1 reduces the creature’s Speed by 10 feet. Attack 2’s failed Constitution saving throw makes its Speed 0 until the end of your next turn, replacing that reduction. Frozen Ground remains difficult terrain. When the creature starts its next turn in the Cylinder, it makes Frozen Ground’s separate Constitution saving throw.
-            type: text
+          - items:
+              - - text: "Attack 1: "
+                  type: strong
+                - text: Attack 1 reduces the creature’s Speed by 10 feet.
+                  type: text
+              - - text: "Attack 2: "
+                  type: strong
+                - text: Attack 2’s failed Constitution saving throw makes its Speed 0 until the end of your next turn, replacing that reduction.
+                  type: text
+              - - text: "Frozen Ground: "
+                  type: strong
+                - text: Frozen Ground remains difficult terrain.
+                  type: text
+              - - text: "Creature’s next turn: "
+                  type: strong
+                - text: When the creature starts its next turn in the Cylinder, it makes Frozen Ground’s separate Constitution saving throw.
+                  type: text
+            style: ordered
+            type: list
         heading:
           - text: Cryokinesis
             type: text
         result:
-          - text: You end 20 feet from the creature with 8 Psi and 4 Hit Points lost to Blood Tax. You are still concentrating on Frozen Ground. The creature has taken 35 cold damage and has Speed 0 in difficult terrain until the end of your next turn. You used your Attack action and all three attacks, but no Psi, bonus action, reaction, or movement this turn.
-            type: text
+          - items:
+              - - text: "Position and resources: "
+                  type: strong
+                - text: You end 20 feet from the creature with 8 Psi and 4 Hit Points lost to Blood Tax.
+                  type: text
+              - - text: "Concentration: "
+                  type: strong
+                - text: You are still concentrating on Frozen Ground.
+                  type: text
+              - - text: "Outcome: "
+                  type: strong
+                - text: The creature has taken 35 cold damage and has Speed 0 in difficult terrain until the end of your next turn.
+                  type: text
+              - - text: "Action economy: "
+                  type: strong
+                - text: You used your Attack action and all three attacks, but no Psi, bonus action, reaction, or movement this turn.
+                  type: text
+            style: unordered
+            type: list
         rolls_or_saves:
-          - text: Your attack bonus is +10 (+4 Intelligence, +4 Proficiency Bonus, +2 Psionic Focus). You roll 10 + 10 = 20, 8 + 10 = 18, and 12 + 10 = 22; all three attacks hit Armor Class 16. After attack 2 deals damage, the creature rolls 11 against Difficulty Class 16 (8 + 4 + 4) and fails its Constitution saving throw.
-            type: text
+          - inlines:
+              - text: Your attack bonus is +10 (+4 Intelligence, +4 Proficiency Bonus, +2 Psionic Focus).
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Attack 1: "
+                  type: strong
+                - text: You roll 10 + 10 = 20 and hit Armor Class 16.
+                  type: text
+              - - text: "Attack 2: "
+                  type: strong
+                - text: You roll 8 + 10 = 18 and hit Armor Class 16.
+                  type: text
+              - - text: "Attack 3: "
+                  type: strong
+                - text: You roll 12 + 10 = 22 and hit Armor Class 16.
+                  type: text
+              - - text: "Glacial Spike save: "
+                  type: strong
+                - text: After attack 2 deals damage, the creature rolls 11 against Difficulty Class 16 (8 + 4 + 4) and fails its Constitution saving throw.
+                  type: text
+            style: ordered
+            type: list
         setup:
-          - text: You are a level 11 Cryokinesis fighter 20 feet from one hostile creature with Armor Class 16 inside a 15-foot-radius Frozen Ground Cylinder. You have three attacks, one free hand, Proficiency Bonus +4, Intelligence +4, a 1d10 Manifested Strike die, 8 Psi remaining after spending 2 Psi to activate Frozen Ground last turn, enough Hit Points to pay Blood Tax, and concentration on the difficult-terrain area.
-            type: text
+          - items:
+              - - text: "Situation: "
+                  type: strong
+                - text: You are a level 11 Cryokinesis fighter 20 feet from one hostile creature with Armor Class 16 inside a 15-foot-radius Frozen Ground Cylinder.
+                  type: text
+              - - text: "Resources: "
+                  type: strong
+                - text: You have three attacks, one free hand, Proficiency Bonus +4, Intelligence +4, a 1d10 Manifested Strike die, 8 Psi remaining after spending 2 Psi to activate Frozen Ground last turn, enough Hit Points to pay Blood Tax, and concentration on the difficult-terrain area.
+                  type: text
+            style: unordered
+            type: list
         title:
           - text: Frozen Ground Lockdown — Level 11 Cryokinesis
             type: text
         type: example_play_section
       - activation:
-          - text: You take the Attack action and fully resolve each attack before choosing the next target. Immediately before attack 1, you target the first primary creature and declare the Static Discharge Signature Rider at Tier 2. It costs 0 Psi, and you pay 8 Blood Tax (2 × Proficiency Bonus). Immediately before attack 2, you target a second primary creature, declare Branching Bolt at Tier 0, and spend 2 Psi. Immediately before attack 3, you target a third primary creature, declare Electron Burst at Tier 0, and spend 2 Psi. Declared Psi and Blood Tax remain spent if the associated attack misses.
-            type: text
+          - inlines:
+              - text: You take the Attack action and fully resolve each attack before choosing the next target.
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Attack 1: "
+                  type: strong
+                - text: Immediately before attack 1, you target the first primary creature and declare the Static Discharge Signature Rider at Tier 2. It costs 0 Psi, and you pay 8 Blood Tax (2 × Proficiency Bonus).
+                  type: text
+              - - text: "Attack 2: "
+                  type: strong
+                - text: Immediately before attack 2, you target a second primary creature, declare Branching Bolt at Tier 0, and spend 2 Psi.
+                  type: text
+              - - text: "Attack 3: "
+                  type: strong
+                - text: Immediately before attack 3, you target a third primary creature, declare Electron Burst at Tier 0, and spend 2 Psi.
+                  type: text
+            style: ordered
+            type: list
+          - inlines:
+              - text: Declared Psi and Blood Tax remain spent if the associated attack misses.
+                type: text
+            type: paragraph
         damage:
-          - text: Attack 1 rolls 7 on its 1d10 and deals 7 + 4 = 11 lightning damage to the first primary target. Static Discharge adds 2 damage to each of the five creatures, so attack 1 deals 11 + (2 × 5) = 21 damage. Attack 2 rolls 6 and deals 6 + 4 = 10 strike damage. Branching Bolt rolls 8 for both the second primary target and one secondary target, so attack 2 deals 10 + (8 × 2) = 26 damage. Attack 3 rolls 5 and deals 5 + 4 = 9 strike damage. Electron Burst rolls 6 + 5 = 11 damage for each of five failed saves, so attack 3 deals 9 + (11 × 5) = 64 damage. The total is 21 + 26 + 64 = 111 lightning damage.
-            type: text
+          - items:
+              - - text: "Attack 1: "
+                  type: strong
+                - text: Rolls 7 on its 1d10 and deals 7 + 4 = 11 lightning damage to the first primary target. Static Discharge adds 2 damage to each of the five creatures, so attack 1 deals 11 + (2 × 5) = 21 damage.
+                  type: text
+              - - text: "Attack 2: "
+                  type: strong
+                - text: Rolls 6 and deals 6 + 4 = 10 strike damage. Branching Bolt rolls 8 for both the second primary target and one secondary target, so attack 2 deals 10 + (8 × 2) = 26 damage.
+                  type: text
+              - - text: "Attack 3: "
+                  type: strong
+                - text: Rolls 5 and deals 5 + 4 = 9 strike damage. Electron Burst rolls 6 + 5 = 11 damage for each of five failed saves, so attack 3 deals 9 + (11 × 5) = 64 damage.
+                  type: text
+            style: ordered
+            type: list
+          - inlines:
+              - text: The total is 21 + 26 + 64 = 111 lightning damage.
+                type: text
+            type: paragraph
         discipline: electrokinesis
         effects:
-          - text: Only the three struck primary targets receive Sap. Static Discharge affects the first primary target and four nearby creatures; all five fail the saving throw and cannot take reactions until the start of your next turn. Branching Bolt damages its primary target and one chosen secondary target. Electron Burst damages all five creatures in its 10-foot-radius Sphere. The secondary targets are damaged but are not hit and do not receive Sap.
-            type: text
+          - items:
+              - - text: "Sap: "
+                  type: strong
+                - text: Only the three struck primary targets receive Sap.
+                  type: text
+              - - text: "Static Discharge: "
+                  type: strong
+                - text: Static Discharge affects the first primary target and four nearby creatures; all five fail the saving throw and cannot take reactions until the start of your next turn.
+                  type: text
+              - - text: "Branching Bolt: "
+                  type: strong
+                - text: Branching Bolt damages its primary target and one chosen secondary target.
+                  type: text
+              - - text: "Electron Burst: "
+                  type: strong
+                - text: Electron Burst damages all five creatures in its 10-foot-radius Sphere.
+                  type: text
+              - - text: "Secondary targets: "
+                  type: strong
+                - text: The secondary targets are damaged but are not hit and do not receive Sap.
+                  type: text
+            style: unordered
+            type: list
         heading:
           - text: Electrokinesis
             type: text
         result:
-          - text: You end in place with 6 Psi and 8 Hit Points lost to Blood Tax. You used your Attack action and all three attacks, but no concentration, bonus action, reaction, or movement. The five creatures have taken 111 lightning damage in total. Three primary targets are struck and Sapped, and none of the five can take reactions until the start of your next turn. Static Discharge is the only Tier 2 rider used; Branching Bolt and Electron Burst are each used once.
-            type: text
+          - items:
+              - - text: "Resources: "
+                  type: strong
+                - text: You end in place with 6 Psi and 8 Hit Points lost to Blood Tax.
+                  type: text
+              - - text: "Action economy: "
+                  type: strong
+                - text: You used your Attack action and all three attacks, but no concentration, bonus action, reaction, or movement.
+                  type: text
+              - - text: "Damage: "
+                  type: strong
+                - text: The five creatures have taken 111 lightning damage in total.
+                  type: text
+              - - text: "Conditions: "
+                  type: strong
+                - text: Three primary targets are struck and Sapped, and none of the five can take reactions until the start of your next turn.
+                  type: text
+              - - text: "Rider limits: "
+                  type: strong
+                - text: Static Discharge is the only Tier 2 rider used; Branching Bolt and Electron Burst are each used once.
+                  type: text
+            style: unordered
+            type: list
         rolls_or_saves:
-          - text: Your attack bonus is +10 (+4 Psionic Ability, +4 Proficiency Bonus, +2 Psionic Focus). You roll 9 + 10 = 19, 12 + 10 = 22, and 7 + 10 = 17; all three attacks hit Armor Class 16. Each of the five Static Discharge targets rolls 12 against Difficulty Class 16 and fails its Charisma saving throw. Each of the five Electron Burst targets rolls 13 against Difficulty Class 16 and fails its Charisma saving throw.
-            type: text
+          - inlines:
+              - text: Your attack bonus is +10 (+4 Psionic Ability, +4 Proficiency Bonus, +2 Psionic Focus).
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Attack 1: "
+                  type: strong
+                - text: You roll 9 + 10 = 19 and hit Armor Class 16.
+                  type: text
+              - - text: "Attack 2: "
+                  type: strong
+                - text: You roll 12 + 10 = 22 and hit Armor Class 16.
+                  type: text
+              - - text: "Attack 3: "
+                  type: strong
+                - text: You roll 7 + 10 = 17 and hit Armor Class 16.
+                  type: text
+              - - text: "Static Discharge saves: "
+                  type: strong
+                - text: Each of the five Static Discharge targets rolls 12 against Difficulty Class 16 and fails its Charisma saving throw.
+                  type: text
+              - - text: "Electron Burst saves: "
+                  type: strong
+                - text: Each of the five Electron Burst targets rolls 13 against Difficulty Class 16 and fails its Charisma saving throw.
+                  type: text
+            style: ordered
+            type: list
         setup:
-          - text: You are a level 11 Electrokinesis fighter facing five hostile creatures with Armor Class 16. The three intended primary targets are within 60 feet of you. The creatures are clustered so four are within 5 feet of the first primary target, a later secondary target is within 15 feet of the second primary target, and all five fit inside the final 10-foot-radius Sphere. You have three attacks, one free hand, 10 Psi, Proficiency Bonus +4, a +4 Psionic Ability modifier, a 1d10 Manifested Strike die, and enough Hit Points to pay Blood Tax.
-            type: text
+          - items:
+              - - text: "Opposition: "
+                  type: strong
+                - text: You are a level 11 Electrokinesis fighter facing five hostile creatures with Armor Class 16.
+                  type: text
+              - - text: "Primary targets: "
+                  type: strong
+                - text: The three intended primary targets are within 60 feet of you.
+                  type: text
+              - - text: "Clustering: "
+                  type: strong
+                - text: The creatures are clustered so four are within 5 feet of the first primary target, a later secondary target is within 15 feet of the second primary target, and all five fit inside the final 10-foot-radius Sphere.
+                  type: text
+              - - text: "Resources: "
+                  type: strong
+                - text: You have three attacks, one free hand, 10 Psi, Proficiency Bonus +4, a +4 Psionic Ability modifier, a 1d10 Manifested Strike die, and enough Hit Points to pay Blood Tax.
+                  type: text
+            style: unordered
+            type: list
         title:
           - text: Room Sweep — Level 11 Electrokinesis
             type: text
@@ -244,13 +1208,39 @@ entities:
         - common_features
     content:
       - inlines:
-          - text: Overload strengthens a rider or standalone psionic feature. Choose an available Overload tier when you declare that feature. For a rider, declare Tier 1 or Tier 2 immediately before the Manifested Strike attack roll. For a standalone feature, declare the tier when you activate the feature.
+          - text: Overload strengthens a rider or standalone psionic feature. Choose an available Overload tier when you declare that feature.
             type: text
         type: paragraph
+      - items:
+          - - text: "Rider: "
+              type: strong
+            - text: Declare Tier 1 or Tier 2 immediately before the Manifested Strike attack roll.
+              type: text
+          - - text: "Standalone feature: "
+              type: strong
+            - text: Declare the tier when you activate the feature.
+              type: text
+        style: unordered
+        type: list
       - inlines:
-          - text: Pay Blood Tax immediately when you declare an Overload. Blood Tax is psychic damage. Tier 1 costs an amount equal to your Proficiency Bonus. Tier 2 costs twice your Proficiency Bonus in total. Manifested Strike itself cannot be Overloaded and never generates Blood Tax.
+          - text: Pay Blood Tax immediately when you declare an Overload. Blood Tax is psychic damage.
             type: text
         type: paragraph
+      - items:
+          - - text: "Tier 1: "
+              type: strong
+            - text: Costs an amount equal to your Proficiency Bonus.
+              type: text
+          - - text: "Tier 2: "
+              type: strong
+            - text: Costs twice your Proficiency Bonus in total.
+              type: text
+          - - text: "Manifested Strike: "
+              type: strong
+            - text: Cannot be Overloaded and never generates Blood Tax.
+              type: text
+        style: unordered
+        type: list
       - inlines:
           - text: A rider resolves only on a hit. If the attack misses, the rider does not resolve, but its declared Psi and Blood Tax remain spent. An effect that explicitly triggers on a miss, such as Graze, still resolves.
             type: text
@@ -288,18 +1278,21 @@ entities:
               - text: At level 11, your Manifested Strike die is 1d10. Tier 2 applies to Glacial Spike; Manifested Strike itself cannot be Overloaded.
                 type: text
             type: paragraph
-          - inlines:
-              - text: "Hit: Manifested Strike deals 1d10 + 3 cold damage, and Glacial Spike adds 2 cold damage, for 1d10 + 5 total. On a failed Constitution saving throw, the target is Restrained until the end of your next turn."
-                type: text
-            type: paragraph
-          - inlines:
-              - text: "Blood Tax: 2 × Proficiency Bonus = 2 × 4 = 8, paid on declaration. Glacial Spike costs 0 Psi because it is a Signature Rider."
-                type: text
-            type: paragraph
-          - inlines:
-              - text: "Miss: Glacial Spike does not resolve, but the 8 Blood Tax remains spent because you paid it on declaration. Glacial Spike costs 0 Psi. Roll your next attack."
-                type: text
-            type: paragraph
+          - items:
+              - - text: "Hit: "
+                  type: strong
+                - text: Manifested Strike deals 1d10 + 3 cold damage, and Glacial Spike adds 2 cold damage, for 1d10 + 5 total. On a failed Constitution saving throw, the target is Restrained until the end of your next turn.
+                  type: text
+              - - text: "Blood Tax: "
+                  type: strong
+                - text: 2 × Proficiency Bonus = 2 × 4 = 8, paid on declaration. Glacial Spike costs 0 Psi because it is a Signature Rider.
+                  type: text
+              - - text: "Miss: "
+                  type: strong
+                - text: Glacial Spike does not resolve, but the 8 Blood Tax remains spent because you paid it on declaration. Glacial Spike costs 0 Psi. Roll your next attack.
+                  type: text
+            style: unordered
+            type: list
         tier: 2
         title:
           - text: Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)
@@ -369,17 +1362,50 @@ entities:
                 type: text
         type: table
       - inlines:
-          - text: "Multiple Overloads and Tier 2 Riders: If you Overload more than one feature in the same turn, pay Blood Tax separately for each Overload. Within each Attack action, only one rider can be Tier 2. Action Surge creates a new Attack action and a new Tier 2 rider allowance. This limit does not restrict standalone features."
+          - text: "Multiple Overloads and Tier 2 Riders:"
             type: text
         type: paragraph
+      - items:
+          - - text: If you Overload more than one feature in the same turn, pay Blood Tax separately for each Overload.
+              type: text
+          - - text: Within each Attack action, only one rider can be Tier 2.
+              type: text
+          - - text: Action Surge creates a new Attack action and a new Tier 2 rider allowance.
+              type: text
+          - - text: This limit does not restrict standalone features.
+              type: text
+        style: unordered
+        type: list
       - inlines:
-          - text: "Critical Hits and Riders: On a critical hit with Manifested Strike, double only the Manifested Strike damage dice. Damage dice dealt by a rider are never doubled, regardless of which creatures the rider damages. Flat damage, saving throws, conditions, forced movement, and other rider effects resolve normally. Standalone features are unaffected by this rule."
+          - text: "Critical Hits and Riders:"
             type: text
         type: paragraph
+      - items:
+          - - text: On a critical hit with Manifested Strike, double only the Manifested Strike damage dice.
+              type: text
+          - - text: Damage dice dealt by a rider are never doubled, regardless of which creatures the rider damages.
+              type: text
+          - - text: Flat damage, saving throws, conditions, forced movement, and other rider effects resolve normally.
+              type: text
+          - - text: Standalone features are unaffected by this rule.
+              type: text
+        style: unordered
+        type: list
       - inlines:
-          - text: "Damage Immunity and Riders: Discipline riders deal your Discipline’s damage type unless stated otherwise. Advanced Training riders deal the damage type listed in their text. Damage immunity prevents only matching damage; it does not prevent the rider’s saving throw or other effects. For example, a cold-immune creature can still be Restrained by Snow Chains, and a fire-immune creature can still be Blinded by Flare."
+          - text: "Damage Immunity and Riders:"
             type: text
         type: paragraph
+      - items:
+          - - text: Discipline riders deal your Discipline’s damage type unless stated otherwise.
+              type: text
+          - - text: Advanced Training riders deal the damage type listed in their text.
+              type: text
+          - - text: Damage immunity prevents only matching damage; it does not prevent the rider’s saving throw or other effects.
+              type: text
+          - - text: For example, a cold-immune creature can still be Restrained by Snow Chains, and a fire-immune creature can still be Blinded by Flare.
+              type: text
+        style: unordered
+        type: list
       - inlines:
           - text: "Blood Tax Resistance and Immunity: Resistance to psychic damage halves Blood Tax normally. Immunity to psychic damage instead functions as Resistance against Blood Tax. Regardless of the source of reduction, you take at least half the declared Blood Tax, rounded down, unless Overload Mastery specifically says otherwise."
             type: text
@@ -863,7 +1889,7 @@ entities:
                 type: text
             - - text: "3"
                 type: text
-            - - text: Bonus Action
+            - - text: Bonus Action · Concentration
                 type: text
             - - text: Varies by tier
                 type: text
@@ -968,7 +1994,39 @@ entities:
         - common_features
     content:
       - inlines:
-          - text: "When you gain this subclass at Fighter level 3, choose one Kinetic Discipline: Pyrokinesis, Cryokinesis, Psychokinesis, or Electrokinesis. Your chosen Discipline determines your Manifested Strike’s damage type, Discipline signature saving throw, Kinetic Mastery, Signature Rider, and the Discipline features you gain at Fighter levels 3, 7, 10, 15, and 20. This choice is permanent and is separate from your Psionic Ability choice."
+          - text: "When you gain this subclass at Fighter level 3, choose one Kinetic Discipline:"
+            type: text
+        type: paragraph
+      - items:
+          - - text: Pyrokinesis
+              type: text
+          - - text: Cryokinesis
+              type: text
+          - - text: Psychokinesis
+              type: text
+          - - text: Electrokinesis
+              type: text
+        style: unordered
+        type: list
+      - inlines:
+          - text: "Your chosen Discipline determines:"
+            type: text
+        type: paragraph
+      - items:
+          - - text: your Manifested Strike’s damage type
+              type: text
+          - - text: your Discipline signature saving throw
+              type: text
+          - - text: your Kinetic Mastery
+              type: text
+          - - text: your Signature Rider
+              type: text
+          - - text: the Discipline features you gain at Fighter levels 3, 7, 10, 15, and 20
+              type: text
+        style: unordered
+        type: list
+      - inlines:
+          - text: This choice is permanent and is separate from your Psionic Ability choice.
             type: text
         type: paragraph
       - inlines:
@@ -1122,9 +2180,28 @@ entities:
         - common_features
     content:
       - inlines:
-          - text: You can communicate telepathically with one or more creatures you can see within 60 feet, provided you share a language with each creature. When you address multiple creatures, each receives the same message. A recipient can reply telepathically to you, but recipients cannot communicate with one another through this feature. Psionic Link does not let you read thoughts.
+          - text: You can communicate telepathically with one or more creatures you can see within 60 feet, provided you share a language with each creature.
             type: text
         type: paragraph
+      - items:
+          - - text: "Multiple recipients: "
+              type: strong
+            - text: When you address multiple creatures, each receives the same message.
+              type: text
+          - - text: "Replies: "
+              type: strong
+            - text: A recipient can reply telepathically to you.
+              type: text
+          - - text: "Recipient isolation: "
+              type: strong
+            - text: Recipients cannot communicate with one another through this feature.
+              type: text
+          - - text: "Thought reading: "
+              type: strong
+            - text: Psionic Link does not let you read thoughts.
+              type: text
+        style: unordered
+        type: list
     id: common_psionic_link
     kind: feature
     level: 3
@@ -1192,13 +2269,41 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "Magical Effects: Manifested Strike, every rider, and every standalone psionic feature are magical effects. None is a spell or Magic action. They cannot be Counterspelled or dispelled and do not trigger features that require casting a spell. Creatures with Magic Resistance or a similar trait have advantage on saving throws imposed by these features; Manifested Strike attack rolls and damage are unaffected."
+          - text: "Magical Effects:"
             type: text
         type: paragraph
+      - items:
+          - - text: "Classification: "
+              type: strong
+            - text: Manifested Strike, every rider, and every standalone psionic feature are magical effects. None is a spell or Magic action.
+              type: text
+          - - text: "Countermagic and spell triggers: "
+              type: strong
+            - text: They cannot be Counterspelled or dispelled and do not trigger features that require casting a spell.
+              type: text
+          - - text: "Magic Resistance: "
+              type: strong
+            - text: Creatures with Magic Resistance or a similar trait have advantage on saving throws imposed by these features; Manifested Strike attack rolls and damage are unaffected.
+              type: text
+        style: unordered
+        type: list
       - inlines:
-          - text: "Somatic Requirement: You project Manifested Strike from one hand and must have the free use of that hand to perform its psionic gesture. A hand is free if it is not holding or manipulating a weapon, Shield, object, or creature. You can release one hand from a Two-Handed weapon, make the Manifested Strike, and re-grip the weapon before a later attack in the same Attack action. Releasing or replacing a hand on a weapon you continue to hold requires no action and does not equip or unequip it. Features delivered through Manifested Strike inherit this requirement unless their text says otherwise. The manifested force visibly originates from the gesturing hand."
+          - text: "Somatic Requirement: You project Manifested Strike from one hand and must have the free use of that hand to perform its psionic gesture."
             type: text
         type: paragraph
+      - items:
+          - - text: A hand is free if it is not holding or manipulating a weapon, Shield, object, or creature.
+              type: text
+          - - text: You can release one hand from a Two-Handed weapon, make the Manifested Strike, and re-grip the weapon before a later attack in the same Attack action.
+              type: text
+          - - text: Releasing or replacing a hand on a weapon you continue to hold requires no action and does not equip or unequip it.
+              type: text
+          - - text: Features delivered through Manifested Strike inherit this requirement unless their text says otherwise.
+              type: text
+          - - text: The manifested force visibly originates from the gesturing hand.
+              type: text
+        style: unordered
+        type: list
       - inlines:
           - text: "Manifested Strike in Melee: Manifested Strike is a ranged attack. If a hostile creature that can see you and is not Incapacitated is within 5 feet of you, you have Disadvantage on the attack roll. Phase Step, Disengage, movement, a weapon attack, or another effect can remove that pressure only as its own rules allow."
             type: text
@@ -1208,9 +2313,23 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "The Holdout Option — Force Damage: When you declare a Manifested Strike, you can have it deal force damage instead of your Discipline’s damage type. The strike then deals half damage, rounded down. Declare this option before the attack roll. If the attack has a rider, declare the option at the same time as that rider and its tier. Riders are unchanged: Discipline riders use the Discipline’s damage type unless stated otherwise, and Advanced Training riders use the type listed in their text. Psychokinesis already deals force damage and gains no benefit from this option."
+          - text: "The Holdout Option — Force Damage: When you declare a Manifested Strike, you can have it deal force damage instead of your Discipline’s damage type. The strike then deals half damage, rounded down."
             type: text
         type: paragraph
+      - items:
+          - - text: Declare this option before the attack roll.
+              type: text
+          - - text: If the attack has a rider, declare the option at the same time as that rider and its tier.
+              type: text
+        style: ordered
+        type: list
+      - items:
+          - - text: "Riders are unchanged: Discipline riders use the Discipline’s damage type unless stated otherwise, and Advanced Training riders use the type listed in their text."
+              type: text
+          - - text: Psychokinesis already deals force damage and gains no benefit from this option.
+              type: text
+        style: unordered
+        type: list
     id: common_manifested_strike
     kind: feature
     level: 3
@@ -1348,9 +2467,24 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "Active Scan: As a bonus action, you project an instantaneous telepathic pulse. You sense the number and direction of creatures within range that harbor hostile intent toward you or a creature you regard as an ally, provided each creature has a discernible mind and emotions you can read. The scan does not update after activation and does not reveal identity, exact location, thoughts, motive, or intended action."
+          - text: "Active Scan: As a bonus action, you project an instantaneous telepathic pulse."
             type: text
         type: paragraph
+      - items:
+          - - text: "Detection: "
+              type: strong
+            - text: You sense the number and direction of creatures within range that harbor hostile intent toward you or a creature you regard as an ally, provided each creature has a discernible mind and emotions you can read.
+              type: text
+          - - text: "Snapshot: "
+              type: strong
+            - text: The scan does not update after activation.
+              type: text
+          - - text: "Information excluded: "
+              type: strong
+            - text: The scan does not reveal identity, exact location, thoughts, motive, or intended action.
+              type: text
+        style: unordered
+        type: list
       - inlines:
           - text: You can use Active Scan a number of times equal to half your Proficiency Bonus, rounded down. You regain all expended uses when you finish a Short or Long Rest. Active Scan is a standalone feature; if Overloaded, you pay Blood Tax when you activate it.
             type: text
@@ -1522,18 +2656,59 @@ entities:
       rules_area:
         - cryokinesis
     content:
-      - inlines:
-          - text: "T0 Base: Create a 15-foot-radius, 20-foot-high Cylinder of icy difficult terrain centered on a point within 60 feet. This effect requires Concentration for up to 1 minute. When a creature enters the Cylinder for the first time on a turn or starts its turn there, it must make a Constitution saving throw. On a failed save, its Speed becomes 0 until the end of the current turn."
+      - body:
+          - items:
+              - - text: "Area: "
+                  type: strong
+                - text: Create a 15-foot-radius, 20-foot-high Cylinder of icy difficult terrain centered on a point within 60 feet.
+                  type: text
+              - - text: "Concentration: "
+                  type: strong
+                - text: This effect requires Concentration for up to 1 minute.
+                  type: text
+              - - text: "Trigger and saving throw: "
+                  type: strong
+                - text: When a creature enters the Cylinder for the first time on a turn or starts its turn there, it must make a Constitution saving throw.
+                  type: text
+              - - text: "Failed save: "
+                  type: strong
+                - text: On a failed save, its Speed becomes 0 until the end of the current turn.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Base
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T1 Overload: Changes from Tier 0: Expand the radius to 25 feet."
+        tier: 0
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 0:"
+                type: text
+            type: paragraph
+          - inlines:
+              - text: Expand the radius to 25 feet.
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T2 Overload: Changes from Tier 1: On a failed save, the Restrained condition until the end of your next turn replaces the Tier 0 effect retained by Tier 1 that makes the target’s Speed 0 until the end of the current turn."
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 1:"
+                type: text
+            type: paragraph
+          - inlines:
+              - text: On a failed save, the Restrained condition until the end of your next turn replaces the Tier 0 effect retained by Tier 1 that makes the target’s Speed 0 until the end of the current turn.
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
+        tier: 2
+        type: tier
       - inlines:
           - text: "Ribbon: While Frozen Ground is active, you ignore difficult terrain created by your own ice."
             type: text
@@ -1752,18 +2927,63 @@ entities:
       rules_area:
         - psychokinesis
     content:
-      - inlines:
-          - text: "T0 Base: The struck target takes 2 additional force damage, then must make a Strength saving throw. On a failed save, push it 10 feet in any horizontal direction. On a successful save, the target remains unmoved. Declaring Telekinetic Shove replaces Push mastery for that hit, whether the save succeeds or fails. The target is moved only once."
+      - body:
+          - items:
+              - - text: "Damage and saving throw: "
+                  type: strong
+                - text: The struck target takes 2 additional force damage, then must make a Strength saving throw.
+                  type: text
+              - - text: "Failed save: "
+                  type: strong
+                - text: On a failed save, push it 10 feet in any horizontal direction.
+                  type: text
+              - - text: "Successful save: "
+                  type: strong
+                - text: On a successful save, the target remains unmoved.
+                  type: text
+              - - text: "Push mastery: "
+                  type: strong
+                - text: Declaring Telekinetic Shove replaces Push mastery for that hit, whether the save succeeds or fails.
+                  type: text
+              - - text: "Movement limit: "
+                  type: strong
+                - text: The target is moved only once.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Base
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The push distance increases to 15 feet."
+        tier: 0
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 0:"
+                type: text
+            type: paragraph
+          - inlines:
+              - text: The push distance increases to 15 feet.
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T2 Overload: Changes from Tier 1: The push distance increases to 20 feet. On a failed save, the target’s Speed also becomes 0 until the end of your next turn."
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 1:"
+                type: text
+            type: paragraph
+          - inlines:
+              - text: The push distance increases to 20 feet. On a failed save, the target’s Speed also becomes 0 until the end of your next turn.
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
+        tier: 2
+        type: tier
     id: telekinetic_shove
     kind: feature
     level: 3
@@ -1810,22 +3030,62 @@ entities:
       rules_area:
         - psychokinesis
     content:
-      - inlines:
-          - text: "T0 Base: Release a telekinetic shockwave in a 15-foot-radius Sphere centered on the struck target. Choose Explosion (outward) or Implosion (inward) when you declare the rider. Each creature in the Sphere, including the struck target, must make a Strength saving throw. On a failed save, a creature is Restrained until the end of your next turn. Each creature other than the struck target that fails is also pushed 15 feet away from or pulled 15 feet toward the target, matching your choice. The struck target is not moved because it is the Sphere’s center, but it still makes the save and can be Restrained. On a successful save, a creature is neither moved nor Restrained."
+      - body:
+          - inlines:
+              - text: Release a telekinetic shockwave in a 15-foot-radius Sphere centered on the struck target. Choose one of the following modes when you declare the rider. Each creature in the Sphere, including the struck target, must make a Strength saving throw. On a failed save, a creature is Restrained until the end of your next turn.
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Explosion (outward): "
+                  type: strong
+                - text: Each creature other than the struck target that fails is also pushed 15 feet away from the target.
+                  type: text
+              - - text: "Implosion (inward): "
+                  type: strong
+                - text: Each creature other than the struck target that fails is also pulled 15 feet toward the target.
+                  type: text
+            style: unordered
+            type: list
+          - items:
+              - - text: "Struck target: "
+                  type: strong
+                - text: The struck target is not moved because it is the Sphere’s center, but it still makes the save and can be Restrained.
+                  type: text
+              - - text: "Successful save: "
+                  type: strong
+                - text: On a successful save, a creature is neither moved nor Restrained.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Base
             type: text
-        type: paragraph
+        tier: 0
+        type: tier
       - inlines:
           - text: Creatures cannot be moved into occupied spaces. Resolve their movement in an order you choose. A creature whose path is fully blocked stops in the nearest unoccupied space along its line of movement.
             type: text
         type: paragraph
-      - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The Sphere’s radius increases to 20 feet, and the push or pull distance increases to 30 feet."
+      - body:
+          - inlines:
+              - text: "Changes from Tier 0: The Sphere’s radius and push or pull distance both increase to 30 feet."
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T2 Overload: Changes from Tier 1: A creature that fails the saving throw also takes force damage equal to your Psionic Ability modifier."
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 1: A creature that fails the saving throw also takes force damage equal to your Psionic Ability modifier."
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
+        tier: 2
+        type: tier
       - inlines:
           - text: You can use Telekinetic Shove on another hit to position the struck target before using Explosion or Implosion.
             type: text
@@ -1850,18 +3110,55 @@ entities:
           - text: You seize a foe with overwhelming telekinetic force and hurl it across the battlefield.
             type: text
         type: paragraph
-      - inlines:
-          - text: "T0 Base: Choose one creature you can see within 60 feet. The target must make a Strength saving throw, taking 8d10 force damage on a failed save or half as much on a successful one. On a failed save, push it 10 feet in any horizontal direction you choose."
+      - body:
+          - inlines:
+              - text: Choose one creature you can see within 60 feet. The target must make a Strength saving throw, taking 8d10 force damage on a failed save or half as much on a successful one. On a failed save, push it 10 feet in any horizontal direction you choose.
+                type: text
+            type: paragraph
+        heading:
+          - text: Base
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The damage increases to 10d10. On a failed save, the push distance increases to 20 feet."
+        tier: 0
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 0:"
+                type: text
+            type: paragraph
+          - inlines:
+              - text: The damage increases to 10d10. On a failed save, the push distance increases to 20 feet.
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T2 Overload: Changes from Tier 1: The damage increases to 12d10. On a failed save, the push distance increases to 30 feet, provided the target travels along an unobstructed path to an unoccupied space you can see, and its Speed becomes 0 until the end of your next turn. On a successful save, the target is still pushed up to 10 feet in a horizontal direction of your choice."
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 1:"
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Damage: "
+                  type: strong
+                - text: The damage increases to 12d10.
+                  type: text
+              - - text: "Failed save: "
+                  type: strong
+                - text: On a failed save, the push distance increases to 30 feet, provided the target travels along an unobstructed path to an unoccupied space you can see, and its Speed becomes 0 until the end of your next turn.
+                  type: text
+              - - text: "Successful save: "
+                  type: strong
+                - text: On a successful save, the target is still pushed up to 10 feet in a horizontal direction of your choice.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
+        tier: 2
+        type: tier
     id: telekinetic_slam
     kind: feature
     level: 15
@@ -1878,18 +3175,55 @@ entities:
       rules_area:
         - psychokinesis
     content:
-      - inlines:
-          - text: "T0 Base: This effect requires Concentration for up to 1 minute. When you activate this feature, you have five target slots to spend on creatures you can see within 60 feet. A Medium or smaller creature costs one slot, and a Large creature costs two slots. You can choose any combination whose total cost does not exceed five slots. A creature can be chosen only once. Unused slots are lost. Huge or larger creatures are immune. Each target must make a Strength saving throw. On a failed save, it is lifted 30 feet into the air and Restrained while hovering. On a successful save, it is unaffected. At the start of each affected creature’s turn, it repeats the saving throw. On a successful repeat save, the effect ends for that creature, and it falls from its current position. While you maintain concentration, creatures that remain Restrained continue to hover. If your concentration ends, all affected creatures fall."
+      - body:
+          - inlines:
+              - text: This effect requires Concentration for up to 1 minute.
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Targeting: "
+                  type: strong
+                - text: When you activate this feature, you have five target slots to spend on creatures you can see within 60 feet. A Medium or smaller creature costs one slot, and a Large creature costs two slots. You can choose any combination whose total cost does not exceed five slots. A creature can be chosen only once. Unused slots are lost. Huge or larger creatures are immune.
+                  type: text
+              - - text: "Initial saving throw: "
+                  type: strong
+                - text: Each target must make a Strength saving throw. On a failed save, it is lifted 30 feet into the air and Restrained while hovering. On a successful save, it is unaffected.
+                  type: text
+              - - text: "Repeat saving throw: "
+                  type: strong
+                - text: At the start of each affected creature’s turn, it repeats the saving throw. On a successful repeat save, the effect ends for that creature, and it falls from its current position.
+                  type: text
+              - - text: "Ongoing effect: "
+                  type: strong
+                - text: While you maintain concentration, creatures that remain Restrained continue to hover. If your concentration ends, all affected creatures fall.
+                  type: text
+            style: ordered
+            type: list
+        heading:
+          - text: Base
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T1 Overload: Changes from Tier 0: Levitated creatures have Disadvantage on repeat saving throws against this feature. At the start of each of your turns, you can move each creature still levitated by this feature up to 15 feet in any direction to an unoccupied space you can see. This is forced movement; the creature remains lifted and Restrained."
+        tier: 0
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 0: Levitated creatures have Disadvantage on repeat saving throws against this feature. At the start of each of your turns, you can move each creature still levitated by this feature up to 15 feet in any direction to an unoccupied space you can see. This is forced movement; the creature remains lifted and Restrained."
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T2 Overload: Changes from Tier 1: At the start of each levitated creature’s turn, it first repeats the Strength saving throw from Tier 0. On a successful save, the effect ends for that creature, it falls from its current position, and it takes no force damage from this tier. On a failed save, it remains levitated and takes force damage equal to twice your Psionic Ability modifier."
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 1: At the start of each levitated creature’s turn, it first repeats the Strength saving throw from Tier 0. On a successful save, the effect ends for that creature, it falls from its current position, and it takes no force damage from this tier. On a failed save, it remains levitated and takes force damage equal to twice your Psionic Ability modifier."
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
+        tier: 2
+        type: tier
     id: mass_levitation
     kind: feature
     level: 20
@@ -1908,18 +3242,59 @@ entities:
       rules_area:
         - electrokinesis
     content:
-      - inlines:
-          - text: "T0 Base: The struck target takes 2 lightning damage with no saving throw. Up to one other creature of your choice within 5 feet of it also takes 2 lightning damage with no saving throw."
+      - body:
+          - inlines:
+              - text: The struck target takes 2 lightning damage with no saving throw. Up to one other creature of your choice within 5 feet of it also takes 2 lightning damage with no saving throw.
+                type: text
+            type: paragraph
+        heading:
+          - text: Base
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T1 Overload: Changes from Tier 0: Replace the limit of one other creature with a number of other creatures equal to your Proficiency Bonus within 5 feet of the struck target. Each affected creature still takes 2 lightning damage with no saving throw."
+        tier: 0
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 0:"
+                type: text
+            type: paragraph
+          - inlines:
+              - text: Replace the limit of one other creature with a number of other creatures equal to your Proficiency Bonus within 5 feet of the struck target. Each affected creature still takes 2 lightning damage with no saving throw.
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T2 Overload: Changes from Tier 1: Each affected creature still takes 2 lightning damage with no saving throw, then must make a Charisma saving throw. On a failed save, it cannot take reactions until the start of your next turn. On a successful save, it suffers no additional effect. A creature makes this save even if lightning immunity prevents the damage."
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 1:"
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Damage and saving throw: "
+                  type: strong
+                - text: Each affected creature still takes 2 lightning damage with no saving throw, then must make a Charisma saving throw.
+                  type: text
+              - - text: "Failed save: "
+                  type: strong
+                - text: On a failed save, it cannot take reactions until the start of your next turn.
+                  type: text
+              - - text: "Successful save: "
+                  type: strong
+                - text: On a successful save, it suffers no additional effect.
+                  type: text
+              - - text: "Lightning immunity: "
+                  type: strong
+                - text: A creature makes this save even if lightning immunity prevents the damage.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
+        tier: 2
+        type: tier
     id: static_discharge
     kind: feature
     level: 3
@@ -1996,18 +3371,109 @@ entities:
       rules_area:
         - electrokinesis
     content:
-      - inlines:
-          - text: "T0 Base: Choose one creature you can see within 60 feet as the primary target. The lightning then arcs to up to 3 other creatures within 30 feet of the primary target. Every target makes its own Charisma saving throw and resolves its damage independently. The primary target takes 8d8 lightning damage on a failed save or half as much on a successful one. Each secondary target takes 4d8 lightning damage on a failed save or half as much on a successful one. One target’s saving throw never determines another target’s damage or conditions."
+      - body:
+          - items:
+              - - text: "Targets: "
+                  type: strong
+                - text: Choose one creature you can see within 60 feet as the primary target. The lightning then arcs to up to 3 other creatures within 30 feet of the primary target.
+                  type: text
+              - - text: "Saving throws: "
+                  type: strong
+                - text: Every target makes its own Charisma saving throw and resolves its damage independently.
+                  type: text
+              - - text: "Primary damage: "
+                  type: strong
+                - text: The primary target takes 8d8 lightning damage on a failed save or half as much on a successful one.
+                  type: text
+              - - text: "Secondary damage: "
+                  type: strong
+                - text: Each secondary target takes 4d8 lightning damage on a failed save or half as much on a successful one.
+                  type: text
+              - - text: "Independent outcomes: "
+                  type: strong
+                - text: One target’s saving throw never determines another target’s damage or conditions.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Base
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The lightning arcs to up to 4 other creatures. Every target makes its own Charisma saving throw and resolves its own damage. The primary target takes 10d8 lightning damage on a failed save or half as much on a successful one. Each secondary target takes 5d8 lightning damage on a failed save or half as much on a successful one."
+        tier: 0
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 0:"
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Targets: "
+                  type: strong
+                - text: The lightning arcs to up to 4 other creatures.
+                  type: text
+              - - text: "Saving throws: "
+                  type: strong
+                - text: Every target makes its own Charisma saving throw and resolves its own damage.
+                  type: text
+              - - text: "Primary damage: "
+                  type: strong
+                - text: The primary target takes 10d8 lightning damage on a failed save or half as much on a successful one.
+                  type: text
+              - - text: "Secondary damage: "
+                  type: strong
+                - text: Each secondary target takes 5d8 lightning damage on a failed save or half as much on a successful one.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T2 Overload: Changes from Tier 1: The lightning arcs to up to 5 other creatures. Every target makes its own Charisma saving throw and resolves its own damage. The primary target takes 12d8 lightning damage on a failed save or half as much on a successful one. Each secondary target takes 6d8 lightning damage on a failed save or half as much on a successful one. Each target that fails its own saving throw cannot take reactions and has Disadvantage on attack rolls until the start of your next turn. A target that succeeds still takes half damage but can take reactions and does not have Disadvantage on attack rolls. Only if the primary target fails its saving throw does its Speed also become 0 for that duration. A secondary target’s Speed does not change."
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 1:"
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Targets: "
+                  type: strong
+                - text: The lightning arcs to up to 5 other creatures.
+                  type: text
+              - - text: "Saving throws: "
+                  type: strong
+                - text: Every target makes its own Charisma saving throw and resolves its own damage.
+                  type: text
+              - - text: "Primary damage: "
+                  type: strong
+                - text: The primary target takes 12d8 lightning damage on a failed save or half as much on a successful one.
+                  type: text
+              - - text: "Secondary damage: "
+                  type: strong
+                - text: Each secondary target takes 6d8 lightning damage on a failed save or half as much on a successful one.
+                  type: text
+              - - text: "Failed-save conditions: "
+                  type: strong
+                - text: Each target that fails its own saving throw cannot take reactions and has Disadvantage on attack rolls until the start of your next turn.
+                  type: text
+              - - text: "Successful save: "
+                  type: strong
+                - text: A target that succeeds still takes half damage but can take reactions and does not have Disadvantage on attack rolls.
+                  type: text
+              - - text: "Primary target only: "
+                  type: strong
+                - text: Only if the primary target fails its saving throw does its Speed also become 0 for that duration.
+                  type: text
+              - - text: "Secondary targets: "
+                  type: strong
+                - text: A secondary target’s Speed does not change.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
+        tier: 2
+        type: tier
     id: forked_lightning
     kind: feature
     level: 15
@@ -2024,18 +3490,70 @@ entities:
       rules_area:
         - electrokinesis
     content:
-      - inlines:
-          - text: "T0 Base: This effect requires Concentration for up to 1 minute. Conjure a hovering orb of lightning that fills a 15-foot-radius Sphere centered on a point within 60 feet. When a creature enters the Sphere for the first time on any turn or starts its turn there, it must make a Charisma saving throw, taking 4d8 lightning damage on a failed save or half as much on a successful one. Voluntary or forced movement into the Sphere can trigger this effect, but a creature can trigger it by entering only once per turn. As a bonus action on your turn, you can move the orb up to 15 feet."
+      - body:
+          - items:
+              - - text: "Concentration: "
+                  type: strong
+                - text: This effect requires Concentration for up to 1 minute.
+                  type: text
+              - - text: "Area: "
+                  type: strong
+                - text: Conjure a hovering orb of lightning that fills a 15-foot-radius Sphere centered on a point within 60 feet.
+                  type: text
+              - - text: "Trigger and saving throw: "
+                  type: strong
+                - text: When a creature enters the Sphere for the first time on any turn or starts its turn there, it must make a Charisma saving throw, taking 4d8 lightning damage on a failed save or half as much on a successful one.
+                  type: text
+              - - text: "Entry limit: "
+                  type: strong
+                - text: Voluntary or forced movement into the Sphere can trigger this effect, but a creature can trigger it by entering only once per turn.
+                  type: text
+              - - text: "Movement: "
+                  type: strong
+                - text: As a bonus action on your turn, you can move the orb up to 15 feet.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Base
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The radius increases to 30 feet."
+        tier: 0
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 0:"
+                type: text
+            type: paragraph
+          - inlines:
+              - text: The radius increases to 30 feet.
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T2 Overload: Changes from Tier 1: A creature that fails its saving throw cannot take reactions and has Disadvantage on attack rolls while inside the Sphere. These effects end immediately when it leaves."
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 1:"
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Failed save: "
+                  type: strong
+                - text: A creature that fails its saving throw cannot take reactions and has Disadvantage on attack rolls while inside the Sphere.
+                  type: text
+              - - text: "Leaving the Sphere: "
+                  type: strong
+                - text: These effects end immediately when it leaves.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
+        tier: 2
+        type: tier
       - inlines:
           - text: Moving the orb onto a stationary creature does not trigger damage immediately because the creature has not entered the Sphere. The creature must later enter the Sphere or start its turn there to trigger the effect.
             type: text
@@ -2059,18 +3577,63 @@ entities:
       rules_area:
         - advanced_training
     content:
-      - inlines:
-          - text: "T0 Base: When you take damage from a source other than yourself, you can use your reaction and spend 1 Psi to reduce the damage by 3d8 + your Psionic Ability modifier. Deflection Screen cannot reduce Blood Tax or other self-inflicted damage."
+      - body:
+          - inlines:
+              - text: When you take damage from a source other than yourself, you can use your reaction and spend 1 Psi to reduce the damage by 3d8 + your Psionic Ability modifier. Deflection Screen cannot reduce Blood Tax or other self-inflicted damage.
+                type: text
+            type: paragraph
+        heading:
+          - text: Base
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The reduction increases to 5d8 + your Psionic Ability modifier."
+        tier: 0
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 0:"
+                type: text
+            type: paragraph
+          - inlines:
+              - text: The reduction increases to 5d8 + your Psionic Ability modifier.
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T2 Overload: Changes from Tier 1: The reduction increases to 7d8 + your Psionic Ability modifier. If the damage has an originating creature, that creature must make a Strength saving throw. On a failed save, it is pushed up to 15 feet away from you and knocked Prone. On a successful save, it is pushed 5 feet away. If the damage has no originating creature, such as a trap, environmental effect, or falling damage, the push and Prone effects do not occur; the damage reduction still applies."
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 1:"
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Damage reduction: "
+                  type: strong
+                - text: The reduction increases to 7d8 + your Psionic Ability modifier.
+                  type: text
+              - - text: "Originating creature: "
+                  type: strong
+                - text: If the damage has an originating creature, that creature must make a Strength saving throw.
+                  type: text
+              - - text: "Failed save: "
+                  type: strong
+                - text: On a failed save, it is pushed up to 15 feet away from you and knocked Prone.
+                  type: text
+              - - text: "Successful save: "
+                  type: strong
+                - text: On a successful save, it is pushed 5 feet away.
+                  type: text
+              - - text: "No originating creature: "
+                  type: strong
+                - text: If the damage has no originating creature, such as a trap, environmental effect, or falling damage, the push and Prone effects do not occur; the damage reduction still applies.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
+        tier: 2
+        type: tier
     id: advanced_deflection_screen
     kind: feature
     level: 5
@@ -2146,22 +3709,100 @@ entities:
       rules_area:
         - advanced_training
     content:
-      - inlines:
-          - text: "T0 Base: Produce the effects of charm person without casting a spell. The target makes a Charisma saving throw against your Psionic saving throw Difficulty Class. The effect requires Concentration for up to 1 hour. Choose one tier when you activate Beguile; higher tiers replace lower-tier effects rather than stacking with them."
+      - body:
+          - inlines:
+              - text: Choose one tier when you activate Beguile; higher tiers replace lower-tier effects rather than stacking with them.
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Effect: "
+                  type: strong
+                - text: Produce the effects of charm person without casting a spell.
+                  type: text
+              - - text: "Saving throw: "
+                  type: strong
+                - text: The target makes a Charisma saving throw against your Psionic saving throw Difficulty Class.
+                  type: text
+              - - text: "Concentration: "
+                  type: strong
+                - text: The effect requires Concentration for up to 1 hour.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Base
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T1 Overload: Changes from Tier 0: Replace the charm person effect with the effects of suggestion without casting a spell. The target makes a Charisma saving throw against your Psionic saving throw Difficulty Class. The effect requires Concentration for up to 8 hours."
+        tier: 0
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 0:"
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Effect: "
+                  type: strong
+                - text: Replace the charm person effect with the effects of suggestion without casting a spell.
+                  type: text
+              - - text: "Saving throw: "
+                  type: strong
+                - text: The target makes a Charisma saving throw against your Psionic saving throw Difficulty Class.
+                  type: text
+              - - text: "Concentration: "
+                  type: strong
+                - text: The effect requires Concentration for up to 8 hours.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T2 Overload: Changes from Tier 1: Replace the suggestion effect with the effects of mass suggestion without casting a spell, affecting up to five creatures you can see within 60 feet. Each target makes a Charisma saving throw against your Psionic saving throw Difficulty Class. The effect requires Concentration for up to 8 hours."
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 1:"
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Effect: "
+                  type: strong
+                - text: Replace the suggestion effect with the effects of mass suggestion without casting a spell, affecting up to five creatures you can see within 60 feet.
+                  type: text
+              - - text: "Saving throw: "
+                  type: strong
+                - text: Each target makes a Charisma saving throw against your Psionic saving throw Difficulty Class.
+                  type: text
+              - - text: "Concentration: "
+                  type: strong
+                - text: The effect requires Concentration for up to 8 hours.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: Beguile is a magical standalone Action, not a spell or rider. It requires no spell components, cannot be Counterspelled or dispelled, and does not trigger features that require casting a spell. Its saving throw is always Charisma, regardless of your Discipline.
-            type: text
-        type: paragraph
+        tier: 2
+        type: tier
+      - items:
+          - - text: "Classification: "
+              type: strong
+            - text: Beguile is a magical standalone Action, not a spell or rider.
+              type: text
+          - - text: "Components: "
+              type: strong
+            - text: It requires no spell components.
+              type: text
+          - - text: "Countermagic and spell triggers: "
+              type: strong
+            - text: It cannot be Counterspelled or dispelled, and does not trigger features that require casting a spell.
+              type: text
+          - - text: "Saving throw: "
+              type: strong
+            - text: Its saving throw is always Charisma, regardless of your Discipline.
+              type: text
+        style: unordered
+        type: list
     id: advanced_beguile
     kind: feature
     level: 15
@@ -2210,18 +3851,59 @@ entities:
       rules_area:
         - advanced_training
     content:
-      - inlines:
-          - text: "T0 Base: This effect requires Concentration for up to 1 minute. Create a 15-foot-radius, 20-foot-high Cylinder of intensified gravity centered on a point within 60 feet. The area is difficult terrain for the duration, and each creature in it has its Speed halved without a saving throw. A flying creature that enters the Cylinder or starts its turn there immediately falls, taking falling damage as normal, and cannot fly or gain a fly Speed while it remains there. A creature that enters the Cylinder for the first time on a turn or starts its turn there must make a Strength saving throw. On a failed save, it cannot take reactions until the start of its next turn. On a successful save, it suffers no additional effect."
+      - body:
+          - inlines:
+              - text: This effect requires Concentration for up to 1 minute. Create a 15-foot-radius, 20-foot-high Cylinder of intensified gravity centered on a point within 60 feet.
+                type: text
+            type: paragraph
+          - items:
+              - - text: "Terrain and Speed: "
+                  type: strong
+                - text: The area is difficult terrain for the duration, and each creature in it has its Speed halved without a saving throw.
+                  type: text
+              - - text: "Flying creatures: "
+                  type: strong
+                - text: A flying creature that enters the Cylinder or starts its turn there immediately falls, taking falling damage as normal, and cannot fly or gain a fly Speed while it remains there.
+                  type: text
+              - - text: "Saving throw: "
+                  type: strong
+                - text: A creature that enters the Cylinder for the first time on a turn or starts its turn there must make a Strength saving throw.
+                  type: text
+              - - text: "Failed save: "
+                  type: strong
+                - text: On a failed save, it cannot take reactions until the start of its next turn.
+                  type: text
+              - - text: "Successful save: "
+                  type: strong
+                - text: On a successful save, it suffers no additional effect.
+                  type: text
+            style: unordered
+            type: list
+        heading:
+          - text: Base
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T1 Overload: Changes from Tier 0: Creatures in the Cylinder have Disadvantage on attack rolls."
+        tier: 0
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 0: Creatures in the Cylinder have Disadvantage on attack rolls."
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T2 Overload: Changes from Tier 1: A creature that fails the saving throw also has its Speed reduced to 0 until the start of its next turn."
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 1: A creature that fails the saving throw also has its Speed reduced to 0 until the start of its next turn."
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
+        tier: 2
+        type: tier
     id: advanced_gravitic_press
     kind: feature
     level: 15
@@ -2242,9 +3924,22 @@ entities:
         - advanced_training
     content:
       - inlines:
-          - text: "T0 Base: For 1 minute, choose one of the following effects. Blade Shield: You have Resistance to bludgeoning, piercing, and slashing damage from weapon attacks. Elemental Shroud: Choose acid, cold, fire, lightning, or thunder; you have Resistance to that damage type. Spellward: You have Advantage on saving throws against spells. Steadfast Guard: You have Advantage on Strength saving throws and on ability checks and saving throws made to resist being Grappled, shoved, knocked Prone, or forcibly moved. Mental Bulwark: You have Advantage on saving throws against being Charmed, Frightened, Blinded, Restrained, Incapacitated, Paralyzed, or Stunned."
+          - text: "T0 Base: This effect requires Concentration for up to 1 minute. Choose one of the following effects."
             type: text
         type: paragraph
+      - items:
+          - - text: "Blade Shield: You have Resistance to bludgeoning, piercing, and slashing damage from weapon attacks."
+              type: text
+          - - text: "Elemental Shroud: Choose acid, cold, fire, lightning, or thunder; you have Resistance to that damage type."
+              type: text
+          - - text: "Spellward: You have Advantage on saving throws against spells."
+              type: text
+          - - text: "Steadfast Guard: You have Advantage on Strength saving throws and on ability checks and saving throws made to resist being Grappled, shoved, knocked Prone, or forcibly moved."
+              type: text
+          - - text: "Mental Bulwark: You have Advantage on saving throws against being Charmed, Frightened, Blinded, Restrained, Incapacitated, Paralyzed, or Stunned."
+              type: text
+        style: unordered
+        type: list
       - inlines:
           - text: "T1 Overload: Changes from Tier 0: Choose two of the five effects instead of one."
             type: text
@@ -2261,6 +3956,8 @@ entities:
       primary_rules_area: advanced_training
     psi_cost: 3
     publishable: true
+    requires_concentration: true
+    concentration_duration: Varies by tier
     title: Barrier
   - activation: bonus_action
     classifications:
@@ -2270,18 +3967,55 @@ entities:
       rules_area:
         - advanced_training
     content:
-      - inlines:
-          - text: "T0 Base: Teleport up to 30 feet to an unoccupied space you can see. Choose either the space you left or the space where you appear as the origin of a 5-foot-radius Sphere. Choose up to three other creatures in the Sphere. Each chosen creature must make your Discipline’s signature saving throw against your Psionic saving throw Difficulty Class, taking 2d10 damage of your Manifested Strike’s damage type on a failed save or half as much on a successful one. This movement does not provoke Opportunity Attacks, and you are unaffected by the burst."
+      - body:
+          - items:
+              - - text: Teleport up to 30 feet to an unoccupied space you can see.
+                  type: text
+              - - text: Choose either the space you left or the space where you appear as the origin of a 5-foot-radius Sphere.
+                  type: text
+              - - text: Choose up to three other creatures in the Sphere.
+                  type: text
+              - - text: Each chosen creature must make your Discipline’s signature saving throw against your Psionic saving throw Difficulty Class, taking 2d10 damage of your Manifested Strike’s damage type on a failed save or half as much on a successful one.
+                  type: text
+            style: ordered
+            type: list
+          - inlines:
+              - text: This movement does not provoke Opportunity Attacks, and you are unaffected by the burst.
+                type: text
+            type: paragraph
+        heading:
+          - text: Base
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The teleport range increases to 60 feet, and the burst damage increases to 3d10."
+        tier: 0
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 0:"
+                type: text
+            type: paragraph
+          - inlines:
+              - text: The teleport range increases to 60 feet, and the burst damage increases to 3d10.
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
-      - inlines:
-          - text: "T2 Overload: Changes from Tier 1: The burst damage increases to 4d10. A creature that fails the saving throw also cannot take reactions until the start of your next turn."
+        tier: 1
+        type: tier
+      - body:
+          - inlines:
+              - text: "Changes from Tier 1:"
+                type: text
+            type: paragraph
+          - inlines:
+              - text: The burst damage increases to 4d10. A creature that fails the saving throw also cannot take reactions until the start of your next turn.
+                type: text
+            type: paragraph
+        heading:
+          - text: Overload
             type: text
-        type: paragraph
+        tier: 2
+        type: tier
     id: advanced_improved_phase_step
     kind: feature
     level: 15
@@ -2626,8 +4360,8 @@ navigation:
           order: 4
           title: Ball Lightning
   default_category_id: common_features
-rules_version: 13.2.0
-schema_version: 1.0.0
+rules_version: 14.0.0
+schema_version: 2.0.0
 vocabularies:
   acquisition_modes:
     - id: granted

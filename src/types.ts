@@ -53,6 +53,10 @@ export type TableRowReference =
   | { entity_id: string; reference_level: ReferenceLevel }
   | { reference_group: ReferenceGroup; reference_level: ReferenceLevel };
 
+export type ExamplePhaseBlock =
+  | { type: "paragraph"; inlines: InlineNode[] }
+  | { type: "list"; style: "ordered" | "unordered"; items: InlineNode[][] };
+
 export interface ContentBlock {
   type: "paragraph" | "list" | "note" | "table" | "example" | "tier" | "example_play_section";
   inlines?: InlineNode[];
@@ -67,12 +71,12 @@ export interface ContentBlock {
   discipline?: "cryokinesis" | "pyrokinesis" | "psychokinesis" | "electrokinesis";
   tier?: number;
   body?: ContentBlock[];
-  setup?: InlineNode[];
-  activation?: InlineNode[];
-  rolls_or_saves?: InlineNode[];
-  damage?: InlineNode[];
-  effects?: InlineNode[];
-  result?: InlineNode[];
+  setup?: ExamplePhaseBlock[];
+  activation?: ExamplePhaseBlock[];
+  rolls_or_saves?: ExamplePhaseBlock[];
+  damage?: ExamplePhaseBlock[];
+  effects?: ExamplePhaseBlock[];
+  result?: ExamplePhaseBlock[];
 }
 
 
@@ -100,6 +104,58 @@ export interface Entity {
     canonical_topic_by_area: Record<string, string>;
   };
   related_entity_ids?: string[];
+}
+
+export type CalculatorSave = "strength" | "constitution" | "dexterity" | "intelligence" | "charisma";
+export type CalculatorDamageResolution = "always" | "failed_save" | "half_on_success";
+
+export type CalculatorDamage =
+  | { kind: "none"; resolution: CalculatorDamageResolution }
+  | { kind: "fixed"; resolution: CalculatorDamageResolution; value: number }
+  | { kind: "dice"; resolution: CalculatorDamageResolution; count: number; sides: number }
+  | { kind: "manifested_strike_dice"; resolution: CalculatorDamageResolution; count: number }
+  | { kind: "psionic_ability_modifier"; resolution: CalculatorDamageResolution; multiplier?: number };
+
+export interface CalculatorTier {
+  tier: 0 | 1 | 2;
+  damage: CalculatorDamage;
+  secondary_damage?: CalculatorDamage;
+  save?: CalculatorSave;
+}
+
+export type CalculatorDelivery = "on_hit_rider" | "standalone";
+
+export interface CalculatorFeature {
+  entity_id: string;
+  delivery: CalculatorDelivery;
+  tiers: CalculatorTier[];
+}
+
+export interface CalculatorLevelBand {
+  minimum_level: number;
+  maximum_level: number;
+  value: number;
+}
+
+export interface CalculatorTierMinimumLevel {
+  tier: 0 | 1 | 2;
+  minimum_level: number;
+}
+
+export interface Calculator {
+  default_feature_id: string;
+  default_fighter_level: number;
+  default_psionic_ability_modifier: number;
+  fighter_level_minimum: number;
+  fighter_level_maximum: number;
+  psionic_ability_modifier_minimum: number;
+  psionic_ability_modifier_maximum: number;
+  proficiency_bonus_bands: CalculatorLevelBand[];
+  psi_point_bands: CalculatorLevelBand[];
+  psionic_focus_bands: CalculatorLevelBand[];
+  manifested_strike_die_bands: CalculatorLevelBand[];
+  tier_minimum_levels: CalculatorTierMinimumLevel[];
+  features: CalculatorFeature[];
 }
 
 export interface Topic { id: string; title: string; entity_ids: string[]; order: number }
@@ -167,6 +223,7 @@ export interface Authority {
     order: number; vocabulary: string;
   }>;
   entities: Entity[];
+  calculator: Calculator;
   navigation: { default_category_id: string; categories: Category[] };
   onboarding: Onboarding;
   audits?: Array<{id:string; assertion:string; subject_ids:string[]}>;

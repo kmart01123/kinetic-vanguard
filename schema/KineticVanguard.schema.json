@@ -4,7 +4,7 @@
   "title": "Kinetic Vanguard authority",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schema_version", "rules_version", "metadata", "vocabularies", "facets", "entities", "navigation", "onboarding"],
+  "required": ["schema_version", "rules_version", "metadata", "vocabularies", "facets", "entities", "calculator", "navigation", "onboarding"],
   "properties": {
     "schema_version": {"type":"string","pattern":"^[0-9]+\\.[0-9]+\\.[0-9]+$"},
     "rules_version": {"type":"string","pattern":"^[0-9]+\\.[0-9]+\\.[0-9]+$"},
@@ -15,6 +15,7 @@
     },
     "facets": {"type":"array","items":{"$ref":"#/$defs/facet"},"minItems":4},
     "entities": {"type":"array","items":{"$ref":"#/$defs/entity"},"minItems":1},
+    "calculator": {"$ref":"#/$defs/calculator"},
     "navigation": {"$ref":"#/$defs/navigation"},
     "onboarding": {"$ref":"#/$defs/onboarding"},
     "audits": {"type":"array","items":{"$ref":"#/$defs/audit"},"default":[]}
@@ -45,6 +46,63 @@
         "order":{"type":"integer","minimum":0},"vocabulary":{"$ref":"#/$defs/id"}
       }
     },
+    "calculatorLevelBand": {
+      "type":"object","additionalProperties":false,"required":["minimum_level","maximum_level","value"],
+      "properties":{
+        "minimum_level":{"type":"integer","minimum":3,"maximum":20},
+        "maximum_level":{"type":"integer","minimum":3,"maximum":20},
+        "value":{"type":"integer","minimum":1}
+      }
+    },
+    "calculatorTierMinimumLevel": {
+      "type":"object","additionalProperties":false,"required":["tier","minimum_level"],
+      "properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"minimum_level":{"type":"integer","minimum":3,"maximum":20}}
+    },
+    "calculatorDamage": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["kind","resolution"],"properties":{"kind":{"const":"none"},"resolution":{"enum":["always","failed_save","half_on_success"]}}},
+        {"type":"object","additionalProperties":false,"required":["kind","resolution","value"],"properties":{"kind":{"const":"fixed"},"resolution":{"enum":["always","failed_save","half_on_success"]},"value":{"type":"integer","minimum":0}}},
+        {"type":"object","additionalProperties":false,"required":["kind","resolution","count","sides"],"properties":{"kind":{"const":"dice"},"resolution":{"enum":["always","failed_save","half_on_success"]},"count":{"type":"integer","minimum":1},"sides":{"type":"integer","minimum":2}}},
+        {"type":"object","additionalProperties":false,"required":["kind","resolution","count"],"properties":{"kind":{"const":"manifested_strike_dice"},"resolution":{"enum":["always","failed_save","half_on_success"]},"count":{"type":"integer","minimum":1}}},
+        {"type":"object","additionalProperties":false,"required":["kind","resolution"],"properties":{"kind":{"const":"psionic_ability_modifier"},"resolution":{"enum":["always","failed_save","half_on_success"]},"multiplier":{"type":"integer","minimum":1}}}
+      ]
+    },
+    "calculatorTier": {
+      "type":"object","additionalProperties":false,"required":["tier","damage"],
+      "properties":{
+        "tier":{"type":"integer","minimum":0,"maximum":2},
+        "damage":{"$ref":"#/$defs/calculatorDamage"},
+        "secondary_damage":{"$ref":"#/$defs/calculatorDamage"},
+        "save":{"enum":["strength","constitution","dexterity","intelligence","charisma"]}
+      }
+    },
+    "calculatorFeature": {
+      "type":"object","additionalProperties":false,"required":["entity_id","delivery","tiers"],
+      "properties":{
+        "entity_id":{"$ref":"#/$defs/id"},
+        "delivery":{"enum":["on_hit_rider","standalone"]},
+        "tiers":{"type":"array","items":{"$ref":"#/$defs/calculatorTier"},"minItems":3,"maxItems":3}
+      }
+    },
+    "calculator": {
+      "type":"object","additionalProperties":false,
+      "required":["default_feature_id","default_fighter_level","default_psionic_ability_modifier","fighter_level_minimum","fighter_level_maximum","psionic_ability_modifier_minimum","psionic_ability_modifier_maximum","proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels","features"],
+      "properties":{
+        "default_feature_id":{"$ref":"#/$defs/id"},
+        "default_fighter_level":{"type":"integer","minimum":3,"maximum":20},
+        "default_psionic_ability_modifier":{"type":"integer","minimum":0,"maximum":5},
+        "fighter_level_minimum":{"const":3},
+        "fighter_level_maximum":{"const":20},
+        "psionic_ability_modifier_minimum":{"const":0},
+        "psionic_ability_modifier_maximum":{"const":5},
+        "proficiency_bonus_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
+        "psi_point_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
+        "psionic_focus_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
+        "manifested_strike_die_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
+        "tier_minimum_levels":{"type":"array","items":{"$ref":"#/$defs/calculatorTierMinimumLevel"},"minItems":3,"maxItems":3},
+        "features":{"type":"array","items":{"$ref":"#/$defs/calculatorFeature"},"minItems":1}
+      }
+    },
     "typedValue": {
       "oneOf": [
         {"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"integer"},"value":{"type":"integer"},"unit":{"type":"string"}}},
@@ -66,6 +124,12 @@
         {"type":"object","additionalProperties":false,"required":["reference_group","reference_level"],"properties":{"reference_group":{"enum":["common_features","advanced_training","cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]},"reference_level":{"enum":["3rd","5th","7th","10th","15th","18th","20th","15th+","18th+"]}}}
       ]
     },
+    "examplePhaseBlock": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["type","inlines"],"properties":{"type":{"const":"paragraph"},"inlines":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}}},
+        {"type":"object","additionalProperties":false,"required":["type","style","items"],"properties":{"type":{"const":"list"},"style":{"enum":["ordered","unordered"]},"items":{"type":"array","items":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"minItems":1}}}
+      ]
+    },
     "block": {
       "oneOf": [
         {"type":"object","additionalProperties":false,"required":["type","inlines"],"properties":{"type":{"const":"paragraph"},"inlines":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}}},
@@ -74,7 +138,7 @@
         {"type":"object","additionalProperties":false,"required":["type","headers","rows"],"properties":{"type":{"const":"table"},"headers":{"type":"array","items":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"minItems":1},"rows":{"type":"array","items":{"type":"array","items":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}},"minItems":1},"row_references":{"type":"array","items":{"$ref":"#/$defs/tableRowReference"},"minItems":1}}},
         {"type":"object","additionalProperties":false,"required":["type","tier","heading","body"],"properties":{"type":{"const":"tier"},"tier":{"type":"integer","minimum":0},"heading":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"body":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1}}},
         {"type":"object","additionalProperties":false,"required":["type","tier","title","body"],"properties":{"type":{"const":"example"},"tier":{"type":"integer","minimum":0},"title":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"body":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1}}},
-        {"type":"object","additionalProperties":false,"required":["type","discipline","heading","title","setup","activation","rolls_or_saves","damage","effects","result"],"properties":{"type":{"const":"example_play_section"},"discipline":{"enum":["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]},"heading":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"title":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"setup":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"activation":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"rolls_or_saves":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"damage":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"effects":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"result":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1}}}
+        {"type":"object","additionalProperties":false,"required":["type","discipline","heading","title","setup","activation","rolls_or_saves","damage","effects","result"],"properties":{"type":{"const":"example_play_section"},"discipline":{"enum":["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]},"heading":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"title":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"setup":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"activation":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"rolls_or_saves":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"damage":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"effects":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"result":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1}}}
       ]
     },
     "classifications": {

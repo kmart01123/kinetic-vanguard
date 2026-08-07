@@ -13,9 +13,15 @@ const assertAsciiTableAddition=(values:string[],source:string)=>{for(const value
 
 test("prototype is self-contained, offline, and unmistakably non-release",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  assert.match(html,/NON-RELEASE PROTOTYPE/);assert.match(html,/"release_status":"prototype"/);
+  assert.match(html,/NON-RELEASE PROTOTYPE/);assert.match(html,/"release_status":"prototype"/);assert.match(html,/<div class="versions"><span>Rules version: 14\.0\.0<\/span><\/div>/);
   assert.doesNotMatch(html,/<(?:script|link|img)[^>]+(?:src|href)=["']https?:/i);assert.doesNotMatch(html,/(?:fetch|XMLHttpRequest|localStorage|sessionStorage|indexedDB|serviceWorker)/);
   assert.doesNotMatch(html,/<input[^>]+type=["'](?:text|search|number)["']/i);assert.doesNotMatch(html,/<textarea|contenteditable|aria-autocomplete/i);
+  assert.doesNotMatch(html,/Application version|application_version|0\.1\.0/);
+  const provenanceSource=html.match(/<script type="application\/json" id="publication-provenance">([^<]+)<\/script>/)?.[1];assert.ok(provenanceSource);
+  const provenance=JSON.parse(provenanceSource);
+  assert.deepEqual(Object.keys(provenance).sort(),["authority_sha256","release_status","rules_version","schema_version"]);
+  assert.equal(provenance.rules_version,"14.0.0");
+  assert.equal(result.manifest.build_identity.rules_version,"14.0.0");assert.equal("application_version" in result.manifest.build_identity,false);
 });
 
 test("rendered rules use Tn shorthand headings and preserve cumulative tier order",async()=>{
@@ -51,14 +57,77 @@ test("overload tier labels and content render as separate compact elements",asyn
   await new Promise<void>(resolve=>setImmediate(resolve));glacial.window.close();empathic.window.close();
 });
 
+test("six dense rules targets render as scoped semantic lists",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
+  const render=(route:string)=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#${route}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
+  const rendered=[
+    {id:"common_manifested_strike",dom:render("category=common_features&topic=common_features_common_manifested_strike_topic")},
+    {id:"explosion_implosion",dom:render("category=psychokinesis&topic=psychokinesis_explosion_implosion_topic")},
+    {id:"mass_levitation",dom:render("category=psychokinesis&topic=psychokinesis_mass_levitation_topic")},
+    {id:"forked_lightning",dom:render("category=electrokinesis&topic=electrokinesis_forked_lightning_topic")},
+    {id:"advanced_gravitic_press",dom:render("category=advanced_training&topic=advanced_training_advanced_gravitic_press_topic")}
+  ];
+  const article=(id:string)=>rendered.find(item=>item.id===id)!.dom.window.document.querySelector<HTMLElement>(`#entity-${id}`)!;
+  const directLists=(parent:Element)=>[...parent.children].filter(child=>child.tagName==="OL"||child.tagName==="UL") as HTMLElement[];
+  const listShape=(parent:Element)=>directLists(parent).map(list=>[list.tagName,list.querySelectorAll(":scope > li").length]);
+
+  assert.deepEqual(listShape(article("common_manifested_strike")),[["UL",3],["UL",5],["OL",2],["UL",2]]);
+  const cases=[
+    {id:"explosion_implosion",tiers:[[0,[["UL",2],["UL",2]]],[1,[]],[2,[]]]},
+    {id:"mass_levitation",tiers:[[0,[["OL",4]]],[1,[]],[2,[]]]},
+    {id:"forked_lightning",tiers:[[0,[["UL",5]]],[1,[["UL",4]]],[2,[["UL",8]]]]},
+    {id:"advanced_gravitic_press",tiers:[[0,[["UL",5]]],[1,[]],[2,[]]]}
+  ] as const;
+  for(const candidate of cases){
+    const feature=article(candidate.id),tiers=[...feature.querySelectorAll<HTMLElement>(":scope > .feature-tier")];
+    assert.deepEqual(tiers.map(tier=>tier.querySelector(":scope > .feature-tier__label")?.textContent),["T0 Base","T1 Overload","T2 Overload"],candidate.id);
+    assert.equal(directLists(feature).length,0,candidate.id+" tier lists must not escape their tier");
+    for(const [value,shape] of candidate.tiers){
+      const content=feature.querySelector<HTMLElement>(`:scope > .feature-tier[data-tier="${value}"] > .feature-tier__content`)!;
+      assert.deepEqual(listShape(content),shape,candidate.id+" T"+value);
+      for(const list of directLists(content))assert.equal(list.querySelectorAll(":scope > li > strong").length,list.querySelectorAll(":scope > li").length,candidate.id+" labels");
+    }
+  }
+  await new Promise<void>(resolve=>setImmediate(resolve));for(const item of rendered)item.dom.window.close();
+});
+
+test("completed readability pass keeps every new list inside its authored common-rule or tier scope",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const doms:JSDOM[]=[];
+  const article=(id:string)=>{const dom=new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#entity=${id}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});doms.push(dom);return dom.window.document.querySelector<HTMLElement>(`#entity-${id}`)!;};
+  const directLists=(parent:Element)=>[...parent.children].filter(child=>child.tagName==="OL"||child.tagName==="UL") as HTMLElement[];
+  const shape=(parent:Element)=>directLists(parent).map(list=>[list.tagName,list.querySelectorAll(":scope > li").length]);
+  const common={
+    how_to_play:[["OL",6],["UL",5],["UL",4],["UL",4],["UL",2],["UL",3]],
+    common_overload:[["UL",2],["UL",3],["UL",4],["UL",4],["UL",4]],
+    common_psionic_discipline:[["UL",4],["UL",5]],
+    common_psionic_link:[["UL",4]],
+    common_manifested_strike:[["UL",3],["UL",5],["OL",2],["UL",2]],
+    common_empathic_sense:[["UL",3]]
+  } as const;
+  for(const [id,expected] of Object.entries(common))assert.deepEqual(shape(article(id)),expected,id);
+
+  const tiered={
+    frozen_ground:{0:[["UL",4]]},telekinetic_shove:{0:[["UL",5]]},telekinetic_slam:{2:[["UL",3]]},static_discharge:{2:[["UL",4]]},
+    ball_lightning:{0:[["UL",5]],2:[["UL",2]]},advanced_deflection_screen:{2:[["UL",5]]},
+    advanced_beguile:{0:[["UL",3]],1:[["UL",3]],2:[["UL",3]]},advanced_improved_phase_step:{0:[["OL",4]]}
+  } as const;
+  for(const [id,expectedTiers] of Object.entries(tiered)){
+    const feature=article(id);assert.deepEqual([...feature.querySelectorAll<HTMLElement>(":scope > .feature-tier > .feature-tier__label")].map(label=>label.textContent),["T0 Base","T1 Overload","T2 Overload"],id);
+    assert.deepEqual(shape(feature),id==="advanced_beguile"?[["UL",4]]:[],id+" direct article lists");
+    for(const [tierValue,expected] of Object.entries(expectedTiers)){const content=feature.querySelector<HTMLElement>(`:scope > .feature-tier[data-tier="${tierValue}"] > .feature-tier__content`)!;assert.ok(content);assert.deepEqual(shape(content),expected,id+" T"+tierValue);for(const list of directLists(content))assert.equal(list.closest(".feature-tier__content"),content,id+" T"+tierValue+" containment");}
+  }
+  await new Promise<void>(resolve=>setImmediate(resolve));for(const dom of doms)dom.window.close();
+});
+
 test("rendered permanent Discipline choice and Ongoing Duration reference stay explicit",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   const render=(topic:string)=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=${topic}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const discipline=render("common_features_common_psionic_discipline_topic");const disciplineArticle=discipline.window.document.querySelector<HTMLElement>("#entity-common_psionic_discipline")!;
   const disciplineParagraphs=[...disciplineArticle.querySelectorAll<HTMLElement>(":scope > p")].map(paragraph=>paragraph.textContent);
+  const disciplineLists=[...disciplineArticle.querySelectorAll<HTMLElement>(":scope > ul")].map(list=>[...list.querySelectorAll(":scope > li")].map(item=>item.textContent));
   assert.equal(disciplineArticle.querySelector("h2")?.textContent,"Psionic Discipline");
-  assert.equal(disciplineParagraphs[0],"When you gain this subclass at Fighter level 3, choose one Kinetic Discipline: Pyrokinesis, Cryokinesis, Psychokinesis, or Electrokinesis. Your chosen Discipline determines your Manifested Strike’s damage type, Discipline signature saving throw, Kinetic Mastery, Signature Rider, and the Discipline features you gain at Fighter levels 3, 7, 10, 15, and 20. This choice is permanent and is separate from your Psionic Ability choice.");
-  assert.equal(disciplineParagraphs[1],"Choose Intelligence, Wisdom, or Charisma as your Psionic Ability. Your Psionic Ability choice does not change your Discipline.");
+  assert.deepEqual(disciplineParagraphs.slice(0,4),["When you gain this subclass at Fighter level 3, choose one Kinetic Discipline:","Your chosen Discipline determines:","This choice is permanent and is separate from your Psionic Ability choice.","Choose Intelligence, Wisdom, or Charisma as your Psionic Ability. Your Psionic Ability choice does not change your Discipline."]);
+  assert.deepEqual(disciplineLists,[["Pyrokinesis","Cryokinesis","Psychokinesis","Electrokinesis"],["your Manifested Strike’s damage type","your Discipline signature saving throw","your Kinetic Mastery","your Signature Rider","the Discipline features you gain at Fighter levels 3, 7, 10, 15, and 20"]]);
 
   const reference=render("common_features_subclass_feature_reference_topic");const referenceArticle=reference.window.document.querySelector<HTMLElement>("#entity-subclass_feature_reference")!;
   const table=[...referenceArticle.querySelectorAll<HTMLTableElement>("table")].find(candidate=>[...candidate.querySelectorAll("th")].some(cell=>cell.textContent==="Ongoing Duration"))!;
@@ -187,9 +256,10 @@ test("Example Play keeps four full turns and Overload keeps one Glacial example"
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_common_example_play_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const article=dom.window.document.querySelector<HTMLElement>("#entity-common_example_play")!;const sections=[...article.querySelectorAll<HTMLElement>(":scope > .example-play-flow > .example-play-section")];
   assert.equal(sections.length,4);assert.deepEqual(sections.map(section=>section.querySelector("h4")?.textContent),["Focused Fire — Level 11 Pyrokinesis","Aerial Repositioning — Level 11 Psychokinesis","Frozen Ground Lockdown — Level 11 Cryokinesis","Room Sweep — Level 11 Electrokinesis"]);
-  for(const section of sections){assert.deepEqual([...section.querySelectorAll<HTMLElement>(".example-play-section__phase-title")].map(node=>node.textContent),["Setup","Activation","Rolls or Saves","Damage","Effects","Result"]);assert.equal(section.querySelectorAll("strong,em").length,0);assert.equal(section.querySelectorAll(".example-play-section__phase > p").length,6);}
+  assert.deepEqual(sections.map(section=>section.querySelectorAll(".example-play-section__phase ol,.example-play-section__phase ul").length),[5,6,6,6]);
+  for(const section of sections){const phases=[...section.querySelectorAll<HTMLElement>(".example-play-section__phase")];assert.deepEqual([...section.querySelectorAll<HTMLElement>(".example-play-section__phase-title")].map(node=>node.textContent),["Setup","Activation","Rolls or Saves","Damage","Effects","Result"]);assert.equal(section.querySelectorAll("em").length,0);assert.ok(section.querySelectorAll("strong").length>0);assert.equal(phases.length,6);assert.ok(phases.every(phase=>phase.querySelector(":scope > p,:scope > ol,:scope > ul")));assert.ok([...section.querySelectorAll("li")].every(item=>item.querySelector(":scope > strong")));}
   for(const [index,fragments] of [[0,["18 + 21 + 11 = 50 fire damage"]],[1,["13 + 10 + 8 = 31 force damage","push the creature 10 feet"]],[2,["12 + 14 + 9 = 35 cold damage","Speed 0"]],[3,["111 lightning damage","Three primary targets are struck and Sapped"]]] as const)for(const fragment of fragments)assert.ok(sections[index]!.textContent?.includes(fragment),fragment);
-  const overloadDom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_common_overload_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});const inline=overloadDom.window.document.querySelector<HTMLElement>("#entity-common_overload .inline-example")!;assert.equal(overloadDom.window.document.querySelectorAll("#entity-common_overload .inline-example").length,1);assert.equal(inline.querySelector("h3")?.textContent,"Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)");assert.match(inline.textContent??"",/Glacial Spike at Tier 2.*1d10.*Blood Tax: 2 × Proficiency Bonus = 2 × 4 = 8.*Miss: Glacial Spike does not resolve/s);assert.equal(article.textContent?.includes("Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)"),false);
+  const overloadDom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_common_overload_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});const inline=overloadDom.window.document.querySelector<HTMLElement>("#entity-common_overload .inline-example")!;assert.equal(overloadDom.window.document.querySelectorAll("#entity-common_overload .inline-example").length,1);assert.equal(inline.querySelector("h3")?.textContent,"Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)");assert.deepEqual([...inline.querySelectorAll(":scope > .inline-example__body > ul")].map(list=>list.querySelectorAll(":scope > li").length),[3]);assert.deepEqual([...inline.querySelectorAll(":scope > .inline-example__body > ul > li > strong")].map(node=>node.textContent),["Hit: ","Blood Tax: ","Miss: "]);assert.equal(inline.querySelectorAll(":scope > .inline-example__body > p").length,2);assert.match(inline.textContent??"",/Glacial Spike at Tier 2.*1d10.*Blood Tax: 2 × Proficiency Bonus = 2 × 4 = 8.*Miss: Glacial Spike does not resolve/s);assert.equal(article.textContent?.includes("Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)"),false);
   await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();overloadDom.window.close();
 });
 
@@ -334,13 +404,24 @@ test("feature metadata renders concentration only from structured authority",asy
   const vectored=render(html,"psychokinesis","psychokinesis_vectored_thrust_topic");
   const ball=render(html,"electrokinesis","electrokinesis_ball_lightning_topic");
   const beguile=render(html,"advanced_training","advanced_training_advanced_beguile_topic");
+  const barrier=render(html,"advanced_training","advanced_training_advanced_barrier_topic");
+  assert.ok(metadata(barrier.window.document,"advanced_barrier").some(item=>item.term==="Requirement"&&item.value==="Concentration"&&item.classes.includes("feature-metadata__item--concentration")));
+  const barrierLists=barrier.window.document.querySelectorAll("#entity-advanced_barrier > ul");assert.equal(barrierLists.length,1);
+  assert.deepEqual([...barrierLists[0]!.querySelectorAll(":scope > li")].map(item=>item.textContent),[
+    "Blade Shield: You have Resistance to bludgeoning, piercing, and slashing damage from weapon attacks.",
+    "Elemental Shroud: Choose acid, cold, fire, lightning, or thunder; you have Resistance to that damage type.",
+    "Spellward: You have Advantage on saving throws against spells.",
+    "Steadfast Guard: You have Advantage on Strength saving throws and on ability checks and saving throws made to resist being Grappled, shoved, knocked Prone, or forcibly moved.",
+    "Mental Bulwark: You have Advantage on saving throws against being Charmed, Frightened, Blinded, Restrained, Incapacitated, Paralyzed, or Stunned."
+  ]);
   for(const [dom,entityId,duration] of [
     [gravitic,"advanced_gravitic_press","Up to 1 minute"],
     [levitation,"mass_levitation","Up to 1 minute"],
     [frozen,"frozen_ground","Up to 1 minute"],
     [vectored,"vectored_thrust","Up to 10 minutes"],
     [ball,"ball_lightning","Up to 1 minute"],
-    [beguile,"advanced_beguile","Varies by tier"]
+    [beguile,"advanced_beguile","Varies by tier"],
+    [barrier,"advanced_barrier","Varies by tier"]
   ] as const)assert.ok(metadata(dom.window.document,entityId).some(item=>item.term==="Duration"&&item.value===duration),`${entityId} duration metadata is missing`);
 
   const rider=render(html,"cryokinesis","cryokinesis_glacial_spike_topic");
@@ -369,7 +450,7 @@ test("feature metadata renders concentration only from structured authority",asy
   const metadataCss=html.match(/\.feature-metadata\{([^}]*)\}/)?.[1]??"";
   assert.doesNotMatch(metadataCss,/(?:^|;)width:/);
   await new Promise<void>(resolve=>setImmediate(resolve));
-  for(const dom of [gravitic,levitation,frozen,vectored,ball,beguile,rider,manifested,empathic,slam,descriptionOnly])dom.window.close();
+  for(const dom of [gravitic,levitation,frozen,vectored,ball,beguile,barrier,rider,manifested,empathic,slam,descriptionOnly])dom.window.close();
 });
 
 
@@ -470,6 +551,9 @@ test("history restoration rejects invalid classifications and canonicalizes repa
     dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate",{state:snapshot}));
     assert.deepEqual(dom.window.history.state.classifications,{});assert.equal((document.querySelector("#facet-entity_kind") as HTMLSelectElement).value,"");assert.equal((document.querySelector('input[data-facet="rules_area"][value="common_features"]') as HTMLInputElement).checked,false);assert.ok(document.querySelector("#entity-how_to_play"));
   }
+  const invalidModifier={...baseState,psiModifier:6,focusOrigin:"history"};
+  dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate",{state:invalidModifier}));
+  assert.equal(dom.window.history.state.psiModifier,5);
   const repaired={...baseState,topic:"missing_topic",entity:"how_to_play",resultRoute:"missing_topic",focusOrigin:"history"};
   dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate",{state:repaired}));
   assert.equal(dom.window.location.hash,"#category=common_features&topic=common_features_how_to_play_topic&entity=how_to_play");
@@ -505,6 +589,230 @@ test("Start Here renders semantic canonical sections and every destination expos
     control.click();assert.equal(layout.dataset.view,"reference",link.id);assert.equal(document.querySelector<HTMLElement>(".controls")?.hidden,false,link.id);const heading=document.querySelector<HTMLElement>(`#entity-${expected.entityId} > h2`)!;assert.ok(heading,link.id);assert.equal(document.activeElement,heading,link.id);
     if(link.destination.kind==="entity")assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,link.destination.entity_id,link.id);
     (document.querySelector("#view-start-here") as HTMLElement).click();assert.equal(layout.dataset.view,"home",link.id);assert.equal(document.activeElement?.id,"start_here_heading",link.id);
+  }
+  await settleOnboarding();dom.window.close();
+});
+const calculatorRiders=[
+  ["glacial_spike","Glacial Spike",3] as const,["snow_chains","Snow Chains",7] as const,
+  ["ember_bolt","Ember Bolt",3] as const,["thermal_fracture","Thermal Fracture",7] as const,
+  ["cinder_lance","Cinder Lance",10] as const,["flare","Flare",15] as const,["furnace_strike","Furnace Strike",20] as const,
+  ["telekinetic_shove","Telekinetic Shove",3] as const,["explosion_implosion","Explosion/Implosion",10] as const,
+  ["static_discharge","Static Discharge",3] as const,["branching_bolt","Branching Bolt",7] as const,
+  ["electron_burst","Electron Burst",10] as const,["advanced_mind_shred","Mind Shred",15] as const,["advanced_mind_lock","Mind Lock",15] as const
+] as const;
+const calculatorStandaloneFeatures=[
+  ["arctic_tempest","Arctic Tempest",15] as const,["absolute_zero","Absolute Zero",20] as const,
+  ["telekinetic_slam","Telekinetic Slam",15] as const,["mass_levitation","Mass Levitation",20] as const,
+  ["forked_lightning","Forked Lightning",15] as const,["ball_lightning","Ball Lightning",20] as const
+] as const;
+const calculatorFeatures=[["common_manifested_strike","Manifested Strike",3] as const,...calculatorRiders,...calculatorStandaloneFeatures] as const;
+const normalizedCalculatorText=(element:Element)=>element.textContent?.replace(/\s+/g," ").trim()??"";
+const exactCalculatorTextCount=(root:Element,expected:string)=>[root,...root.querySelectorAll("*")].filter(element=>normalizedCalculatorText(element)===expected).length;
+const assertCalculatorText=(root:Element,expected:string)=>assert.ok([root,...root.querySelectorAll("*")].some(element=>normalizedCalculatorText(element).includes(expected)),`Missing calculator text: ${expected}`);
+const calculatorTierHeadings=(root:Element)=>[...root.querySelectorAll("h2,h3,h4,h5,h6")].map(normalizedCalculatorText).filter(text=>/^Tier [012]$/u.test(text));
+const calculatorEffectPaths=(root:Element,tier:number)=>[...root.querySelectorAll<HTMLElement>(`.calculator__tier[data-tier="${tier}"] .calculator__effects [data-source-path]`)].map(element=>element.dataset.sourcePath);
+const calculatorSharedEffectPaths=(root:Element)=>[...root.querySelectorAll<HTMLElement>(".calculator__shared-effects [data-source-path]")].map(element=>element.dataset.sourcePath);
+const calculatorListItemPaths=(base:string,count:number)=>Array.from({length:count},(_,index)=>`${base}.items.${index}`);
+const assertCalculatorStrikeCalculations=(root:Element,pb:number,modifier:number,focus:number,die:string)=>{const hit=`Hit calculation: 1d20 + Proficiency Bonus (${pb}) + Psionic Ability Modifier (${modifier}) + Psionic Focus (${focus}) = 1d20 + ${pb+modifier+focus}`,damageTotal=modifier===0?die:`${die} + ${modifier}`,damage=`Damage calculation: Manifested Strike die (${die}) + Psionic Ability Modifier (${modifier}) = ${damageTotal}`,calculations=[...root.querySelectorAll<HTMLElement>(".calculator__calculation.calculator__breakdown")];assert.equal(calculations.length,2);assert.equal(exactCalculatorTextCount(root,hit),1);assert.equal(exactCalculatorTextCount(root,damage),1);for(const calculation of calculations){const text=normalizedCalculatorText(calculation);assert.match(text,/ calculation: .+ = .+$/u);assert.doesNotMatch(text,/\b(?:PB|Psi Mod)\b| · /u);}};
+const calculatorProficiencyBonusAtLevel=(level:number)=>level>=17?6:level>=13?5:level>=9?4:level>=5?3:2;
+const assertCalculatorSaveCalculation=(root:Element,pb:number,modifier:number,dc:number,count=1)=>{const expected=`Saving throw calculation: 8 + Proficiency Bonus (${pb}) + Psionic Ability Modifier (${modifier}) = ${dc}`,calculations=[...root.querySelectorAll<HTMLElement>(".calculator__calculation.calculator__save-calculation")];assert.equal(calculations.length,count);assert.equal(exactCalculatorTextCount(root,expected),count);for(const calculation of calculations){const text=normalizedCalculatorText(calculation);assert.match(text,/ calculation: .+ = .+$/u);assert.doesNotMatch(text,/\b(?:PB|Psi Mod)\b| · /u);}};
+const calculatorPsiPointBands=[
+  {minimumLevel:3,maximumLevel:4,value:4},{minimumLevel:5,maximumLevel:6,value:6},{minimumLevel:7,maximumLevel:8,value:7},
+  {minimumLevel:9,maximumLevel:10,value:9},{minimumLevel:11,maximumLevel:12,value:10},{minimumLevel:13,maximumLevel:14,value:12},
+  {minimumLevel:15,maximumLevel:16,value:13},{minimumLevel:17,maximumLevel:18,value:15},{minimumLevel:19,maximumLevel:20,value:16}
+] as const;
+const calculatorPsiPointsAtLevel=(level:number)=>calculatorPsiPointBands.find(band=>level>=band.minimumLevel&&level<=band.maximumLevel)!.value;
+const assertCalculatorPsiTotal=(root:Element,total:number)=>{
+  const facts=root.querySelector<HTMLElement>(".calculator__facts")!;assert.ok(facts);
+  const metrics=[...facts.querySelectorAll<HTMLElement>(":scope > p")].map(normalizedCalculatorText),psiCostIndex=metrics.findIndex(text=>/^Psi cost: \d+$/u.test(text));
+  assert.notEqual(psiCostIndex,-1);assert.equal(metrics[psiCostIndex+1],`Total Psi Points: ${total}`);
+  const labels=[...facts.querySelectorAll("strong")].map(normalizedCalculatorText);
+  assert.equal(labels.filter(label=>label==="Psi cost:").length,1);assert.equal(labels.filter(label=>label==="Total Psi Points:").length,1);
+  assert.equal(exactCalculatorTextCount(facts,`Total Psi Points: ${total}`),1);
+};
+const assertCalculatorPsiFacts=(root:Element,cost:number,total:number)=>{assert.equal(exactCalculatorTextCount(root,`Psi cost: ${cost}`),1);assertCalculatorPsiTotal(root,total);};
+
+test("calculator exposes exactly three native selects, twenty-one feature choices, and the required Manifested Strike level 20 defaults",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
+  const root=dom.window.document.querySelector<HTMLElement>("#calculator-root")!;assert.ok(root);assert.equal(dom.window.location.hash,"#calculator");
+  const feature=root.querySelector<HTMLSelectElement>("#calculator-feature")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!;
+  assert.deepEqual([...root.querySelectorAll("select")],[feature,level,modifier]);assert.deepEqual([feature,level,modifier].map(control=>control.tagName),["SELECT","SELECT","SELECT"]);
+  const labelText=(control:HTMLSelectElement)=>{const label=root.querySelector<HTMLLabelElement>(`label[for="${control.id}"]`)!;assert.ok(label);const clone=label.cloneNode(true) as HTMLLabelElement;clone.querySelector(`#${control.id}`)?.remove();return clone.textContent?.trim();};
+  assert.deepEqual([feature,level,modifier].map(labelText),["Skill / Feature","Fighter Level","Psionic Ability Modifier"]);
+  assert.equal(feature.value,"common_manifested_strike");assert.equal(level.value,"20");assert.equal(modifier.value,"5");assert.equal(modifier.selectedOptions[0]?.textContent?.trim(),"+5");
+  for(const control of [feature,level,modifier])assert.equal(control.getAttribute("aria-controls"),"calculator-feature-results");
+  assert.deepEqual([...modifier.options].map(option=>option.textContent?.trim()),["+0","+1","+2","+3","+4","+5"]);
+  assert.equal(root.querySelector("#target-ac,[name='target-ac'],[aria-label='Target AC']"),null);assert.doesNotMatch(root.textContent??"",/Target AC|hit chance/iu);
+  assert.equal([...root.querySelectorAll("button")].some(button=>/^(?:Apply|Calculate)$/iu.test(button.textContent?.trim()??"")),false);
+  assert.equal(feature.options.length,21);assert.deepEqual([...feature.options].map(option=>option.value).sort(),calculatorFeatures.map(([id])=>id).sort());
+  for(const [id,title,minimumLevel] of calculatorFeatures){
+    const option=[...feature.options].find(candidate=>candidate.value===id)!;assert.ok(option);assert.equal(option.textContent?.trim(),title);assert.equal(option.disabled,minimumLevel>20,id);
+  }
+  const results=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.equal(root.querySelector("#manifested-strike-summary"),null);assert.ok(results);
+  assert.equal(root.querySelectorAll("#calculator-feature-results.calculator__result").length,1);
+  assert.equal(results.hidden,false);assert.equal(results.querySelector(":scope > h3")?.textContent,"Manifested Strike");assert.equal(results.querySelector(".calculator__trigger,.calculator__facts,.calculator__tiers"),null);
+  assertCalculatorText(results,"Hit: 1d20 + 14");assertCalculatorText(results,"Damage: 1d12 + 5");assertCalculatorText(results,"Expected avg damage: 11.5");assertCalculatorText(results,"Psionic Save DC: 19");assertCalculatorStrikeCalculations(results,6,5,3,"1d12");assertCalculatorSaveCalculation(results,6,5,19);
+  assert.doesNotMatch(results.textContent??"",/Expected rider damage:/u);
+  feature.value="telekinetic_shove";feature.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
+  assertCalculatorText(results,"Telekinetic Shove");assert.deepEqual(calculatorTierHeadings(results),["Tier 0","Tier 1","Tier 2"]);
+  assert.equal(exactCalculatorTextCount(results,"Triggering Manifested Strike"),1);
+  const trigger=results.querySelector<HTMLElement>(".calculator__trigger")!;assert.ok(trigger);assertCalculatorText(trigger,"Hit: 1d20 + 14");assertCalculatorText(trigger,"Damage: 1d12 + 5");assertCalculatorText(trigger,"Expected avg damage: 11.5");assert.equal(exactCalculatorTextCount(results,"Psionic Save DC: 19"),0);
+  assertCalculatorStrikeCalculations(trigger,6,5,3,"1d12");assert.equal(trigger.querySelector(".calculator__save-calculation"),null);
+  assert.equal(exactCalculatorTextCount(results,"Rider damage: 2"),3);assert.equal(exactCalculatorTextCount(results,"Combined damage: 1d12 + 7"),3);assert.equal(exactCalculatorTextCount(results,"Expected combined damage: 13.5"),3);
+  assert.equal(exactCalculatorTextCount(results,"Strength save: DC 19"),1);assertCalculatorSaveCalculation(results,6,5,19);assertCalculatorPsiFacts(results,0,16);
+  const save=results.querySelector<HTMLElement>(".calculator__save")!;assert.ok(save);assert.equal(save.dataset.saveTiers,"0 1 2");assertCalculatorText(results,"Applies to Tiers 0–2.");
+  assert.equal(exactCalculatorTextCount(results,"Blood Tax: 0"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 6"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 12"),1);
+  assert.deepEqual(calculatorEffectPaths(results,0),calculatorListItemPaths("entities.telekinetic_shove.content.0.body.0",5));
+  assert.deepEqual(calculatorEffectPaths(results,1),["entities.telekinetic_shove.content.1.body.1"]);
+  assert.deepEqual(calculatorEffectPaths(results,2),["entities.telekinetic_shove.content.2.body.1"]);
+  assert.deepEqual(calculatorSharedEffectPaths(results),[]);
+  assert.deepEqual([...results.querySelectorAll(".calculator__effects")].map(section=>section.getAttribute("aria-label")),["Target and effect","Target and effect","Target and effect"]);
+  assert.equal(exactCalculatorTextCount(results,"Target and effect"),0);
+  assert.doesNotMatch(results.textContent??"",/\bT[012] (?:Base|Overload):|Changes from Tier/iu);
+  await settleOnboarding();dom.window.close();
+});
+
+test("each calculator select updates synchronously and level changes enforce every progression boundary",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
+  const root=dom.window.document.querySelector<HTMLElement>("#calculator-root")!;assert.ok(root);const results=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.equal(root.querySelector("#manifested-strike-summary"),null);
+  const feature=root.querySelector<HTMLSelectElement>("#calculator-feature")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!;
+  const change=(control:HTMLSelectElement,value:string)=>{control.value=value;assert.equal(control.value,value);control.dispatchEvent(new dom.window.Event("change",{bubbles:true}));};
+  change(level,"11");change(feature,"ember_bolt");assertCalculatorText(results,"Ember Bolt");for(const average of ["12.5","14.5","16.5"])assertCalculatorText(results,`Expected combined damage: ${average}`);
+  change(feature,"telekinetic_shove");change(modifier,"4");let trigger=results.querySelector<HTMLElement>(".calculator__trigger")!;assertCalculatorText(trigger,"Hit: 1d20 + 10");assertCalculatorText(trigger,"Damage: 1d10 + 4");assertCalculatorText(trigger,"Expected avg damage: 9.5");assertCalculatorText(results,"Strength save: DC 16");assertCalculatorSaveCalculation(results,4,4,16);
+  assertCalculatorStrikeCalculations(trigger,4,4,2,"1d10");
+  change(modifier,"5");trigger=results.querySelector<HTMLElement>(".calculator__trigger")!;assertCalculatorText(trigger,"Hit: 1d20 + 11");assertCalculatorText(trigger,"Damage: 1d10 + 5");assertCalculatorText(trigger,"Expected avg damage: 10.5");assertCalculatorText(results,"Strength save: DC 17");assertCalculatorSaveCalculation(results,4,5,17);
+  assertCalculatorStrikeCalculations(trigger,4,5,2,"1d10");
+  change(modifier,"0");trigger=results.querySelector<HTMLElement>(".calculator__trigger")!;assertCalculatorText(trigger,"Hit: 1d20 + 6");assertCalculatorText(trigger,"Damage: 1d10");assertCalculatorText(results,"Strength save: DC 12");assertCalculatorStrikeCalculations(trigger,4,0,2,"1d10");assertCalculatorSaveCalculation(results,4,0,12);change(modifier,"5");
+  const boundaries=[
+    {level:3,pb:2,psi:4,focus:1,die:"1d6",hit:8,dc:15,average:"8.5"},{level:4,pb:2,psi:4,focus:1,die:"1d6",hit:8,dc:15,average:"8.5"},
+    {level:5,pb:3,psi:6,focus:1,die:"1d8",hit:9,dc:16,average:"9.5"},{level:6,pb:3,psi:6,focus:1,die:"1d8",hit:9,dc:16,average:"9.5"},
+    {level:7,pb:3,psi:7,focus:1,die:"1d8",hit:9,dc:16,average:"9.5"},{level:8,pb:3,psi:7,focus:1,die:"1d8",hit:9,dc:16,average:"9.5"},
+    {level:9,pb:4,psi:9,focus:2,die:"1d8",hit:11,dc:17,average:"9.5"},{level:10,pb:4,psi:9,focus:2,die:"1d8",hit:11,dc:17,average:"9.5"},
+    {level:11,pb:4,psi:10,focus:2,die:"1d10",hit:11,dc:17,average:"10.5"},{level:12,pb:4,psi:10,focus:2,die:"1d10",hit:11,dc:17,average:"10.5"},
+    {level:13,pb:5,psi:12,focus:2,die:"1d10",hit:12,dc:18,average:"10.5"},{level:14,pb:5,psi:12,focus:2,die:"1d10",hit:12,dc:18,average:"10.5"},
+    {level:15,pb:5,psi:13,focus:2,die:"1d10",hit:12,dc:18,average:"10.5"},{level:16,pb:5,psi:13,focus:2,die:"1d10",hit:12,dc:18,average:"10.5"},
+    {level:17,pb:6,psi:15,focus:3,die:"1d12",hit:14,dc:19,average:"11.5"},{level:18,pb:6,psi:15,focus:3,die:"1d12",hit:14,dc:19,average:"11.5"},
+    {level:19,pb:6,psi:16,focus:3,die:"1d12",hit:14,dc:19,average:"11.5"},{level:20,pb:6,psi:16,focus:3,die:"1d12",hit:14,dc:19,average:"11.5"}
+  ];
+  for(const candidate of boundaries){
+    change(level,String(candidate.level));trigger=results.querySelector<HTMLElement>(".calculator__trigger")!;assertCalculatorText(trigger,`Hit: 1d20 + ${candidate.hit}`);
+    assertCalculatorText(trigger,`Damage: ${candidate.die} + 5`);assertCalculatorText(trigger,`Expected avg damage: ${candidate.average}`);assertCalculatorText(results,`Strength save: DC ${candidate.dc}`);assertCalculatorSaveCalculation(results,candidate.pb,5,candidate.dc);
+    assertCalculatorStrikeCalculations(trigger,candidate.pb,5,candidate.focus,candidate.die);
+    assertCalculatorPsiFacts(results,0,candidate.psi);
+    assert.equal(feature.options.length,21);for(const [id,,minimumLevel] of calculatorFeatures){const option=[...feature.options].find(value=>value.value===id)!;assert.ok(option);assert.equal(option.disabled,minimumLevel>candidate.level,`${id} availability at level ${candidate.level}`);}
+    for(const tier of [0,1,2])assert.ok(calculatorTierHeadings(results).some(heading=>heading.endsWith(`Tier ${tier}`)),`Tier ${tier} remains shown at level ${candidate.level}`);
+    if(candidate.level<10)assertCalculatorText(results,"Available at Fighter level 10.");else assert.doesNotMatch(results.textContent??"",/Available at Fighter level 10\./u);
+  }
+  for(const [id,title] of calculatorFeatures){const option=[...feature.options].find(candidate=>candidate.value===id);assert.ok(option&&!option.disabled,id);assert.equal(option.textContent?.trim(),title);}
+  await settleOnboarding();dom.window.close();
+});
+
+test("one selected calculator feature card shows all tier damage, authored saves, Psi costs, and Blood Tax",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
+  const root=dom.window.document.querySelector<HTMLElement>("#calculator-root")!;assert.ok(root);const feature=root.querySelector<HTMLSelectElement>("#calculator-feature")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,results=root.querySelector<HTMLElement>("#calculator-feature-results")!;
+  const change=(control:HTMLSelectElement,value:string)=>{control.value=value;assert.equal(control.value,value);control.dispatchEvent(new dom.window.Event("change",{bubbles:true}));};
+  change(level,"11");
+  const typedSaveCount=()=>[results,...results.querySelectorAll("*")].filter(element=>/^(?:Strength|Constitution|Dexterity|Charisma|Intelligence) save: DC \d+$/u.test(normalizedCalculatorText(element))).length;
+  const assertSaveTiers=(expected:string)=>assert.equal(results.querySelector<HTMLElement>(".calculator__save")?.dataset.saveTiers,expected);
+  const selectRider=(id:string,title:string)=>{change(feature,id);assertCalculatorText(results,title);assert.equal(root.querySelectorAll("#calculator-feature-results.calculator__result").length,1);assert.equal(exactCalculatorTextCount(results,"Triggering Manifested Strike"),1);assert.deepEqual(calculatorTierHeadings(results),["Tier 0","Tier 1","Tier 2"],title);assert.equal(results.querySelectorAll(".calculator__facts").length,1);assertCalculatorPsiTotal(results,calculatorPsiPointsAtLevel(Number(level.value)));assert.doesNotMatch(results.textContent??"",/Psionic Save DC:/u);assert.doesNotMatch(results.textContent??"",/\bT[012] (?:Base|Overload):|Changes from Tier/iu);};
+  selectRider("telekinetic_shove","Telekinetic Shove");
+  assert.equal(exactCalculatorTextCount(results,"Strength save: DC 17"),1);assertCalculatorSaveCalculation(results,4,5,17);assertCalculatorPsiFacts(results,0,10);assertSaveTiers("0 1 2");
+  assertCalculatorText(results,"Applies to Tiers 0–2.");
+  assert.equal(exactCalculatorTextCount(results,"Rider damage: 2"),3);assert.equal(exactCalculatorTextCount(results,"Combined damage: 1d10 + 7"),3);assert.equal(exactCalculatorTextCount(results,"Expected combined damage: 12.5"),3);
+  assert.equal(exactCalculatorTextCount(results,"Blood Tax: 0"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 4"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 8"),1);
+  selectRider("cinder_lance","Cinder Lance");for(const [rider,combined,average] of [["2d10","3d10 + 5","21.5"],["3d10","4d10 + 5","27"],["4d10","5d10 + 5","32.5"]] as const){
+    assertCalculatorText(results,`Rider damage: ${rider}`);assertCalculatorText(results,`Combined damage: ${combined}`);assertCalculatorText(results,`Expected combined damage: ${average}`);
+  }
+  assert.equal(exactCalculatorTextCount(results,"Psi cost: 3"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 0"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 4"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 8"),1);assert.equal(typedSaveCount(),0);assertCalculatorSaveCalculation(results,4,5,17,0);
+  assertCalculatorText(results,"No feature tier requires a saving throw.");
+  selectRider("glacial_spike","Glacial Spike");assert.equal(exactCalculatorTextCount(results,"Constitution save: DC 17"),1);assertCalculatorSaveCalculation(results,4,5,17);assert.equal(typedSaveCount(),1);assertSaveTiers("1 2");
+  assertCalculatorText(results,"Applies to Tiers 1–2.");
+  selectRider("static_discharge","Static Discharge");assert.equal(exactCalculatorTextCount(results,"Charisma save: DC 17"),1);assertCalculatorSaveCalculation(results,4,5,17);assert.equal(typedSaveCount(),1);assertSaveTiers("2");
+  assert.deepEqual(calculatorEffectPaths(results,0),["entities.static_discharge.content.0.body.0"]);assert.deepEqual(calculatorEffectPaths(results,1),["entities.static_discharge.content.1.body.1"]);assert.deepEqual(calculatorEffectPaths(results,2),calculatorListItemPaths("entities.static_discharge.content.2.body.1",4));
+  assertCalculatorText(results,"Applies to Tier 2.");
+  selectRider("ember_bolt","Ember Bolt");assert.equal(typedSaveCount(),0);assert.equal(results.querySelector(".calculator__save"),null);assertCalculatorSaveCalculation(results,4,5,17,0);assert.equal(exactCalculatorTextCount(results,"No feature tier requires a saving throw."),1);
+  selectRider("explosion_implosion","Explosion/Implosion");
+  assertCalculatorText(results,"Rider damage: 5 on a failed save · 0 on a successful save");
+  assertCalculatorText(results,"Combined damage: 1d10 + 10 on a failed save · 1d10 + 5 on a successful save");
+  assertCalculatorText(results,"Expected combined damage: 15.5 on a failed save · 10.5 on a successful save");
+  assert.equal(exactCalculatorTextCount(results,"Strength save: DC 17"),1);assertCalculatorSaveCalculation(results,4,5,17);assertSaveTiers("0 1 2");
+  assert.deepEqual(calculatorEffectPaths(results,0),["entities.explosion_implosion.content.0.body.0",...calculatorListItemPaths("entities.explosion_implosion.content.0.body.1",2),...calculatorListItemPaths("entities.explosion_implosion.content.0.body.2",2)]);
+  assert.deepEqual(calculatorEffectPaths(results,1),["entities.explosion_implosion.content.2.body.0"]);
+  assert.deepEqual(calculatorEffectPaths(results,2),["entities.explosion_implosion.content.3.body.0"]);
+  assert.deepEqual([...results.querySelectorAll<HTMLElement>('.calculator__tier[data-tier="0"] .calculator__effects > ul')].map(list=>list.querySelectorAll(":scope > li").length),[2,2]);
+  assert.deepEqual([...results.querySelectorAll<HTMLElement>('.calculator__tier[data-tier="0"] .calculator__effects li > strong')].map(normalizedCalculatorText),["Explosion (outward):","Implosion (inward):","Struck target:","Successful save:"]);
+  assertCalculatorText(results,"Each creature other than the struck target that fails is also pushed 15 feet away from the target.");
+  assertCalculatorText(results,"The Sphere’s radius and push or pull distance both increase to 30 feet.");
+  assert.deepEqual(calculatorSharedEffectPaths(results),["entities.explosion_implosion.content.1","entities.explosion_implosion.content.4"]);
+  change(level,"20");selectRider("flare","Flare");assert.equal(exactCalculatorTextCount(results,"Dexterity save: DC 19"),1);assertCalculatorSaveCalculation(results,6,5,19);assert.equal(typedSaveCount(),1);assertSaveTiers("0");
+  assertCalculatorText(results,"Applies to Tier 0.");
+  selectRider("advanced_mind_lock","Mind Lock");assert.equal(exactCalculatorTextCount(results,"Intelligence save: DC 19"),1);assertCalculatorSaveCalculation(results,6,5,19);assert.equal(typedSaveCount(),1);assertSaveTiers("1 2");
+  assertCalculatorText(results,"Applies to Tiers 1–2.");
+  for(const [id,title] of calculatorRiders)selectRider(id,title);
+  await settleOnboarding();dom.window.close();
+});
+
+test("six registered standalone damage features render exact standalone calculations without a triggering strike",async()=>{
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
+  const root=dom.window.document.querySelector<HTMLElement>("#calculator-root")!,feature=root.querySelector<HTMLSelectElement>("#calculator-feature")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!,results=root.querySelector<HTMLElement>("#calculator-feature-results")!;
+  const change=(control:HTMLSelectElement,value:string)=>{control.value=value;assert.equal(control.value,value);control.dispatchEvent(new dom.window.Event("change",{bubbles:true}));};
+  const tier=(value:number)=>{const section=results.querySelector<HTMLElement>(`.calculator__tier[data-tier="${value}"]`)!;assert.ok(section);return section;};
+  const selectStandalone=(id:string,title:string)=>{const option=[...feature.options].find(candidate=>candidate.value===id)!;assert.ok(option&&!option.disabled,id);change(feature,id);assert.equal(results.querySelector(":scope > h3")?.textContent,title);assert.equal(root.querySelectorAll("#calculator-feature-results.calculator__result:not([hidden])").length,1);assert.equal(results.querySelector(".calculator__trigger"),null);assert.equal(exactCalculatorTextCount(results,"Triggering Manifested Strike"),0);assert.deepEqual(calculatorTierHeadings(results),["Tier 0","Tier 1","Tier 2"],title);assert.deepEqual([...results.querySelectorAll<HTMLElement>(".calculator__tier")].map(section=>section.dataset.available),["true","true","true"],title);assert.equal(results.querySelector(".calculator__availability"),null);assert.equal(results.querySelectorAll(".calculator__facts").length,1);assert.equal(results.querySelectorAll(".calculator__breakdown").length,0);assert.doesNotMatch(results.textContent??"",/Rider damage:|Combined damage:|Expected combined damage:|Psionic Save DC:|\bT[012] (?:Base|Overload):|Changes from Tier/iu,title);};
+  const assertStandaloneFacts=(saveLabel:string,dc:number,psi:number,taxes:readonly number[])=>{assertCalculatorPsiFacts(results,psi,calculatorPsiPointsAtLevel(Number(level.value)));assert.equal(exactCalculatorTextCount(results,`${saveLabel} save: DC ${dc}`),1);assertCalculatorSaveCalculation(results,calculatorProficiencyBonusAtLevel(Number(level.value)),Number(modifier.value),dc);const saves=results.querySelectorAll<HTMLElement>(".calculator__save");assert.equal(saves.length,1);assert.equal(saves[0]!.dataset.saveTiers,"0 1 2");assertCalculatorText(results,"Applies to Tiers 0–2.");for(const tax of taxes)assert.equal([...results.querySelectorAll(".calculator__metrics > p")].filter(metric=>normalizedCalculatorText(metric)===`Blood Tax: ${tax}`).length,1);};
+  const assertSingleTargetDamage=(tierIndex:number,expression:string,failed:string,success:string)=>{const section=tier(tierIndex);assert.equal(exactCalculatorTextCount(section,`Damage: ${expression} on a failed save · half on a successful save`),1);assert.equal(exactCalculatorTextCount(section,`Expected avg damage: ${failed} on a failed save · ${success} on a successful save`),1);};
+  const assertForkedDamage=(tierIndex:number,primary:string,primaryFailed:string,primarySuccess:string,secondary:string,secondaryFailed:string,secondarySuccess:string)=>{const section=tier(tierIndex);assert.equal(exactCalculatorTextCount(section,`Primary target damage: ${primary} on a failed save · half on a successful save`),1);assert.equal(exactCalculatorTextCount(section,`Expected avg primary target damage: ${primaryFailed} on a failed save · ${primarySuccess} on a successful save`),1);assert.equal(exactCalculatorTextCount(section,`Secondary target damage: ${secondary} on a failed save · half on a successful save`),1);assert.equal(exactCalculatorTextCount(section,`Expected avg secondary target damage: ${secondaryFailed} on a failed save · ${secondarySuccess} on a successful save`),1);};
+
+  change(level,"15");selectStandalone("telekinetic_slam","Telekinetic Slam");
+  assert.deepEqual(calculatorStandaloneFeatures.filter(([, ,minimum])=>minimum===15).map(([id])=>id).sort(),["arctic_tempest","forked_lightning","telekinetic_slam"]);
+  assertStandaloneFacts("Strength",18,3,[0,5,10]);
+  const slamDamage=[["8d10","44","21.75"],["10d10","55","27.25"],["12d10","66","32.75"]] as const;
+  for(const [tierIndex,[expression,failed,success]] of slamDamage.entries())assertSingleTargetDamage(tierIndex,expression,failed,success);
+  assert.deepEqual(calculatorEffectPaths(results,0),["entities.telekinetic_slam.content.1.body.0"]);
+  assert.deepEqual(calculatorEffectPaths(results,1),["entities.telekinetic_slam.content.2.body.1"]);
+  assert.deepEqual(calculatorEffectPaths(results,2),calculatorListItemPaths("entities.telekinetic_slam.content.3.body.1",3));
+  assert.deepEqual(calculatorSharedEffectPaths(results),["entities.telekinetic_slam.content.0"]);
+  change(modifier,"4");assertStandaloneFacts("Strength",17,3,[0,5,10]);
+  assertSingleTargetDamage(0,"8d10","44","21.75");
+  change(modifier,"5");
+
+  selectStandalone("forked_lightning","Forked Lightning");
+  assertStandaloneFacts("Charisma",18,3,[0,5,10]);
+  const forkedDamage=[["8d8","36","17.75","4d8","18","8.75"],["10d8","45","22.25","5d8","22.5","11"],["12d8","54","26.75","6d8","27","13.25"]] as const;
+  for(const [tierIndex,[primary,primaryFailed,primarySuccess,secondary,secondaryFailed,secondarySuccess]] of forkedDamage.entries())assertForkedDamage(tierIndex,primary,primaryFailed,primarySuccess,secondary,secondaryFailed,secondarySuccess);
+  assert.deepEqual(calculatorEffectPaths(results,0),calculatorListItemPaths("entities.forked_lightning.content.0.body.0",5));
+  assert.deepEqual(calculatorEffectPaths(results,1),calculatorListItemPaths("entities.forked_lightning.content.1.body.1",4));
+  assert.deepEqual(calculatorEffectPaths(results,2),calculatorListItemPaths("entities.forked_lightning.content.2.body.1",8));
+  assert.deepEqual(calculatorSharedEffectPaths(results),[]);
+  assert.deepEqual([...tier(2).querySelectorAll(".calculator__effects li > strong")].map(normalizedCalculatorText),["Targets:","Saving throws:","Primary damage:","Secondary damage:","Failed-save conditions:","Successful save:","Primary target only:","Secondary targets:"]);
+
+  change(level,"20");selectStandalone("mass_levitation","Mass Levitation");
+  assertStandaloneFacts("Strength",19,5,[0,6,12]);
+  for(const tierIndex of [0,1]){const labels=[...tier(tierIndex).querySelectorAll("strong")].map(normalizedCalculatorText);assert.equal(labels.includes("Damage:"),false);assert.equal(labels.includes("Expected avg damage:"),false);}
+  assert.equal(exactCalculatorTextCount(tier(2),"Damage: 10 on a failed save · 0 on a successful save"),1);assert.equal(exactCalculatorTextCount(tier(2),"Expected avg damage: 10 on a failed save · 0 on a successful save"),1);
+  change(modifier,"4");
+  assert.deepEqual(calculatorEffectPaths(results,0),["entities.mass_levitation.content.0.body.0",...calculatorListItemPaths("entities.mass_levitation.content.0.body.1",4)]);
+  assert.deepEqual(calculatorEffectPaths(results,1),["entities.mass_levitation.content.1.body.0"]);
+  assert.deepEqual(calculatorEffectPaths(results,2),["entities.mass_levitation.content.2.body.0"]);
+  assert.deepEqual(calculatorSharedEffectPaths(results),[]);
+  assert.deepEqual([...tier(0).querySelectorAll(".calculator__effects li > strong")].map(normalizedCalculatorText),["Targeting:","Initial saving throw:","Repeat saving throw:","Ongoing effect:"]);
+  assertStandaloneFacts("Strength",18,5,[0,6,12]);
+  assert.equal(exactCalculatorTextCount(tier(2),"Damage: 8 on a failed save · 0 on a successful save"),1);assert.equal(exactCalculatorTextCount(tier(2),"Expected avg damage: 8 on a failed save · 0 on a successful save"),1);
+  change(modifier,"5");
+
+  const singleTargetCases=[
+    {id:"arctic_tempest",title:"Arctic Tempest",save:"Constitution",psi:3,damage:[["8d10","44","21.75"],["10d10","55","27.25"],["12d10","66","32.75"]]},
+    {id:"absolute_zero",title:"Absolute Zero",save:"Constitution",psi:5,damage:[["10d10","55","27.25"],["12d10","66","32.75"],["14d10","77","38.25"]]},
+    {id:"ball_lightning",title:"Ball Lightning",save:"Charisma",psi:5,damage:[["4d8","18","8.75"],["4d8","18","8.75"],["4d8","18","8.75"]]}
+  ] as const;
+  for(const candidate of singleTargetCases){
+    selectStandalone(candidate.id,candidate.title);
+    assertStandaloneFacts(candidate.save,19,candidate.psi,[0,6,12]);
+    for(const [tierIndex,[expression,failed,success]] of candidate.damage.entries())assertSingleTargetDamage(tierIndex,expression,failed,success);
+    if(candidate.id==="ball_lightning"){assert.deepEqual(calculatorEffectPaths(results,0),calculatorListItemPaths("entities.ball_lightning.content.0.body.0",5));assert.deepEqual(calculatorEffectPaths(results,1),["entities.ball_lightning.content.1.body.1"]);assert.deepEqual(calculatorEffectPaths(results,2),calculatorListItemPaths("entities.ball_lightning.content.2.body.1",2));assert.deepEqual(calculatorSharedEffectPaths(results),["entities.ball_lightning.content.3"]);}
   }
   await settleOnboarding();dom.window.close();
 });

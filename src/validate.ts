@@ -27,11 +27,78 @@ function collectOnboardingDestinations(value:unknown,path="/onboarding",result:L
 function collectOnboardingStrings(value:unknown,result:string[]=[]):string[]{
   if(typeof value==="string"){result.push(value);return result;}if(Array.isArray(value)){value.forEach(item=>collectOnboardingStrings(item,result));return result;}if(value&&typeof value==="object")Object.values(value).forEach(item=>collectOnboardingStrings(item,result));return result;
 }
+function validateCalculatorLevelBands(bands:Authority["calculator"]["proficiency_bonus_bands"],minimumLevel:number,maximumLevel:number,label:string,path:string):Diagnostic[]{
+  const diagnostics:Diagnostic[]=[];const coverage=new Map<number,number>();
+  for(const [index,band] of bands.entries()){
+    if(band.minimum_level>band.maximum_level)diagnostics.push({severity:"error",code:"calculator.band_range",message:`${label} band ${index+1} has minimum level ${band.minimum_level} after maximum level ${band.maximum_level}`,path:`${path}/${index}`});
+    for(let level=band.minimum_level;level<=band.maximum_level;level++)coverage.set(level,(coverage.get(level)??0)+1);
+  }
+  const missing:number[]=[],overlapping:number[]=[];for(let level=minimumLevel;level<=maximumLevel;level++){const count=coverage.get(level)??0;if(count===0)missing.push(level);else if(count>1)overlapping.push(level);}
+  if(missing.length||overlapping.length)diagnostics.push({severity:"error",code:"calculator.band_coverage",message:`${label} bands must cover Fighter levels ${minimumLevel}–${maximumLevel} exactly once${missing.length?`; missing ${missing.join(", ")}`:""}${overlapping.length?`; overlapping ${overlapping.join(", ")}`:""}`,path});
+  return diagnostics;
+}
 
 export function validateSemantics(authority:Authority):Diagnostic[]{
   const diagnostics:Diagnostic[]=[];
   const entities=new Map(authority.entities.map(entity=>[entity.id,entity]));
   diagnostics.push(...duplicateDiagnostics(authority.entities.map(entity=>entity.id),"entity.duplicate","entity ID"));
+  const calculator=authority.calculator;
+  const expectedDefaults={default_feature_id:"common_manifested_strike",default_fighter_level:20,default_psionic_ability_modifier:5} as const;
+  for(const [field,expected] of Object.entries(expectedDefaults))if(calculator[field as keyof typeof expectedDefaults]!==expected)diagnostics.push({severity:"error",code:"calculator.default",message:`Calculator ${field} must be ${expected}`,path:`/calculator/${field}`});
+  if(calculator.default_fighter_level<calculator.fighter_level_minimum||calculator.default_fighter_level>calculator.fighter_level_maximum)diagnostics.push({severity:"error",code:"calculator.default_level",message:"Calculator default Fighter level is outside its supported range",path:"/calculator/default_fighter_level"});
+  if(calculator.default_psionic_ability_modifier<calculator.psionic_ability_modifier_minimum||calculator.default_psionic_ability_modifier>calculator.psionic_ability_modifier_maximum)diagnostics.push({severity:"error",code:"calculator.default_modifier",message:"Calculator default Psionic Ability modifier is outside its supported range",path:"/calculator/default_psionic_ability_modifier"});
+  const riderEntities=authority.entities.filter(entity=>entity.activation==="on_hit"&&entity.classifications.feature_role==="rider");
+  const authoredRiderIds=riderEntities.map(entity=>entity.id).sort(codepointCompare);
+  const expectedStandaloneIds=["absolute_zero","arctic_tempest","ball_lightning","forked_lightning","mass_levitation","telekinetic_slam"].sort(codepointCompare);
+  const calculatorFeatureIds=calculator.features.map(feature=>feature.entity_id);
+  const calculatorRiderIds=calculator.features.filter(feature=>feature.delivery==="on_hit_rider").map(feature=>feature.entity_id);
+  const calculatorStandaloneIds=calculator.features.filter(feature=>feature.delivery==="standalone").map(feature=>feature.entity_id);
+  diagnostics.push(...duplicateDiagnostics(calculatorFeatureIds,"calculator.feature_duplicate","calculator feature entity ID"));
+  if(JSON.stringify([...new Set(calculatorRiderIds)].sort(codepointCompare))!==JSON.stringify(authoredRiderIds))diagnostics.push({severity:"error",code:"calculator.rider_coverage",message:"Calculator feature registry must contain every on-hit rider entity exactly once",path:"/calculator/features"});
+  if(JSON.stringify([...new Set(calculatorStandaloneIds)].sort(codepointCompare))!==JSON.stringify(expectedStandaloneIds))diagnostics.push({severity:"error",code:"calculator.standalone_coverage",message:"Calculator feature registry must contain exactly the six supported standalone entities",path:"/calculator/features"});
+  const tierMinimums=calculator.tier_minimum_levels.map(item=>item.tier);diagnostics.push(...duplicateDiagnostics(tierMinimums.map(String),"calculator.tier_minimum_duplicate","calculator tier minimum"));
+  const expectedTierMinimums=[[0,3],[1,3],[2,10]] as const;
+  if(JSON.stringify(calculator.tier_minimum_levels.map(item=>[item.tier,item.minimum_level]))!==JSON.stringify(expectedTierMinimums))diagnostics.push({severity:"error",code:"calculator.tier_minimum_levels",message:"Calculator tier minimum levels must be Tier 0 at level 3, Tier 1 at level 3, and Tier 2 at level 10",path:"/calculator/tier_minimum_levels"});
+  for(const [featureIndex,feature] of calculator.features.entries()){
+    const featurePath=`/calculator/features/${featureIndex}`,entity=entities.get(feature.entity_id);
+    if(!entity)diagnostics.push({severity:"error",code:"calculator.feature_unknown",message:`Calculator references unknown feature entity ${feature.entity_id}`,path:`${featurePath}/entity_id`});
+    else{
+      const validDelivery=feature.delivery==="on_hit_rider"
+        ? entity.activation==="on_hit"&&entity.classifications.feature_role==="rider"
+        : entity.activation!=="on_hit"&&entity.classifications.feature_role==="standalone";
+      if(!validDelivery)diagnostics.push({severity:"error",code:"calculator.feature_delivery",message:`Calculator entity ${feature.entity_id} is inconsistent with delivery ${feature.delivery}`,path:`${featurePath}/delivery`});
+    }
+    const tiers=feature.tiers.map(tier=>tier.tier);diagnostics.push(...duplicateDiagnostics(tiers.map(String),"calculator.tier_duplicate",`${feature.entity_id} calculator tier`));
+    if(JSON.stringify([...tiers].sort((a,b)=>a-b))!==JSON.stringify([0,1,2]))diagnostics.push({severity:"error",code:"calculator.tier_coverage",message:`${feature.entity_id} calculator tiers must be exactly 0, 1, and 2`,path:`${featurePath}/tiers`});
+    for(const [tierIndex,tier] of feature.tiers.entries()){
+      const tierPath=`${featurePath}/tiers/${tierIndex}`;
+      const validateDamage=(damage:typeof tier.damage,path:string,label:string)=>{
+        const gated=damage.resolution!=="always";
+        if(gated&&!tier.save)diagnostics.push({severity:"error",code:"calculator.damage_save_required",message:`${feature.entity_id} Tier ${tier.tier} ${label} resolution ${damage.resolution} requires a saving throw`,path:`${path}/resolution`});
+        if(damage.kind==="none"&&gated)diagnostics.push({severity:"error",code:"calculator.damage_resolution",message:`${feature.entity_id} Tier ${tier.tier} cannot use ${damage.resolution} when ${label} is none`,path:`${path}/resolution`});
+      };
+      validateDamage(tier.damage,`${tierPath}/damage`,"damage");
+      if(tier.secondary_damage){
+        if(feature.entity_id!=="forked_lightning")diagnostics.push({severity:"error",code:"calculator.secondary_damage_feature",message:"Only forked_lightning may define secondary damage",path:`${tierPath}/secondary_damage`});
+        validateDamage(tier.secondary_damage,`${tierPath}/secondary_damage`,"secondary damage");
+      }else if(feature.entity_id==="forked_lightning")diagnostics.push({severity:"error",code:"calculator.secondary_damage_required",message:`forked_lightning Tier ${tier.tier} must define secondary damage`,path:`${tierPath}/secondary_damage`});
+    }
+  }
+  const defaultEntity=entities.get(calculator.default_feature_id),defaultFeature=calculator.features.find(feature=>feature.entity_id===calculator.default_feature_id);
+  if(!defaultEntity)diagnostics.push({severity:"error",code:"calculator.default_feature_unknown",message:`Calculator default feature ${calculator.default_feature_id} is unknown`,path:"/calculator/default_feature_id"});
+  else if(!defaultFeature&&calculator.default_feature_id!=="common_manifested_strike")diagnostics.push({severity:"error",code:"calculator.default_feature_unregistered",message:`Calculator default feature ${calculator.default_feature_id} is not in the feature registry`,path:"/calculator/default_feature_id"});
+  if(defaultEntity?.level!==undefined&&defaultEntity.level>calculator.default_fighter_level)diagnostics.push({severity:"error",code:"calculator.default_feature_level",message:"Calculator default feature is unavailable at the default Fighter level",path:"/calculator/default_fighter_level"});
+  diagnostics.push(...validateCalculatorLevelBands(calculator.proficiency_bonus_bands,calculator.fighter_level_minimum,calculator.fighter_level_maximum,"Proficiency Bonus","/calculator/proficiency_bonus_bands"));
+  diagnostics.push(...validateCalculatorLevelBands(calculator.psi_point_bands,calculator.fighter_level_minimum,calculator.fighter_level_maximum,"Psi Points","/calculator/psi_point_bands"));
+  diagnostics.push(...validateCalculatorLevelBands(calculator.psionic_focus_bands,calculator.fighter_level_minimum,calculator.fighter_level_maximum,"Psionic Focus","/calculator/psionic_focus_bands"));
+  diagnostics.push(...validateCalculatorLevelBands(calculator.manifested_strike_die_bands,calculator.fighter_level_minimum,calculator.fighter_level_maximum,"Manifested Strike die","/calculator/manifested_strike_die_bands"));
+  for(let level=calculator.fighter_level_minimum;level<=calculator.fighter_level_maximum;level++){
+    const proficiencyBand=calculator.proficiency_bonus_bands.find(band=>level>=band.minimum_level&&level<=band.maximum_level);
+    const psiBand=calculator.psi_point_bands.find(band=>level>=band.minimum_level&&level<=band.maximum_level);
+    if(!proficiencyBand||!psiBand)continue;
+    const expected=Math.ceil(level/2)+proficiencyBand.value;
+    if(psiBand.value!==expected)diagnostics.push({severity:"error",code:"calculator.psi_point_progression",message:`Calculator Psi Points at Fighter level ${level} must equal half the Fighter level rounded up plus Proficiency Bonus (${expected})`,path:`/calculator/psi_point_bands/${calculator.psi_point_bands.indexOf(psiBand)}/value`});
+  }
   diagnostics.push(...duplicateDiagnostics(authority.facets.map(facet=>facet.id),"facet.duplicate","facet ID"));
   const requiredAreas=["common_features","advanced_training","cryokinesis","pyrokinesis","psychokinesis","electrokinesis"];
   const categories=new Map(authority.navigation.categories.map(category=>[category.id,category]));
