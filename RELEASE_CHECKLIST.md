@@ -1,6 +1,6 @@
 # Kinetic Vanguard release checklist
 
-Use this checklist for every development line and release. The README is a maintained public entry point, not generated output, so its status must be reviewed deliberately.
+Use this checklist for every development line and release. The README is a maintained public entry point: its release and orientation prose is reviewed deliberately, while its delimited balance-matrix region is regenerated from the exact analytical harness.
 
 ## Start of a development line
 
@@ -13,6 +13,7 @@ Use this checklist for every development line and release. The README is a maint
   - current development goals and interface capabilities;
   - supported Node.js and npm versions;
   - known follow-ups, removing completed work.
+- [ ] Run `npm run readme:benchmarks` after the canonical version and README release lines agree, review the generated numerical and release-label diff, and run `npm run readme:benchmarks:check`.
 - [ ] Open or update the shared development issue and draft pull request.
 
 ## Before marking a release pull request ready
@@ -29,6 +30,8 @@ Use this checklist for every development line and release. The README is a maint
   - `docs/licensing-audit.md` and any documented unresolved maintainer/legal questions.
 - [ ] Confirm the README does not describe an older active release, obsolete artifact name, or resolved follow-up.
 - [ ] Confirm the README summarizes the project without duplicating canonical rules text.
+- [ ] After any intentional authority, methodology, roster, or comparator change, run `npm run readme:benchmarks`, investigate the numerical diff, and commit the synchronized README region; never normalize a difference merely to match an old snapshot.
+- [ ] Run `npm run readme:benchmarks:check` and confirm it completes fresh full-roster exact analytical evaluation without relying on a tracked golden result or Monte Carlo sampling.
 - [ ] Run `npm run harness:validate` and `npm run test:harness`.
 - [ ] Confirm harness outputs derive filenames and provenance from canonical `rules_version` and authority digest.
 - [ ] Confirm every harness CSV carries structured component/SRD/comparator notices and matrix Markdown/HTML exposes the same licensing-and-notices section.
@@ -58,6 +61,7 @@ Use this checklist for every development line and release. The README is a maint
   - remove obsolete development-branch and draft-PR wording;
   - set the current development line to **None** unless the next line already exists;
   - verify downloadable asset naming.
+- [ ] Run `npm run readme:benchmarks` after the publication-status edit so the generated snapshot says **Published** for canonical `rules_version`, then run `npm run readme:benchmarks:check` and review the resulting diff.
 - [ ] Close completed release issues and record final validation.
 
 ## Required release assets

@@ -53,6 +53,15 @@ npm run harness:control -- --output-dir harness/results/control
 
 Use `--matrix-only` to omit detailed CSVs or `--no-matrix` to omit the compact matrix. Both CLIs default to the repository-root authority and accept `--authority` for mutation tests. They write only below the explicit `--output-dir` and perform no network access.
 
+Synchronize the generated balance snapshot near the top of the repository README:
+
+```text
+npm run readme:benchmarks
+npm run readme:benchmarks:check
+```
+
+Both commands run fresh full-roster damage and control evaluations directly from the canonical authority and maintained harness inputs. The writer atomically replaces only the delimited balance-matrix region and refuses to overwrite a concurrent README edit; both modes abort if any maintained build input changes during evaluation. The check recomputes that region and fails if the committed README differs. This path uses exact analytical enumeration, not Monte Carlo sampling, and does not compare against or update a tracked golden result. Run the writer after an intentional authority, methodology, roster, comparator, or release-status change, review the numerical diff, and then run the check. The snapshot's published or unreleased label is derived from the README release lines and must agree with canonical `rules_version`.
+
 ## Damage method
 
 The headline profile is `official_default_25_percent_hp`: 25% of fixed-HP budget for voluntary Blood Tax, Advanced Training disabled, and every configured attack replaced by Manifested Strike, matching the historical default policy. Because the profile supplies no Kinetic Vanguard weapon packet, this is not a global optimization of every legal Fighter weapon/Manifested Strike mix. The harness retains levels 7, 11, 15, and 20; three rounds; the historical action-slot counts; equal target weighting; cluster sizes 1, 3, and 6; no target death; legal configured positioning; and SRD defense handling.
@@ -106,6 +115,8 @@ Hunter Ranger and Open Hand Monk are excluded from primary matrices.
 ## Output and provenance
 
 Filenames derive from YAML `rules_version`, for example `kv-14-1-0-damage-comparison-matrix.csv`. Every matrix is emitted as CSV, Markdown, and self-contained HTML from one numerical row model. Band text and the signed `Boundary Delta %` tuning distance are visible in every format; HTML color is supplemental. Provenance includes rules version, authority digest, roster digest, methodology-config digest, comparator-config digest, evaluator, compatibility-only seed/trial settings, aggregation, and review status.
+
+The repository README snapshot is another rendering of freshly evaluated matrix rows, not a separate source of numerical truth. Its damage tables retain primary-target and aggregate-cluster scopes separately and show the configured cluster values without averaging them together. Its control table retains ordinary KV/comparator ratios and the same band semantics. Synchronization validates matrix completeness, provenance, notices, ratios, bands, comparator scope, and release state before rendering.
 
 Every generated detail, selection-audit, and matrix CSV row also carries semantic `Notice ...` columns for the component boundary, the exact SRD 5.2.1 attribution, the SRD modification marker, the official CC-BY-4.0 Section 5 disclaimer reference, and the unofficial BM/EK comparator notice. Matrix Markdown and HTML display the same notices once in a visible **Licensing and notices** section so copied reports retain their attribution and component boundaries without repeating long notice text in the human-facing table.
 
