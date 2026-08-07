@@ -6,10 +6,10 @@
 
 - Restored maintained damage and control benchmark harness source with a shared validated projection from the real root `KineticVanguard.yaml`.
 - Added pinned SRD 5.2.1 target data, separately declared frozen Battle Master and Eldritch Knight comparator assumptions, verified legacy provenance, and a legacy-to-current migration map.
-- Added versioned CSV, Markdown, and self-contained HTML damage/control matrices, exact COLD/IDEAL/HOT/ORDER CHECK/N/A boundary handling, signed `Boundary Delta %` tuning distance, aggregate-derived ratios, and a per-target control selection-audit CSV.
+- Added versioned CSV, Markdown, and self-contained HTML damage/control matrices with a dynamic Battle Master/Eldritch Knight min/max envelope, COLD/IDEAL/HOT/N/A handling, explicit lower/upper boundary values and identities, signed `Boundary Delta %`, aggregate-derived ratios, and a per-target control selection-audit CSV.
 - Added fast authority, mutation, completeness, aggregation, classification, output-consistency, and fixed-input smoke tests to ordinary CI.
 - Added a repository-wide licensing audit, build-manifest legal-asset hashes, complete deployable legal bundles, and embedded licensing/attribution notices for standalone publications and benchmark reports.
-- Added synchronized near-top README damage and control matrices with separate primary-target and aggregate-cluster damage views, explicit COLD/IDEAL/HOT/ORDER CHECK/N/A semantics, canonical release-state labeling, and deterministic full analytical regeneration and CI checking.
+- Added synchronized near-top level × discipline README heat matrices with result-only COLD/IDEAL/HOT/N/A cells for single-target damage and Control Reliability; full cluster and aggregate evidence remains in generated release reports, with canonical release-state labeling and deterministic full analytical regeneration and CI checking.
 
 ### Changed
 

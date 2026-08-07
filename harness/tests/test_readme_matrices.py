@@ -21,14 +21,16 @@ from harness.readme_matrices import (
     BEGIN_MARKER,
     END_MARKER,
     MatrixSyncError,
+    README_DISCIPLINES,
     _markdown_table,
+    _public_result,
     atomic_replace_text,
     generated_region_span,
     require_unchanged_inputs,
     release_state_line,
     render_balance_region,
     render_control_table,
-    render_damage_scope,
+    render_single_target_damage,
     replace_generated_region,
     validate_authoritative_rows,
 )
@@ -159,176 +161,128 @@ def _full_authoritative_rows() -> tuple[list[dict[str, str]], list[dict[str, str
 
 class ReadmeMatrixRenderingTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.primary_rows = [
-            _damage_row("primary-target DPR", 1, 5, 10, 20),
-            _damage_row("primary-target DPR", 3, 15, 10, 20),
-            _damage_row("primary-target DPR", 6, 25, 10, 20),
-        ]
-        self.aggregate_rows = [
-            _damage_row("aggregate cluster DPR", 1, 31, 40, 60),
-            _damage_row("aggregate cluster DPR", 3, 45, 40, 60),
-            _damage_row("aggregate cluster DPR", 6, 70, 40, 60),
-        ]
-        self.damage_rows = self.primary_rows + self.aggregate_rows
+        primary_values = {
+            1: ((5,10,20),(15,10,20),(25,10,20),(15,20,10)),
+            3: ((15,10,20),(15,10,20),(15,10,20),(15,20,10)),
+            6: ((8,10,20),(24,10,20),(10,10,20),(20,20,10)),
+        }
+        aggregate_values = {
+            1: ((31,40,60),(45,40,60),(70,40,60),(50,60,40)),
+            3: ((45,40,60),(45,40,60),(45,40,60),(50,60,40)),
+            6: ((35,40,60),(66,40,60),(40,40,60),(60,60,40)),
+        }
+        self.damage_rows = []
+        for scope,values_by_cluster in (
+            ("primary-target DPR",primary_values),
+            ("aggregate cluster DPR",aggregate_values),
+        ):
+            for cluster,values in values_by_cluster.items():
+                for discipline,(kv,ek,bm) in zip(README_DISCIPLINES,values,strict=True):
+                    self.damage_rows.append(
+                        _damage_row(scope,cluster,kv,ek,bm,discipline=discipline)
+                    )
+        control_values = {
+            7: ((5,10,20),(15,10,20),(25,10,20),(15,20,10)),
+            11: ((15,10,20),(15,10,20),(15,10,20),(15,0,10)),
+        }
         self.control_rows = [
-            _control_row(7, "cold_case", 5, 20, 10),
-            _control_row(8, "ideal_case", 15, 20, 10),
-            _control_row(9, "hot_case", 25, 20, 10),
-            _control_row(10, "order_check_case", 15, 10, 20),
-            _control_row(11, "undefined_case", 15, 0, 10),
+            _control_row(level,discipline,kv,ek,bm)
+            for level,values in control_values.items()
+            for discipline,(kv,ek,bm) in zip(README_DISCIPLINES,values,strict=True)
         ]
 
-    def test_damage_scopes_render_exact_c1_c3_c6_triplets_without_blending(self) -> None:
-        primary = render_damage_scope(
-            list(reversed(self.damage_rows)), "primary-target DPR", (1, 3, 6)
-        )
-        expected_primary = "\n".join(
-            (
-                "#### Primary-target DPR",
-                "",
-                "| Fighter level | Discipline | KV DPR (C1 / C3 / C6) | Eldritch Knight DPR | Battle Master DPR | KV as % of EK (C1 / C3 / C6) | KV as % of BM (C1 / C3 / C6) | Band (C1 / C3 / C6) |",
-                "|---|---|---|---|---|---|---|---|",
-                "| 7 | Pyrokinesis | 5.000000 / 15.000000 / 25.000000 | 10.000000 | 20.000000 | 50.00 / 150.00 / 250.00 | 25.00 / 75.00 / 125.00 | COLD / IDEAL / HOT |",
-            )
-        )
-        self.assertEqual(primary, expected_primary)
-        self.assertEqual(
-            render_damage_scope(self.damage_rows, "primary-target DPR", (1, 3, 6)),
-            expected_primary,
-        )
-        self.assertNotIn("31.000000 / 45.000000 / 70.000000", primary)
-
-        aggregate = render_damage_scope(
-            self.damage_rows, "aggregate cluster DPR", (1, 3, 6)
-        )
-        expected_aggregate = "\n".join(
-            (
-                "#### Aggregate cluster DPR",
-                "",
-                "| Fighter level | Discipline | KV DPR (C1 / C3 / C6) | Eldritch Knight DPR | Battle Master DPR | KV as % of EK (C1 / C3 / C6) | KV as % of BM (C1 / C3 / C6) | Band (C1 / C3 / C6) |",
-                "|---|---|---|---|---|---|---|---|",
-                "| 7 | Pyrokinesis | 31.000000 / 45.000000 / 70.000000 | 40.000000 | 60.000000 | 77.50 / 112.50 / 175.00 | 51.67 / 75.00 / 116.67 | COLD / IDEAL / HOT |",
-            )
-        )
-        self.assertEqual(aggregate, expected_aggregate)
-        self.assertNotIn("5.000000 / 15.000000 / 25.000000", aggregate)
-
-    def test_damage_renderer_preserves_order_check_and_na_groups(self) -> None:
-        rows = [
-            *(
-                _damage_row(
-                    "primary-target DPR",
-                    cluster,
-                    15,
-                    20,
-                    10,
-                    discipline="order_check_probe",
-                )
-                for cluster in (1, 3, 6)
-            ),
-            *(
-                _damage_row(
-                    "primary-target DPR",
-                    cluster,
-                    15,
-                    0,
-                    10,
-                    level=8,
-                    discipline="undefined_probe",
-                )
-                for cluster in (1, 3, 6)
-            ),
-        ]
-        rendered = render_damage_scope(rows, "primary-target DPR", (1, 3, 6))
+    def test_single_target_damage_renders_one_public_heat_matrix(self) -> None:
+        rendered=render_single_target_damage(list(reversed(self.damage_rows)))
+        header="| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |"
+        self.assertEqual(rendered.count(header),1)
         self.assertIn(
-            "| 7 | Order Check Probe | 15.000000 / 15.000000 / 15.000000 | "
-            "20.000000 | 10.000000 | 75.00 / 75.00 / 75.00 | "
-            "150.00 / 150.00 / 150.00 | ORDER CHECK / ORDER CHECK / ORDER CHECK |",
+            "| 7 | COLD (-50.00%) | IDEAL | HOT (+25.00%) | IDEAL |",
             rendered,
         )
-        self.assertIn(
-            "| 8 | Undefined Probe | 15.000000 / 15.000000 / 15.000000 | "
-            "0.000000 | 10.000000 | N/A / N/A / N/A | "
-            "150.00 / 150.00 / 150.00 | N/A / N/A / N/A |",
-            rendered,
-        )
+        self.assertNotIn("COLD (-22.50%)",rendered)
+        for forbidden in ("KV DPR","KV as %","Eldritch Knight DPR","Battle Master DPR","ORDER CHECK","5.000000"):
+            self.assertNotIn(forbidden,rendered)
 
-    def test_damage_headers_derive_nonstandard_cluster_dimensions(self) -> None:
-        rows = [
-            _damage_row("primary-target DPR", cluster, 15, 10, 20)
-            for cluster in (1, 2, 4)
+    def test_single_target_damage_requires_primary_cluster_one(self) -> None:
+        rows=[
+            _damage_row(
+                "primary-target DPR",2,15,10,20,discipline=discipline
+            )
+            for discipline in README_DISCIPLINES
         ]
-        rendered = render_damage_scope(rows, "primary-target DPR", (1, 2, 4))
-        self.assertIn("KV DPR (C1 / C2 / C4)", rendered)
-        self.assertIn("Band (C1 / C2 / C4)", rendered)
-        self.assertNotIn("C1 / C3 / C6", rendered)
+        with self.assertRaisesRegex(MatrixSyncError,"cluster size 1"):
+            render_single_target_damage(rows)
 
-    def test_control_table_renders_all_bands_with_ordinary_kv_ratios(self) -> None:
-        rendered = render_control_table(list(reversed(self.control_rows)))
-        expected = "\n".join(
+    def test_control_table_is_level_by_discipline_and_public_only(self) -> None:
+        rendered=render_control_table(list(reversed(self.control_rows)))
+        expected="\n".join(
             (
-                "| Fighter level | Discipline | KV control % | Eldritch Knight control % | Battle Master control % | KV as % of EK | KV as % of BM | Band |",
-                "|---|---|---|---|---|---|---|---|",
-                "| 7 | Cold Case | 5.000000 | 20.000000 | 10.000000 | 25.00 | 50.00 | COLD |",
-                "| 8 | Ideal Case | 15.000000 | 20.000000 | 10.000000 | 75.00 | 150.00 | IDEAL |",
-                "| 9 | Hot Case | 25.000000 | 20.000000 | 10.000000 | 125.00 | 250.00 | HOT |",
-                "| 10 | Order Check Case | 15.000000 | 10.000000 | 20.000000 | 150.00 | 75.00 | ORDER CHECK |",
-                "| 11 | Undefined Case | 15.000000 | 0.000000 | 10.000000 | N/A | 150.00 | N/A |",
+                "| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |",
+                "|---|---|---|---|---|",
+                "| 7 | COLD (-50.00%) | IDEAL | HOT (+25.00%) | IDEAL |",
+                "| 11 | IDEAL | IDEAL | IDEAL | N/A |",
             )
         )
-        self.assertEqual(rendered, expected)
-        self.assertEqual(render_control_table(self.control_rows), expected)
-        self.assertNotIn("400.00", rendered)
-        self.assertEqual(
-            {row["Band"] for row in self.control_rows},
-            {"COLD", "IDEAL", "HOT", "ORDER CHECK", "N/A"},
-        )
+        self.assertEqual(rendered,expected)
+        for forbidden in ("KV control","KV as %","Eldritch Knight","Battle Master","ORDER CHECK"):
+            self.assertNotIn(forbidden,rendered)
+        self.assertNotIn("IDEAL (",rendered)
 
-    def test_complete_region_is_deterministic_for_reordered_rows(self) -> None:
-        readme = "\n".join(
+    def test_public_result_enforces_band_and_delta_contract(self) -> None:
+        self.assertEqual(_public_result(_damage_row("primary-target DPR",1,15,10,20)),"IDEAL")
+        self.assertEqual(_public_result(_damage_row("primary-target DPR",1,5,10,20)),"COLD (-50.00%)")
+        self.assertEqual(_public_result(_damage_row("primary-target DPR",1,25,10,20)),"HOT (+25.00%)")
+        unavailable=_damage_row("primary-target DPR",1,15,0,20)
+        self.assertEqual(_public_result(unavailable),"N/A")
+        malformed=_damage_row("primary-target DPR",1,5,10,20);malformed["Boundary Delta %"]="+50.00"
+        with self.assertRaisesRegex(MatrixSyncError,"incorrectly signed"):
+            _public_result(malformed)
+        retired=_damage_row("primary-target DPR",1,15,10,20);retired["Band"]="ORDER CHECK"
+        with self.assertRaisesRegex(MatrixSyncError,"Unsupported public"):
+            _public_result(retired)
+
+    def test_complete_region_is_deterministic_transposed_and_minimal(self) -> None:
+        damage_rows,control_rows=_full_authoritative_rows()
+        readme="\n".join(
             (
                 "# Project",
                 "- Current published release: **v14.0.0**",
                 "- Current development line: **v14.1.0**",
             )
         )
-        arguments = (
-            readme,
-            self.damage_rows,
-            self.control_rows,
-            "14.1.0",
-            "SYNTHETIC_REVIEW",
-            "synthetic_profile",
-            (1, 3, 6),
+        arguments=(
+            readme,damage_rows,control_rows,"14.1.0","SYNTHETIC_REVIEW",
+            "synthetic_profile",(1,3,6),
         )
-        rendered = render_balance_region(*arguments)
-        reordered = render_balance_region(
-            readme,
-            list(reversed(self.damage_rows)),
-            list(reversed(self.control_rows)),
-            "14.1.0",
-            "SYNTHETIC_REVIEW",
-            "synthetic_profile",
-            (1, 3, 6),
+        rendered=render_balance_region(*arguments)
+        reordered=render_balance_region(
+            readme,list(reversed(damage_rows)),list(reversed(control_rows)),
+            "14.1.0","SYNTHETIC_REVIEW","synthetic_profile",(1,3,6),
         )
-        self.assertEqual(rendered, reordered)
+        self.assertEqual(rendered,reordered)
         self.assertTrue(rendered.startswith(BEGIN_MARKER))
         self.assertTrue(rendered.endswith(END_MARKER))
-        self.assertEqual(rendered.count("#### Primary-target DPR"), 1)
-        self.assertEqual(rendered.count("#### Aggregate cluster DPR"), 1)
-        self.assertIn("Ratios remain ordinary KV/comparator percentages", rendered)
-        self.assertIn(COMPARATOR_NOTICE, rendered)
-        self.assertIn("[`LICENSE.md`](LICENSE.md)", rendered)
-        self.assertIn("[`NOTICE.md`](NOTICE.md)", rendered)
+        self.assertEqual(rendered.count("| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |"),2)
+        for heading in ("### Single-Target Damage","### Control Reliability"):
+            self.assertIn(heading,rendered)
+        self.assertIn("This single-target benchmark evaluates each configured control package",rendered)
+        self.assertNotIn("### Cluster / Aggregate Damage",rendered)
+        self.assertIn("All other primary-target and aggregate-cluster results remain in the generated detailed release reports",rendered)
+        limitation=("Control Reliability measures how often the configured control package takes effect. "
+                    "It does not measure the relative severity, duration, area, or strategic value of different control effects. "
+                    "A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.")
+        self.assertIn(limitation,rendered)
+        for forbidden in ("ORDER CHECK","KV DPR","KV as % of EK","KV as % of BM","KV control %"):
+            self.assertNotIn(forbidden,rendered)
+        self.assertIn(COMPARATOR_NOTICE,rendered)
+        self.assertIn("LICENSE.md",rendered)
+        self.assertIn("NOTICE.md",rendered)
 
     def test_markdown_table_has_exact_header_width_and_escaping(self) -> None:
-        rendered = _markdown_table(("First", "Second"), (("a|b", "line\nbreak"),))
-        self.assertEqual(
-            rendered,
-            "| First | Second |\n|---|---|\n| a\\|b | line break |",
-        )
-        with self.assertRaisesRegex(MatrixSyncError, "header width"):
-            _markdown_table(("First", "Second"), (("only one cell",),))
+        rendered=_markdown_table(("First","Second"),(("a|b","line\nbreak"),))
+        self.assertEqual(rendered,"| First | Second |\n|---|---|\n| a\\|b | line break |")
+        with self.assertRaisesRegex(MatrixSyncError,"header width"):
+            _markdown_table(("First","Second"),(("only one cell",),))
 
 
 class ReadmeMatrixDelimiterTests(unittest.TestCase):
@@ -495,6 +449,7 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
                 str(config["methodology"]["status"]),
                 str(config["kv_profile"]["id"]),
                 tuple(int(value) for value in config["methodology"]["cluster_sizes"]),
+                README_DISCIPLINES,
             ),
         )
 
@@ -531,11 +486,17 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(MatrixSyncError, "changed notice field"):
             validate_authoritative_rows(self.damage_rows, control)
 
-    def test_stale_raw_ratio_and_band_values_fail_closed(self) -> None:
+    def test_stale_result_and_boundary_evidence_fails_closed(self) -> None:
         cases = (
+            ("Benchmark Type", "Control Reliability"),
             ("KV", "16.000000"),
             ("KV as % of EK", "999.00"),
+            ("Lower Comparator", "Battle Master"),
+            ("Lower Boundary", "999.000000"),
+            ("Upper Comparator", "Eldritch Knight"),
+            ("Upper Boundary", "999.000000"),
             ("Band", "HOT"),
+            ("Boundary Delta %", "+1.00"),
         )
         for field, value in cases:
             with self.subTest(field=field):

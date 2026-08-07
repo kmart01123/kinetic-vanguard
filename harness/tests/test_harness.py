@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
-from harness.comparison_report import COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,classify_control,classify_damage,matrix_row,write_matrix
+from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
 from harness.control_harness import _comparator_scenario,_effect_available,_kv_scenario,run as run_control
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,run as run_damage
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,load_comparators,load_config,load_targets
@@ -92,14 +92,21 @@ class AuthorityProjectionTests(unittest.TestCase):
         config=load_config();comparators=load_comparators()
         self.assertNotIn("damage_comparators",config);self.assertNotIn("control_comparators",config)
         self.assertEqual(comparators["source_ruleset"],"2024 fifth-edition rules")
-        self.assertEqual(comparators["primary_comparator_ids"],["battle_master","eldritch_knight"])
+        self.assertEqual(set(comparators["primary_comparator_ids"]),{"battle_master","eldritch_knight"})
         self.assertEqual(set(comparators["damage"]),{"battle_master","eldritch_knight"});self.assertEqual(set(comparators["control"]),{"battle_master","eldritch_knight"})
         source=DEFAULT_COMPARATORS.read_text(encoding="utf-8")
         for forbidden in ('"label"','"status"','"description"','"rules_text"','"feature_text"','"spell_text"','"maneuver_text"','"flavor"'):self.assertNotIn(forbidden,source)
         self.assertNotRegex(DEFAULT_AUTHORITY.read_text(encoding="utf-8"),r"(?i)battle.?master|eldritch.?knight")
         with tempfile.TemporaryDirectory() as directory:
-            path=Path(directory)/"comparators.json";mutated=dict(comparators);mutated["primary_comparator_ids"]=["eldritch_knight","battle_master"]
-            path.write_text(json.dumps(mutated),encoding="utf-8")
+            path=Path(directory)/"comparators.json"
+            reordered=deepcopy(comparators);reordered["primary_comparator_ids"]=["eldritch_knight","battle_master"]
+            path.write_text(json.dumps(reordered),encoding="utf-8")
+            self.assertEqual(load_comparators(path)["primary_comparator_ids"],reordered["primary_comparator_ids"])
+            invalid=deepcopy(comparators);invalid["primary_comparator_ids"]=["battle_master","battle_master"]
+            path.write_text(json.dumps(invalid),encoding="utf-8")
+            with self.assertRaisesRegex(ValueError,"Primary comparators"):load_comparators(path)
+            malformed=deepcopy(comparators);malformed["primary_comparator_ids"]=[{},"battle_master"]
+            path.write_text(json.dumps(malformed),encoding="utf-8")
             with self.assertRaisesRegex(ValueError,"Primary comparators"):load_comparators(path)
         self.assertTrue(DEFAULT_CONFIG.is_file());self.assertTrue(DEFAULT_COMPARATORS.is_file())
 
@@ -440,45 +447,67 @@ class CanonicalControlTests(unittest.TestCase):
 
 
 class ClassificationTests(unittest.TestCase):
-    def test_damage_boundaries_order_and_zero(self)->None:
-        self.assertEqual(classify_damage(9,10,20),"COLD")
-        self.assertEqual(classify_damage(10,10,20),"IDEAL")
-        self.assertEqual(classify_damage(15,10,20),"IDEAL")
-        self.assertEqual(classify_damage(20,10,20),"IDEAL")
-        self.assertEqual(classify_damage(21,10,20),"HOT")
-        self.assertEqual(classify_damage(15,20,10),"ORDER CHECK")
-        self.assertEqual(classify_damage(15,0,20),"N/A")
+    def test_shared_envelope_classifier_is_swap_invariant_and_inclusive(self)->None:
+        expected=((9,"COLD"),(10,"IDEAL"),(15,"IDEAL"),(20,"IDEAL"),(21,"HOT"))
+        for eldritch_knight,battle_master in ((10,20),(20,10)):
+            for kv,band in expected:
+                with self.subTest(kv=kv,ek=eldritch_knight,bm=battle_master):
+                    self.assertEqual(classify_envelope(kv,eldritch_knight,battle_master),band)
+                    for kind in ("damage","control"):
+                        self.assertEqual(matrix_row({},kv,eldritch_knight,battle_master,kind)["Band"],band)
 
-    def test_control_boundaries_order_and_zero(self)->None:
-        self.assertEqual(classify_control(9,20,10),"COLD")
-        self.assertEqual(classify_control(10,20,10),"IDEAL")
-        self.assertEqual(classify_control(15,20,10),"IDEAL")
-        self.assertEqual(classify_control(20,20,10),"IDEAL")
-        self.assertEqual(classify_control(21,20,10),"HOT")
-        self.assertEqual(classify_control(15,10,20),"ORDER CHECK")
-        self.assertEqual(classify_control(15,20,0),"N/A")
+    def test_swap_preserves_band_delta_and_dynamic_boundary_values(self)->None:
+        for kind in ("damage","control"):
+            for kv,band,delta in ((8,"COLD","-20.00"),(10,"IDEAL","0.00"),(15,"IDEAL","0.00"),(20,"IDEAL","0.00"),(24,"HOT","+20.00")):
+                forward=matrix_row({},kv,10,20,kind)
+                reversed_order=matrix_row({},kv,20,10,kind)
+                for field in ("Band","Boundary Delta %","Lower Boundary","Upper Boundary"):
+                    self.assertEqual(forward[field],reversed_order[field])
+                self.assertEqual((forward["Band"],forward["Boundary Delta %"]),(band,delta))
+
+    def test_unavailable_equal_and_invalid_inputs_fail_or_classify_explicitly(self)->None:
+        for values in ((15,0,20),(15,20,0),(float("nan"),10,20),(15,float("inf"),20)):
+            with self.subTest(values=values):
+                self.assertEqual(classify_envelope(*values),"N/A")
+        for values in ((float("nan"),10,20),(15,float("inf"),20)):
+            with self.subTest(matrix_values=values):
+                with self.assertRaisesRegex(ValueError,"must be finite"):
+                    matrix_row({},*values,"damage")
+        self.assertEqual(classify_envelope(9,10,10),"COLD")
+        self.assertEqual(classify_envelope(10,10,10),"IDEAL")
+        self.assertEqual(classify_envelope(11,10,10),"HOT")
+        with self.assertRaisesRegex(ValueError,"Unsupported benchmark type"):
+            matrix_row({},15,10,20,"unsupported")
 
     def test_percentage_uses_displayed_aggregate_raw_values(self)->None:
         row=matrix_row({"Level":7},10.0,8.0,20.0,"damage")
+        self.assertEqual(row["Benchmark Type"],"Damage")
         self.assertEqual(row["KV as % of EK"],"125.00")
         self.assertEqual(row["KV as % of BM"],"50.00")
         self.assertEqual(row["Band"],"IDEAL")
         self.assertEqual(row["Boundary Delta %"],"0.00")
 
-    def test_boundary_delta_quantifies_hot_and_cold_tuning_distance(self)->None:
-        cases=[
-            ("damage",8,10,20,"COLD","-20.00"),
-            ("damage",24,10,20,"HOT","+20.00"),
-            ("damage",15,10,20,"IDEAL","0.00"),
-            ("control",8,20,10,"COLD","-20.00"),
-            ("control",24,20,10,"HOT","+20.00"),
-            ("control",15,20,10,"IDEAL","0.00"),
-            ("damage",15,20,10,"ORDER CHECK","N/A"),
-            ("control",15,20,0,"N/A","N/A"),
-        ]
-        for kind,kv,ek,bm,band,delta in cases:
-            with self.subTest(kind=kind,band=band):
-                row=matrix_row({},kv,ek,bm,kind);self.assertEqual(row["Band"],band);self.assertEqual(row["Boundary Delta %"],delta)
+    def test_matrix_row_identifies_dynamic_boundaries_and_ties(self)->None:
+        expected=(
+            (10,20,"Eldritch Knight","Battle Master"),
+            (20,10,"Battle Master","Eldritch Knight"),
+        )
+        for eldritch_knight,battle_master,lower_name,upper_name in expected:
+            row=matrix_row({},15,eldritch_knight,battle_master,"control")
+            self.assertEqual(row["Benchmark Type"],"Control Reliability")
+            self.assertEqual(row["Lower Comparator"],lower_name)
+            self.assertEqual(row["Upper Comparator"],upper_name)
+            self.assertEqual(row["Lower Boundary"],"10.000000")
+            self.assertEqual(row["Upper Boundary"],"20.000000")
+        tied=matrix_row({},10,10,10,"damage")
+        self.assertEqual(tied["Lower Comparator"],"Eldritch Knight + Battle Master")
+        self.assertEqual(tied["Upper Comparator"],"Eldritch Knight + Battle Master")
+        self.assertEqual(tied["Lower Boundary"],"10.000000")
+        self.assertEqual(tied["Upper Boundary"],"10.000000")
+
+    def test_supported_bands_have_no_comparator_order_state(self)->None:
+        self.assertEqual(BANDS,{"COLD","IDEAL","HOT","N/A"})
+        self.assertNotIn("ORDER CHECK",BANDS)
 
     def test_report_notices_are_structured_and_source_grounded(self)->None:
         repository_notice=(PROJECT_ROOT/"NOTICE.md").read_text(encoding="utf-8")
@@ -501,19 +530,45 @@ class ClassificationTests(unittest.TestCase):
         for retained in ("Copyright (c) 2026, NixNinja","BSD-3-Clause","CC BY 4.0","LICENSE-CODE","LICENSE.md","NOTICE.md"):
             self.assertIn(retained,component)
 
-    def test_csv_markdown_html_are_one_row_model_and_visible_band(self)->None:
+    def test_csv_markdown_html_share_full_envelope_evidence(self)->None:
         row=matrix_row({"Level":7,"Discipline":"cryokinesis"},10,8,20,"damage")
+        control_row=matrix_row({"Level":7,"Discipline":"cryokinesis"},25,20,10,"control")
         provenance={"rules_version":"14.1.0","authority_sha256":"probe","roster_sha256":"probe"}
+        self.assertEqual([key for key in row if key in VALUE_COLUMNS],VALUE_COLUMNS)
         with tempfile.TemporaryDirectory() as directory:
-            paths=write_matrix(Path(directory),"14.1.0","damage",[row],provenance)
+            root=Path(directory)
+            paths=write_matrix(root/"damage","14.1.0","damage",[row],provenance)
+            control_paths=write_matrix(root/"control","14.1.0","control",[control_row],provenance)
+            bad=dict(row);bad["Band"]="ORDER CHECK"
+            with self.assertRaisesRegex(ValueError,"unsupported band"):
+                write_matrix(root/"bad","14.1.0","damage",[bad],provenance)
+            incomplete=dict(row);del incomplete["Lower Boundary"]
+            with self.assertRaisesRegex(ValueError,"missing evidence"):
+                write_matrix(root/"incomplete","14.1.0","damage",[incomplete],provenance)
+            stale_band=dict(row);stale_band["Band"]="HOT"
+            with self.assertRaisesRegex(ValueError,"stale Band"):
+                write_matrix(root/"stale-band","14.1.0","damage",[stale_band],provenance)
+            stale_delta=dict(row);stale_delta["Boundary Delta %"]="+1.00"
+            with self.assertRaisesRegex(ValueError,"stale Boundary Delta"):
+                write_matrix(root/"stale-delta","14.1.0","damage",[stale_delta],provenance)
+            with self.assertRaisesRegex(ValueError,"stale Benchmark Type"):
+                write_matrix(root/"wrong-kind","14.1.0","damage",[control_row],provenance)
+            with self.assertRaisesRegex(ValueError,"Unsupported comparison matrix kind"):
+                write_matrix(root/"unknown-kind","14.1.0","unknown",[row],provenance)
             with paths["csv"].open(encoding="utf-8") as stream:
                 csv_row=next(csv.DictReader(stream))
             markdown=paths["markdown"].read_text(encoding="utf-8");html=paths["html"].read_text(encoding="utf-8")
+            control_markdown=control_paths["markdown"].read_text(encoding="utf-8")
+            control_html=control_paths["html"].read_text(encoding="utf-8")
         self.assertTrue(all(csv_row[key]==value for key,value in row.items()))
         self.assertEqual(csv_row["Provenance Rules Version"],"14.1.0")
         self.assertEqual(csv_row["Provenance Authority Sha256"],"probe")
         self.assertEqual(csv_row["Provenance Roster Sha256"],"probe")
         self.assertEqual({key:csv_row[key] for key in NOTICE_COLUMNS},NOTICE_COLUMNS)
+        self.assertEqual(csv_row["Lower Comparator"],"Eldritch Knight")
+        self.assertEqual(csv_row["Upper Comparator"],"Battle Master")
+        self.assertEqual(csv_row["Lower Boundary"],"8.000000")
+        self.assertEqual(csv_row["Upper Boundary"],"20.000000")
         for value in row.values():
             self.assertIn(value,markdown);self.assertIn(value,html)
         self.assertIn("## Licensing and notices",markdown)
@@ -521,8 +576,18 @@ class ClassificationTests(unittest.TestCase):
         for label,value in LEGAL_NOTICES:
             self.assertEqual(markdown.count(value),1,label)
             self.assertEqual(html.count(value),1,label)
-        self.assertIn("IDEAL",html)
-        self.assertNotIn("Hunter Ranger",html);self.assertNotIn("Open Hand Monk",html)
+        limitation=("Control Reliability measures how often the configured control package takes effect. "
+                    "It does not measure the relative severity, duration, area, or strategic value of different control effects. "
+                    "A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.")
+        self.assertTrue(control_markdown.startswith("# Kinetic Vanguard 14.1.0 Control Reliability Comparison Matrix"))
+        self.assertIn("<title>Kinetic Vanguard 14.1.0 Control Reliability Comparison Matrix</title>",control_html)
+        self.assertIn("<h1>Kinetic Vanguard 14.1.0 Control Reliability Comparison Matrix</h1>",control_html)
+        self.assertIn(limitation,control_markdown)
+        self.assertIn(limitation,control_html)
+        for rendered in (markdown,html,control_markdown,control_html):
+            self.assertNotIn("ORDER CHECK",rendered)
+            self.assertNotIn("Hunter Ranger",rendered)
+            self.assertNotIn("Open Hand Monk",rendered)
 
 
 class SmokeAndBoundaryTests(unittest.TestCase):
@@ -560,12 +625,57 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             self.assertEqual((root/"control"/"kv-14-1-0-control-selection-audit.csv").read_bytes(),(root/"control-repeated"/"kv-14-1-0-control-selection-audit.csv").read_bytes())
             status=load_config()["methodology"]["status"]
             for result in (damage,control,parallel_damage,repeated_control):
-                with result["paths"]["csv"].open(encoding="utf-8") as stream:matrix_rows=list(csv.DictReader(stream))
+                matrix_path=result["paths"]["csv"]
+                with matrix_path.open(encoding="utf-8") as stream:matrix_rows=list(csv.DictReader(stream))
+                expected_type="Damage" if "damage" in matrix_path.name else "Control Reliability"
                 self.assertTrue(matrix_rows);self.assertTrue(all(row["Provenance Status"]==status for row in matrix_rows))
                 self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in matrix_rows))
                 self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
                 self.assertTrue(all(row["Provenance Trial Seed Role"]=="historical_compatibility_metadata" for row in matrix_rows))
+                self.assertTrue(all(row["Benchmark Type"]==expected_type for row in matrix_rows))
+                for row in matrix_rows:
+                    comparators={"Eldritch Knight":float(row["Eldritch Knight"]),"Battle Master":float(row["Battle Master"])}
+                    lower=min(comparators.values());upper=max(comparators.values())
+                    self.assertEqual(row["Lower Boundary"],f"{lower:.6f}")
+                    self.assertEqual(row["Upper Boundary"],f"{upper:.6f}")
+                    if lower==upper:
+                        self.assertEqual(row["Lower Comparator"],"Eldritch Knight + Battle Master")
+                        self.assertEqual(row["Upper Comparator"],"Eldritch Knight + Battle Master")
+                    else:
+                        self.assertEqual(comparators[row["Lower Comparator"]],lower)
+                        self.assertEqual(comparators[row["Upper Comparator"]],upper)
+                    self.assertNotEqual(row["Band"],"ORDER CHECK")
                 self.assertIn(status,result["paths"]["markdown"].read_text(encoding="utf-8"));self.assertIn(status,result["paths"]["html"].read_text(encoding="utf-8"))
+
+    def test_full_control_crossover_uses_ordinary_dynamic_envelope_bands(self)->None:
+        config=load_config();methodology=config["methodology"]
+        with tempfile.TemporaryDirectory() as directory:
+            result=run_control(
+                DEFAULT_AUTHORITY,Path(directory),{7,11,15,20},None,
+                int(methodology["control_default_trials"]),int(methodology["control_seed"]),
+                False,True,
+            )
+            with result["paths"]["csv"].open(encoding="utf-8") as stream:
+                rows=list(csv.DictReader(stream))
+        self.assertEqual(len(rows),16)
+        self.assertEqual(sum(row["Band"]=="HOT" for row in rows),14)
+        self.assertEqual(sum(row["Band"]=="COLD" for row in rows),2)
+        self.assertTrue(all(row["Band"] not in {"IDEAL","ORDER CHECK"} for row in rows))
+        level_seven={row["Discipline"]:row for row in rows if row["Level"]=="7"}
+        expected={
+            "cryokinesis":("HOT","+65.70"),
+            "electrokinesis":("HOT","+65.70"),
+            "psychokinesis":("HOT","+44.19"),
+            "pyrokinesis":("COLD","-100.00"),
+        }
+        self.assertEqual(set(level_seven),set(expected))
+        for discipline,(band,delta) in expected.items():
+            row=level_seven[discipline]
+            self.assertEqual((row["Band"],row["Boundary Delta %"]),(band,delta))
+            self.assertEqual(row["Eldritch Knight"],"41.250000")
+            self.assertEqual(row["Battle Master"],"48.656250")
+            self.assertEqual(row["Lower Comparator"],"Eldritch Knight")
+            self.assertEqual(row["Upper Comparator"],"Battle Master")
 
     def test_imports_outputs_and_archive_are_not_positive_inputs_or_tracked(self)->None:
         inputs=json.loads((PROJECT_ROOT/"build"/"inputs.json").read_text(encoding="utf-8"))["inputs"]

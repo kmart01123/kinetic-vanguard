@@ -85,19 +85,23 @@ Damage produces separate primary-target and aggregate-cluster DPR rows. Headline
 KV as % of comparator = 100 × KV aggregate / comparator aggregate
 ```
 
-Expected order is Eldritch Knight ≤ Battle Master. COLD is below EK, IDEAL includes both boundaries, HOT is above BM, reversed order is ORDER CHECK, and a zero denominator is N/A. `Boundary Delta %` is the signed percentage from the violated boundary: negative below EK for COLD, positive above BM for HOT, and `0.00` inside IDEAL.
+For every displayed aggregate, `lower_bound = min(Battle Master, Eldritch Knight)` and `upper_bound = max(Battle Master, Eldritch Knight)`. COLD is below the lower boundary, IDEAL includes both boundaries, and HOT is above the upper boundary. `Boundary Delta %` is negative relative to the lower boundary for COLD, positive relative to the upper boundary for HOT, and `0.00` inside IDEAL. `N/A` is reserved for an unavailable comparison, including a required zero denominator.
+
+The matrix CSV, Markdown, and HTML retain both named raw comparator aggregates and ordinary KV/comparator ratios, plus `Lower Comparator`, `Upper Comparator`, `Lower Boundary`, and `Upper Boundary` audit fields. Comparator crossover is ordinary evidence, not a separate balance state.
 
 ## Control method
 
 The control headline metric is `roster-adjusted whole-package control stick %`. At each level and target, the harness selects the highest legal named-feature-plus-mastery reliability for each configured build. An ineligible scenario contributes zero; it is never dropped. The selection audit identifies the exact per-target winner. The detailed report retains reach, named control, mastery floor, whole-package reliability, and configured repeat-save survival.
 
-This is a best-available reliability envelope, not a condition-value or severity score. It does not assert that different conditions are equal and never converts control into DPR.
+The public headline is **Control Reliability**; the configured numerical metric remains `roster-adjusted whole-package control stick %`.
 
-Expected order is Battle Master ≤ Eldritch Knight. COLD is below BM, IDEAL includes both boundaries, HOT is above EK, reversed order is ORDER CHECK, and a zero denominator is N/A. Percentages remain ordinary KV/BM and KV/EK ratios. `Boundary Delta %` is negative below BM for COLD, positive above EK for HOT, and `0.00` inside IDEAL.
+Control Reliability measures how often the configured control package takes effect. It does not measure the relative severity, duration, area, or strategic value of different control effects. A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.
+
+Control Reliability uses the same dynamic min/max comparator envelope as damage. Percentages remain ordinary KV/BM and KV/EK ratios. No severity weights are assigned to conditions, and control is never converted into DPR.
 
 Independent review accounted for all 1,212 historical control rows: 1,181 like-for-like analytical rows differ from the 250,000-trial results by `0.0532515` percentage points on average and at most `0.3128`; three Kraken rows are documented canonical corrections, and 28 Beguile rows were retired because suggestion and mass suggestion do not impose Charmed. All 168 selected winners and all 16 matrix aggregates were recomputed independently.
 
-The reviewed matrix has four expected `ORDER CHECK` rows, one for each discipline at level 7: Eldritch Knight is `41.25` while Battle Master is `48.65625`. These rows reflect the frozen canonical comparator inputs (including the level-7 Eldritch Knight Intelligence modifier and Battle Master save/weapon values); they are an ordering diagnostic, not a failure or a tuning target.
+At level 7, Battle Master (`48.65625`) and Eldritch Knight (`41.25`) cross relative to the earlier assumed control ordering. Four rows previously surfaced that historical assumption as `ORDER CHECK`. The finalized min/max envelope treats this as an ordinary comparator crossover and classifies Kinetic Vanguard normally; the raw comparator values and boundary identities remain visible in detailed evidence.
 
 ## Primary comparators
 
@@ -114,9 +118,9 @@ Hunter Ranger and Open Hand Monk are excluded from primary matrices.
 
 ## Output and provenance
 
-Filenames derive from YAML `rules_version`, for example `kv-14-1-0-damage-comparison-matrix.csv`. Every matrix is emitted as CSV, Markdown, and self-contained HTML from one numerical row model. Band text and the signed `Boundary Delta %` tuning distance are visible in every format; HTML color is supplemental. Provenance includes rules version, authority digest, roster digest, methodology-config digest, comparator-config digest, evaluator, compatibility-only seed/trial settings, aggregation, and review status.
+Filenames derive from YAML `rules_version`, for example `kv-14-1-0-damage-comparison-matrix.csv`. Every matrix is emitted as CSV, Markdown, and self-contained HTML from one numerical row model. Raw KV, Battle Master, and Eldritch Knight aggregates; both ordinary ratios; dynamic boundary values and identities; band text; and signed `Boundary Delta %` remain visible in every detailed format. HTML color is supplemental. Provenance includes rules version, authority digest, roster digest, methodology-config digest, comparator-config digest, evaluator, compatibility-only seed/trial settings, aggregation, and review status.
 
-The repository README snapshot is another rendering of freshly evaluated matrix rows, not a separate source of numerical truth. Its damage tables retain primary-target and aggregate-cluster scopes separately and show the configured cluster values without averaging them together. Its control table retains ordinary KV/comparator ratios and the same band semantics. Synchronization validates matrix completeness, provenance, notices, ratios, bands, comparator scope, and release state before rendering.
+The repository README snapshot is another rendering of freshly evaluated matrix rows, not a separate source of numerical truth. It uses level rows, discipline columns, and result-only cells for exactly two front-door views: primary-target DPR at cluster size 1 and single-target Control Reliability. All other primary-target and aggregate-cluster results remain in the detailed CSV, Markdown, and HTML release evidence. Synchronization validates the complete matrices, provenance, notices, raw values, ratios, dynamic boundaries, bands, comparator scope, and release state before selecting the two README views.
 
 Every generated detail, selection-audit, and matrix CSV row also carries semantic `Notice ...` columns for the component boundary, the exact SRD 5.2.1 attribution, the SRD modification marker, the official CC-BY-4.0 Section 5 disclaimer reference, and the unofficial BM/EK comparator notice. Matrix Markdown and HTML display the same notices once in a visible **Licensing and notices** section so copied reports retain their attribution and component boundaries without repeating long notice text in the human-facing table.
 

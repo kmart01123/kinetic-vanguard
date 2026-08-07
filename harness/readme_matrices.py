@@ -13,7 +13,12 @@ from pathlib import Path
 from typing import Sequence
 
 from .authority import AuthorityModel, DEFAULT_AUTHORITY, PROJECT_ROOT
-from .comparison_report import COMPARATOR_NOTICE, NOTICE_COLUMNS, matrix_row
+from .comparison_report import (
+    COMPARATOR_NOTICE,
+    NOTICE_COLUMNS,
+    VALUE_COLUMNS,
+    matrix_row,
+)
 from .control_harness import run as run_control
 from .damage_harness import run as run_damage
 from .model import (
@@ -29,19 +34,13 @@ END_MARKER = "<!-- END GENERATED BALANCE MATRICES -->"
 README_PATH = PROJECT_ROOT / "README.md"
 BUILD_INPUTS_PATH = PROJECT_ROOT / "build" / "inputs.json"
 DAMAGE_SCOPES = ("primary-target DPR", "aggregate cluster DPR")
-DAMAGE_SCOPE_TITLES = {
-    "primary-target DPR": "Primary-target DPR",
-    "aggregate cluster DPR": "Aggregate cluster DPR",
-}
-RESULT_FIELDS = (
-    "KV",
-    "Eldritch Knight",
-    "Battle Master",
-    "KV as % of EK",
-    "KV as % of BM",
-    "Band",
-    "Boundary Delta %",
+README_DISCIPLINES = (
+    "cryokinesis",
+    "pyrokinesis",
+    "psychokinesis",
+    "electrokinesis",
 )
+RESULT_FIELDS = tuple(VALUE_COLUMNS)
 PROVENANCE_FIELDS = (
     "Provenance Rules Version",
     "Provenance Authority Sha256",
@@ -173,12 +172,16 @@ def _key_difference(actual: set[tuple[str, ...]], expected: set[tuple[str, ...]]
 
 def validate_authoritative_rows(
     damage_rows: Sequence[MatrixRow], control_rows: Sequence[MatrixRow]
-) -> tuple[str, str, str, tuple[int, ...]]:
+) -> tuple[str, str, str, tuple[int, ...], tuple[str, ...]]:
     model = AuthorityModel.load(DEFAULT_AUTHORITY)
     config = load_config()
     levels = tuple(int(value) for value in config["methodology"]["levels"])
     clusters = tuple(int(value) for value in config["methodology"]["cluster_sizes"])
-    disciplines = tuple(sorted(model.disciplines))
+    disciplines = README_DISCIPLINES
+    if set(disciplines) != set(model.disciplines):
+        raise MatrixSyncError(
+            "README discipline columns differ from the canonical discipline set"
+        )
     profile = str(config["kv_profile"]["id"])
     status = str(config["methodology"]["status"])
 
@@ -290,7 +293,7 @@ def validate_authoritative_rows(
     if re.search(r"hunter.?ranger|open.?hand.?monk", serialized, re.IGNORECASE):
         raise MatrixSyncError("A retired comparator entered the headline matrices")
 
-    return model.rules_version, status, profile, clusters
+    return model.rules_version, status, profile, clusters, disciplines
 
 
 def _escape_cell(value: str) -> str:
@@ -311,85 +314,80 @@ def _markdown_table(headers: Sequence[str], rows: Sequence[Sequence[str]]) -> st
     return "\n".join(lines)
 
 
-def _triplet(rows: Sequence[MatrixRow], field: str) -> str:
-    return " / ".join(row[field] for row in rows)
+def _public_result(row: MatrixRow) -> str:
+    band = row["Band"]
+    delta = row["Boundary Delta %"]
+    if band == "IDEAL":
+        if delta != "0.00":
+            raise MatrixSyncError("IDEAL result must have zero Boundary Delta %")
+        return band
+    if band == "N/A":
+        if delta != "N/A":
+            raise MatrixSyncError("N/A result must have unavailable Boundary Delta %")
+        return band
+    expected_sign = {"COLD": "-", "HOT": "+"}.get(band)
+    if expected_sign is None:
+        raise MatrixSyncError(f"Unsupported public balance result: {band}")
+    if not delta.startswith(expected_sign):
+        raise MatrixSyncError(f"{band} result has incorrectly signed Boundary Delta %")
+    return f"{band} ({delta}%)"
 
 
-def render_damage_scope(
-    damage_rows: Sequence[MatrixRow], scope: str, clusters: Sequence[int]
+def _heat_table(
+    rows: Sequence[MatrixRow], disciplines: Sequence[str]
 ) -> str:
-    if scope not in DAMAGE_SCOPE_TITLES:
-        raise MatrixSyncError(f"Unsupported damage scope: {scope}")
-    grouped: dict[tuple[str, str], list[MatrixRow]] = {}
-    for row in damage_rows:
-        if row["Damage Scope"] == scope:
-            grouped.setdefault((row["Level"], row["Discipline"]), []).append(row)
-
-    table_rows: list[list[str]] = []
-    for key in sorted(grouped, key=lambda item: (int(item[0]), item[1])):
-        rows = sorted(grouped[key], key=lambda row: int(row["Cluster Size"]))
-        actual_clusters = tuple(int(row["Cluster Size"]) for row in rows)
-        if actual_clusters != tuple(clusters):
-            raise MatrixSyncError(
-                f"{scope} {key} clusters are {actual_clusters}; expected {tuple(clusters)}"
-            )
-        for comparator in ("Eldritch Knight", "Battle Master"):
-            if len({row[comparator] for row in rows}) != 1:
-                raise MatrixSyncError(f"{scope} {key} has cluster-dependent {comparator} DPR")
-        table_rows.append(
-            [
-                key[0],
-                key[1].replace("_", " ").title(),
-                _triplet(rows, "KV"),
-                rows[0]["Eldritch Knight"],
-                rows[0]["Battle Master"],
-                _triplet(rows, "KV as % of EK"),
-                _triplet(rows, "KV as % of BM"),
-                _triplet(rows, "Band"),
-            ]
-        )
-
-    cluster_columns = " / ".join(f"C{cluster}" for cluster in clusters)
-    headers = (
-        "Fighter level",
-        "Discipline",
-        f"KV DPR ({cluster_columns})",
-        "Eldritch Knight DPR",
-        "Battle Master DPR",
-        f"KV as % of EK ({cluster_columns})",
-        f"KV as % of BM ({cluster_columns})",
-        f"Band ({cluster_columns})",
-    )
-    return f"#### {DAMAGE_SCOPE_TITLES[scope]}\n\n{_markdown_table(headers, table_rows)}"
-
-
-def render_control_table(control_rows: Sequence[MatrixRow]) -> str:
+    if not rows:
+        raise MatrixSyncError("README heat matrix cannot be empty")
+    grouped: dict[tuple[str, str], MatrixRow] = {}
+    for row in rows:
+        key = (row["Level"], row["Discipline"])
+        if key in grouped:
+            raise MatrixSyncError(f"README heat matrix has duplicate row {key}")
+        grouped[key] = row
+    try:
+        levels = tuple(sorted({int(row["Level"]) for row in rows}))
+    except ValueError as error:
+        raise MatrixSyncError("README heat matrix contains a non-numeric level") from error
+    expected = {
+        (str(level), discipline) for level in levels for discipline in disciplines
+    }
+    _key_difference(set(grouped), expected, "README heat matrix")
     table_rows = [
         [
-            row["Level"],
-            row["Discipline"].replace("_", " ").title(),
-            row["KV"],
-            row["Eldritch Knight"],
-            row["Battle Master"],
-            row["KV as % of EK"],
-            row["KV as % of BM"],
-            row["Band"],
+            str(level),
+            *[
+                _public_result(grouped[(str(level), discipline)])
+                for discipline in disciplines
+            ],
         ]
-        for row in sorted(
-            control_rows, key=lambda row: (int(row["Level"]), row["Discipline"])
-        )
+        for level in levels
     ]
-    headers = (
-        "Fighter level",
-        "Discipline",
-        "KV control %",
-        "Eldritch Knight control %",
-        "Battle Master control %",
-        "KV as % of EK",
-        "KV as % of BM",
-        "Band",
-    )
+    headers = ("Level", *(discipline.replace("_", " ").title() for discipline in disciplines))
     return _markdown_table(headers, table_rows)
+
+
+def render_single_target_damage(
+    damage_rows: Sequence[MatrixRow],
+    disciplines: Sequence[str] = README_DISCIPLINES,
+) -> str:
+    rows = [
+        row
+        for row in damage_rows
+        if row["Damage Scope"] == "primary-target DPR"
+        and int(row["Cluster Size"]) == 1
+    ]
+    if not rows:
+        raise MatrixSyncError(
+            "Single-target README damage requires primary-target cluster size 1"
+        )
+    return _heat_table(rows, disciplines)
+
+
+def render_control_table(
+    control_rows: Sequence[MatrixRow],
+    disciplines: Sequence[str] = README_DISCIPLINES,
+) -> str:
+    return _heat_table(control_rows, disciplines)
 
 
 def release_state_line(readme: str, rules_version: str) -> str:
@@ -440,10 +438,12 @@ def render_balance_region(
     status: str,
     profile: str,
     clusters: Sequence[int],
+    disciplines: Sequence[str] = README_DISCIPLINES,
 ) -> str:
     release_line = release_state_line(readme, rules_version)
     metric = _uniform(control_rows, "Metric", "control")
-    cluster_label = " / ".join(str(value) for value in clusters)
+    if 1 not in clusters:
+        raise MatrixSyncError("Single-target README snapshot requires cluster size 1")
     lines = [
         BEGIN_MARKER,
         "## Balance benchmark snapshot",
@@ -456,51 +456,48 @@ def render_balance_region(
         ),
         "",
         (
-            "Battle Master and Eldritch Knight are recognizable Fighter-subclass reference points. "
-            "The comparison asks whether Kinetic Vanguard sits inside a useful martial Fighter "
-            "balance envelope; it does not predict every table or make unlike control conditions "
-            "equally valuable."
+            "Battle Master and Eldritch Knight define the comparison envelope for each "
+            "benchmark result. `IDEAL` means Kinetic Vanguard falls between the two "
+            "comparator results, inclusive. `COLD` is below both; `HOT` is above both. "
+            "The percentage on COLD and HOT cells shows the signed distance outside the nearest "
+            "envelope boundary. `N/A` is reserved for a comparison that cannot be evaluated."
         ),
-        "",
-        "### Damage benchmark",
         "",
         (
-            f"Values are damage per round (DPR). Slash-separated entries correspond, in order, "
-            f"to cluster sizes **{cluster_label}**. Each entry is a separate equal-weight roster "
-            "mean; the cluster-size results are not averaged together. Comparator DPR is "
-            "cluster-independent and appears once per row. Primary-target and aggregate-cluster "
-            "results remain separate."
+            "README cells intentionally contain only the public balance result: `IDEAL`, "
+            "`COLD (-X%)`, `HOT (+X%)`, or `N/A`. Detailed release CSV, Markdown, "
+            "and HTML reports retain raw Kinetic Vanguard and comparator aggregates, ordinary "
+            "KV/comparator ratios, dynamic lower and upper boundaries, and the comparator "
+            "identity supplying each boundary."
         ),
-        "",
-        "**Damage band legend** — expected comparator order: Eldritch Knight ≤ Battle Master.",
-        "",
-        "- `COLD`: KV is below Eldritch Knight.",
-        "- `IDEAL`: KV is between Eldritch Knight and Battle Master, inclusive.",
-        "- `HOT`: KV is above Battle Master.",
-        "- `ORDER CHECK`: comparator ordering is reversed for that result.",
-        "- `N/A`: a ratio or comparison is not defined.",
-        "",
-        render_damage_scope(damage_rows, "primary-target DPR", clusters),
-        "",
-        render_damage_scope(damage_rows, "aggregate cluster DPR", clusters),
-        "",
-        "### Control benchmark",
         "",
         (
-            f"Metric: **{metric}**. This is a best-available reliability envelope, not DPR or a "
-            "condition-severity score. Ratios remain ordinary KV/comparator percentages and are "
-            "not mathematically inverted."
+            "The front-door damage view is the single-target benchmark: primary-target DPR "
+            "at cluster size 1. All other primary-target and aggregate-cluster results remain "
+            "in the generated detailed release reports and are not collapsed into this table."
         ),
         "",
-        "**Control band legend** — expected comparator order: Battle Master ≤ Eldritch Knight.",
+        "### Single-Target Damage",
         "",
-        "- `COLD`: KV is below Battle Master.",
-        "- `IDEAL`: KV is between Battle Master and Eldritch Knight, inclusive.",
-        "- `HOT`: KV is above Eldritch Knight.",
-        "- `ORDER CHECK`: comparator ordering is reversed for that result.",
-        "- `N/A`: a ratio or comparison is not defined.",
+        render_single_target_damage(damage_rows, disciplines),
         "",
-        render_control_table(control_rows),
+        "### Control Reliability",
+        "",
+        (
+            "This single-target benchmark evaluates each configured control package against "
+            "one roster target at a time before taking the equal-weight roster mean."
+        ),
+        "",
+        f"Configured headline metric: **{metric}**.",
+        "",
+        (
+            "Control Reliability measures how often the configured control package takes effect. "
+            "It does not measure the relative severity, duration, area, or strategic value of "
+            "different control effects. A HOT result is a balance-review signal, not an automatic "
+            "finding that the feature is overpowered."
+        ),
+        "",
+        render_control_table(control_rows, disciplines),
         "",
         (
             "This snapshot is a summary, not the full evidence set. Kinetic Vanguard mechanics "
@@ -586,7 +583,7 @@ def main() -> None:
     readme = README_PATH.read_text(encoding="utf-8")
     generated_region_span(readme)
     damage_rows, control_rows = generate_authoritative_rows(args.workers)
-    rules_version, status, profile, clusters = validate_authoritative_rows(
+    rules_version, status, profile, clusters, disciplines = validate_authoritative_rows(
         damage_rows, control_rows
     )
     region = render_balance_region(
@@ -597,6 +594,7 @@ def main() -> None:
         status,
         profile,
         clusters,
+        disciplines,
     )
     synchronized = replace_generated_region(readme, region)
     require_unchanged_inputs(input_fingerprints)
