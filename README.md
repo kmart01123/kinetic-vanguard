@@ -6,13 +6,13 @@ Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighte
 
 ## Release status
 
-- Current published release: **v13.2.0**
+- Current published release: **v14.0.0**
 - Current development line: **None**
 - Canonical rules authority: `KineticVanguard.yaml`
 
-Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v13.2.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v13.2.0).
+Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v14.0.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.0.0).
 
-Version 13.2.0 introduced the new-player **Start Here** experience and revised Mass Levitation to use five target slots with normal falling after a successful repeat save. It also established the project’s split licensing and a stable required CI gate for the protected `main` branch. Detailed changes belong in `CHANGELOG.md` and the generated publication rather than being duplicated here.
+Version 14.0.0 introduced the deterministic offline Calculator, advanced the authority schema to 2.0.0 for semantic rule and example structure, made Barrier require Concentration at Tier 0 and Tier 1, aligned Explosion/Implosion Tier 1 geometry, and made the canonical rules version the publication’s sole product version. Detailed changes belong in `CHANGELOG.md` and the generated publication rather than being duplicated here.
 
 ## Publication interface
 
