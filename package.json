@@ -17,7 +17,11 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:layout": "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 tsx --test tests/layout.browser.ts",
-    "test:determinism": "tsx src/determinism.ts"
+    "test:determinism": "tsx src/determinism.ts",
+    "harness:validate": "python3 -m harness.damage_harness --output-dir /tmp/kv-harness-validation --validate-only",
+    "test:harness": "python3 -m unittest discover -s harness/tests -p 'test_*.py'",
+    "harness:damage": "python3 -m harness.damage_harness",
+    "harness:control": "python3 -m harness.control_harness"
   },
   "dependencies": {
     "ajv": "8.20.0",

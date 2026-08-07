@@ -59,6 +59,38 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
   const tierMinimums=calculator.tier_minimum_levels.map(item=>item.tier);diagnostics.push(...duplicateDiagnostics(tierMinimums.map(String),"calculator.tier_minimum_duplicate","calculator tier minimum"));
   const expectedTierMinimums=[[0,3],[1,3],[2,10]] as const;
   if(JSON.stringify(calculator.tier_minimum_levels.map(item=>[item.tier,item.minimum_level]))!==JSON.stringify(expectedTierMinimums))diagnostics.push({severity:"error",code:"calculator.tier_minimum_levels",message:"Calculator tier minimum levels must be Tier 0 at level 3, Tier 1 at level 3, and Tier 2 at level 10",path:"/calculator/tier_minimum_levels"});
+  const harness=calculator.harness_mechanics;
+  if(JSON.stringify(harness.manifested_strike.attack_bonus)!==JSON.stringify({base:0,components:["psionic_ability_modifier","proficiency_bonus","psionic_focus"]}))diagnostics.push({severity:"error",code:"harness.attack_formula",message:"Manifested Strike attack bonus must use its canonical base and ordered components",path:"/calculator/harness_mechanics/manifested_strike/attack_bonus"});
+  if(JSON.stringify(harness.manifested_strike.save_dc)!==JSON.stringify({base:8,components:["proficiency_bonus","psionic_ability_modifier"]}))diagnostics.push({severity:"error",code:"harness.save_dc_formula",message:"Kinetic Vanguard save DC must use its canonical base and ordered components",path:"/calculator/harness_mechanics/manifested_strike/save_dc"});
+  if(JSON.stringify(harness.overload.blood_tax_per_tier)!==JSON.stringify({base:0,proficiency_bonus_multiplier:1}))diagnostics.push({severity:"error",code:"harness.blood_tax_formula",message:"Blood Tax per tier must use its canonical base and Proficiency Bonus multiplier",path:"/calculator/harness_mechanics/overload/blood_tax_per_tier"});
+  const disciplineIds=harness.disciplines.map(item=>item.id);
+  diagnostics.push(...duplicateDiagnostics(disciplineIds,"harness.discipline_duplicate","harness discipline ID"));
+  const expectedDisciplines=["cryokinesis","electrokinesis","psychokinesis","pyrokinesis"];
+  if(JSON.stringify([...disciplineIds].sort(codepointCompare))!==JSON.stringify(expectedDisciplines))diagnostics.push({severity:"error",code:"harness.discipline_coverage",message:"Harness mechanics must define exactly the four Kinetic Disciplines",path:"/calculator/harness_mechanics/disciplines"});
+  const featureRules=harness.feature_rules,featureRuleIds=featureRules.map(item=>item.entity_id);
+  diagnostics.push(...duplicateDiagnostics(featureRuleIds,"harness.feature_duplicate","harness feature entity ID"));
+  const missingShared=calculatorFeatureIds.filter(id=>!featureRuleIds.includes(id));
+  if(missingShared.length)diagnostics.push({severity:"error",code:"harness.feature_coverage",message:`Harness mechanics are missing Calculator features: ${missingShared.join(", ")}`,path:"/calculator/harness_mechanics/feature_rules"});
+  for(const [ruleIndex,rule] of featureRules.entries()){
+    const rulePath=`/calculator/harness_mechanics/feature_rules/${ruleIndex}`,entity=entities.get(rule.entity_id);
+    if(!entity)diagnostics.push({severity:"error",code:"harness.feature_unknown",message:`Harness mechanics reference unknown entity ${rule.entity_id}`,path:`${rulePath}/entity_id`});
+    else{
+      if(entity.level===undefined)diagnostics.push({severity:"error",code:"harness.feature_level",message:`Harness feature ${rule.entity_id} lacks canonical level availability`,path:`/entities/${authority.entities.indexOf(entity)}/level`});
+      if(entity.psi_cost===undefined)diagnostics.push({severity:"error",code:"harness.feature_psi",message:`Harness feature ${rule.entity_id} lacks canonical Psi cost`,path:`/entities/${authority.entities.indexOf(entity)}/psi_cost`});
+      const authoredDisciplines=entity.classifications.rules_area.filter(area=>expectedDisciplines.includes(area));
+      if(authoredDisciplines.length&&rule.discipline_ids.some(id=>!authoredDisciplines.includes(id)))diagnostics.push({severity:"error",code:"harness.feature_discipline",message:`Harness feature ${rule.entity_id} uses a discipline inconsistent with its canonical classification`,path:`${rulePath}/discipline_ids`});
+    }
+    const targetingTiers=(rule.targeting_by_tier??[]).map(item=>item.tier);diagnostics.push(...duplicateDiagnostics(targetingTiers.map(String),"harness.targeting_tier_duplicate",`${rule.entity_id} targeting tier`));
+    for(const [targetIndex,targeting] of (rule.targeting_by_tier??[]).entries())if(targeting.kind==="fixed_additional"&&targeting.additional_targets===undefined)diagnostics.push({severity:"error",code:"harness.targeting_count",message:`${rule.entity_id} fixed targeting requires additional_targets`,path:`${rulePath}/targeting_by_tier/${targetIndex}`});
+    const controlTiers=(rule.control_tiers??[]).map(item=>item.tier);diagnostics.push(...duplicateDiagnostics(controlTiers.map(String),"harness.control_tier_duplicate",`${rule.entity_id} control tier`));
+    for(const [controlIndex,control] of (rule.control_tiers??[]).entries()){
+      const controlPath=`${rulePath}/control_tiers/${controlIndex}`;
+      if(control.application==="failed_save"&&!control.save)diagnostics.push({severity:"error",code:"harness.control_save_required",message:`${rule.entity_id} Tier ${control.tier} control requires a save`,path:controlPath});
+      if(control.application==="no_save"&&control.save)diagnostics.push({severity:"error",code:"harness.control_save_forbidden",message:`${rule.entity_id} Tier ${control.tier} no-save control cannot define a save`,path:controlPath});
+      if(!(control.conditions?.length||control.outcomes?.length))diagnostics.push({severity:"error",code:"harness.control_outcome",message:`${rule.entity_id} Tier ${control.tier} control must define a condition or non-condition outcome`,path:controlPath});
+      if((control.repeat_saves??0)>0&&control.application!=="failed_save")diagnostics.push({severity:"error",code:"harness.repeat_save",message:`${rule.entity_id} Tier ${control.tier} repeat saves require failed-save application`,path:controlPath});
+    }
+  }
   for(const [featureIndex,feature] of calculator.features.entries()){
     const featurePath=`/calculator/features/${featureIndex}`,entity=entities.get(feature.entity_id);
     if(!entity)diagnostics.push({severity:"error",code:"calculator.feature_unknown",message:`Calculator references unknown feature entity ${feature.entity_id}`,path:`${featurePath}/entity_id`});

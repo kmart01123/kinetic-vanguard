@@ -1,5 +1,20 @@
 # Changelog
 
+## 14.1.0 — In development
+
+### Added
+
+- Restored maintained damage and control benchmark harness source with a shared validated projection from the real root `KineticVanguard.yaml`.
+- Added pinned SRD 5.2.1 target data, separately declared frozen Battle Master and Eldritch Knight comparator assumptions, verified legacy provenance, and a legacy-to-current migration map.
+- Added versioned CSV, Markdown, and self-contained HTML damage/control matrices, exact COLD/IDEAL/HOT/ORDER CHECK/N/A boundary handling, aggregate-derived ratios, and a per-target control selection-audit CSV.
+- Added fast authority, mutation, completeness, aggregation, classification, output-consistency, and fixed-input smoke tests to ordinary CI.
+
+### Changed
+
+- Advanced the authority schema to 2.1.0 with canonical structured discipline, mastery, targeting, resistance-bypass, restriction, duration, repeat-save, and control-outcome fields under the shared Calculator mechanics area.
+- Started the 14.1.0 rules-development line without changing player-facing Calculator scope or exposing benchmark tools in the offline publication.
+- Ported current damage/control rows to deterministic exact probability enumeration. Historical seeds and trial settings remain recorded, while current results are explicitly under review rather than inheriting the v12.0.0 certification.
+
 ## 14.0.0 — 2026-08-06
 
 ### Added

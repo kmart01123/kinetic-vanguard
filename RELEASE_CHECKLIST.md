@@ -28,6 +28,10 @@ Use this checklist for every development line and release. The README is a maint
   - `LICENSE.md` and `NOTICE.md`.
 - [ ] Confirm the README does not describe an older active release, obsolete artifact name, or resolved follow-up.
 - [ ] Confirm the README summarizes the project without duplicating canonical rules text.
+- [ ] Run `npm run harness:validate` and `npm run test:harness`.
+- [ ] Confirm harness outputs derive filenames and provenance from canonical `rules_version` and authority digest.
+- [ ] Confirm `.codex-import/`, generated benchmark results, caches, virtual environments, and downloaded archives are absent from tracked files and `build/inputs.json`.
+- [ ] Record current harness certification/review status honestly; historical certification does not automatically carry forward.
 - [ ] Run the complete validation suite and `git diff --check`.
 - [ ] Confirm all review conversations are resolved.
 - [ ] Confirm the branch is up to date with `main`.

@@ -7,12 +7,16 @@ Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighte
 ## Release status
 
 - Current published release: **v14.0.0**
-- Current development line: **None**
+- Current development line: **v14.1.0**
+- Development branch: `14.1.0`
+- Draft pull request: pending creation for [issue #19](https://github.com/kmart01123/kinetic-vanguard/issues/19)
 - Canonical rules authority: `KineticVanguard.yaml`
 
 Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v14.0.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.0.0).
 
 Version 14.0.0 introduced the deterministic offline Calculator, advanced the authority schema to 2.0.0 for semantic rule and example structure, made Barrier require Concentration at Tier 0 and Tier 1, aligned Explosion/Implosion Tier 1 geometry, and made the canonical rules version the publication’s sole product version. Detailed changes belong in `CHANGELOG.md` and the generated publication rather than being duplicated here.
+
+Version 14.1.0 restores maintained damage and control benchmark harness source. The harnesses use the same validated canonical mechanics as the Calculator where their needs overlap, retain Battle Master and Eldritch Knight as the primary comparators, and produce versioned CSV, Markdown, and self-contained HTML matrices. Benchmark tooling remains developer-only and is not part of the player-facing Calculator.
 
 ## Publication interface
 
@@ -43,9 +47,13 @@ npm test
 npm run build
 npm run test:determinism
 npm run test:layout
+npm run harness:validate
+npm run test:harness
 ```
 
+Optional full-roster commands are `npm run harness:damage -- --output-dir harness/results/damage` and `npm run harness:control -- --output-dir harness/results/control`. Generated results are ignored. See `harness/README.md` for methodology, provenance, matrix interpretation, and current certification status.
 `npm run build` writes the development publication to `artifacts/KineticVanguard.prototype.html`. It always carries a visible and accessibility-exposed `NON-RELEASE PROTOTYPE` identity.
+
 
 An authorized release build uses:
 
@@ -67,6 +75,8 @@ The build parses restricted YAML 1.2, validates the canonical JSON Schema, perfo
 The top-level onboarding authority is canonical and validated but remains outside the 44 publishable rules entities, Name index, classification results, and progression order.
 
 The completed one-time Markdown migration has been retired. Contributors edit `KineticVanguard.yaml` directly; there is no Markdown synchronization step.
+
+The maintained Python harnesses consume a deterministic runtime projection emitted by the existing TypeScript YAML loader and semantic validator. Kinetic Vanguard mechanics remain in YAML; frozen non-KV comparator assumptions, seeds, profiles, and SRD roster data remain in explicit harness config/data files.
 
 ## Licensing
 

@@ -132,6 +132,205 @@ calculator:
       minimum_level: 3
     - tier: 2
       minimum_level: 10
+  harness_mechanics:
+    manifested_strike:
+      entity_id: common_manifested_strike
+      damage_type_source: discipline
+      holdout_damage_type: force
+      holdout_damage_divisor: 2
+      critical_dice_multiplier: 2
+      attack_bonus:
+        base: 0
+        components: [psionic_ability_modifier, proficiency_bonus, psionic_focus]
+      save_dc:
+        base: 8
+        components: [proficiency_bonus, psionic_ability_modifier]
+    overload:
+      entity_id: common_overload
+      blood_tax_per_tier:
+        base: 0
+        proficiency_bonus_multiplier: 1
+      tier_two_limit_per_attack_action: 1
+    disciplines:
+      - id: pyrokinesis
+        damage_type: fire
+        signature_save: dexterity
+        mastery: {kind: graze, damage: psionic_ability_modifier, control_outcomes: []}
+      - id: cryokinesis
+        damage_type: cold
+        signature_save: constitution
+        mastery: {kind: slow, damage_required: true, control_outcomes: [speed_reduction]}
+      - id: psychokinesis
+        damage_type: force
+        signature_save: strength
+        mastery: {kind: push, maximum_size: large, control_outcomes: [forced_movement]}
+      - id: electrokinesis
+        damage_type: lightning
+        signature_save: charisma
+        mastery: {kind: sap, control_outcomes: [attack_disadvantage]}
+    feature_rules:
+      - entity_id: glacial_spike
+        discipline_ids: [cryokinesis]
+        damage_type: discipline
+        repeatability: unlimited
+        control_tiers:
+          - {tier: 0, application: failed_save, save: constitution, hit_gated: true, control_on_reach: true, outcomes: [speed_reduction], duration: until_start_next_turn}
+          - {tier: 1, application: failed_save, save: constitution, hit_gated: true, control_on_reach: true, outcomes: [speed_zero, movement_option_denial], duration: until_start_next_turn}
+          - {tier: 2, application: failed_save, save: constitution, hit_gated: true, control_on_reach: true, conditions: [restrained], outcomes: [movement_option_denial], duration: until_start_next_turn}
+      - entity_id: snow_chains
+        discipline_ids: [cryokinesis]
+        damage_type: discipline
+        repeatability: once_per_attack_action
+        control_tiers:
+          - {tier: 0, application: failed_save, save: constitution, hit_gated: true, control_on_reach: true, conditions: [restrained], outcomes: [speed_zero], duration: until_start_next_turn}
+          - {tier: 1, application: failed_save, save: constitution, hit_gated: true, control_on_reach: true, conditions: [restrained], outcomes: [speed_zero, reaction_denial], duration: until_start_next_turn}
+          - {tier: 2, application: failed_save, save: constitution, hit_gated: true, control_on_reach: true, conditions: [stunned], outcomes: [speed_zero], duration: until_start_next_turn}
+      - entity_id: frozen_ground
+        discipline_ids: [cryokinesis]
+        damage_type: discipline
+        repeatability: once_per_attack_action
+        control_tiers:
+          - {tier: 0, application: failed_save, save: constitution, outcomes: [speed_zero], duration: until_end_current_turn}
+          - {tier: 2, application: failed_save, save: constitution, conditions: [restrained], duration: one_minute_concentration}
+      - entity_id: arctic_tempest
+        discipline_ids: [cryokinesis]
+        damage_type: discipline
+        repeatability: once_per_attack_action
+        control_tiers:
+          - {tier: 0, application: failed_save, save: constitution, conditions: [restrained], duration: until_end_next_turn}
+          - {tier: 2, application: failed_save, save: constitution, conditions: [stunned], duration: until_end_next_turn}
+      - entity_id: absolute_zero
+        discipline_ids: [cryokinesis]
+        damage_type: discipline
+        repeatability: once_per_attack_action
+        control_tiers:
+          - {tier: 0, application: failed_save, save: constitution, outcomes: [speed_zero], duration: until_end_next_turn}
+          - {tier: 1, application: failed_save, save: constitution, conditions: [restrained], duration: until_end_next_turn}
+          - {tier: 2, application: failed_save, save: constitution, control_on_reach: true, conditions: [stunned], outcomes: [speed_zero], duration: until_end_next_turn}
+      - {entity_id: ember_bolt, discipline_ids: [pyrokinesis], damage_type: discipline, repeatability: unlimited}
+      - {entity_id: thermal_fracture, discipline_ids: [pyrokinesis], damage_type: discipline, repeatability: once_per_attack_action}
+      - {entity_id: cinder_lance, discipline_ids: [pyrokinesis], damage_type: psychic, repeatability: once_per_attack_action, ignore_resistance_tiers: [2]}
+      - entity_id: flare
+        discipline_ids: [pyrokinesis]
+        damage_type: fire
+        repeatability: once_per_attack_action
+        ignore_resistance_tiers: [2]
+        control_tiers:
+          - {tier: 0, application: failed_save, save: dexterity, hit_gated: true, conditions: [blinded], duration: until_start_next_turn}
+          - {tier: 1, application: no_save, hit_gated: true, conditions: [blinded], duration: until_start_next_turn}
+          - {tier: 2, application: no_save, hit_gated: true, conditions: [blinded], duration: until_start_next_turn}
+      - {entity_id: furnace_strike, discipline_ids: [pyrokinesis], damage_type: fire, repeatability: once_per_attack_action, ignore_resistance_tiers: [2]}
+      - entity_id: telekinetic_shove
+        discipline_ids: [psychokinesis]
+        damage_type: discipline
+        repeatability: unlimited
+        replaces_mastery: true
+        control_tiers:
+          - {tier: 0, application: failed_save, save: strength, hit_gated: true, outcomes: [forced_movement], duration: instantaneous}
+          - {tier: 1, application: failed_save, save: strength, hit_gated: true, outcomes: [forced_movement], duration: instantaneous}
+          - {tier: 2, application: failed_save, save: strength, hit_gated: true, outcomes: [forced_movement, speed_zero], duration: until_start_next_turn}
+      - {entity_id: vectored_thrust, discipline_ids: [psychokinesis], damage_type: discipline, repeatability: once_per_attack_action}
+      - entity_id: explosion_implosion
+        discipline_ids: [psychokinesis]
+        damage_type: force
+        repeatability: once_per_attack_action
+        targeting_by_tier: [{tier: 2, kind: cluster_remainder}]
+        control_tiers:
+          - {tier: 0, application: failed_save, save: strength, hit_gated: true, conditions: [restrained], outcomes: [forced_movement], duration: until_start_next_turn}
+          - {tier: 1, application: failed_save, save: strength, hit_gated: true, conditions: [restrained], outcomes: [forced_movement], duration: until_start_next_turn}
+      - entity_id: telekinetic_slam
+        discipline_ids: [psychokinesis]
+        damage_type: force
+        repeatability: once_per_attack_action
+        control_tiers:
+          - {tier: 0, application: failed_save, save: strength, outcomes: [forced_movement], duration: instantaneous}
+          - {tier: 1, application: failed_save, save: strength, outcomes: [forced_movement], duration: instantaneous}
+          - {tier: 2, application: failed_save, save: strength, control_on_reach: true, outcomes: [forced_movement, speed_zero], duration: until_end_next_turn}
+      - entity_id: mass_levitation
+        discipline_ids: [psychokinesis]
+        damage_type: force
+        repeatability: once_per_attack_action
+        control_tiers:
+          - {tier: 0, application: failed_save, save: strength, conditions: [restrained], maximum_size: large, repeat_saves: 2, duration: one_minute_concentration}
+          - {tier: 1, application: failed_save, save: strength, conditions: [restrained], outcomes: [forced_movement], maximum_size: large, repeat_saves: 2, repeat_save_disadvantage: true, duration: one_minute_concentration}
+      - entity_id: static_discharge
+        discipline_ids: [electrokinesis]
+        damage_type: discipline
+        repeatability: unlimited
+        targeting_by_tier:
+          - {tier: 0, kind: fixed_additional, additional_targets: 1}
+          - {tier: 1, kind: proficiency_bonus_additional}
+          - {tier: 2, kind: proficiency_bonus_additional}
+        control_tiers:
+          - {tier: 2, application: failed_save, save: charisma, hit_gated: true, outcomes: [reaction_denial], duration: until_start_next_turn}
+      - entity_id: branching_bolt
+        discipline_ids: [electrokinesis]
+        damage_type: lightning
+        repeatability: once_per_attack_action
+        requires_additional_target: true
+        targeting_by_tier:
+          - {tier: 0, kind: fixed_additional, additional_targets: 1}
+          - {tier: 1, kind: fixed_additional, additional_targets: 2}
+          - {tier: 2, kind: fixed_additional, additional_targets: 3}
+      - entity_id: electron_burst
+        discipline_ids: [electrokinesis]
+        damage_type: lightning
+        repeatability: once_per_attack_action
+        requires_additional_target: true
+        targeting_by_tier: [{tier: 0, kind: cluster_remainder}, {tier: 1, kind: cluster_remainder}, {tier: 2, kind: cluster_remainder}]
+        control_tiers:
+          - {tier: 2, application: failed_save, save: charisma, hit_gated: true, outcomes: [reaction_denial, attack_disadvantage], duration: until_start_next_turn}
+      - {entity_id: advanced_mind_shred, discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis], damage_type: psychic, repeatability: once_per_attack_action, ignore_resistance_tiers: [2]}
+      - entity_id: advanced_mind_lock
+        discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
+        damage_type: psychic
+        repeatability: once_per_attack_action
+        control_tiers:
+          - {tier: 0, application: no_save, hit_gated: true, conditions: [blinded], duration: until_start_next_turn}
+          - {tier: 1, application: failed_save, save: intelligence, hit_gated: true, control_on_reach: true, conditions: [blinded, incapacitated], duration: until_start_next_turn}
+          - {tier: 2, application: failed_save, save: intelligence, hit_gated: true, control_on_reach: true, conditions: [blinded, stunned], duration: until_start_next_turn}
+      - entity_id: forked_lightning
+        discipline_ids: [electrokinesis]
+        damage_type: lightning
+        repeatability: once_per_attack_action
+        targeting_by_tier: [{tier: 0, kind: cluster_remainder}, {tier: 1, kind: cluster_remainder}, {tier: 2, kind: cluster_remainder}]
+        control_tiers:
+          - {tier: 2, application: failed_save, save: charisma, outcomes: [speed_zero, reaction_denial, attack_disadvantage], duration: until_end_next_turn}
+      - entity_id: ball_lightning
+        discipline_ids: [electrokinesis]
+        damage_type: lightning
+        repeatability: once_per_attack_action
+        targeting_by_tier: [{tier: 0, kind: cluster_remainder}, {tier: 1, kind: cluster_remainder}, {tier: 2, kind: cluster_remainder}]
+        control_tiers:
+          - {tier: 2, application: failed_save, save: charisma, outcomes: [reaction_denial, attack_disadvantage], duration: one_minute_concentration}
+      - entity_id: advanced_deflection_screen
+        discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
+        damage_type: force
+        repeatability: once_per_attack_action
+        control_tiers:
+          - {tier: 2, application: failed_save, save: strength, control_on_reach: true, conditions: [prone], outcomes: [forced_movement], duration: instantaneous}
+      - entity_id: advanced_beguile
+        discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
+        damage_type: psychic
+        repeatability: once_per_attack_action
+        control_tiers:
+          - {tier: 0, application: failed_save, save: charisma, conditions: [charmed], required_creature_type: humanoid, duration: one_hour}
+          - {tier: 1, application: failed_save, save: charisma, conditions: [charmed], duration: eight_hours}
+          - {tier: 2, application: failed_save, save: charisma, conditions: [charmed], duration: twenty_four_hours}
+      - entity_id: advanced_gravitic_press
+        discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
+        damage_type: force
+        repeatability: once_per_attack_action
+        control_tiers:
+          - {tier: 0, application: failed_save, save: strength, control_on_reach: true, outcomes: [speed_reduction, reaction_denial], duration: one_minute_concentration}
+          - {tier: 1, application: failed_save, save: strength, control_on_reach: true, outcomes: [speed_reduction, reaction_denial, attack_disadvantage], duration: one_minute_concentration}
+          - {tier: 2, application: failed_save, save: strength, control_on_reach: true, conditions: [prone], outcomes: [speed_reduction, reaction_denial, attack_disadvantage], duration: one_minute_concentration}
+      - entity_id: advanced_improved_phase_step
+        discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
+        damage_type: force
+        repeatability: once_per_attack_action
+        control_tiers:
+          - {tier: 2, application: failed_save, save: discipline_signature, outcomes: [reaction_denial], duration: until_end_current_turn}
   features:
     - entity_id: glacial_spike
       delivery: on_hit_rider
@@ -4360,8 +4559,8 @@ navigation:
           order: 4
           title: Ball Lightning
   default_category_id: common_features
-rules_version: 14.0.0
-schema_version: 2.0.0
+rules_version: 14.1.0
+schema_version: 2.1.0
 vocabularies:
   acquisition_modes:
     - id: granted
