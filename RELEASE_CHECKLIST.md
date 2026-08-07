@@ -1,6 +1,6 @@
 # Kinetic Vanguard release checklist
 
-Use this checklist for every development line and release. The README is a maintained public entry point: its release and orientation prose is reviewed deliberately, while its delimited balance-matrix region is regenerated from the exact analytical harness.
+Use this checklist for every development line and release. The README is a maintained public entry point: its release and orientation prose is reviewed deliberately, while its delimited balance-matrix region is regenerated from the exact analytical harness. Keep mutable branch and pull-request pointers in GitHub rather than copying them into README status, so merged or superseded work cannot leave stale public metadata behind.
 
 ## Start of a development line
 
@@ -8,13 +8,13 @@ Use this checklist for every development line and release. The README is a maint
 - [ ] Set canonical `rules_version` in `KineticVanguard.yaml`.
 - [ ] Update `README.md`:
   - current published release and tag;
-  - current development line and branch;
-  - active draft pull request;
+  - current development line;
   - current development goals and interface capabilities;
   - supported Node.js and npm versions;
   - known follow-ups, removing completed work.
+- [ ] Do not add active branch names, release-candidate branch names, implementation pull-request numbers, or other mutable work-in-progress pointers to README release status. Track those in GitHub issues and pull requests instead.
 - [ ] Run `npm run readme:benchmarks` after the canonical version and README release lines agree, review the generated numerical and release-label diff, and run `npm run readme:benchmarks:check`.
-- [ ] Open or update the shared development issue and draft pull request.
+- [ ] Open or update the shared development issue and draft pull request in GitHub.
 
 ## Before marking a release pull request ready
 
@@ -28,7 +28,7 @@ Use this checklist for every development line and release. The README is a maint
   - current interface, browser, accessibility, offline, and print guarantees;
   - `LICENSE.md` and `NOTICE.md`;
   - `docs/licensing-audit.md` and any documented unresolved maintainer/legal questions.
-- [ ] Confirm the README does not describe an older active release, obsolete artifact name, or resolved follow-up.
+- [ ] Confirm the README does not describe an older active release, obsolete artifact name, resolved follow-up, or mutable branch/pull-request pointer.
 - [ ] Confirm the README summarizes the project without duplicating canonical rules text.
 - [ ] After any intentional authority, methodology, roster, comparator, classification, or reporting change, run `npm run readme:benchmarks`, investigate the numerical diff, and commit the synchronized README region; never normalize a difference merely to match an old snapshot.
 - [ ] Run `npm run readme:benchmarks:check` and confirm it completes fresh full-roster exact analytical evaluation without relying on a tracked golden result or Monte Carlo sampling.
@@ -60,9 +60,9 @@ Use this checklist for every development line and release. The README is a maint
 - [ ] Update `README.md`:
   - promote the new version to current published release;
   - link the permanent tag and GitHub Release;
-  - remove obsolete development-branch and draft-PR wording;
   - set the current development line to **None** unless the next line already exists;
-  - verify downloadable asset naming.
+  - verify downloadable asset naming;
+  - keep live branch, issue, and pull-request tracking in GitHub rather than README.
 - [ ] Run `npm run readme:benchmarks` after the publication-status edit so the generated snapshot says **Published** for canonical `rules_version`, then run `npm run readme:benchmarks:check` and review the resulting diff.
 - [ ] Close completed release issues and record final validation.
 
