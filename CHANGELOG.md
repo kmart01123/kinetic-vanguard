@@ -14,6 +14,7 @@
 - Advanced the authority schema to 2.1.0 with canonical structured discipline, mastery, targeting, resistance-bypass, restriction, duration, repeat-save, and control-outcome fields under the shared Calculator mechanics area.
 - Started the 14.1.0 rules-development line without changing player-facing Calculator scope or exposing benchmark tools in the offline publication.
 - Ported current damage/control rows to deterministic exact probability enumeration. Historical seeds and trial settings remain recorded, while current results are explicitly under review rather than inheriting the v12.0.0 certification.
+- Isolated minimal Battle Master and Eldritch Knight parameters under `harness/comparators/`, removed unused comparator prose, added separate provenance hashing, and clarified that project licenses do not cover Wizards-owned non-SRD material.
 
 ## 14.0.0 — 2026-08-06
 

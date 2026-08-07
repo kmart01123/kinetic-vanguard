@@ -13,3 +13,7 @@ Original Kinetic Vanguard rules, examples, and editorial text are licensed under
 This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.
 
 Changes have been made to the SRD 5.2.1 material used in this work. Use of SRD material does not imply endorsement.
+
+## Unofficial third-party comparative benchmarks
+
+Battle Master and Eldritch Knight are referenced solely as unofficial third-party comparative benchmarks. The Kinetic Vanguard project is not affiliated with or endorsed by Wizards of the Coast. No project license purports to grant rights in Wizards-owned material outside the System Reference Document.

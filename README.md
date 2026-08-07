@@ -76,7 +76,7 @@ The top-level onboarding authority is canonical and validated but remains outsid
 
 The completed one-time Markdown migration has been retired. Contributors edit `KineticVanguard.yaml` directly; there is no Markdown synchronization step.
 
-The maintained Python harnesses consume a deterministic runtime projection emitted by the existing TypeScript YAML loader and semantic validator. Kinetic Vanguard mechanics remain in YAML; frozen non-KV comparator assumptions, seeds, profiles, and SRD roster data remain in explicit harness config/data files.
+The maintained Python harnesses consume a deterministic runtime projection emitted by the existing TypeScript YAML loader and semantic validator. Kinetic Vanguard mechanics remain exclusively in YAML; project-authored methodology remains in `harness/config/`; minimal BM/EK third-party comparator parameters remain isolated in `harness/comparators/`; and pinned SRD roster data remains in `harness/data/`.
 
 ## Licensing
 
@@ -87,6 +87,8 @@ Kinetic Vanguard uses component-based licensing:
 - SRD 5.2.1-derived material: CC BY 4.0.
 
 The NonCommercial and ShareAlike terms do not restrict or relicense SRD-derived material. See `LICENSE.md`, `LICENSE-CODE`, `LICENSE-CONTENT`, and `NOTICE.md` for the exact boundaries and required attribution.
+
+Battle Master and Eldritch Knight are unofficial third-party comparative benchmarks, not project rules content. The project licenses do not grant rights in Wizards-owned material outside the SRD; see `NOTICE.md`.
 
 ## Development and release discipline
 

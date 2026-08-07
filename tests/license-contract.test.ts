@@ -27,6 +27,7 @@ test("repository and generated publication expose the approved split license", a
   assert.match(licenseIndex, /CC BY-NC-SA 4\.0/);
   assert.match(licenseIndex, /SRD 5\.2\.1-derived material[\s\S]*CC BY 4\.0/);
   assert.doesNotMatch(licenseIndex, /SRD 5\.2\.1-derived material[^\n]*CC BY-NC-SA/);
+  assert.match(licenseIndex, /No project license grants or purports to grant rights in Wizards-owned material outside the System Reference Document/);
 
   assert.match(codeLicense, /BSD 3-Clause License/);
   assert.match(codeLicense, /Redistribution and use in source and binary forms/);
@@ -40,6 +41,9 @@ test("repository and generated publication expose the approved split license", a
   assert.equal(notice.includes(srdAttribution), true);
   assert.equal((notice.match(/Wizards of the Coast LLC/g) ?? []).length, 1);
   assert.match(notice, /Changes have been made to the SRD 5\.2\.1 material/);
+  assert.match(notice, /referenced solely as unofficial third-party comparative benchmarks/);
+  assert.match(notice, /not affiliated with or endorsed by Wizards of the Coast/);
+  assert.match(notice, /No project license purports to grant rights in Wizards-owned material outside the System Reference Document/);
 
   assert.match(authority.metadata.attribution, /Created by NixNinja/);
   assert.equal(authority.metadata.attribution.includes(srdAttribution), true);

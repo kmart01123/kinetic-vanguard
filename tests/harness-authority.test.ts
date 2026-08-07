@@ -34,14 +34,19 @@ test("harness semantic mutations fail with focused diagnostics",async()=>{
 
 test("official harness source is positive input while imports and generated outputs remain excluded",async()=>{
   const inputs=JSON.parse(await readFile("build/inputs.json","utf8")).inputs as Array<{path:string;role:string}>;const paths=inputs.map(input=>input.path);
-  for(const required of ["src/harness-authority.ts","harness/authority.py","harness/damage_harness.py","harness/control_harness.py","harness/comparison_report.py","harness/config/benchmark.json","harness/data/srd_targets.csv","harness/provenance/legacy-import.json","harness/tests/test_harness.py"])assert.ok(paths.includes(required),required);
+  for(const required of ["src/harness-authority.ts","harness/authority.py","harness/damage_harness.py","harness/control_harness.py","harness/comparison_report.py","harness/config/benchmark.json","harness/comparators/fighter-subclasses.json","harness/data/srd_targets.csv","harness/provenance/legacy-import.json","harness/tests/test_harness.py"])assert.ok(paths.includes(required),required);
   assert.ok(paths.every(path=>!path.startsWith(".codex-import/")&&!path.endsWith(".zip")&&!path.includes("harness/results")));
   const [ignore,workflow,packageJson]=await Promise.all([readFile(".gitignore","utf8"),readFile(".github/workflows/ci.yml","utf8"),readFile("package.json","utf8")]);
   assert.match(ignore,/^\.codex-import\/$/m);assert.match(ignore,/^harness\/results\/$/m);assert.match(workflow,/npm run test:harness/);assert.match(workflow,/npm run harness:validate/);assert.match(packageJson,/"test:harness"/);
 });
 
-test("benchmark config keeps comparator inputs outside canonical KV mechanics",async()=>{
-  const [{authority},configSource]=await Promise.all([loadAuthority(),readFile("harness/config/benchmark.json","utf8")]);const yaml=JSON.stringify(authority.calculator.harness_mechanics);
-  assert.doesNotMatch(yaml,/battle.?master|eldritch.?knight|hunter.?ranger|open.?hand.?monk/i);
-  assert.match(configSource,/battle_master/);assert.match(configSource,/eldritch_knight/);assert.doesNotMatch(configSource,/hunter.?ranger|open.?hand.?monk/i);
+test("minimal comparator parameters stay isolated from all canonical KV mechanics and benchmark methodology",async()=>{
+  const [{authority},yamlSource,configSource,comparatorSource]=await Promise.all([loadAuthority(),readFile("KineticVanguard.yaml","utf8"),readFile("harness/config/benchmark.json","utf8"),readFile("harness/comparators/fighter-subclasses.json","utf8")]);
+  const comparatorPattern=/battle.?master|eldritch.?knight|hunter.?ranger|open.?hand.?monk/i;
+  assert.doesNotMatch(JSON.stringify(authority),comparatorPattern);assert.doesNotMatch(yamlSource,comparatorPattern);assert.doesNotMatch(configSource,comparatorPattern);
+  assert.match(comparatorSource,/battle_master/);assert.match(comparatorSource,/eldritch_knight/);assert.doesNotMatch(comparatorSource,/hunter.?ranger|open.?hand.?monk/i);
+  const comparators=JSON.parse(comparatorSource);assert.equal(comparators.source_ruleset,"2024 fifth-edition rules");assert.deepEqual(comparators.primary_comparator_ids,["battle_master","eldritch_knight"]);
+  assert.deepEqual(Object.keys(comparators.damage).sort(),["battle_master","eldritch_knight"]);assert.deepEqual(Object.keys(comparators.control).sort(),["battle_master","eldritch_knight"]);
+  const keys=(value:any):string[]=>value&&typeof value==="object"?Object.entries(value).flatMap(([key,child])=>[key,...keys(child)]):[];
+  for(const forbidden of ["label","status","description","rules_text","feature_text","spell_text","maneuver_text","flavor"])assert.ok(!keys(comparators).includes(forbidden),forbidden);
 });

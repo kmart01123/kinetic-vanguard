@@ -10,7 +10,7 @@ from typing import Any
 
 from .authority import AuthorityModel,DEFAULT_AUTHORITY
 from .comparison_report import matrix_row,write_matrix
-from .model import DEFAULT_CONFIG,DEFAULT_ROSTER,Target,attack_probabilities,damage_multiplier,expected_damage,file_sha256,level_config,load_config,load_targets,save_success_probability
+from .model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_ROSTER,Target,attack_probabilities,damage_multiplier,expected_damage,file_sha256,level_config,load_comparators,load_config,load_targets,save_success_probability
 
 
 def _target_count(rule:dict[str,Any],tier:int,cluster_size:int,pb:int)->int:
@@ -89,9 +89,9 @@ def _die_average(count:int,sides:int,great_weapon_fighting:bool=False)->float:
     return count*average
 
 
-def _comparator_dpr(model:AuthorityModel,config:dict[str,Any],target:Target,comparator_id:str)->float:
+def _comparator_dpr(model:AuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,comparator_id:str)->float:
     level=target.level;pb=model.progression("proficiency_bonus",level);progression=level_config(config,level);attacks=int(progression["attacks_per_action"]);actions=int(progression["attack_actions_over_three_rounds"]);total_attacks=attacks*actions
-    row=config["damage_comparators"][comparator_id];bonus=pb+int(row["ability_modifier"])+int(row["attack_bonus_adjustment"]);miss,hit,critical=attack_probabilities(bonus,target.ac);weapon=row["weapon"]
+    row=comparators["damage"][comparator_id];bonus=pb+int(row["ability_modifier"])+int(row["attack_bonus_adjustment"]);miss,hit,critical=attack_probabilities(bonus,target.ac);weapon=row["weapon"]
     dice=_die_average(int(weapon["count"]),int(weapon["sides"]),bool(weapon["great_weapon_fighting"]));mult=damage_multiplier(target,weapon["damage_type"])
     total=total_attacks*(hit*(dice+row["ability_modifier"])+critical*(2*dice+row["ability_modifier"]))*mult
     if comparator_id=="battle_master":
@@ -104,15 +104,15 @@ def _comparator_dpr(model:AuthorityModel,config:dict[str,Any],target:Target,comp
 
 
 def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,trials:int,seed:int,write_detail:bool=True,write_headline:bool=True)->dict[str,Any]:
-    model=AuthorityModel.load(authority);config=load_config();targets=load_targets(levels=levels,limit=target_limit);clusters=config["methodology"]["cluster_sizes"]
+    model=AuthorityModel.load(authority);config=load_config();comparators=load_comparators();targets=load_targets(levels=levels,limit=target_limit);clusters=config["methodology"]["cluster_sizes"]
     detail=[]
     for target in targets:
-        ek=_comparator_dpr(model,config,target,"eldritch_knight");bm=_comparator_dpr(model,config,target,"battle_master")
+        ek=_comparator_dpr(model,config,comparators,target,"eldritch_knight");bm=_comparator_dpr(model,config,comparators,target,"battle_master")
         for discipline in model.disciplines:
             for cluster in clusters:
                 primary,aggregate,selection=_kv_dpr(model,config,target,discipline,int(cluster));detail.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"Cluster Size":cluster,"KV Primary DPR":primary,"KV Aggregate DPR":aggregate,"Eldritch Knight DPR":ek,"Battle Master DPR":bm,"Selection":selection})
     slug=model.rules_version.replace(".","-");output_dir.mkdir(parents=True,exist_ok=True)
-    source_columns={"Rules Version":model.rules_version,"Authority SHA-256":model.authority_sha256,"Roster SHA-256":file_sha256(DEFAULT_ROSTER),"Config SHA-256":file_sha256(DEFAULT_CONFIG)}
+    source_columns={"Rules Version":model.rules_version,"Authority SHA-256":model.authority_sha256,"Roster SHA-256":file_sha256(DEFAULT_ROSTER),"Config SHA-256":file_sha256(DEFAULT_CONFIG),"Comparator Config SHA-256":file_sha256(DEFAULT_COMPARATORS)}
     if write_detail:
         detail_rows=[{**row,**source_columns} for row in detail]
         with (output_dir/f"kv-{slug}-damage-detail.csv").open("w",newline="",encoding="utf-8") as stream:
@@ -124,7 +124,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,tri
         for scope,field in (("primary-target DPR","KV Primary DPR"),("aggregate cluster DPR","KV Aggregate DPR")):
             mean=lambda key:sum(float(item[key]) for item in values)/len(values)
             rows.append(matrix_row({"Level":level,"Discipline":discipline,"Cluster Size":cluster,"Damage Scope":scope,"Profile":config["kv_profile"]["id"]},mean(field),mean("Eldritch Knight DPR"),mean("Battle Master DPR"),"damage"))
-    provenance={"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"roster_sha256":file_sha256(DEFAULT_ROSTER),"config_sha256":file_sha256(DEFAULT_CONFIG),"trials":trials,"seed":seed,"aggregation":"equal-weight roster means; percentages from displayed aggregates","status":"PORTED_UNDER_REVIEW"}
+    provenance={"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"roster_sha256":file_sha256(DEFAULT_ROSTER),"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"trials":trials,"seed":seed,"aggregation":"equal-weight roster means; percentages from displayed aggregates","status":"PORTED_UNDER_REVIEW"}
     paths=write_matrix(output_dir,model.rules_version,"damage",rows,provenance) if write_headline else {}
     return {"rules_version":model.rules_version,"detail_rows":len(detail),"matrix_rows":len(rows),"paths":paths}
 
@@ -132,7 +132,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,tri
 def main()->None:
     parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--authority",type=Path,default=DEFAULT_AUTHORITY);parser.add_argument("--output-dir",type=Path,required=True);parser.add_argument("--levels",default="7,11,15,20");parser.add_argument("--target-limit",type=int);parser.add_argument("--trials",type=int);parser.add_argument("--seed",type=int);parser.add_argument("--validate-only",action="store_true");parser.add_argument("--matrix-only",action="store_true");parser.add_argument("--no-matrix",action="store_true");args=parser.parse_args()
     model=AuthorityModel.load(args.authority)
-    if args.validate_only:print(f"Validated Kinetic Vanguard {model.rules_version} authority {model.authority_sha256}");return
+    if args.validate_only:load_config();load_comparators();print(f"Validated Kinetic Vanguard {model.rules_version} authority {model.authority_sha256} and isolated comparator config");return
     config=load_config();trials=args.trials if args.trials is not None else int(config["methodology"]["damage_default_trials"]);seed=args.seed if args.seed is not None else int(config["methodology"]["damage_seed"]);levels={int(value) for value in args.levels.split(",")}
     if trials<=0 or (args.target_limit is not None and args.target_limit<=0):parser.error("--trials and --target-limit must be positive")
     result=run(args.authority,args.output_dir,levels,args.target_limit,trials,seed,not args.matrix_only,not args.no_matrix);print(f"Damage harness wrote {result['detail_rows']} detail rows and {result['matrix_rows']} matrix rows for rules {result['rules_version']}")

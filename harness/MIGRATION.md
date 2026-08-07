@@ -16,8 +16,8 @@ The immutable import was verified before use. Historical files retain their old 
 | damage type, resistance bypass, secondary targeting | `calculator.harness_mechanics/feature_rules` | Canonical YAML mechanics |
 | control `scenarios()` KV rows and `CONDITION_RULES` | `calculator.harness_mechanics/feature_rules/control_tiers` | Canonical YAML mechanics |
 | mastery-control behavior | `calculator.harness_mechanics/disciplines/*/mastery` and per-feature `replaces_mastery` | Canonical YAML mechanics |
-| BM/EK damage builds and numerical assumptions | `harness/config/benchmark.json#/damage_comparators` | Frozen non-KV benchmark configuration |
-| BM/EK control scenarios | `harness/config/benchmark.json#/control_comparators` | Frozen non-KV benchmark configuration |
+| BM/EK damage builds and numerical assumptions | `harness/comparators/fighter-subclasses.json#/damage` | Minimal frozen third-party comparator parameters |
+| BM/EK control scenarios | `harness/comparators/fighter-subclasses.json#/control` | Minimal frozen third-party comparator parameters |
 | levels, rounds, action counts, seeds, trials, cluster sizes, Blood Tax profile, AT policy | `harness/config/benchmark.json` | Benchmark methodology/profile configuration |
 | compact control scenario selection | `harness/config/benchmark.json#/control_matrix` | Matrix profile selection, not rules authority |
 | SRD targets, HP, defenses, immunities, pages, URL | `harness/data/srd_targets.csv` | Pinned SRD data/provenance |

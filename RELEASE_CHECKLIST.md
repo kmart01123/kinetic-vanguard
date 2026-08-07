@@ -31,6 +31,7 @@ Use this checklist for every development line and release. The README is a maint
 - [ ] Run `npm run harness:validate` and `npm run test:harness`.
 - [ ] Confirm harness outputs derive filenames and provenance from canonical `rules_version` and authority digest.
 - [ ] Confirm `.codex-import/`, generated benchmark results, caches, virtual environments, and downloaded archives are absent from tracked files and `build/inputs.json`.
+- [ ] Confirm BM/EK assumptions remain minimal and isolated under `harness/comparators/`, absent from canonical YAML, separately hashed in report provenance, and covered by the third-party notice.
 - [ ] Record current harness certification/review status honestly; historical certification does not automatically carry forward.
 - [ ] Run the complete validation suite and `git diff --check`.
 - [ ] Confirm all review conversations are resolved.

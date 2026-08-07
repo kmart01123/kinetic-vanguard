@@ -29,6 +29,12 @@ Material derived from the System Reference Document 5.2.1 remains licensed under
 The required attribution and modification notice are in `NOTICE.md`.
 
 ## Mixed files and generated publications
+## Third-party comparator references
+
+The BSD-3-Clause license applies to project-authored harness software and technical configuration structure. It does not license third-party names, rules, or other material.
+
+Battle Master and Eldritch Knight are used only as unofficial comparative benchmark identifiers. No project license grants or purports to grant rights in Wizards-owned material outside the System Reference Document.
+
 
 `KineticVanguard.yaml` and generated `KineticVanguard.html` publications contain components under different licenses:
 

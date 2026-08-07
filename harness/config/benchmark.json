@@ -32,58 +32,6 @@
     "advanced_training_policy": "disabled",
     "weapon_damage": {"count": 0, "sides": 0, "modifier": 0}
   },
-  "damage_comparators": {
-    "battle_master": {
-      "label": "Conventional greatsword Great Weapon Master Battle Master",
-      "status": "FROZEN_NON_SRD_COMPARATOR_ASSUMPTION",
-      "ability_modifier": 5,
-      "weapon": {"count": 2, "sides": 6, "damage_type": "slashing", "great_weapon_fighting": true},
-      "attack_bonus_adjustment": 0,
-      "great_weapon_master_damage_per_turn": 5,
-      "superiority_die_by_level": {"7": 8, "11": 10, "15": 10, "20": 12},
-      "maneuver_uses_over_three_rounds": {"7": 5, "11": 5, "15": 6, "20": 6}
-    },
-    "eldritch_knight": {
-      "label": "Conventional sword-and-board Eldritch Knight",
-      "status": "FROZEN_NON_SRD_COMPARATOR_ASSUMPTION",
-      "ability_modifier": 5,
-      "weapon": {"count": 1, "sides": 8, "damage_type": "slashing", "great_weapon_fighting": false},
-      "attack_bonus_adjustment": 0,
-      "true_strike_damage_by_level": {"7": {"count": 1, "sides": 6}, "11": {"count": 2, "sides": 6}, "15": {"count": 2, "sides": 6}, "20": {"count": 3, "sides": 6}},
-      "true_strike_uses_over_three_rounds": 3,
-      "true_strike_damage_type": "radiant"
-    }
-  },
-  "control_comparators": {
-    "battle_master": {
-      "label": "Battle Master",
-      "status": "FROZEN_NON_SRD_COMPARATOR_ASSUMPTION",
-      "minimum_level": 7,
-      "attack_ability_modifier": 5,
-      "save_dc_base": 8,
-      "save_ability_modifier": 5,
-      "magic_resistance_applies": false,
-      "scenarios": [
-        {"id": "menacing_attack", "save": "wisdom", "hit_gated": true, "conditions": ["frightened"]},
-        {"id": "pushing_attack", "save": "strength", "hit_gated": true, "outcomes": ["forced_movement"], "maximum_size": "large"},
-        {"id": "trip_attack", "save": "strength", "hit_gated": true, "conditions": ["prone"], "maximum_size": "large"},
-        {"id": "goading_attack", "save": "wisdom", "hit_gated": true, "outcomes": ["attack_disadvantage"]}
-      ]
-    },
-    "eldritch_knight": {
-      "label": "Eldritch Knight",
-      "status": "FROZEN_NON_SRD_COMPARATOR_ASSUMPTION",
-      "minimum_level": 7,
-      "attack_ability_modifier": 5,
-      "save_dc_base": 8,
-      "save_ability_modifier": 5,
-      "magic_resistance_applies": true,
-      "scenarios": [
-        {"id": "blindness_deafness", "minimum_level": 7, "save": "constitution", "conditions": ["blinded"]},
-        {"id": "blindness_after_eldritch_strike", "minimum_level": 11, "save": "constitution", "conditions": ["blinded"], "primer_hit_disadvantage": true}
-      ]
-    }
-  },
   "control_matrix": {
     "metric": "roster-adjusted whole-package control stick %",
     "aggregation": "per-target best legal scenario then equal-weight roster mean",

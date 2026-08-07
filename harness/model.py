@@ -11,6 +11,7 @@ from typing import Any
 
 HARNESS_ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = HARNESS_ROOT / "config" / "benchmark.json"
+DEFAULT_COMPARATORS = HARNESS_ROOT / "comparators" / "fighter-subclasses.json"
 DEFAULT_ROSTER = HARNESS_ROOT / "data" / "srd_targets.csv"
 ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
 SIZE_ORDER = {"tiny":0,"small":1,"medium":2,"large":3,"huge":4,"gargantuan":5}
@@ -25,6 +26,16 @@ class Target:
 
 def load_config(path:Path=DEFAULT_CONFIG)->dict[str,Any]:
     with path.open(encoding="utf-8") as stream:return json.load(stream)
+
+
+def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
+    with path.open(encoding="utf-8") as stream:data=json.load(stream)
+    expected=["battle_master","eldritch_knight"]
+    if data.get("format_version")!=1:raise ValueError("Unsupported comparator format version")
+    if data.get("primary_comparator_ids")!=expected:raise ValueError("Primary comparators must be Battle Master and Eldritch Knight")
+    if set(data.get("damage",{}))!=set(expected):raise ValueError("Damage comparator set is incomplete or unsupported")
+    if set(data.get("control",{}))!=set(expected):raise ValueError("Control comparator set is incomplete or unsupported")
+    return data
 
 
 def _items(value:str)->frozenset[str]:

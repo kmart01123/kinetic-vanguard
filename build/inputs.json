@@ -45,6 +45,7 @@
     {"path":"harness/damage_harness.py","role":"harness_source"},
     {"path":"harness/control_harness.py","role":"harness_source"},
     {"path":"harness/config/benchmark.json","role":"harness_benchmark_config"},
+    {"path":"harness/comparators/fighter-subclasses.json","role":"third_party_comparator_parameters"},
     {"path":"harness/data/srd_targets.csv","role":"pinned_srd_target_roster"},
     {"path":"harness/provenance/legacy-import.json","role":"harness_provenance"},
     {"path":"harness/tests/__init__.py","role":"test_source"},
