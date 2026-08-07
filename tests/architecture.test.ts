@@ -12,7 +12,8 @@ const assertAbsent=async(path:string)=>assert.rejects(access(path),(error:any)=>
 async function filesUnder(root:string):Promise<string[]>{const entries=await readdir(root,{withFileTypes:true});const files:string[]=[];for(const entry of entries){const path=join(root,entry.name);if(entry.isDirectory())files.push(...await filesUnder(path));else files.push(path);}return files;}
 const inlineText=(nodes:any[]|undefined)=>nodes?.map(node=>node.text??node.label??"").join("")??"";
 const blockText=(block:any):string=>[inlineText(block.inlines),...(block.items??[]).map((item:any[])=>inlineText(item)),...(block.body??[]).map((item:any)=>blockText(item))].filter(Boolean).join("\n");
-const entityRules=(entity:any)=>entity.content.map((block:any)=>blockText(block)).filter(Boolean).join("\n");
+const authoredBlockText=(block:any):string=>block.type==="tier"?`T${block.tier} ${inlineText(block.heading)}: ${block.body.map((child:any)=>blockText(child)).filter(Boolean).join(" ")}`:blockText(block);
+const entityRules=(entity:any)=>entity.content.map((block:any)=>authoredBlockText(block)).filter(Boolean).join("\n");
 const ownedOnboardingIds=(value:any,result:string[]=[]):string[]=>{if(Array.isArray(value)){value.forEach(item=>ownedOnboardingIds(item,result));return result;}if(!value||typeof value!=="object")return result;for(const [key,child] of Object.entries(value)){if(key==="id"&&typeof child==="string")result.push(child);else ownedOnboardingIds(child,result);}return result;};
 const onboardingDestinations=(value:any,result:any[]=[]):any[]=>{if(Array.isArray(value)){value.forEach(item=>onboardingDestinations(item,result));return result;}if(!value||typeof value!=="object")return result;if(typeof value.kind==="string"&&(typeof value.section_id==="string"||typeof value.category_id==="string"||typeof value.entity_id==="string"))result.push(value);for(const child of Object.values(value))onboardingDestinations(child,result);return result;};
 const onboardingStrings=(value:any,result:string[]=[]):string[]=>{if(typeof value==="string"){result.push(value);return result;}if(Array.isArray(value)){value.forEach(item=>onboardingStrings(item,result));return result;}if(value&&typeof value==="object")Object.values(value).forEach(item=>onboardingStrings(item,result));return result;};
@@ -20,7 +21,8 @@ const onboardingStrings=(value:any,result:string[]=[]):string[]=>{if(typeof valu
 test("YAML authority is schema-valid, semantically valid, and complete",async()=>{
   const loaded=await loadAuthority();const diagnostics=[...loaded.diagnostics,...validateSemantics(loaded.authority)];
   assert.deepEqual(diagnostics,[]);
-  assert.equal(loaded.authority.rules_version,"13.2.0");
+  assert.equal(loaded.authority.schema_version,"2.0.0");
+  assert.equal(loaded.authority.rules_version,"14.0.0");
   const audit=loaded.authority.audits?.find(item=>item.id==="yaml_rules_authority")!;
   assert.deepEqual([...audit.subject_ids].sort(),loaded.authority.entities.map(entity=>entity.id).sort());
 });
@@ -93,13 +95,14 @@ test("retired migration sources are absent from the active architecture",async()
 
 test("active CI publication names derive from the canonical rules version",async()=>{
   const [{authority},workflow]=await Promise.all([loadAuthority(),readFile(".github/workflows/ci.yml","utf8")]);
-  assert.doesNotMatch(workflow,/\b13\.\d+(?:\.\d+)?\b/);
+  assert.doesNotMatch(workflow,/\b14\.\d+(?:\.\d+)?\b/);
   assert.match(workflow,/rules_version: \$\{\{ steps\.rules-version\.outputs\.rules_version \}\}/);
   assert.match(workflow,/name: v\$\{\{ needs\.metadata\.outputs\.rules_version \}\} verification and release build/);
   assert.match(workflow,/name: kinetic-vanguard-v\$\{\{ needs\.metadata\.outputs\.rules_version \}\}/);
   assert.match(workflow,/\"rules_version\":\"\$\{\{ needs\.metadata\.outputs\.rules_version \}\}\"/);
+  assert.match(workflow,/! grep -q '"application_version"' artifacts\/build-manifest\.json/);
   const artifactTemplate=workflow.match(/name: (kinetic-vanguard-v\$\{\{ needs\.metadata\.outputs\.rules_version \}\})/)?.[1];
-  assert.equal(artifactTemplate?.replace("${{ needs.metadata.outputs.rules_version }}",authority.rules_version),"kinetic-vanguard-v13.2.0");
+  assert.equal(artifactTemplate?.replace("${{ needs.metadata.outputs.rules_version }}",authority.rules_version),"kinetic-vanguard-v14.0.0");
 });
 
 test("prototype and release builds reflect direct YAML edits",async()=>{
@@ -109,6 +112,7 @@ test("prototype and release builds reflect direct YAML edits",async()=>{
     const prototypeRoot=join(temporary,"prototype"),releaseRoot=join(temporary,"release");
     const prototype=await executeBuild("prototype",prototypeRoot,authorityPath);process.env.KV_RELEASE_APPROVED="1";const release=await executeBuild("release",releaseRoot,authorityPath);
     for(const result of [prototype,release]){const html=await readFile(result.htmlPath,"utf8");assert.match(html,/Kinetic Vanguard YAML Edit Probe/);assert.doesNotMatch(html,/Kinetic_Vanguard\.md|npm run migrate|edit (?:the )?Markdown/i);assert.equal(result.manifest.build_identity.canonical_rules_authority,authorityPath);assert.deepEqual(result.manifest.declared_inputs.filter((input:any)=>input.role==="rules_authority").map((input:any)=>input.path),[authorityPath]);}
+    for(const result of [prototype,release]){assert.equal(result.manifest.build_identity.rules_version,"14.0.0");assert.equal("application_version" in result.manifest.build_identity,false);}
     const coverage=JSON.parse(await readFile(join(prototypeRoot,"coverage-ledger.json"),"utf8"));const {authority}=await loadAuthority(authorityPath);assert.equal(coverage.version,3);assert.equal(coverage.entity_count,44);assert.equal(coverage.entity_count,authority.entities.length);assert.deepEqual(coverage.entities.map((entity:any)=>entity.entity_id),authority.entities.map(entity=>entity.id));assert.ok(coverage.entities.every((entity:any)=>entity.content_block_count>0&&entity.destinations.length>0));assert.equal(coverage.entities.some((entity:any)=>entity.entity_id===authority.onboarding.id),false);assert.deepEqual(coverage.onboarding,{authority_path:authorityPath+"#/onboarding",onboarding_id:"start_here",section_ids:["choose_your_discipline","basic_turn","build_checklist","terms_to_know","where_to_go_next"],destination_ids:[...authority.onboarding.primary_paths,...authority.onboarding.disciplines.cards,...authority.onboarding.basic_turn.destinations,...authority.onboarding.build_checklist.items,...authority.onboarding.glossary.entries,...authority.onboarding.next_destinations.items].map(item=>item.id)});
   }finally{if(previousApproval===undefined)delete process.env.KV_RELEASE_APPROVED;else process.env.KV_RELEASE_APPROVED=previousApproval;await rm(temporary,{recursive:true,force:true});}
 });
@@ -147,7 +151,7 @@ test("shared Overload startup exception covers every concentration feature",asyn
   const {authority}=await loadAuthority();
   const concentrationFeatures=authority.entities.filter(entity=>entity.requires_concentration===true);
   assert.deepEqual(concentrationFeatures.map(entity=>entity.id).sort(),[
-    "advanced_beguile","advanced_gravitic_press","ball_lightning",
+    "advanced_barrier","advanced_beguile","advanced_gravitic_press","ball_lightning",
     "frozen_ground","mass_levitation","vectored_thrust"
   ]);
   assert.ok(concentrationFeatures.every(entity=>entity.classifications.feature_role==="standalone"));
@@ -165,13 +169,13 @@ test("shared Overload startup exception covers every concentration feature",asyn
 test("Forked Lightning resolves every target's save and outcomes independently",async()=>{
   const {authority}=await loadAuthority();
   const feature=authority.entities.find(entity=>entity.id==="forked_lightning")!;
-  const rules=feature.content.flatMap(block=>block.inlines??[]).map(inline=>inline.text).join("\n");
+  const rules=entityRules(feature);
   assert.match(rules,/Every target makes its own Charisma saving throw and resolves its damage independently\./);
   assert.match(rules,/primary target takes 8d8 lightning damage on a failed save or half as much on a successful one/);
   assert.match(rules,/Each secondary target takes 4d8 lightning damage on a failed save or half as much on a successful one/);
   assert.match(rules,/One target’s saving throw never determines another target’s damage or conditions\./);
-  for(const tier of ["T1 Overload","T2 Overload"]){
-    const tierText=feature.content.find(block=>block.type==="paragraph"&&block.inlines?.[0]?.text?.startsWith(tier))!.inlines![0]!.text!;
+  for(const tier of [1,2]){
+    const tierText=blockText(feature.content.find(block=>block.type==="tier"&&block.tier===tier)!);
     assert.match(tierText,/Every target makes its own Charisma saving throw and resolves its own damage\./);
     assert.match(tierText,/primary target takes \d+d8 lightning damage on a failed save or half as much on a successful one/);
     assert.match(tierText,/secondary target takes \d+d8 lightning damage on a failed save or half as much on a successful one/);
@@ -210,7 +214,7 @@ test("approved trigger, timing, replacement, and flavor clarifications remain ca
   const tier0Row=costRows.find(row=>row[0]==="Manifested Strike + Tier 0 rider")!;assert.match(tier0Row[3]??"",/Signature Rider is repeatable at every tier/);
   const standaloneRow=costRows.find(row=>row[0]==="Overloaded standalone feature")!;assert.equal(standaloneRow[2],"Tier 1: Proficiency Bonus; Tier 2: 2 × Proficiency Bonus in total");
   assert.deepEqual(costRows.find(row=>row[0]==="Overloaded rider + overloaded standalone feature"),["Overloaded rider + overloaded standalone feature","Rider cost + feature cost","Sum both","Each Overload pays separately"]);
-  const holdout=rulesFor("common_manifested_strike");assert.match(holdout,/Declare this option before the attack roll\. If the attack has a rider, declare the option at the same time as that rider and its tier\./);
+  const holdout=rulesFor("common_manifested_strike");assert.match(holdout,/Declare this option before the attack roll\.\s+If the attack has a rider, declare the option at the same time as that rider and its tier\./);
 
   const ballLightning=rulesFor("ball_lightning");
   for(const rule of ["enters the Sphere for the first time on any turn","Voluntary or forced movement into the Sphere can trigger this effect","trigger it by entering only once per turn","Moving the orb onto a stationary creature does not trigger damage immediately","must later enter the Sphere or start its turn there"])assert.ok(ballLightning.includes(rule),rule);
@@ -231,8 +235,13 @@ test("newcomer common rules preserve choices, resources, Signature Riders, and K
   const disciplineRules=rules("common_psionic_discipline");
   assert.equal(discipline.id,"common_psionic_discipline");assert.equal(discipline.title,"Psionic Discipline");assert.equal(discipline.level,3);
   assert.deepEqual(discipline.classifications,{entity_kind:"feature",feature_role:"passive",rules_area:["common_features"]});
-  assert.equal(blockText(discipline.content[0]!),"When you gain this subclass at Fighter level 3, choose one Kinetic Discipline: Pyrokinesis, Cryokinesis, Psychokinesis, or Electrokinesis. Your chosen Discipline determines your Manifested Strike’s damage type, Discipline signature saving throw, Kinetic Mastery, Signature Rider, and the Discipline features you gain at Fighter levels 3, 7, 10, 15, and 20. This choice is permanent and is separate from your Psionic Ability choice.");
-  assert.equal(blockText(discipline.content[1]!),"Choose Intelligence, Wisdom, or Charisma as your Psionic Ability. Your Psionic Ability choice does not change your Discipline.");
+  assert.deepEqual(discipline.content.slice(0,5).map(block=>block.type),["paragraph","list","paragraph","list","paragraph"]);
+  assert.equal(blockText(discipline.content[0]!),"When you gain this subclass at Fighter level 3, choose one Kinetic Discipline:");
+  assert.deepEqual(discipline.content[1]!.items!.map(item=>inlineText(item)),["Pyrokinesis","Cryokinesis","Psychokinesis","Electrokinesis"]);
+  assert.equal(blockText(discipline.content[2]!),"Your chosen Discipline determines:");
+  assert.deepEqual(discipline.content[3]!.items!.map(item=>inlineText(item)),["your Manifested Strike’s damage type","your Discipline signature saving throw","your Kinetic Mastery","your Signature Rider","the Discipline features you gain at Fighter levels 3, 7, 10, 15, and 20"]);
+  assert.equal(blockText(discipline.content[4]!),"This choice is permanent and is separate from your Psionic Ability choice.");
+  assert.equal(blockText(discipline.content[5]!),"Choose Intelligence, Wisdom, or Charisma as your Psionic Ability. Your Psionic Ability choice does not change your Discipline.");
   assert.match(disciplineRules,/Your Psionic Ability modifier is the ability modifier for the ability you chose\./);
   assert.match(disciplineRules,/Your Manifested Strike attack bonus includes this modifier, and you add the modifier to the strike’s damage roll\./);
   assert.match(disciplineRules,/Use it whenever another subclass feature refers to your Psionic Ability\./);
@@ -273,9 +282,10 @@ test("newcomer common rules preserve choices, resources, Signature Riders, and K
   for(const rule of ["does not occupy the hit’s rider slot","does not count against the number of weapons","misses, the target takes damage equal to your Psionic Ability modifier","hits a creature and deals damage","reduce its Speed by 10 feet until the start of your next turn","hits a Large or smaller creature","push it up to 10 feet straight away from you","Disadvantage on its next attack roll before the start of your next turn","replaces Kinetic Mastery rather than stacking","half your Psionic Ability modifier, rounded down","reduced by 20 feet until the start of your next turn","successful saving throw leaves the target unmoved","damage immunity does not prevent them"])assert.ok(masteryRules.includes(rule),rule);
 });
 
-test("fixed concentration durations are explicit in structured authority and rules text",async()=>{
+test("concentration durations are explicit in structured authority and rules text",async()=>{
   const {authority}=await loadAuthority();
   const expected=[
+    ["advanced_barrier","Varies by tier"],
     ["advanced_beguile","Varies by tier"],
     ["advanced_gravitic_press","Up to 1 minute"],
     ["ball_lightning","Up to 1 minute"],
@@ -286,19 +296,35 @@ test("fixed concentration durations are explicit in structured authority and rul
   const features=authority.entities.filter(entity=>entity.concentration_duration!==undefined).sort((a,b)=>a.id.localeCompare(b.id));
   assert.deepEqual(features.map(entity=>[entity.id,entity.concentration_duration]),expected);
   assert.ok(features.every(entity=>entity.requires_concentration===true));
-  for(const entity of features.filter(entity=>entity.id!=="advanced_beguile")){
-    const rules=entity.content.flatMap(block=>block.inlines??[]).map(inline=>inline.text).join("\n");
+  for(const entity of features.filter(entity=>entity.concentration_duration!=="Varies by tier")){
+    const rules=entityRules(entity);
     assert.ok(rules.includes(`requires Concentration for ${entity.concentration_duration!.toLowerCase()}.`),`${entity.id} is missing its canonical maximum duration`);
   }
-  const beguile=authority.entities.find(entity=>entity.id==="advanced_beguile")!;const beguileRules=beguile.content.flatMap(block=>block.inlines??[]).map(inline=>inline.text).join("\n");
-  assert.match(beguileRules,/T0 Base:[^\n]+up to 1 hour/);assert.equal((beguileRules.match(/up to 8 hours/g)??[]).length,2);
+  const beguile=authority.entities.find(entity=>entity.id==="advanced_beguile")!;const beguileRules=entityRules(beguile);
+  assert.match(beguileRules,/T0 Base:[\s\S]*?up to 1 hour/);assert.equal((beguileRules.match(/up to 8 hours/g)??[]).length,2);
+  const barrier=authority.entities.find(entity=>entity.id==="advanced_barrier")!;const barrierBlocks=barrier.content.map(block=>blockText(block));
+  assert.match(barrierBlocks[0]!,/^T0 Base: This effect requires Concentration for up to 1 minute\./);
+  const barrierModes=barrier.content[1]!;assert.equal(barrierModes.type,"list");assert.equal(barrierModes.style,"unordered");
+  assert.deepEqual(barrierModes.items!.map(item=>inlineText(item)),[
+    "Blade Shield: You have Resistance to bludgeoning, piercing, and slashing damage from weapon attacks.",
+    "Elemental Shroud: Choose acid, cold, fire, lightning, or thunder; you have Resistance to that damage type.",
+    "Spellward: You have Advantage on saving throws against spells.",
+    "Steadfast Guard: You have Advantage on Strength saving throws and on ability checks and saving throws made to resist being Grappled, shoved, knocked Prone, or forcibly moved.",
+    "Mental Bulwark: You have Advantage on saving throws against being Charmed, Frightened, Blinded, Restrained, Incapacitated, Paralyzed, or Stunned."
+  ]);
+  assert.match(barrierBlocks[2]!,/^T1 Overload: Changes from Tier 0:/);assert.doesNotMatch(barrierBlocks[2]!,/duration|minute|Concentration/iu);
+  assert.match(barrierBlocks[3]!,/^T2 Overload: Changes from Tier 1: The duration increases to 10 minutes\./);
 });
 
 
 test("Mass Levitation uses five target slots, repeat-save falls, and preserves every other mechanic",async()=>{
   const {authority}=await loadAuthority();
   const feature=authority.entities.find(entity=>entity.id==="mass_levitation")!;
-  const tiers=feature.content.map(block=>blockText(block));assert.equal(tiers.length,3);
+  const tiers=feature.content.map((block:any)=>{
+    assert.equal(block.type,"tier");
+    const body=block.body.flatMap((child:any)=>child.type==="list"?child.items.map((item:any[])=>inlineText(item.slice(item[0]?.type==="strong"?1:0))):[blockText(child)]).join(" ");
+    return `T${block.tier} ${inlineText(block.heading)}: ${body}`;
+  });assert.equal(tiers.length,3);
   const tier0=tiers[0]!,tier1=tiers[1]!,tier2=tiers[2]!;
   for(const targetRule of [
     "When you activate this feature, you have five target slots to spend on creatures you can see within 60 feet.",
@@ -389,6 +415,96 @@ test("Mass Levitation uses five target slots, repeat-save falls, and preserves e
   assert.deepEqual(topic,{entity_ids:["mass_levitation"],id:"psychokinesis_mass_levitation_topic",order:4,title:"Mass Levitation"});
 });
 
+test("six dense rules targets use semantic lists with preserved tier scope",async()=>{
+  const {authority}=await loadAuthority();
+  const entity=(id:string)=>authority.entities.find(candidate=>candidate.id===id)! as any;
+  const tier=(id:string,value:number)=>entity(id).content.find((block:any)=>block.type==="tier"&&block.tier===value);
+  const listSummary=(block:any)=>({
+    style:block.style,
+    count:block.items.length,
+    labels:block.items.map((item:any[])=>{assert.equal(item[0]?.type,"strong");return inlineText([item[0]]).trim();})
+  });
+  for(const id of ["explosion_implosion","mass_levitation","forked_lightning","advanced_gravitic_press"]){
+    assert.deepEqual(entity(id).content.filter((block:any)=>block.type==="tier").map((block:any)=>[block.tier,inlineText(block.heading)]),[[0,"Base"],[1,"Overload"],[2,"Overload"]],id);
+  }
+
+  const manifested=entity("common_manifested_strike");
+  const paragraphIndex=(prefix:string)=>manifested.content.findIndex((block:any)=>block.type==="paragraph"&&blockText(block).startsWith(prefix));
+  const somaticIndex=paragraphIndex("Somatic Requirement:");assert.ok(somaticIndex>=0);
+  assert.deepEqual({style:manifested.content[somaticIndex+1].style,count:manifested.content[somaticIndex+1].items.length},{style:"unordered",count:5});
+  const holdoutIndex=paragraphIndex("The Holdout Option — Force Damage:");assert.ok(holdoutIndex>=0);
+  assert.deepEqual(manifested.content.slice(holdoutIndex+1,holdoutIndex+3).map((block:any)=>[block.type,block.style,block.items.length]),[["list","ordered",2],["list","unordered",2]]);
+
+  const explosion=tier("explosion_implosion",0);
+  assert.deepEqual(explosion.body.map((block:any)=>block.type),["paragraph","list","list"]);
+  assert.deepEqual(explosion.body.slice(1).map(listSummary),[
+    {style:"unordered",count:2,labels:["Explosion (outward):","Implosion (inward):"]},
+    {style:"unordered",count:2,labels:["Struck target:","Successful save:"]}
+  ]);
+  assert.deepEqual(explosion.body[1].items.map((item:any[])=>inlineText(item)),[
+    "Explosion (outward): Each creature other than the struck target that fails is also pushed 15 feet away from the target.",
+    "Implosion (inward): Each creature other than the struck target that fails is also pulled 15 feet toward the target."
+  ]);
+  assert.deepEqual(explosion.body[2].items.map((item:any[])=>inlineText(item)),[
+    "Struck target: The struck target is not moved because it is the Sphere’s center, but it still makes the save and can be Restrained.",
+    "Successful save: On a successful save, a creature is neither moved nor Restrained."
+  ]);
+  assert.equal(blockText(tier("explosion_implosion",1)),"Changes from Tier 0: The Sphere’s radius and push or pull distance both increase to 30 feet.");
+
+
+  const mass=tier("mass_levitation",0);
+  assert.deepEqual(mass.body.map((block:any)=>block.type),["paragraph","list"]);
+  assert.deepEqual(listSummary(mass.body[1]),{style:"ordered",count:4,labels:["Targeting:","Initial saving throw:","Repeat saving throw:","Ongoing effect:"]});
+
+  assert.deepEqual([0,1,2].map(value=>{const block=tier("forked_lightning",value);return [block.body.map((child:any)=>child.type),listSummary(block.body.find((child:any)=>child.type==="list"))];}),[
+    [["list"],{style:"unordered",count:5,labels:["Targets:","Saving throws:","Primary damage:","Secondary damage:","Independent outcomes:"]}],
+    [["paragraph","list"],{style:"unordered",count:4,labels:["Targets:","Saving throws:","Primary damage:","Secondary damage:"]}],
+    [["paragraph","list"],{style:"unordered",count:8,labels:["Targets:","Saving throws:","Primary damage:","Secondary damage:","Failed-save conditions:","Successful save:","Primary target only:","Secondary targets:"]}]
+  ]);
+
+  const press=tier("advanced_gravitic_press",0);
+  assert.deepEqual(press.body.map((block:any)=>block.type),["paragraph","list"]);
+  assert.deepEqual(listSummary(press.body[1]),{style:"unordered",count:5,labels:["Terrain and Speed:","Flying creatures:","Saving throw:","Failed save:","Successful save:"]});
+});
+
+test("remaining dense common and tier rules use deliberate semantic list groupings",async()=>{
+  const {authority}=await loadAuthority();
+  const entity=(id:string)=>authority.entities.find(candidate=>candidate.id===id)! as any;
+  const labels=(list:any)=>list.items.map((item:any[])=>item[0]?.type==="strong"?inlineText([item[0]]).trim():null);
+  const expectList=(list:any,style:string,count:number,expectedLabels?:string[])=>{assert.equal(list.type,"list");assert.equal(list.style,style);assert.equal(list.items.length,count);if(expectedLabels)assert.deepEqual(labels(list),expectedLabels);};
+
+  const how=entity("how_to_play");
+  expectList(how.content[3],"unordered",4,["Feature classification:","Advanced Training riders:","Rider exclusivity:","Manifested Strike dice:"]);
+  expectList(how.content[4],"unordered",4,["Attack order:","Next attack:","Spent limits:","Action Surge:"]);
+  expectList(how.content[6],"unordered",2,["Standalone Action limit:","Action Surge:"]);
+  expectList(how.content[9],"unordered",3,["Reaction denial and attack-roll Disadvantage:","Conditions:","Zones and recurring saves:"]);
+
+  const overload=entity("common_overload");
+  expectList(overload.content[1],"unordered",2,["Rider:","Standalone feature:"]);
+  expectList(overload.content[3],"unordered",3,["Tier 1:","Tier 2:","Manifested Strike:"]);
+  for(const index of [12,14,16])expectList(overload.content[index],"unordered",4);
+  const discipline=entity("common_psionic_discipline");expectList(discipline.content[1],"unordered",4);expectList(discipline.content[3],"unordered",5);
+  expectList(entity("common_psionic_link").content[1],"unordered",4,["Multiple recipients:","Replies:","Recipient isolation:","Thought reading:"]);
+  expectList(entity("common_manifested_strike").content[9],"unordered",3,["Classification:","Countermagic and spell triggers:","Magic Resistance:"]);
+  expectList(entity("common_empathic_sense").content[2],"unordered",3,["Detection:","Snapshot:","Information excluded:"]);
+
+  const expectedTierLists={
+    frozen_ground:[[0,"unordered",4,["Area:","Concentration:","Trigger and saving throw:","Failed save:"]]],
+    telekinetic_shove:[[0,"unordered",5,["Damage and saving throw:","Failed save:","Successful save:","Push mastery:","Movement limit:"]]],
+    telekinetic_slam:[[2,"unordered",3,["Damage:","Failed save:","Successful save:"]]],
+    static_discharge:[[2,"unordered",4,["Damage and saving throw:","Failed save:","Successful save:","Lightning immunity:"]]],
+    ball_lightning:[[0,"unordered",5,["Concentration:","Area:","Trigger and saving throw:","Entry limit:","Movement:"]],[2,"unordered",2,["Failed save:","Leaving the Sphere:"]]],
+    advanced_deflection_screen:[[2,"unordered",5,["Damage reduction:","Originating creature:","Failed save:","Successful save:","No originating creature:"]]],
+    advanced_beguile:[[0,"unordered",3,["Effect:","Saving throw:","Concentration:"]],[1,"unordered",3,["Effect:","Saving throw:","Concentration:"]],[2,"unordered",3,["Effect:","Saving throw:","Concentration:"]]],
+    advanced_improved_phase_step:[[0,"ordered",4,undefined]]
+  } as const;
+  for(const [id,specs] of Object.entries(expectedTierLists)){
+    const feature=entity(id);assert.deepEqual(feature.content.filter((block:any)=>block.type==="tier").map((block:any)=>[block.tier,inlineText(block.heading)]),[[0,"Base"],[1,"Overload"],[2,"Overload"]],id);
+    for(const [tierValue,style,count,expectedLabels] of specs){const tier=feature.content.find((block:any)=>block.type==="tier"&&block.tier===tierValue)!;const list=tier.body.find((block:any)=>block.type==="list")!;expectList(list,style,count,expectedLabels as string[]|undefined);}
+  }
+  expectList(entity("advanced_beguile").content[3],"unordered",4,["Classification:","Components:","Countermagic and spell triggers:","Saving throw:"]);
+});
+
 
 test("Psi Cost Reference defines complete tier-aware Ongoing Duration values",async()=>{
   const {authority}=await loadAuthority();const reference=authority.entities.find(entity=>entity.id==="subclass_feature_reference")!;
@@ -416,6 +532,7 @@ test("Psi Cost Reference defines complete tier-aware Ongoing Duration values",as
   assert.deepEqual(rows.reduce<Record<string,number>>((counts,row)=>({...counts,[row[0]!]:(counts[row[0]!]??0)+1}),{}),{"3rd":4,"5th":1,"7th":5,"10th":5,"15th":5,"18th":1,"20th":5,"15th+":7,"18th+":1});
   assert.deepEqual(rows.map(row=>[row[1],row[5]]),[["Glacial Spike","Until the end of your next turn"],["Ember Bolt","Instantaneous"],["Telekinetic Shove","Varies by tier"],["Static Discharge","Varies by tier"],["Deflection Screen","Varies by tier"],["Empathic Sense","Continuous"],["Snow Chains","Until the end of your next turn"],["Thermal Fracture","Until the start of your next turn"],["Vectored Thrust","Concentration, up to 10 minutes"],["Branching Bolt","Instantaneous"],["Frozen Ground","Concentration, up to 1 minute"],["Cinder Lance","Instantaneous"],["Explosion/Implosion","Until the end of your next turn"],["Electron Burst","Varies by tier"],["Phase Step","Varies by tier"],["Arctic Tempest","Until the end of your next turn"],["Flare","Until the end of your next turn"],["Telekinetic Slam","Varies by tier"],["Forked Lightning","Varies by tier"],["Advanced Training III choice","Varies by feature"],["Advanced Training IV choice","Varies by feature"],["Advanced Training V choice","Varies by feature"],["Mind Shred","Instantaneous"],["Beguile","Varies by tier"],["Mind Lock","Until the end of your next turn"],["Gravitic Press","Concentration, up to 1 minute"],["Barrier","Varies by tier"],["Improved Phase Step","Varies by tier"],["Overload Mastery II","Continuous"],["Inner Reserve","Continuous"],["Absolute Zero","Until the end of your next turn"],["Furnace Strike","Instantaneous"],["Mass Levitation","Concentration, up to 1 minute"],["Ball Lightning","Concentration, up to 1 minute"]]);
   const byFeature=new Map(rows.map(row=>[row[1],row]));
+  assert.equal(byFeature.get("Barrier")?.[4],"Bonus Action · Concentration");
   assert.equal(byFeature.get("Glacial Spike")?.[4],"Declared before roll · Resolves on hit");
   assert.equal(byFeature.get("Empathic Sense")?.[4],"Passive · Bonus Action scan");
   assert.notEqual(byFeature.get("Explosion/Implosion")?.[5],"Instantaneous");
@@ -430,9 +547,68 @@ test("Psi Cost Reference defines complete tier-aware Ongoing Duration values",as
 test("final rules decisions leave every unapproved authority field unchanged",async()=>{
   const {authority}=await loadAuthority();const projection=structuredClone(authority) as any;
   delete projection.onboarding;
+  delete projection.calculator;
+  projection.schema_version="1.0.0";
   projection.rules_version="<approved rules version>";
   projection.metadata.attribution="Created by NixNinja in collaboration with artificial intelligence assistants. Special thanks to various muses, great and small.";
   projection.metadata.license="Original Kinetic Vanguard material may be used, copied, modified, and redistributed for non-commercial purposes with credit to NixNinja. Commercial use requires prior written permission. System Reference Document-derived rules text and references are separately governed by the Creative Commons Attribution 4.0 International License.";
+  const presentationLabel=/^(?:Targeting|Initial saving throw|Repeat saving throw|Ongoing effect|Targets|Saving throws|Primary damage|Secondary damage|Independent outcomes|Failed-save conditions|Successful save|Primary target only|Secondary targets|Terrain and Speed|Flying creatures|Saving throw|Failed save|Explosion \(outward\)|Implosion \(inward\)|Struck target|Area|Concentration|Trigger and saving throw|Damage and saving throw|Push mastery|Movement limit|Damage|Lightning immunity|Entry limit|Movement|Leaving the Sphere|Damage reduction|Originating creature|No originating creature|Effect):\s*/u;
+  const itemMechanics=(item:any[])=>inlineText(item.slice(item[0]?.type==="strong"?1:0));
+  const listMechanics=(list:any)=>list.items.map((item:any[])=>itemMechanics(item));
+  const paragraph=(text:string)=>({inlines:[{text,type:"text"}],type:"paragraph"});
+  const tierMechanics=(tier:any)=>tier.body.flatMap((block:any)=>block.type==="list"?block.items.map((item:any[])=>inlineText(item).replace(presentationLabel,"")):[blockText(block)]).filter(Boolean).join(" ");
+  const collapseTiers=(entity:any)=>{entity.content=entity.content.map((block:any)=>block.type==="tier"?{inlines:[{text:`T${block.tier} ${inlineText(block.heading)}: ${tierMechanics(block)}`,type:"text"}],type:"paragraph"}:block);};
+  const beguileForTierCollapse=projection.entities.find((entity:any)=>entity.id==="advanced_beguile");
+  const beguileTier0=beguileForTierCollapse.content.find((block:any)=>block.type==="tier"&&block.tier===0);beguileTier0.body=[beguileTier0.body[1],beguileTier0.body[0]];
+  for(const id of ["explosion_implosion","mass_levitation","forked_lightning","advanced_gravitic_press","frozen_ground","telekinetic_shove","telekinetic_slam","static_discharge","ball_lightning","advanced_deflection_screen","advanced_beguile","advanced_improved_phase_step"])collapseTiers(projection.entities.find((entity:any)=>entity.id===id));
+  const explosion=projection.entities.find((entity:any)=>entity.id==="explosion_implosion");
+  explosion.content[0].inlines[0].text="T0 Base: Release a telekinetic shockwave in a 15-foot-radius Sphere centered on the struck target. Choose Explosion (outward) or Implosion (inward) when you declare the rider. Each creature in the Sphere, including the struck target, must make a Strength saving throw. On a failed save, a creature is Restrained until the end of your next turn. Each creature other than the struck target that fails is also pushed 15 feet away from or pulled 15 feet toward the target, matching your choice. The struck target is not moved because it is the Sphere’s center, but it still makes the save and can be Restrained. On a successful save, a creature is neither moved nor Restrained.";
+  const explosionTier1=explosion.content.find((block:any)=>blockText(block).startsWith("T1 Overload:"));
+  assert.equal(explosionTier1.inlines[0].text,"T1 Overload: Changes from Tier 0: The Sphere’s radius and push or pull distance both increase to 30 feet.");
+  explosionTier1.inlines[0].text="T1 Overload: Changes from Tier 0: The Sphere’s radius increases to 20 feet, and the push or pull distance increases to 30 feet.";
+  const manifested=projection.entities.find((entity:any)=>entity.id==="common_manifested_strike");
+  const collapseFollowingLists=(prefix:string,count:number)=>{const index=manifested.content.findIndex((block:any)=>block.type==="paragraph"&&blockText(block).startsWith(prefix));assert.ok(index>=0);const lists=manifested.content.slice(index+1,index+1+count);assert.equal(lists.length,count);assert.ok(lists.every((block:any)=>block.type==="list"));manifested.content[index].inlines[0].text+=" "+lists.flatMap((block:any)=>listMechanics(block)).join(" ");manifested.content.splice(index+1,count);};
+  collapseFollowingLists("Magical Effects:",1);
+  collapseFollowingLists("Somatic Requirement:",1);
+  collapseFollowingLists("The Holdout Option — Force Damage:",2);
+
+  const collapseLeadAndList=(entity:any,prefix:string)=>{const index=entity.content.findIndex((block:any)=>block.type==="paragraph"&&blockText(block).startsWith(prefix));assert.ok(index>=0);const list=entity.content[index+1];assert.equal(list.type,"list");entity.content[index].inlines[0].text+=" "+listMechanics(list).join(" ");entity.content.splice(index+1,1);};
+  const replaceListWithParagraph=(entity:any,firstLabel:string)=>{const index=entity.content.findIndex((block:any)=>block.type==="list"&&inlineText(block.items[0]).startsWith(firstLabel));assert.ok(index>=0);entity.content.splice(index,1,paragraph(listMechanics(entity.content[index]).join(" ")));return index;};
+  const howToPlayForLists=projection.entities.find((entity:any)=>entity.id==="how_to_play");
+  collapseLeadAndList(howToPlayForLists,"Short Disruption Timing:");
+  const standaloneIndex=howToPlayForLists.content.findIndex((block:any)=>block.type==="list"&&inlineText(block.items[0]).startsWith("Standalone Action limit:"));assert.ok(standaloneIndex>=0);
+  howToPlayForLists.content.splice(standaloneIndex,2,paragraph(listMechanics(howToPlayForLists.content[standaloneIndex]).join(" ")+" "+blockText(howToPlayForLists.content[standaloneIndex+1])));
+  replaceListWithParagraph(howToPlayForLists,"Attack order:");replaceListWithParagraph(howToPlayForLists,"Feature classification:");
+
+  const overloadForLists=projection.entities.find((entity:any)=>entity.id==="common_overload");
+  for(const prefix of ["Damage Immunity and Riders:","Critical Hits and Riders:","Multiple Overloads and Tier 2 Riders:"])collapseLeadAndList(overloadForLists,prefix);
+  const declarationList=overloadForLists.content[1],declarationItems=listMechanics(declarationList);overloadForLists.content[0].inlines[0].text+=` For a rider, ${declarationItems[0][0].toLowerCase()+declarationItems[0].slice(1)} For a standalone feature, ${declarationItems[1][0].toLowerCase()+declarationItems[1].slice(1)}`;overloadForLists.content.splice(1,1);
+  const bloodList=overloadForLists.content[2],bloodItems=listMechanics(bloodList);overloadForLists.content[1].inlines[0].text+=` Tier 1 ${bloodItems[0][0].toLowerCase()+bloodItems[0].slice(1)} Tier 2 ${bloodItems[1][0].toLowerCase()+bloodItems[1].slice(1)} Manifested Strike itself ${bloodItems[2][0].toLowerCase()+bloodItems[2].slice(1)}`;overloadForLists.content.splice(2,1);
+  const overloadExample=overloadForLists.content.find((block:any)=>block.type==="example");const overloadExampleListIndex=overloadExample.body.findIndex((block:any)=>block.type==="list");const overloadExampleList=overloadExample.body[overloadExampleListIndex];overloadExample.body.splice(overloadExampleListIndex,1,...overloadExampleList.items.map((item:any[])=>paragraph(inlineText(item))));
+
+  const disciplineForLists=projection.entities.find((entity:any)=>entity.id==="common_psionic_discipline");
+  const disciplineNames=disciplineForLists.content[1].items.map((item:any[])=>inlineText(item)),disciplineEffects=disciplineForLists.content[3].items.map((item:any[])=>inlineText(item));
+  disciplineForLists.content.splice(0,5,paragraph(blockText(disciplineForLists.content[0])+" "+disciplineNames.slice(0,-1).join(", ")+", or "+disciplineNames.at(-1)+". "+blockText(disciplineForLists.content[2]).replace(/:$/u,"")+" "+disciplineEffects.slice(0,-1).join(", ")+", and "+disciplineEffects.at(-1)+". "+blockText(disciplineForLists.content[4])));
+  const linkForLists=projection.entities.find((entity:any)=>entity.id==="common_psionic_link"),linkItems=listMechanics(linkForLists.content[1]);
+  linkForLists.content.splice(0,2,paragraph(blockText(linkForLists.content[0])+" "+linkItems[0]+" "+linkItems[1].replace(/\.$/u,"")+", but "+linkItems[2][0].toLowerCase()+linkItems[2].slice(1)+" "+linkItems[3]));
+  const empathicForLists=projection.entities.find((entity:any)=>entity.id==="common_empathic_sense");collapseLeadAndList(empathicForLists,"Active Scan:");empathicForLists.content[1].inlines[0].text=empathicForLists.content[1].inlines[0].text.replace("The scan does not update after activation. The scan does not reveal","The scan does not update after activation and does not reveal");
+  const beguileRuleList=beguileForTierCollapse.content.find((block:any)=>block.type==="list");beguileForTierCollapse.content.splice(beguileForTierCollapse.content.indexOf(beguileRuleList),1,paragraph(listMechanics(beguileRuleList).join(" ")));beguileForTierCollapse.content[3].inlines[0].text=beguileForTierCollapse.content[3].inlines[0].text.replace("It requires no spell components. It cannot","It requires no spell components, cannot");
+
+  const examplePlay=projection.entities.find((entity:any)=>entity.id==="common_example_play");
+  const legacyExampleOverrides:Record<string,string>={
+    "pyrokinesis.rolls_or_saves":"Your attack bonus is +10 (+4 Charisma, +4 Proficiency Bonus, +2 Psionic Focus). You roll 9 + 10 = 19, 13 + 10 = 23, and 7 + 10 = 17; all three attacks hit Armor Class 16. These Ember Bolt and Cinder Lance tiers require no saving throws.",
+    "pyrokinesis.damage":"Attack 1 rolls 8 on its 1d10 and deals 8 + 4 + 6 from Ember Bolt at Tier 2 = 18 fire damage. Attack 2 rolls 6 for Manifested Strike and 7 and 4 for Cinder Lance’s two additional base Manifested Strike dice, dealing 6 + 7 + 4 + 4 = 21 fire damage. Attack 3 rolls 5 and deals 5 + 4 + 2 from Ember Bolt at Tier 0 = 11 fire damage. The total is 18 + 21 + 11 = 50 fire damage.",
+    "psychokinesis.rolls_or_saves":"Your attack bonus is +10 (+4 Intelligence, +4 Proficiency Bonus, +2 Psionic Focus). You roll 9 + 10 = 19, 12 + 10 = 22, and 7 + 10 = 17; all three attacks hit Armor Class 16. After attack 1 deals damage, the creature rolls 12 against Difficulty Class 16 (8 + 4 + 4) and fails its Strength saving throw.",
+    "psychokinesis.damage":"Attack 1 rolls 7 on its 1d10 and deals 7 + 4 Intelligence + 2 from Telekinetic Shove = 13 force damage. Attack 2 rolls 6 and deals 6 + 4 = 10 force damage. Attack 3 rolls 4 and deals 4 + 4 = 8 force damage. The total is 13 + 10 + 8 = 31 force damage.",
+    "psychokinesis.effects":"The failed Strength saving throw lets you push the creature 10 feet horizontally in a direction you choose. Telekinetic Shove replaces Push mastery for that hit, so the creature moves only once. Vectored Thrust remains active while you maintain concentration, and the flight provokes no Opportunity Attacks.",
+    "cryokinesis.rolls_or_saves":"Your attack bonus is +10 (+4 Intelligence, +4 Proficiency Bonus, +2 Psionic Focus). You roll 10 + 10 = 20, 8 + 10 = 18, and 12 + 10 = 22; all three attacks hit Armor Class 16. After attack 2 deals damage, the creature rolls 11 against Difficulty Class 16 (8 + 4 + 4) and fails its Constitution saving throw.",
+    "cryokinesis.damage":"Attack 1 rolls 6 on its 1d10 and deals 6 + 4 Intelligence + 2 from Glacial Spike = 12 cold damage. Attack 2 rolls 8 and deals 8 + 4 + 2 = 14 cold damage. Attack 3 rolls 5 and deals 5 + 4 = 9 cold damage. The total is 12 + 14 + 9 = 35 cold damage.",
+    "electrokinesis.rolls_or_saves":"Your attack bonus is +10 (+4 Psionic Ability, +4 Proficiency Bonus, +2 Psionic Focus). You roll 9 + 10 = 19, 12 + 10 = 22, and 7 + 10 = 17; all three attacks hit Armor Class 16. Each of the five Static Discharge targets rolls 12 against Difficulty Class 16 and fails its Charisma saving throw. Each of the five Electron Burst targets rolls 13 against Difficulty Class 16 and fails its Charisma saving throw.",
+    "electrokinesis.damage":"Attack 1 rolls 7 on its 1d10 and deals 7 + 4 = 11 lightning damage to the first primary target. Static Discharge adds 2 damage to each of the five creatures, so attack 1 deals 11 + (2 × 5) = 21 damage. Attack 2 rolls 6 and deals 6 + 4 = 10 strike damage. Branching Bolt rolls 8 for both the second primary target and one secondary target, so attack 2 deals 10 + (8 × 2) = 26 damage. Attack 3 rolls 5 and deals 5 + 4 = 9 strike damage. Electron Burst rolls 6 + 5 = 11 damage for each of five failed saves, so attack 3 deals 9 + (11 × 5) = 64 damage. The total is 21 + 26 + 64 = 111 lightning damage."
+  };
+  const phases=["setup","activation","rolls_or_saves","damage","effects","result"];
+  for(const section of examplePlay.content)for(const phase of phases){const key=section.discipline+"."+phase;const text=legacyExampleOverrides[key]??section[phase].flatMap((block:any)=>block.type==="list"?listMechanics(block):[blockText(block)]).join(" ");section[phase]=[{text,type:"text"}];}
+
   const massLevitation=projection.entities.find((entity:any)=>entity.id==="mass_levitation");
   massLevitation.content[0].inlines[0].text=massLevitation.content[0].inlines[0].text.replace(
     /When you activate this feature,.*?(?=Each target must make a Strength saving throw\.)/u,
@@ -450,6 +626,17 @@ test("final rules decisions leave every unapproved authority field unchanged",as
     "<approved Mass Levitation Tier 2 successful repeat-save outcome>"
   );
   assert.notEqual(massLevitation.content[2].inlines[0].text,tier2BeforeOutcomeNormalization);
+  const barrier=projection.entities.find((entity:any)=>entity.id==="advanced_barrier");
+  delete barrier.requires_concentration;
+  delete barrier.concentration_duration;
+  const barrierTier0BeforeNormalization=barrier.content[0].inlines[0].text;
+  const barrierModes=barrier.content[1];assert.equal(barrierModes.type,"list");
+  barrier.content[0].inlines[0].text=barrierTier0BeforeNormalization.replace(
+    "This effect requires Concentration for up to 1 minute. Choose",
+    "For 1 minute, choose"
+  )+" "+barrierModes.items.map((item:any[])=>inlineText(item)).join(" ");
+  barrier.content.splice(1,1);
+  assert.notEqual(barrier.content[0].inlines[0].text,barrierTier0BeforeNormalization);
   const howToPlay=projection.entities.find((entity:any)=>entity.id==="how_to_play");
   const howSummary=howToPlay.content.find((block:any)=>blockText(block).includes("Deflection Screen at 5th level"));
   howSummary.inlines[0].text="Your Discipline grants five features across the subclass progression. Deflection Screen at 5th level and Phase Step at 10th level are universal psionic tools. Advanced Training III, IV, and V at 15th, 18th, and 20th levels grant three choices from the Advanced Training pool regardless of Discipline.";
@@ -464,12 +651,13 @@ test("final rules decisions leave every unapproved authority field unchanged",as
   const definitionIndex=reference.content.findIndex((block:any)=>blockText(block).startsWith("Ongoing Duration shows"));assert.ok(definitionIndex>=0);reference.content.splice(definitionIndex,1);
   const table=reference.content.find((block:any)=>block.type==="table"&&block.headers.map(cell).includes("Ongoing Duration"));
   table.headers[5][0].text="Duration";
+  const barrierRow=table.rows.find((row:any[])=>cell(row[1])==="Barrier");assert.equal(cell(barrierRow[4]),"Bonus Action · Concentration");barrierRow[4][0].text="Bonus Action";
   const oldDurations=new Map([["Glacial Spike","Varies by tier"],["Deflection Screen","Instantaneous"],["Empathic Sense","Continuous; scan instantaneous"],["Vectored Thrust","Up to 10 minutes"],["Frozen Ground","Up to 1 minute"],["Explosion/Implosion","Instantaneous"],["Electron Burst","Until the start of your next turn"],["Phase Step","Instantaneous"],["Arctic Tempest","Varies by tier"],["Flare","Varies by tier"],["Gravitic Press","Up to 1 minute"],["Absolute Zero","Varies by tier"],["Mass Levitation","Up to 1 minute"],["Ball Lightning","Up to 1 minute"]]);
   for(const row of table.rows){const oldDuration=oldDurations.get(cell(row[1]));if(oldDuration)row[5][0].text=oldDuration;}
   assert.equal(sha256(canonicalJson(projection)),"19a17b024da7cea260e31eacf2b382abab426eefb548479823a3705a8dd5d406");
 });
 
-test("active authority and approved UI text use full English without contractions",async()=>{
+test("active authority and approved UI text use full English except for the approved Calculator DC label",async()=>{
   const {authority}=await loadAuthority();const ui=JSON.parse(await readFile("ui/approved-ui-text.json","utf8"));
   const strings:string[]=[authority.metadata.title,authority.metadata.attribution,authority.metadata.license];
   for(const facet of authority.facets)strings.push(facet.label);
@@ -480,10 +668,15 @@ test("active authority and approved UI text use full English without contraction
   for(const entity of authority.entities){strings.push(entity.title);if(entity.concentration_duration)strings.push(entity.concentration_duration);collect(entity.content);}
   collect(authority.onboarding);
   for(const text of [...authority.onboarding.basic_turn.steps,...authority.onboarding.basic_turn.reminders])assert.ok(strings.includes(text),`Missing onboarding language-guard coverage for: ${text}`);
-  for(const token of ui.tokens)strings.push(token.text??token.template);
   const contractions=/\b(?:can['’]t|won['’]t|don['’]t|doesn['’]t|isn['’]t|aren['’]t|wasn['’]t|weren['’]t|it['’]s|that['’]s|there['’]s|you['’](?:re|ve|ll|d)|we['’](?:re|ve|ll|d)|they['’](?:re|ve|ll|d)|couldn['’]t|wouldn['’]t|shouldn['’]t|mustn['’]t|haven['’]t|hasn['’]t|hadn['’]t|didn['’]t)\b/iu;
   const abbreviations=/(?:\b(?:ft|AT|PB|AC|DC|MS)\b|\b(?:Con|Str|Dex|Int|Cha) saves?\b)/u;
   for(const text of strings){assert.doesNotMatch(text,contractions,text);assert.doesNotMatch(text,abbreviations,text);}
+  for(const token of ui.tokens){
+    const text=token.text??token.template;
+    assert.doesNotMatch(text,contractions,text);
+    if(token.id==="calculator_psionic_save_dc_label"){assert.equal(text,"Psionic Save DC");assert.doesNotMatch(text.replace(/\bDC\b/u,"Difficulty Class"),abbreviations,text);}
+    else assert.doesNotMatch(text,abbreviations,text);
+  }
 });
 
 test("Common rules do not leak into discipline Browse topics",async()=>{
@@ -499,7 +692,7 @@ test("Common rules do not leak into discipline Browse topics",async()=>{
   for(const categoryId of ["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]){const topicEntities=new Set(categories.get(categoryId)!.topics.flatMap(topic=>topic.entity_ids));assert.ok(commonOnly.every(entityId=>!topicEntities.has(entityId)));}
 });
 
-test("example turns use one plain-text six-phase authority contract",async()=>{
+test("example turns use one semantic six-phase block contract",async()=>{
   const {authority}=await loadAuthority();
   const examplePlay=authority.entities.find(entity=>entity.id==="common_example_play")!;
   const overload=authority.entities.find(entity=>entity.id==="common_overload")!;
@@ -509,8 +702,17 @@ test("example turns use one plain-text six-phase authority contract",async()=>{
   assert.deepEqual(sections.map(block=>block.title.map((node:any)=>node.text).join("")),["Focused Fire — Level 11 Pyrokinesis","Aerial Repositioning — Level 11 Psychokinesis","Frozen Ground Lockdown — Level 11 Cryokinesis","Room Sweep — Level 11 Electrokinesis"]);
   for(const section of sections){
     assert.ok(phases.every(field=>Array.isArray(section[field])));
-    for(const field of ["heading","title",...phases]){assert.ok(section[field].length>0);assert.ok(section[field].every((node:any)=>node.type==="text"),section.title[0].text+" "+field+" must use plain text");}
+    for(const field of ["heading","title"]){assert.ok(section[field].length>0);assert.ok(section[field].every((node:any)=>node.type==="text"),section.title[0].text+" "+field+" must use plain text");}
+    for(const field of phases){assert.ok(section[field].length>0);assert.ok(section[field].every((block:any)=>block.type==="paragraph"||block.type==="list"),section.title[0].text+" "+field+" must use paragraph/list blocks");}
+    assert.ok(phases.some(field=>section[field].some((block:any)=>block.type==="list")),section.discipline+" must contain semantic lists");
   }
+  const phaseShape=(section:any,field:typeof phases[number])=>section[field].map((block:any)=>block.type==="list"?`${block.type}:${block.style}:${block.items.length}`:block.type);
+  assert.deepEqual(sections.map(section=>phases.map(field=>[field,phaseShape(section,field)])),[
+    [["setup",["list:unordered:2"]],["activation",["paragraph","list:ordered:3","paragraph"]],["rolls_or_saves",["paragraph","list:ordered:3","paragraph"]],["damage",["list:ordered:3","paragraph"]],["effects",["paragraph"]],["result",["list:unordered:3"]]],
+    [["setup",["list:unordered:2"]],["activation",["list:ordered:4"]],["rolls_or_saves",["paragraph","list:ordered:4"]],["damage",["list:ordered:3","paragraph"]],["effects",["list:unordered:4"]],["result",["list:unordered:4"]]],
+    [["setup",["list:unordered:2"]],["activation",["paragraph","list:ordered:3"]],["rolls_or_saves",["paragraph","list:ordered:4"]],["damage",["list:ordered:3","paragraph"]],["effects",["list:ordered:4"]],["result",["list:unordered:4"]]],
+    [["setup",["list:unordered:4"]],["activation",["paragraph","list:ordered:3","paragraph"]],["rolls_or_saves",["paragraph","list:ordered:5"]],["damage",["list:ordered:3","paragraph"]],["effects",["list:unordered:5"]],["result",["list:unordered:5"]]]
+  ]);
   const expectedPhases=[
     {
       discipline:"pyrokinesis",
@@ -549,11 +751,13 @@ test("example turns use one plain-text six-phase authority contract",async()=>{
       result:["6 Psi","8 Hit Points lost to Blood Tax","111 lightning damage in total","Three primary targets are struck and Sapped","none of the five can take reactions","only Tier 2 rider used"]
     }
   ] as const;
-  for(const expected of expectedPhases){const section=sections.find(item=>item.discipline===expected.discipline)!;for(const phase of phases)for(const fragment of expected[phase])assert.ok(inlineText(section[phase]).includes(fragment),`${expected.discipline} ${phase}: ${fragment}`);}
+  for(const expected of expectedPhases){const section=sections.find(item=>item.discipline===expected.discipline)!;for(const phase of phases){const phaseText=section[phase].map((block:any)=>blockText(block)).join("\n");for(const fragment of expected[phase])assert.ok(phaseText.includes(fragment),`${expected.discipline} ${phase}: ${fragment}`);}}
 
   const overloadExamples=overload.content.filter(block=>block.type==="example") as any[];
   assert.equal(overloadExamples.length,1);assert.equal(overloadExamples[0].title.map((node:any)=>node.text).join(""),"Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)");
-  assert.doesNotMatch(JSON.stringify(sections),/Example assumptions:|Full Attack Turn|Sustained Turn|type":"(?:strong|emphasis)"/);
+  assert.deepEqual(overloadExamples[0].body.map((block:any)=>block.type==="list"?[block.type,block.style,block.items.length]:[block.type]),[["paragraph"],["paragraph"],["list","unordered",3]]);
+  assert.deepEqual(overloadExamples[0].body[2].items.map((item:any[])=>item[0]?.type),["strong","strong","strong"]);
+  assert.doesNotMatch(JSON.stringify(sections),/Example assumptions:|Full Attack Turn|Sustained Turn|type":"emphasis"/);
 });
 
 test("all four Signature Riders retain their approved mechanics",async()=>{
@@ -613,8 +817,8 @@ test("all four Signature Riders retain their approved mechanics",async()=>{
       ]
     }}
   } as const;
-  const tierRules=(entity:any,label:string)=>{const block=entity.content.find((candidate:any)=>candidate.type==="paragraph"&&blockText(candidate).startsWith(label));assert.ok(block,entity.id+": missing "+label);return blockText(block);};
-  for(const [id,spec] of Object.entries(expected)){const entity=authority.entities.find(item=>item.id===id)!;assert.equal(entity.level,3);assert.equal(entity.activation,"on_hit");assert.equal(entity.psi_cost,0);assert.equal(entity.classifications.feature_role,"rider");assert.deepEqual(entity.classifications.rules_area,[spec.rulesArea]);const positions=Object.keys(spec.tiers).map(label=>entity.content.findIndex(block=>blockText(block).startsWith(label)));assert.deepEqual(positions,[...positions].sort((a,b)=>a-b));assert.ok(positions.every(index=>index>=0));for(const [label,fragments] of Object.entries(spec.tiers) as Array<[string,readonly string[]]>){const rules=tierRules(entity,label);for(const fragment of fragments)assert.ok(rules.includes(fragment),id+" "+label+": "+fragment);}}
+  const tierRules=(entity:any,label:string)=>{const block=entity.content.find((candidate:any)=>authoredBlockText(candidate).startsWith(label));assert.ok(block,entity.id+": missing "+label);return authoredBlockText(block);};
+  for(const [id,spec] of Object.entries(expected)){const entity=authority.entities.find(item=>item.id===id)!;assert.equal(entity.level,3);assert.equal(entity.activation,"on_hit");assert.equal(entity.psi_cost,0);assert.equal(entity.classifications.feature_role,"rider");assert.deepEqual(entity.classifications.rules_area,[spec.rulesArea]);const positions=Object.keys(spec.tiers).map(label=>entity.content.findIndex(block=>authoredBlockText(block).startsWith(label)));assert.deepEqual(positions,[...positions].sort((a,b)=>a-b));assert.ok(positions.every(index=>index>=0));for(const [label,fragments] of Object.entries(spec.tiers) as Array<[string,readonly string[]]>){const rules=tierRules(entity,label);for(const fragment of fragments)assert.ok(rules.includes(fragment),id+" "+label+": "+fragment);}}
   const parity=entityRules(authority.entities.find(item=>item.id==="how_to_play")!);
   assert.match(parity,/struck creature is included among the affected creatures/);
   assert.match(parity,/Every affected creature otherwise resolves the same rider damage, saving throw, conditions, and applicable effects/);
@@ -622,7 +826,7 @@ test("all four Signature Riders retain their approved mechanics",async()=>{
 
 test("tiered rules use an ordered, cumulative hierarchy without changing mechanics",async()=>{
   const {authority}=await loadAuthority();
-  const text=(entity:any)=>entity.content.flatMap((block:any)=>block.inlines??[]).map((inline:any)=>inline.text).join("\n");
+  const text=(entity:any)=>entityRules(entity);
   const tiered=authority.entities.filter(entity=>text(entity).includes("T0 Base:")&&text(entity).includes("T1 Overload:"));
   assert.ok(tiered.length>=25);
   assert.doesNotMatch(JSON.stringify(authority),/\bTier \d+ Overload(?: \([^)]*\))?:/);
@@ -657,4 +861,51 @@ test("tiered rules use an ordered, cumulative hierarchy without changing mechani
   const frozenGround=rulesFor("frozen_ground");
   assert.match(frozenGround,/Speed becomes 0 until the end of the current turn/);
   assert.match(frozenGround,/Restrained condition until the end of your next turn replaces the Tier 0 effect retained by Tier 1/);
+});
+
+test("calculator defaults to Manifested Strike and its registry covers every rider and all six supported standalone damage features",async()=>{
+  const {authority}=await loadAuthority();
+  const entityById=new Map(authority.entities.map(entity=>[entity.id,entity]));
+  assert.deepEqual({feature:authority.calculator.default_feature_id,level:authority.calculator.default_fighter_level,modifier:authority.calculator.default_psionic_ability_modifier},{feature:"common_manifested_strike",level:20,modifier:5});
+  assert.deepEqual(authority.calculator.psi_point_bands,[
+    {minimum_level:3,maximum_level:4,value:4},
+    {minimum_level:5,maximum_level:6,value:6},
+    {minimum_level:7,maximum_level:8,value:7},
+    {minimum_level:9,maximum_level:10,value:9},
+    {minimum_level:11,maximum_level:12,value:10},
+    {minimum_level:13,maximum_level:14,value:12},
+    {minimum_level:15,maximum_level:16,value:13},
+    {minimum_level:17,maximum_level:18,value:15},
+    {minimum_level:19,maximum_level:20,value:16}
+  ]);
+  const registered=authority.calculator.features;
+  assert.equal(registered.some(feature=>feature.entity_id==="common_manifested_strike"),false,"Manifested Strike remains the special calculator baseline, not a registered rider or standalone feature");
+  const authoredRiders=authority.entities.filter(entity=>entity.activation==="on_hit"&&entity.classifications.feature_role==="rider").map(entity=>entity.id).sort();
+  const registeredRiders=registered.filter(feature=>feature.delivery==="on_hit_rider").map(feature=>feature.entity_id).sort();
+  assert.deepEqual(registeredRiders,authoredRiders);
+  const expectedStandalone=["absolute_zero","arctic_tempest","ball_lightning","forked_lightning","mass_levitation","telekinetic_slam"];
+  assert.deepEqual(registered.filter(feature=>feature.delivery==="standalone").map(feature=>feature.entity_id).sort(),expectedStandalone);
+  for(const feature of registered){const entity=entityById.get(feature.entity_id)!;assert.ok(entity);assert.deepEqual(feature.tiers.map(tier=>tier.tier),[0,1,2],feature.entity_id);if(feature.delivery==="on_hit_rider"){assert.equal(entity.activation,"on_hit");assert.equal(entity.classifications.feature_role,"rider");}else{assert.notEqual(entity.activation,"on_hit");assert.equal(entity.classifications.feature_role,"standalone");}}
+  const slam=registered.find(feature=>feature.entity_id==="telekinetic_slam")!;
+  assert.deepEqual(slam.tiers.map(tier=>[tier.tier,tier.damage,tier.save]),[
+    [0,{kind:"dice",resolution:"half_on_success",count:8,sides:10},"strength"],
+    [1,{kind:"dice",resolution:"half_on_success",count:10,sides:10},"strength"],
+    [2,{kind:"dice",resolution:"half_on_success",count:12,sides:10},"strength"]
+  ]);
+  const forked=registered.find(feature=>feature.entity_id==="forked_lightning")!;
+  assert.deepEqual(forked.tiers.map(tier=>tier.secondary_damage),[{kind:"dice",resolution:"half_on_success",count:4,sides:8},{kind:"dice",resolution:"half_on_success",count:5,sides:8},{kind:"dice",resolution:"half_on_success",count:6,sides:8}]);
+  const mass=registered.find(feature=>feature.entity_id==="mass_levitation")!;
+  assert.deepEqual(mass.tiers[2]!.damage,{kind:"psionic_ability_modifier",resolution:"failed_save",multiplier:2});
+  const missing=structuredClone(authority);
+  missing.calculator.features=missing.calculator.features.filter(feature=>feature.entity_id!=="telekinetic_slam");
+  assert.ok(validateSemantics(missing).some(diagnostic=>diagnostic.code==="calculator.standalone_coverage"));
+  const invalidPsiPointBands=structuredClone(authority);
+  invalidPsiPointBands.calculator.psi_point_bands[0]!.value=5;
+  assert.ok(validateSemantics(invalidPsiPointBands).some(diagnostic=>diagnostic.code==="calculator.psi_point_progression"&&diagnostic.path==="/calculator/psi_point_bands/0/value"));
+  const unregisteredDefault=structuredClone(authority);
+  unregisteredDefault.calculator.default_feature_id="common_overload";
+  assert.ok(validateSemantics(unregisteredDefault).some(diagnostic=>diagnostic.code==="calculator.default_feature_unregistered"&&diagnostic.path==="/calculator/default_feature_id"));
+  const unknownDefault=structuredClone(authority);
+  unknownDefault.calculator.default_feature_id="missing_calculator_feature";
+  assert.ok(validateSemantics(unknownDefault).some(diagnostic=>diagnostic.code==="calculator.default_feature_unknown"&&diagnostic.path==="/calculator/default_feature_id"));
 });

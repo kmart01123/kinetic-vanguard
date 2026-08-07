@@ -296,6 +296,9 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
               const title=section.querySelector<HTMLElement>(".example-play-section__title")!;
               return title.scrollWidth<=title.clientWidth;
             }),
+            phaseListCounts:sections.map(section=>section.querySelectorAll(".example-play-section__phase ol,.example-play-section__phase ul").length),
+            semanticPhases:sections.every(section=>{const phases=[...section.querySelectorAll<HTMLElement>(".example-play-section__phase")];return phases.length===6&&phases.every(phase=>[...phase.children].slice(1).every(child=>child.tagName==="P"||child.tagName==="OL"||child.tagName==="UL"));}),
+            listsContained:sections.every(section=>[...section.querySelectorAll<HTMLElement>("ol,ul,li")].every(element=>element.scrollWidth<=element.clientWidth+1)),
             contained:rects.every((rect,index)=>rect.left>=containerRect.left&&rect.right<=containerRect.right&&sections[index]!.scrollWidth<=sections[index]!.clientWidth),
             documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth
           };
@@ -315,10 +318,13 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
         assert.equal(rendered.readableWidth,true,size+": readable inner width");
         assert.equal(rendered.flat,true,size+": flat divider treatment");
         assert.equal(rendered.titlesFit,true,size+": titles wrap without overflow");
+        assert.deepEqual(rendered.phaseListCounts,[5,6,6,6],size+": semantic phase-list counts");
+        assert.equal(rendered.semanticPhases,true,size+": every phase renders only paragraph/list body blocks");
+        assert.equal(rendered.listsContained,true,size+": example lists and labels remain contained");
         assert.equal(rendered.contained,true,size+": sections stay within the article");
         assert.equal(rendered.documentOverflow,0,size+": no horizontal page overflow");
         await page.goto(glacialUrl);
-        const inline=page.locator("#entity-common_overload .inline-example");assert.equal(await inline.count(),1,size+": one Overload Glacial example");assert.equal(await inline.locator("h3").textContent(),"Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)");assert.equal(await page.locator("#entity-common_example_play .inline-example").count(),0,size+": absent from Example Play");
+        const inline=page.locator("#entity-common_overload .inline-example");assert.equal(await inline.count(),1,size+": one Overload Glacial example");assert.equal(await inline.locator("h3").textContent(),"Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)");const inlineList=await inline.evaluate(element=>{const lists=[...element.querySelectorAll<HTMLElement>(":scope > .inline-example__body > ul")];return{listCount:lists.length,itemCounts:lists.map(list=>list.querySelectorAll(":scope > li").length),contained:[...element.querySelectorAll<HTMLElement>("ul,li")].every(node=>node.scrollWidth<=node.clientWidth+1),documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};});assert.deepEqual(inlineList.itemCounts,[3],size+": inline example list items");assert.equal(inlineList.listCount,1,size+": inline example semantic list");assert.equal(inlineList.contained,true,size+": inline example list containment");assert.equal(inlineList.documentOverflow,0,size+": inline example page overflow");assert.equal(await page.locator("#entity-common_example_play .inline-example").count(),0,size+": absent from Example Play");
       }
       await page.emulateMedia({media:"print"});
       await page.goto(exampleUrl);
@@ -367,6 +373,119 @@ test("concentration metadata ribbon wraps without overflow on desktop and mobile
   }finally{await browser.close();}
 });
 
+test("calculator keeps exactly three native selects and one live result contained on desktop and mobile",async()=>{
+  const result=await executeBuild("prototype"),url=pathToFileURL(result.htmlPath).href+"#calculator";
+  const viewports=[{name:"desktop",width:1280,height:1000,columns:3},{name:"mobile",width:390,height:844,columns:1}] as const;
+  const assertPsiFacts=(candidate:{factTexts:string[];factLabels:string[]},cost:number,total:number,context:string)=>{
+    const psiCostIndex=candidate.factTexts.indexOf(`Psi cost: ${cost}`);
+    assert.notEqual(psiCostIndex,-1,context+" Psi cost");assert.equal(candidate.factTexts[psiCostIndex+1],`Total Psi Points: ${total}`,context+" total Psi Points follows Psi cost");
+    assert.equal(candidate.factLabels.filter(label=>label==="Psi cost:").length,1,context+" one Psi cost label");assert.equal(candidate.factLabels.filter(label=>label==="Total Psi Points:").length,1,context+" one total Psi Points label");
+  };
+  for(const engine of desktopBrowsers){
+    const browser=await engine.type.launch({headless:true});
+    try{
+      for(const viewport of viewports){
+        const page=await browser.newPage({viewport});await page.goto(url);await page.waitForSelector("#calculator-root");
+        const initial=await page.evaluate(()=>{
+          const root=document.querySelector<HTMLElement>("#calculator-root")!,controls=root.querySelector<HTMLElement>(".calculator__controls")!,result=document.querySelector<HTMLElement>("#calculator-feature-results")!,rootRect=root.getBoundingClientRect(),fields=[...controls.querySelectorAll<HTMLElement>(":scope > .field")],fieldRects=fields.map(field=>field.getBoundingClientRect()),contained=[controls,result,...result.querySelectorAll<HTMLElement>(".calculator__trigger,.calculator__breakdown,.calculator__facts,.calculator__facts>p,.calculator__shared-effects,.calculator__tiers,.calculator__tier")].every(element=>{const rect=element.getBoundingClientRect();return rect.left>=rootRect.left-1&&rect.right<=rootRect.right+1&&element.scrollWidth<=element.clientWidth+1;});
+          const visibleSelects=[...document.querySelectorAll<HTMLSelectElement>("select")].filter(select=>select.getClientRects().length>0&&getComputedStyle(select).visibility!=="hidden");
+          return{
+            view:document.querySelector<HTMLElement>("main.layout")?.dataset.view,
+            visibleSelectIds:visibleSelects.map(select=>select.id),
+            gridColumnCount:getComputedStyle(controls).gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length,
+            fieldTops:fieldRects.map(rect=>rect.top),fieldBottoms:fieldRects.map(rect=>rect.bottom),
+            featureValue:root.querySelector<HTMLSelectElement>("#calculator-feature")?.value,
+            levelValue:root.querySelector<HTMLSelectElement>("#calculator-level")?.value,
+            resultCardCount:root.querySelectorAll("#calculator-feature-results.calculator__result:not([hidden])").length,
+            tiers:[...result.querySelectorAll<HTMLElement>(".calculator__tier")].map(tier=>tier.dataset.tier),
+            heading:result.querySelector(":scope > h3")?.textContent,
+            tierHeadings:[...result.querySelectorAll<HTMLElement>(".calculator__tier > h4")].map(heading=>heading.textContent),
+            saveCount:result.querySelectorAll(".calculator__save").length,
+            saveTiers:result.querySelector<HTMLElement>(".calculator__save")?.dataset.saveTiers,
+            summaryExists:Boolean(root.querySelector("#manifested-strike-summary")),
+            resultText:result.textContent??"",
+            triggerCount:result.querySelectorAll(".calculator__trigger").length,
+            triggerText:result.querySelector(".calculator__trigger")?.textContent??"",
+            factsCount:result.querySelectorAll(".calculator__facts").length,
+            factTexts:[...result.querySelectorAll<HTMLElement>(".calculator__facts>p")].map(metric=>(metric.textContent??"").replace(/\s+/gu," ").trim()),
+            factLabels:[...result.querySelectorAll<HTMLElement>(".calculator__facts strong")].map(label=>(label.textContent??"").replace(/\s+/gu," ").trim()),
+            breakdownCount:root.querySelectorAll(".calculator__breakdown").length,
+            triggerHasSaveDc:/Psionic Save DC:/u.test(result.querySelector(".calculator__trigger")?.textContent??""),
+            controlsContained:contained,
+            documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth
+          };
+        });
+        const context=`${engine.name} ${viewport.name}`;
+        assert.equal(initial.view,"calculator",context+" view");
+        assert.deepEqual(initial.visibleSelectIds,["calculator-feature","calculator-level","calculator-psi-modifier"],context+" exactly three visible native selects");
+        assert.equal(initial.featureValue,"common_manifested_strike",context+" Manifested Strike default");assert.equal(initial.levelValue,"20",context+" level 20 default");assert.equal(initial.summaryExists,false,context+" no separate Manifested Strike summary");
+        assert.equal(initial.gridColumnCount,viewport.columns,context+" control columns");assert.equal(initial.resultCardCount,1,context+" result card count");assert.deepEqual(initial.tiers,[],context+" default has no rider tiers");assert.equal(initial.heading,"Manifested Strike",context+" default feature");
+        assert.deepEqual(initial.tierHeadings,[],context+" default has no tier headings");assert.equal(initial.saveCount,0,context+" default has no rider save");assert.equal(initial.saveTiers,undefined,context+" default has no save scope");
+        assert.equal(initial.triggerCount,0,context+" default has no rider trigger");assert.equal(initial.factsCount,0,context+" default has no rider facts");
+        assert.match(initial.resultText,/Hit:\s*1d20 \+ 14/u,context+" default hit");assert.match(initial.resultText,/Damage:\s*1d12 \+ 5/u,context+" default damage");assert.match(initial.resultText,/Expected avg damage:\s*11\.5/u,context+" default average");assert.match(initial.resultText,/Psionic Save DC:\s*19/u,context+" default save DC");assert.match(initial.resultText,/Saving throw calculation:\s*8 \+ Proficiency Bonus \(6\) \+ Psionic Ability Modifier \(5\) = 19/u,context+" default save calculation");
+        assert.match(initial.resultText,/Hit calculation:\s*1d20 \+ Proficiency Bonus \(6\) \+ Psionic Ability Modifier \(5\) \+ Psionic Focus \(3\) = 1d20 \+ 14/u,context+" default hit calculation");assert.match(initial.resultText,/Damage calculation:\s*Manifested Strike die \(1d12\) \+ Psionic Ability Modifier \(5\) = 1d12 \+ 5/u,context+" default damage calculation");
+        assert.equal(initial.breakdownCount,2,context+" Manifested Strike breakdown pair");
+        assert.equal(initial.triggerHasSaveDc,false,context+" no rider trigger save DC");
+        assert.equal(initial.controlsContained,true,context+" calculator containment");assert.equal(initial.documentOverflow,0,context+" initial horizontal overflow");
+        if(viewport.columns===3)assert.ok(Math.max(...initial.fieldTops)-Math.min(...initial.fieldTops)<=1,context+" controls share one row");
+        else for(let index=1;index<initial.fieldTops.length;index++)assert.ok(initial.fieldTops[index]!>=initial.fieldBottoms[index-1]!-1,context+` control ${index+1} stacks below control ${index}`);
+
+        await page.focus("#calculator-psi-modifier");await page.selectOption("#calculator-psi-modifier","4");
+        assert.equal(await page.evaluate(()=>document.activeElement?.id),"calculator-psi-modifier",context+" default modifier focus retained");
+        const baselineModified=await page.evaluate(()=>{const root=document.querySelector<HTMLElement>("#calculator-root")!,result=root.querySelector<HTMLElement>("#calculator-feature-results")!,rootRect=root.getBoundingClientRect(),breakdowns=[...result.querySelectorAll<HTMLElement>(".calculator__breakdown")];return{heading:result.querySelector(":scope > h3")?.textContent,text:result.textContent??"",triggerCount:result.querySelectorAll(".calculator__trigger").length,factsCount:result.querySelectorAll(".calculator__facts").length,tierCount:result.querySelectorAll(".calculator__tier").length,saveCount:result.querySelectorAll(".calculator__save").length,breakdownCount:breakdowns.length,breakdownsContained:breakdowns.every(element=>{const rect=element.getBoundingClientRect();return rect.left>=rootRect.left-1&&rect.right<=rootRect.right+1&&element.scrollWidth<=element.clientWidth+1;})};});
+        assert.equal(baselineModified.heading,"Manifested Strike",context+" default heading retained after modifier update");assert.match(baselineModified.text,/Hit:\s*1d20 \+ 13/u,context+" default live hit update");assert.match(baselineModified.text,/Damage:\s*1d12 \+ 4/u,context+" default live damage update");assert.match(baselineModified.text,/Expected avg damage:\s*10\.5/u,context+" default live average update");assert.match(baselineModified.text,/Psionic Save DC:\s*18/u,context+" default live save DC update");assert.match(baselineModified.text,/Hit calculation:\s*1d20 \+ Proficiency Bonus \(6\) \+ Psionic Ability Modifier \(4\) \+ Psionic Focus \(3\) = 1d20 \+ 13/u,context+" default live hit calculation update");assert.match(baselineModified.text,/Damage calculation:\s*Manifested Strike die \(1d12\) \+ Psionic Ability Modifier \(4\) = 1d12 \+ 4/u,context+" default live damage calculation update");assert.match(baselineModified.text,/Saving throw calculation:\s*8 \+ Proficiency Bonus \(6\) \+ Psionic Ability Modifier \(4\) = 18/u,context+" default live save calculation update");
+        assert.equal(baselineModified.triggerCount,0,context+" default still has no rider trigger");assert.equal(baselineModified.factsCount,0,context+" default still has no rider facts");assert.equal(baselineModified.tierCount,0,context+" default still has no rider tiers");assert.equal(baselineModified.saveCount,0,context+" default still has no rider save");assert.equal(baselineModified.breakdownCount,2,context+" default live breakdown count");assert.equal(baselineModified.breakdownsContained,true,context+" default live breakdown containment");
+        await page.focus("#calculator-psi-modifier");await page.selectOption("#calculator-psi-modifier","5");
+        assert.equal(await page.evaluate(()=>document.activeElement?.id),"calculator-psi-modifier",context+" default modifier restore focus retained");
+
+        await page.focus("#calculator-feature");await page.selectOption("#calculator-feature","telekinetic_shove");
+        assert.equal(await page.evaluate(()=>document.activeElement?.id),"calculator-feature",context+" Telekinetic Shove focus retained");
+        const rider=await page.evaluate(()=>{const root=document.querySelector<HTMLElement>("#calculator-root")!,result=root.querySelector<HTMLElement>("#calculator-feature-results")!,rootRect=root.getBoundingClientRect(),rect=result.getBoundingClientRect();return{cardCount:root.querySelectorAll("#calculator-feature-results.calculator__result:not([hidden])").length,heading:result.querySelector(":scope > h3")?.textContent,text:result.textContent??"",trigger:result.querySelector(".calculator__trigger")?.textContent??"",triggerCount:result.querySelectorAll(".calculator__trigger").length,tiers:[...result.querySelectorAll<HTMLElement>(".calculator__tier")].map(tier=>tier.dataset.tier),tierHeadings:[...result.querySelectorAll<HTMLElement>(".calculator__tier > h4")].map(heading=>heading.textContent),saveCount:result.querySelectorAll(".calculator__save").length,saveTiers:result.querySelector<HTMLElement>(".calculator__save")?.dataset.saveTiers,factTexts:[...result.querySelectorAll<HTMLElement>(".calculator__facts>p")].map(metric=>(metric.textContent??"").replace(/\s+/gu," ").trim()),factLabels:[...result.querySelectorAll<HTMLElement>(".calculator__facts strong")].map(label=>(label.textContent??"").replace(/\s+/gu," ").trim()),breakdownCount:result.querySelectorAll(".calculator__breakdown").length,triggerHasSaveDc:/Psionic Save DC:/u.test(result.querySelector(".calculator__trigger")?.textContent??""),contained:rect.left>=rootRect.left-1&&rect.right<=rootRect.right+1&&result.scrollWidth<=result.clientWidth+1};});
+        assert.equal(rider.cardCount,1,context+" Telekinetic Shove result card");assert.equal(rider.heading,"Telekinetic Shove",context+" selected rider heading");assert.equal(rider.triggerCount,1,context+" one triggering strike");
+        assert.deepEqual(rider.tiers,["0","1","2"],context+" three ordered rider tiers");assert.deepEqual(rider.tierHeadings,["Tier 0","Tier 1","Tier 2"],context+" concise rider tier headings");assert.equal(rider.saveCount,1,context+" one shared rider save");assert.equal(rider.saveTiers,"0 1 2",context+" rider save tier scope");
+        assert.match(rider.trigger,/Hit:\s*1d20 \+ 14/u,context+" rider strike hit");assert.match(rider.trigger,/Damage:\s*1d12 \+ 5/u,context+" rider strike damage");assert.match(rider.trigger,/Expected avg damage:\s*11\.5/u,context+" rider strike average");assert.match(rider.text,/Strength save:\s*DC 19/u,context+" level 20 rider save DC");assert.match(rider.text,/Saving throw calculation:\s*8 \+ Proficiency Bonus \(6\) \+ Psionic Ability Modifier \(5\) = 19/u,context+" rider save calculation");assert.doesNotMatch(rider.trigger,/Saving throw calculation:/u,context+" triggering strike omits duplicate save calculation");
+        assert.match(rider.trigger,/Hit calculation:\s*1d20 \+ Proficiency Bonus \(6\) \+ Psionic Ability Modifier \(5\) \+ Psionic Focus \(3\) = 1d20 \+ 14/u,context+" rider hit calculation");assert.match(rider.trigger,/Damage calculation:\s*Manifested Strike die \(1d12\) \+ Psionic Ability Modifier \(5\) = 1d12 \+ 5/u,context+" rider damage calculation");
+        assertPsiFacts(rider,0,16,context+" level 20 rider");assert.match(rider.text,/Blood Tax:\s*0/u,context+" rider Tier 0 Blood Tax");assert.match(rider.text,/Blood Tax:\s*6/u,context+" rider Tier 1 Blood Tax");assert.match(rider.text,/Blood Tax:\s*12/u,context+" rider Tier 2 Blood Tax");
+        assert.equal(rider.breakdownCount,2,context+" one triggering-strike breakdown pair");assert.equal(rider.triggerHasSaveDc,false,context+" trigger omits duplicate save DC");assert.equal(rider.contained,true,context+" rider result containment");
+
+        await page.focus("#calculator-psi-modifier");await page.selectOption("#calculator-psi-modifier","4");
+        assert.equal(await page.evaluate(()=>document.activeElement?.id),"calculator-psi-modifier",context+" modifier focus retained");
+        const modified=await page.evaluate(()=>{const root=document.querySelector<HTMLElement>("#calculator-root")!,result=document.querySelector<HTMLElement>("#calculator-feature-results")!,rootRect=root.getBoundingClientRect(),breakdowns=[...root.querySelectorAll<HTMLElement>(".calculator__breakdown")];return{trigger:result.querySelector(".calculator__trigger")?.textContent??"",result:result.textContent??"",tiers:result.querySelectorAll(".calculator__tier").length,saveCount:result.querySelectorAll(".calculator__save").length,saveTiers:result.querySelector<HTMLElement>(".calculator__save")?.dataset.saveTiers,breakdownCount:breakdowns.length,breakdownsContained:breakdowns.every(element=>{const rect=element.getBoundingClientRect();return rect.left>=rootRect.left-1&&rect.right<=rootRect.right+1&&element.scrollWidth<=element.clientWidth+1;}),triggerHasSaveDc:/Psionic Save DC:/u.test(result.querySelector(".calculator__trigger")?.textContent??"")};});
+        assert.match(modified.trigger,/Hit:\s*1d20 \+ 13/u,context+" live attack update");assert.match(modified.trigger,/Damage:\s*1d12 \+ 4/u,context+" live strike damage update");assert.match(modified.result,/Strength save:\s*DC 18/u,context+" live rider save update");assert.match(modified.result,/Saving throw calculation:\s*8 \+ Proficiency Bonus \(6\) \+ Psionic Ability Modifier \(4\) = 18/u,context+" live rider save calculation update");assert.equal(modified.tiers,3,context+" tiers retained after modifier update");assert.equal(modified.saveCount,1,context+" shared save retained");assert.equal(modified.saveTiers,"0 1 2",context+" save scope retained");assert.equal(modified.triggerHasSaveDc,false,context+" duplicate DC remains absent");
+        assert.match(modified.trigger,/Hit calculation:\s*1d20 \+ Proficiency Bonus \(6\) \+ Psionic Ability Modifier \(4\) \+ Psionic Focus \(3\) = 1d20 \+ 13/u,context+" live hit calculation update");assert.match(modified.trigger,/Damage calculation:\s*Manifested Strike die \(1d12\) \+ Psionic Ability Modifier \(4\) = 1d12 \+ 4/u,context+" live damage calculation update");
+        assert.equal(modified.breakdownCount,2,context+" live breakdown count");assert.equal(modified.breakdownsContained,true,context+" live breakdown containment");
+
+        await page.focus("#calculator-feature");await page.selectOption("#calculator-feature","cinder_lance");
+        assert.equal(await page.evaluate(()=>document.activeElement?.id),"calculator-feature",context+" feature focus retained");
+        const changed=await page.evaluate(()=>{const result=document.querySelector<HTMLElement>("#calculator-feature-results")!;return{cardCount:document.querySelectorAll("#calculator-feature-results.calculator__result:not([hidden])").length,heading:result.querySelector(":scope > h3")?.textContent,tierHeadings:[...result.querySelectorAll<HTMLElement>(".calculator__tier > h4")].map(heading=>heading.textContent),text:result.textContent??"",saveCount:result.querySelectorAll(".calculator__save").length,psiCostCount:[...result.querySelectorAll(".calculator__facts strong")].filter(strong=>strong.textContent==="Psi cost:").length,documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};});
+        assert.equal(changed.cardCount,1,context+" one live result card");assert.equal(changed.heading,"Cinder Lance",context+" live feature heading");assert.deepEqual(changed.tierHeadings,["Tier 0","Tier 1","Tier 2"],context+" concise live tier headings");assert.match(changed.text,/Rider damage:\s*2d12/u,context+" live feature calculation");assert.match(changed.text,/No feature tier requires a saving throw\./u,context+" explicit no-save status");assert.doesNotMatch(changed.text,/Expected rider damage:|Psionic Save DC:|Saving throw calculation:|\bT[012] (?:Base|Overload):|Changes from Tier/iu,context+" redundant or inapplicable prose removed");assert.equal(changed.saveCount,0,context+" no inapplicable save");assert.equal(changed.psiCostCount,1,context+" one shared Psi cost");assert.equal(changed.documentOverflow,0,context+" post-update horizontal overflow");
+
+        await page.focus("#calculator-level");await page.selectOption("#calculator-level","15");
+        assert.equal(await page.evaluate(()=>document.activeElement?.id),"calculator-level",context+" standalone level focus retained");
+        await page.focus("#calculator-psi-modifier");await page.selectOption("#calculator-psi-modifier","5");
+        await page.focus("#calculator-feature");await page.selectOption("#calculator-feature","telekinetic_slam");
+        assert.equal(await page.evaluate(()=>document.activeElement?.id),"calculator-feature",context+" standalone feature focus retained");
+        const standalone=await page.evaluate(()=>{const root=document.querySelector<HTMLElement>("#calculator-root")!,result=document.querySelector<HTMLElement>("#calculator-feature-results")!,rootRect=root.getBoundingClientRect(),contained=[result,...result.querySelectorAll<HTMLElement>(".calculator__facts,.calculator__facts>p,.calculator__save-groups,.calculator__shared-effects,.calculator__tiers,.calculator__tier,.calculator__metrics,.calculator__effects")].every(element=>{const rect=element.getBoundingClientRect();return rect.left>=rootRect.left-1&&rect.right<=rootRect.right+1&&element.scrollWidth<=element.clientWidth+1;});return{heading:result.querySelector(":scope > h3")?.textContent,text:result.textContent??"",triggerCount:result.querySelectorAll(".calculator__trigger").length,breakdownCount:root.querySelectorAll(".calculator__breakdown").length,tierCount:result.querySelectorAll(".calculator__tier").length,saveCount:result.querySelectorAll(".calculator__save").length,saveTiers:result.querySelector<HTMLElement>(".calculator__save")?.dataset.saveTiers,psiCostCount:[...result.querySelectorAll(".calculator__facts strong")].filter(strong=>strong.textContent==="Psi cost:").length,factTexts:[...result.querySelectorAll<HTMLElement>(".calculator__facts>p")].map(metric=>(metric.textContent??"").replace(/\s+/gu," ").trim()),factLabels:[...result.querySelectorAll<HTMLElement>(".calculator__facts strong")].map(label=>(label.textContent??"").replace(/\s+/gu," ").trim()),contained,documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};});
+        assert.equal(standalone.heading,"Telekinetic Slam",context+" standalone heading");assert.equal(standalone.triggerCount,0,context+" standalone omits triggering strike");assert.equal(standalone.breakdownCount,0,context+" standalone omits strike breakdowns");assert.equal(standalone.tierCount,3,context+" standalone keeps all tiers");
+        assert.equal(standalone.saveCount,1,context+" standalone shared save");assert.equal(standalone.saveTiers,"0 1 2",context+" standalone save scope");assert.equal(standalone.psiCostCount,1,context+" standalone Psi cost once");
+        assert.match(standalone.text,/Strength save:\s*DC 18/u,context+" standalone save DC");assert.match(standalone.text,/Saving throw calculation:\s*8 \+ Proficiency Bonus \(5\) \+ Psionic Ability Modifier \(5\) = 18/u,context+" standalone save calculation");assert.match(standalone.text,/Psi cost:\s*3/u,context+" standalone Psi cost");
+        assertPsiFacts(standalone,3,13,context+" level 15 standalone");
+        assert.match(standalone.text,/Damage:\s*8d10 on a failed save · half on a successful save/u,context+" standalone Tier 0 damage");assert.match(standalone.text,/Expected avg damage:\s*44 on a failed save · 21\.75 on a successful save/u,context+" standalone Tier 0 exact average");
+        assert.match(standalone.text,/Damage:\s*12d10 on a failed save · half on a successful save/u,context+" standalone Tier 2 damage");assert.match(standalone.text,/Expected avg damage:\s*66 on a failed save · 32\.75 on a successful save/u,context+" standalone Tier 2 exact average");
+        assert.doesNotMatch(standalone.text,/Triggering Manifested Strike|Rider damage:|Combined damage:|Expected combined damage:/u,context+" no rider-only standalone prose");
+        assert.equal(standalone.contained,true,context+" standalone elements contained");assert.equal(standalone.documentOverflow,0,context+" standalone horizontal overflow");
+
+        await page.focus("#calculator-psi-modifier");await page.selectOption("#calculator-psi-modifier","4");
+        assert.equal(await page.evaluate(()=>document.activeElement?.id),"calculator-psi-modifier",context+" standalone modifier focus retained");
+        const standaloneModified=await page.evaluate(()=>{const root=document.querySelector<HTMLElement>("#calculator-root")!,result=document.querySelector<HTMLElement>("#calculator-feature-results")!,rootRect=root.getBoundingClientRect(),elements=[result,...result.querySelectorAll<HTMLElement>(".calculator__facts,.calculator__save-groups,.calculator__shared-effects,.calculator__tiers,.calculator__tier,.calculator__metrics,.calculator__effects")];return{text:result.textContent??"",contained:elements.every(element=>{const rect=element.getBoundingClientRect();return rect.left>=rootRect.left-1&&rect.right<=rootRect.right+1&&element.scrollWidth<=element.clientWidth+1;}),documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};});
+        assert.match(standaloneModified.text,/Strength save:\s*DC 17/u,context+" live standalone save update");assert.match(standaloneModified.text,/Saving throw calculation:\s*8 \+ Proficiency Bonus \(5\) \+ Psionic Ability Modifier \(4\) = 17/u,context+" live standalone save calculation update");assert.match(standaloneModified.text,/Damage:\s*8d10 on a failed save · half on a successful save/u,context+" standalone dice remain authored");assert.match(standaloneModified.text,/Expected avg damage:\s*44 on a failed save · 21\.75 on a successful save/u,context+" standalone average remains exact");
+        assert.equal(standaloneModified.contained,true,context+" live standalone containment");assert.equal(standaloneModified.documentOverflow,0,context+" live standalone horizontal overflow");
+        await page.close();
+      }
+    }finally{await browser.close();}
+  }
+});
+
 test("Start Here is a contained single-column experience across engines, breakpoints, input, forced colors, reduced motion, and print",async()=>{
   const result=await executeBuild("prototype"),base=pathToFileURL(result.htmlPath).href,homeUrl=base+"#home";
   const widths=[320,412,760,761,1280,1366];
@@ -405,6 +524,7 @@ test("Start Here is a contained single-column experience across engines, breakpo
       assert.equal(await page.evaluate(()=>document.activeElement?.classList.contains("skip")),true,engine.name+" skip link can regain focus after activation");
       await page.keyboard.press("Tab");assert.equal(await page.evaluate(()=>document.activeElement?.id),"view-start-here",engine.name+" Start Here view control order");
       await page.keyboard.press("Tab");assert.equal(await page.evaluate(()=>document.activeElement?.id),"view-rules-reference",engine.name+" Rules Reference view control order");
+      await page.keyboard.press("Tab");assert.equal(await page.evaluate(()=>document.activeElement?.id),"view-calculator",engine.name+" Calculator view control order");
       await page.keyboard.press("Tab");assert.equal(await page.evaluate(()=>document.activeElement?.getAttribute("data-onboarding-link-id")),"primary_build",engine.name+" hidden reference controls skipped");
       const focusStyle=await page.evaluate(()=>{const style=getComputedStyle(document.activeElement as Element);return{outlineStyle:style.outlineStyle,outlineWidth:parseFloat(style.outlineWidth)};});
       assert.notEqual(focusStyle.outlineStyle,"none",engine.name+" visible keyboard focus style");assert.ok(focusStyle.outlineWidth>0,engine.name+" visible keyboard focus width");

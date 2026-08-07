@@ -16,7 +16,7 @@ Version 13.2.0 introduced the new-player **Start Here** experience and revised M
 
 ## Publication interface
 
-Opening the publication without a deep link shows **Start Here**, which introduces the subclass’s basic loop and links into the canonical rules. Existing category, topic, entity, and filter deep links continue to open the complete Rules Reference directly.
+Opening the publication without a deep link shows **Start Here**, which introduces the subclass’s basic loop and links into the canonical rules. Existing category, topic, entity, and filter deep links continue to open the complete Rules Reference directly. The persistent publication navigation also includes a **Calculator** view.
 
 The Rules Reference provides:
 
@@ -27,7 +27,9 @@ The Rules Reference provides:
 - responsive desktop, tablet, mobile, and print layouts;
 - keyboard, focus, forced-colors, and reduced-motion support.
 
-The browser application makes no runtime network requests and does not store character state, run calculators, or replace the rules with inferred behavior.
+The Calculator opens with Manifested Strike and derives its attack, damage, and save Difficulty Class, along with total Psi Points, Psi costs, on-hit rider tier results, and supported standalone feature tier results, from Skill / Feature, Fighter Level, and Psionic Ability Modifier selections. Longform hit, damage, and saving throw calculations use full term names, parenthesized component values, `+` operators, and an `=` result matching the retained compact total. Every selection updates the displayed calculations immediately.
+
+The browser application makes no runtime network requests, does not store character state, and does not replace the rules with inferred behavior.
 
 ## Commands
 
@@ -51,7 +53,7 @@ An authorized release build uses:
 KV_RELEASE_APPROVED=1 npm run build:release
 ```
 
-It writes `artifacts/KineticVanguard.html` with `release_status: release` and no prototype banner. CI derives workflow labels and the `kinetic-vanguard-v<rules_version>` artifact name from the canonical `rules_version`; there is no separately maintained active artifact version.
+It writes `artifacts/KineticVanguard.html` with `release_status: release` and no prototype banner. CI derives workflow labels and the `kinetic-vanguard-v<rules_version>` artifact name from the canonical `rules_version`; the generated publication exposes that canonical rules version as its sole product version.
 
 ## Architecture
 

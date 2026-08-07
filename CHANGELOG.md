@@ -1,5 +1,28 @@
 # Changelog
 
+## 14.0.0 — 2026-08-06
+
+### Added
+
+- Added an offline Calculator for Manifested Strike and supported rider and standalone feature tiers, with level-aware attack, damage, saving throw, Psi, and Blood Tax results derived from canonical authority.
+
+### Changed
+
+- Made Barrier require Concentration for up to 1 minute at T0 and T1. T2 continues to increase the duration to 10 minutes. Added structured concentration metadata, aligned the feature reference, and separated the five Barrier modes into a bulleted list for readability.
+- Made the canonical rules version the publication's sole product version, removing the separate application-version label and identity from the interface, provenance, derived-output registry, and build manifest.
+- Broke six dense rules passages—Mass Levitation, Explosion/Implosion, Forked Lightning, Gravitic Press, and Manifested Strike’s Somatic Requirement and Holdout Option—into semantic ordered or bulleted lists while preserving their mechanics and tier scope.
+- Completed the readability pass by converting the remaining dense mechanical sequences, alternatives, and conditional outcomes—and every authored example—into semantic ordered or bulleted lists without changing their rules outcomes.
+- Migrated each Example Play phase from an inline-node array to an array of paragraph or list blocks so examples can express their steps semantically. This incompatible authority-shape change advances the schema version from 1.0.0 to 2.0.0 while leaving the rules version at 14.0.0.
+- Set the Calculator’s default Fighter Level to 20 and removed the always-visible duplicate Manifested Strike summary. Manifested Strike remains selectable directly, and rider results retain their existing Triggering Manifested Strike details.
+- Aligned Explosion/Implosion’s Tier 1 Sphere radius and push or pull distance at 30 feet.
+- Added level-aware total Psi Points beside each feature’s Psi cost in the Calculator, using the canonical Psi Reservoir progression.
+- Made Manifested Strike the Calculator’s initial selection and first displayed result card.
+- Expanded and normalized Calculator longform math. Hit, damage, and saving throw calculations now use full term names, parenthesized component values, `+` operators, and an `=` result while retaining their compact totals.
+
+### Compatibility
+
+- Version 14 is a major rules release because Barrier's new Concentration requirement changes playable outcomes and can invalidate concurrent concentration.
+
 ## 13.2.0 — 2026-08-06
 
 ### Changed

@@ -85,6 +85,9 @@ jobs:
           grep -q '"release_status":"release"' artifacts/KineticVanguard.html
           grep -q '"rules_version":"${{ needs.metadata.outputs.rules_version }}"' artifacts/KineticVanguard.html
           ! grep -q '<p class="prototype"' artifacts/KineticVanguard.html
+          ! grep -q 'Application version' artifacts/KineticVanguard.html
+          ! grep -q '"application_version"' artifacts/KineticVanguard.html
+          ! grep -q '"application_version"' artifacts/build-manifest.json
 
       - name: Upload v${{ needs.metadata.outputs.rules_version }} publication
         uses: actions/upload-artifact@v4
