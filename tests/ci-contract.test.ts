@@ -5,8 +5,13 @@ import { parse } from "yaml";
 
 test("CI exposes a stable main branch gate backed by complete verification", async () => {
   const workflow = parse(await readFile(".github/workflows/ci.yml", "utf8")) as any;
+  const verification = workflow.jobs?.verification;
   const benchmark = workflow.jobs?.benchmark_snapshot;
   const gate = workflow.jobs?.main_branch_gate;
+
+  assert.ok(verification, "verification job exists");
+  assert.equal(verification.needs, "metadata");
+  assert.equal(verification["continue-on-error"], undefined);
 
   assert.ok(benchmark, "benchmark_snapshot job exists");
   assert.equal(benchmark.needs, "metadata");
@@ -16,6 +21,7 @@ test("CI exposes a stable main branch gate backed by complete verification", asy
   );
   assert.equal(benchmark["runs-on"], "ubuntu-24.04");
   assert.equal(benchmark["timeout-minutes"], 20);
+  assert.equal(benchmark["continue-on-error"], undefined);
   assert.ok(
     benchmark.steps?.some(
       (candidate: any) =>
@@ -34,6 +40,7 @@ test("CI exposes a stable main branch gate backed by complete verification", asy
   assert.deepEqual(gate.needs, ["metadata", "verification", "benchmark_snapshot"]);
   assert.equal(gate.if, "${{ always() }}");
   assert.equal(gate["runs-on"], "ubuntu-24.04");
+  assert.equal(gate["continue-on-error"], undefined);
   assert.equal(gate.steps?.length, 1);
 
   const step = gate.steps[0];
@@ -43,7 +50,11 @@ test("CI exposes a stable main branch gate backed by complete verification", asy
     VERIFICATION_RESULT: "${{ needs.verification.result }}",
     BENCHMARK_SNAPSHOT_RESULT: "${{ needs.benchmark_snapshot.result }}"
   });
-  assert.match(step.run, /test "\$METADATA_RESULT" = "success"/);
-  assert.match(step.run, /test "\$VERIFICATION_RESULT" = "success"/);
-  assert.match(step.run, /test "\$BENCHMARK_SNAPSHOT_RESULT" = "success"/);
+  assert.equal(step["continue-on-error"], undefined);
+  assert.equal(
+    step.run,
+    "test \"$METADATA_RESULT\" = \"success\"\n" +
+      "test \"$VERIFICATION_RESULT\" = \"success\"\n" +
+      "test \"$BENCHMARK_SNAPSHOT_RESULT\" = \"success\"\n"
+  );
 });
