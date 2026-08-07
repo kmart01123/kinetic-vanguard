@@ -9,11 +9,23 @@ Status: **REVIEWED_WITH_DOCUMENTED_DIFFERENCES for v14.1**. Independent damage, 
 The benchmark keeps four distinct input layers:
 
 1. **Kinetic Vanguard authority:** root `KineticVanguard.yaml`, projected by stable entity ID only after canonical schema and semantic validation.
-2. **Benchmark methodology:** project-authored seeds, profiles, base Fighter progression/mechanics, aggregation, target clustering, and scenario policy in `config/benchmark.json`, plus the Python simulation/reporting code.
+2. **Benchmark configuration:** project-authored seeds, profiles, aggregation, target clustering, and scenario policy, together with SRD-derived base Fighter progression/mechanics, in `config/benchmark.json`, plus the project-authored Python simulation/reporting code.
 3. **SRD target data:** the pinned 28-row SRD 5.2.1 roster and provenance in `data/srd_targets.csv`.
 4. **Third-party comparator assumptions:** minimal independently expressed Battle Master and Eldritch Knight numerical packages in `comparators/fighter-subclasses.json`.
 
 The runtime loads and hashes methodology and comparator assumptions separately. Neither file is Kinetic Vanguard rules authority.
+
+### Licensing boundaries
+
+Licensing follows the distinguishable components rather than assigning one blanket license to every harness file:
+
+- project-authored Python software, report structure, and technical configuration structure are licensed under BSD-3-Clause;
+- the project-authored methodology and structure in `config/benchmark.json` are BSD-3-Clause, while its SRD-derived base Fighter mechanics remain separately available under CC BY 4.0;
+- the project-authored structure, benchmark selection, and independently authored analytical/policy expression in `comparators/fighter-subclasses.json` are BSD-3-Clause; individual parameters retain SRD or third-party status as applicable, and Battle Master/Eldritch Knight identifiers and underlying third-party mechanics are not licensed by the project;
+- `data/srd_targets.csv` is SRD 5.2.1-derived material under CC BY 4.0; and
+- original Kinetic Vanguard rules, examples, explanatory and editorial prose, documentation, approved interface text, and project-authored benchmark explanation remain under CC BY-NC-SA 4.0.
+
+No configuration file or generated report relicenses SRD or third-party material. See the repository `LICENSE.md` and `NOTICE.md` for the complete component boundaries and attribution.
 
 ## Commands
 
@@ -93,7 +105,9 @@ Hunter Ranger and Open Hand Monk are excluded from primary matrices.
 
 ## Output and provenance
 
-Filenames derive from YAML `rules_version`, for example `kv-14-1-0-damage-comparison-matrix.csv`. Every matrix is emitted as CSV, Markdown, and self-contained HTML from one row model. Band text and the signed `Boundary Delta %` tuning distance are visible in every format; HTML color is supplemental. Provenance includes rules version, authority digest, roster digest, methodology-config digest, comparator-config digest, evaluator, compatibility-only seed/trial settings, aggregation, and review status.
+Filenames derive from YAML `rules_version`, for example `kv-14-1-0-damage-comparison-matrix.csv`. Every matrix is emitted as CSV, Markdown, and self-contained HTML from one numerical row model. Band text and the signed `Boundary Delta %` tuning distance are visible in every format; HTML color is supplemental. Provenance includes rules version, authority digest, roster digest, methodology-config digest, comparator-config digest, evaluator, compatibility-only seed/trial settings, aggregation, and review status.
+
+Every generated detail, selection-audit, and matrix CSV row also carries semantic `Notice ...` columns for the component boundary, the exact SRD 5.2.1 attribution, the SRD modification marker, the official CC-BY-4.0 Section 5 disclaimer reference, and the unofficial BM/EK comparator notice. Matrix Markdown and HTML display the same notices once in a visible **Licensing and notices** section so copied reports retain their attribution and component boundaries without repeating long notice text in the human-facing table.
 
 Generated outputs, caches, virtual environments, and `.codex-import/` are ignored and are not official source.
 

@@ -11,7 +11,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
-from harness.comparison_report import classify_control,classify_damage,matrix_row,write_matrix
+from harness.comparison_report import COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,classify_control,classify_damage,matrix_row,write_matrix
 from harness.control_harness import _comparator_scenario,_effect_available,_kv_scenario,run as run_control
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,run as run_damage
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,load_comparators,load_config,load_targets
@@ -480,6 +480,27 @@ class ClassificationTests(unittest.TestCase):
             with self.subTest(kind=kind,band=band):
                 row=matrix_row({},kv,ek,bm,kind);self.assertEqual(row["Band"],band);self.assertEqual(row["Boundary Delta %"],delta)
 
+    def test_report_notices_are_structured_and_source_grounded(self)->None:
+        repository_notice=(PROJECT_ROOT/"NOTICE.md").read_text(encoding="utf-8")
+        content_notice=(PROJECT_ROOT/"LICENSE-CONTENT").read_text(encoding="utf-8")
+        labels=[label for label,_ in LEGAL_NOTICES]
+        self.assertEqual(len(labels),len(set(labels)))
+        self.assertEqual(NOTICE_COLUMNS,{f"Notice {label}":value for label,value in LEGAL_NOTICES})
+        for retained in (SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,COMPARATOR_NOTICE):
+            self.assertIn(retained,repository_notice)
+        self.assertEqual(SRD_SECTION_5_NOTICE,"Section 5 of CC-BY-4.0 includes a Disclaimer of Warranties and Limitation of Liability that limits our liability to you.")
+        project=NOTICE_COLUMNS["Notice Project Attribution"]
+        for retained in ("Copyright © 2026 NixNinja","Created by NixNinja","https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode","Section 5 disclaimer"):
+            self.assertIn(retained,project)
+        self.assertEqual(project,PROJECT_ATTRIBUTION_NOTICE)
+        for retained in ("Copyright © 2026 NixNinja","Created by NixNinja"):
+            self.assertIn(retained,repository_notice)
+        for retained in ("https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode","Section 5"):
+            self.assertIn(retained,content_notice)
+        component=NOTICE_COLUMNS["Notice Component Boundary"]
+        for retained in ("Copyright (c) 2026, NixNinja","BSD-3-Clause","CC BY 4.0","LICENSE-CODE","LICENSE.md","NOTICE.md"):
+            self.assertIn(retained,component)
+
     def test_csv_markdown_html_are_one_row_model_and_visible_band(self)->None:
         row=matrix_row({"Level":7,"Discipline":"cryokinesis"},10,8,20,"damage")
         provenance={"rules_version":"14.1.0","authority_sha256":"probe","roster_sha256":"probe"}
@@ -492,8 +513,14 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(csv_row["Provenance Rules Version"],"14.1.0")
         self.assertEqual(csv_row["Provenance Authority Sha256"],"probe")
         self.assertEqual(csv_row["Provenance Roster Sha256"],"probe")
+        self.assertEqual({key:csv_row[key] for key in NOTICE_COLUMNS},NOTICE_COLUMNS)
         for value in row.values():
             self.assertIn(value,markdown);self.assertIn(value,html)
+        self.assertIn("## Licensing and notices",markdown)
+        self.assertIn("<h2>Licensing and notices</h2>",html)
+        for label,value in LEGAL_NOTICES:
+            self.assertEqual(markdown.count(value),1,label)
+            self.assertEqual(html.count(value),1,label)
         self.assertIn("IDEAL",html)
         self.assertNotIn("Hunter Ranger",html);self.assertNotIn("Open Hand Monk",html)
 
@@ -513,16 +540,19 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             self.assertTrue(rows);self.assertTrue(all(row["Selected Scenario"] for row in rows))
             self.assertTrue(all(row["Rules Version"]=="14.1.0" and row["Authority SHA-256"] and row["Roster SHA-256"] for row in rows))
             self.assertTrue(all(row["Comparator Config SHA-256"] for row in rows))
+            self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in rows))
             with (root/"damage"/"kv-14-1-0-damage-detail.csv").open(encoding="utf-8") as stream:
                 damage_row=next(csv.DictReader(stream))
             self.assertAlmostEqual(float(damage_row["Eldritch Knight DPR"]),13.900000000000018,places=12)
             self.assertAlmostEqual(float(damage_row["Battle Master DPR"]),24.57556956900116,places=12);self.assertTrue(damage_row["Comparator Config SHA-256"])
+            self.assertEqual({key:damage_row[key] for key in NOTICE_COLUMNS},NOTICE_COLUMNS)
             with (root/"control"/"kv-14-1-0-control-detail.csv").open(encoding="utf-8") as stream:
                 control_rows=list(csv.DictReader(stream))
             keyed={(row["Build"],row["Scenario"]):row for row in control_rows}
             self.assertEqual(keyed[("battle_master","menacing_attack")]["Whole-package control stick %"],"56.250000")
             self.assertEqual(keyed[("eldritch_knight","blindness_deafness")]["Whole-package control stick %"],"55.000000")
             self.assertTrue(all(row["Comparator Config SHA-256"] for row in control_rows))
+            self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in control_rows))
             self.assertEqual((root/"damage"/"kv-14-1-0-damage-detail.csv").read_bytes(),(root/"damage-parallel"/"kv-14-1-0-damage-detail.csv").read_bytes())
             for format_name in damage["paths"]:
                 self.assertEqual(damage["paths"][format_name].read_bytes(),parallel_damage["paths"][format_name].read_bytes())
@@ -532,6 +562,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             for result in (damage,control,parallel_damage,repeated_control):
                 with result["paths"]["csv"].open(encoding="utf-8") as stream:matrix_rows=list(csv.DictReader(stream))
                 self.assertTrue(matrix_rows);self.assertTrue(all(row["Provenance Status"]==status for row in matrix_rows))
+                self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in matrix_rows))
                 self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
                 self.assertTrue(all(row["Provenance Trial Seed Role"]=="historical_compatibility_metadata" for row in matrix_rows))
                 self.assertIn(status,result["paths"]["markdown"].read_text(encoding="utf-8"));self.assertIn(status,result["paths"]["html"].read_text(encoding="utf-8"))

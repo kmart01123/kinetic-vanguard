@@ -12,7 +12,7 @@ from pathlib import Path
 from typing import Any
 
 from .authority import AuthorityModel,DEFAULT_AUTHORITY
-from .comparison_report import matrix_row,write_matrix
+from .comparison_report import NOTICE_COLUMNS,matrix_row,write_matrix
 from .model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_ROSTER,Target,file_sha256,level_config,load_comparators,load_config,load_targets,save_success_probability
 
 
@@ -474,7 +474,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,tri
         with ProcessPoolExecutor(max_workers=workers,max_tasks_per_child=1) as executor:discipline_rows=executor.map(_discipline_damage_rows,arguments)
     detail=[row for rows in discipline_rows for row in rows]
     slug=model.rules_version.replace(".","-");output_dir.mkdir(parents=True,exist_ok=True)
-    source_columns={"Rules Version":model.rules_version,"Authority SHA-256":model.authority_sha256,"Roster SHA-256":file_sha256(DEFAULT_ROSTER),"Config SHA-256":file_sha256(DEFAULT_CONFIG),"Comparator Config SHA-256":file_sha256(DEFAULT_COMPARATORS)}
+    source_columns={"Rules Version":model.rules_version,"Authority SHA-256":model.authority_sha256,"Roster SHA-256":file_sha256(DEFAULT_ROSTER),"Config SHA-256":file_sha256(DEFAULT_CONFIG),"Comparator Config SHA-256":file_sha256(DEFAULT_COMPARATORS),**NOTICE_COLUMNS}
     if write_detail:
         detail_rows=[{**row,**source_columns} for row in detail]
         with (output_dir/f"kv-{slug}-damage-detail.csv").open("w",newline="",encoding="utf-8") as stream:

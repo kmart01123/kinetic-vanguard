@@ -82,13 +82,13 @@ The maintained Python harnesses consume a deterministic runtime projection emitt
 
 Kinetic Vanguard uses component-based licensing:
 
-- software and technical implementation: BSD 3-Clause;
-- original Kinetic Vanguard rules, examples, and editorial content: CC BY-NC-SA 4.0;
+- project-authored software and technical implementation: BSD 3-Clause;
+- original Kinetic Vanguard rules, examples, explanatory/editorial prose, and documentation: CC BY-NC-SA 4.0;
 - SRD 5.2.1-derived material: CC BY 4.0.
 
-The NonCommercial and ShareAlike terms do not restrict or relicense SRD-derived material. See `LICENSE.md`, `LICENSE-CODE`, `LICENSE-CONTENT`, and `NOTICE.md` for the exact boundaries and required attribution.
+The NonCommercial and ShareAlike terms do not restrict or relicense SRD-derived material. Mixed YAML, configuration, test fixtures, generated HTML, manifests, and benchmark reports retain their component-level boundaries; they do not receive a misleading single SPDX license. See `LICENSE.md`, `LICENSE-CODE`, `LICENSE-CONTENT`, `NOTICE.md`, and `docs/licensing-audit.md`.
 
-Battle Master and Eldritch Knight are unofficial third-party comparative benchmarks, not project rules content. The project licenses do not grant rights in Wizards-owned material outside the SRD; see `NOTICE.md`.
+Battle Master and Eldritch Knight are unofficial third-party comparative benchmarks, not project rules content. Project licenses cover the independently authored benchmark code, structure, and selection—not Wizards-owned names or underlying non-SRD material—and do not imply affiliation or endorsement.
 
 ## Development and release discipline
 

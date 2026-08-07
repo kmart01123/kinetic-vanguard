@@ -551,7 +551,7 @@ test("final rules decisions leave every unapproved authority field unchanged",as
   projection.schema_version="1.0.0";
   projection.rules_version="<approved rules version>";
   projection.metadata.attribution="Created by NixNinja in collaboration with artificial intelligence assistants. Special thanks to various muses, great and small.";
-  projection.metadata.license="Original Kinetic Vanguard material may be used, copied, modified, and redistributed for non-commercial purposes with credit to NixNinja. Commercial use requires prior written permission. System Reference Document-derived rules text and references are separately governed by the Creative Commons Attribution 4.0 International License.";
+  projection.metadata.license="<approved legacy license metadata>";
   const presentationLabel=/^(?:Targeting|Initial saving throw|Repeat saving throw|Ongoing effect|Targets|Saving throws|Primary damage|Secondary damage|Independent outcomes|Failed-save conditions|Successful save|Primary target only|Secondary targets|Terrain and Speed|Flying creatures|Saving throw|Failed save|Explosion \(outward\)|Implosion \(inward\)|Struck target|Area|Concentration|Trigger and saving throw|Damage and saving throw|Push mastery|Movement limit|Damage|Lightning immunity|Entry limit|Movement|Leaving the Sphere|Damage reduction|Originating creature|No originating creature|Effect):\s*/u;
   const itemMechanics=(item:any[])=>inlineText(item.slice(item[0]?.type==="strong"?1:0));
   const listMechanics=(list:any)=>list.items.map((item:any[])=>itemMechanics(item));
@@ -654,7 +654,7 @@ test("final rules decisions leave every unapproved authority field unchanged",as
   const barrierRow=table.rows.find((row:any[])=>cell(row[1])==="Barrier");assert.equal(cell(barrierRow[4]),"Bonus Action · Concentration");barrierRow[4][0].text="Bonus Action";
   const oldDurations=new Map([["Glacial Spike","Varies by tier"],["Deflection Screen","Instantaneous"],["Empathic Sense","Continuous; scan instantaneous"],["Vectored Thrust","Up to 10 minutes"],["Frozen Ground","Up to 1 minute"],["Explosion/Implosion","Instantaneous"],["Electron Burst","Until the start of your next turn"],["Phase Step","Instantaneous"],["Arctic Tempest","Varies by tier"],["Flare","Varies by tier"],["Gravitic Press","Up to 1 minute"],["Absolute Zero","Varies by tier"],["Mass Levitation","Up to 1 minute"],["Ball Lightning","Up to 1 minute"]]);
   for(const row of table.rows){const oldDuration=oldDurations.get(cell(row[1]));if(oldDuration)row[5][0].text=oldDuration;}
-  assert.equal(sha256(canonicalJson(projection)),"19a17b024da7cea260e31eacf2b382abab426eefb548479823a3705a8dd5d406");
+  assert.equal(sha256(canonicalJson(projection)),"bbcfe7480123a0b9bdedc7815cb0684c36431d1d96ccba7e53516b1af658649c");
 });
 
 test("active authority and approved UI text use full English except for the approved Calculator DC label",async()=>{

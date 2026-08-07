@@ -8,6 +8,7 @@
 - Added pinned SRD 5.2.1 target data, separately declared frozen Battle Master and Eldritch Knight comparator assumptions, verified legacy provenance, and a legacy-to-current migration map.
 - Added versioned CSV, Markdown, and self-contained HTML damage/control matrices, exact COLD/IDEAL/HOT/ORDER CHECK/N/A boundary handling, signed `Boundary Delta %` tuning distance, aggregate-derived ratios, and a per-target control selection-audit CSV.
 - Added fast authority, mutation, completeness, aggregation, classification, output-consistency, and fixed-input smoke tests to ordinary CI.
+- Added a repository-wide licensing audit, build-manifest legal-asset hashes, complete deployable legal bundles, and embedded licensing/attribution notices for standalone publications and benchmark reports.
 
 ### Changed
 

@@ -18,7 +18,7 @@ The immutable import was verified before use. Historical files retain their old 
 | mastery-control behavior | `calculator.harness_mechanics/disciplines/*/mastery` and per-feature `replaces_mastery` | Canonical YAML mechanics |
 | BM/EK damage builds and numerical assumptions | `harness/comparators/fighter-subclasses.json#/damage` | Minimal frozen third-party comparator parameters |
 | BM/EK control scenarios | `harness/comparators/fighter-subclasses.json#/control` | Minimal frozen third-party comparator parameters |
-| levels, rounds, base Fighter action-slot/feature progression plus Studied Attacks and Combat Prowess semantics, seeds, trials, cluster sizes, Blood Tax profile, all-Manifested-Strike/AT policy and optimizer information timing | `harness/config/benchmark.json` | Benchmark methodology/profile configuration |
+| levels, rounds, base Fighter action-slot/feature progression plus Studied Attacks and Combat Prowess semantics, seeds, trials, cluster sizes, Blood Tax profile, all-Manifested-Strike/AT policy and optimizer information timing | `harness/config/benchmark.json` | Mixed configuration: project-authored methodology/profile structure plus SRD 5.2.1-derived Fighter mechanics |
 | compact control scenario selection | `harness/config/benchmark.json#/control_matrix` | Matrix profile selection, not rules authority |
 | SRD targets, HP, defenses, immunities, pages, URL | `harness/data/srd_targets.csv` | Pinned SRD data/provenance |
 | attack/save enumeration, exact damage-defense application, equal weighting, and finite-horizon observed-state policy choice | `harness/model.py`, `damage_harness.py`, `control_harness.py` | Simulation/aggregation algorithm |
