@@ -203,6 +203,9 @@ export interface HarnessFeatureRule {
 }
 export type ControlEventV2="declaration"|"hit"|"entry"|"start_turn"|"save"|"repeat_save"|"exit"|"instantaneous_resolution";
 export type ControlMovementModeV2="walk"|"fly"|"swim"|"climb"|"burrow";
+export type ControlForcedMovementDirectionV2="straight_away_from_controller"|"toward_controller"|"controller_choice"|"vertical_up";
+export type ControlForcedMovementDestinationV2="legal_unoccupied_space"|"legal_destination";
+export type ControlSaveAbilityV2=CalculatorSave|"wisdom"|"discipline_signature";
 export type ControlDispositionV2="modeled"|"excluded_by_profile"|"unsupported_error";
 export type ControlDurationV2=
   |{kind:"instantaneous"}
@@ -210,14 +213,14 @@ export type ControlDurationV2=
   |{kind:"while_in_area";area_id:string}
   |{kind:"concentration";maximum_value:number;unit:"round"|"minute"|"hour"};
 export type ControlMagnitudeV2=
-  |{kind:"condition";condition:string}
-  |{kind:"forced_movement";distance_feet:number;distance_mode:"exact"|"up_to";movement_mode:"push"|"pull"|"reposition"|"lift";direction:string;path:string}
+  |{kind:"condition";condition:HarnessCondition}
+  |{kind:"forced_movement";distance_feet:number;distance_mode:"exact"|"up_to";movement_mode:"push"|"pull"|"reposition"|"lift";direction:ControlForcedMovementDirectionV2;destination:ControlForcedMovementDestinationV2}
   |{kind:"speed_reduction";reduction:{kind:"flat_feet";value:number}|{kind:"fraction";numerator:number;denominator:number}|{kind:"terrain_multiplier";value:number};movement_modes:ControlMovementModeV2[]}
   |{kind:"speed_zero";movement_modes:ControlMovementModeV2[]}
   |{kind:"attack_disadvantage";scope:"next_attack"|"all_attacks";count?:number}
   |{kind:"reaction_denial";scope:"all_reactions"}
   |{kind:"movement_option_denial";movement_modes:ControlMovementModeV2[]}
-  |{kind:"numerical_modifier";target:string;value:number};
+  |{kind:"numerical_modifier";target:"armor_class";value:number};
 export interface ControlComponentV2 {
   component_id:string;
   target_selector_ids:string[];
@@ -226,7 +229,7 @@ export interface ControlComponentV2 {
   cadence:{apply:ControlEventV2[];repeat:ControlEventV2[];end:ControlEventV2[]};
   stacking:{key:string;mode:"stacks"|"nonstacking"|"replace"|"dominates"|"independent";refresh:"duration"|"none";replacement_group?:string;dominates_component_ids:string[]};
 }
-export interface ControlAreaV2 {
+export type ControlAreaV2={
   area_id:string;
   shape:"sphere"|"cylinder"|"cone"|"line";
   origin:"controller"|"primary_target"|"selected_point"|"departure_or_arrival";
@@ -234,23 +237,30 @@ export interface ControlAreaV2 {
   height_feet?:number;
   length_feet?:number;
   width_feet?:number;
-  persistent:boolean;
   triggers:ControlEventV2[];
   exit_behavior:"ends_area_effects"|"none";
-}
+}&(
+  |{persistent:true;entry_policy:{frequency:"once_per_turn";moved_area_counts_as_entry:boolean};movement:{kind:"stationary"}|{kind:"controller_reposition";controller_action:"bonus_action";distance_feet:number}}
+  |{persistent:false;entry_policy?:never;movement?:never}
+);
 export interface ControlTargetSelectorV2 {
   selector_id:string;
   role:"primary"|"secondary"|"all";
-  count:{kind:"fixed"|"up_to"|"proficiency_bonus"|"cluster_remainder"|"weighted_slots";value?:number;slots?:number;size_costs?:Record<string,number>};
+  count:{kind:"fixed"|"up_to"|"proficiency_bonus"|"cluster_remainder"|"weighted_slots";value?:number;slots?:number;size_costs?:Partial<Record<"tiny"|"small"|"medium"|"large",number>>};
   range:{feet:number;origin:"controller"|"primary_target"|"selected_point"|"departure_or_arrival"};
-  restrictions:Array<{kind:string;value:string}>;
+  restrictions:ControlTargetRestrictionV2[];
   gate_scope:"independent_per_target"|"shared";
   area?:ControlAreaV2;
 }
-export interface ControlBranchV2 {branch_id:string;outcome:"attack_hit"|"attack_miss"|"save_success"|"save_failure"|"no_save"|"other";applies:string[];replaces:string[];terminates:string[];refreshes:string[]}
+export type ControlTargetRestrictionV2=
+  |{kind:"visibility";requirement:"controller_can_see"}
+  |{kind:"maximum_size";size:"large_or_smaller"}
+  |{kind:"unique_targets";required:true}
+  |{kind:"excludes_primary_target";required:true};
+export interface ControlBranchV2 {branch_id:string;outcome:"attack_hit"|"attack_miss"|"save_success"|"save_failure"|"no_save"|"other";applies:string[];replaces:string[];terminates:string[];refreshes:string[];next_gate_ids:string[]}
 export type ControlResolutionBodyV2=
   |{kind:"attack_roll";branches:ControlBranchV2[]}
-  |{kind:"saving_throw";ability:CalculatorSave|"discipline_signature";branches:ControlBranchV2[]}
+  |{kind:"saving_throw";ability:ControlSaveAbilityV2;branches:ControlBranchV2[]}
   |{kind:"no_save";branches:ControlBranchV2[]}
   |{kind:"other";branches:ControlBranchV2[]};
 export interface ControlResolutionV2 {
@@ -269,6 +279,7 @@ export interface ControlTierModelV2 {
   policy:{activation:"action"|"bonus_action"|"reaction"|"on_hit"|"passive";declaration:ControlEventV2;delivery:"attack_rider"|"standalone";psi_cost:number;overload_tier:0|1|2;blood_tax:"none"|"tier_formula";repeatability:"unlimited"|"once_per_attack_action"|"once_per_turn"|"limited_use";mastery:"stacks"|"replaces_on_declaration"|"not_applicable"};
   target_selectors:ControlTargetSelectorV2[];
   components:ControlComponentV2[];
+  root_gate_ids:string[];
   resolutions:ControlResolutionV2[];
   concentration:ControlConcentrationV2;
   relationships:{replacement_groups:Array<{group_id:string;component_ids:string[]}>;dominance:Array<{dominant_component_id:string;suppressed_component_ids:string[]}>};

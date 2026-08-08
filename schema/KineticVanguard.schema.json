@@ -120,14 +120,14 @@
     },
     "controlMagnitudeV2": {
       "oneOf":[
-        {"type":"object","additionalProperties":false,"required":["kind","condition"],"properties":{"kind":{"const":"condition"},"condition":{"$ref":"#/$defs/id"}}},
-        {"type":"object","additionalProperties":false,"required":["kind","distance_feet","distance_mode","movement_mode","direction","path"],"properties":{"kind":{"const":"forced_movement"},"distance_feet":{"type":"integer","minimum":1},"distance_mode":{"enum":["exact","up_to"]},"movement_mode":{"enum":["push","pull","reposition","lift"]},"direction":{"$ref":"#/$defs/id"},"path":{"$ref":"#/$defs/id"}}},
-        {"type":"object","additionalProperties":false,"required":["kind","reduction","movement_modes"],"properties":{"kind":{"const":"speed_reduction"},"reduction":{"oneOf":[{"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"flat_feet"},"value":{"type":"integer","minimum":1}}},{"type":"object","additionalProperties":false,"required":["kind","numerator","denominator"],"properties":{"kind":{"const":"fraction"},"numerator":{"type":"integer","minimum":0},"denominator":{"type":"integer","minimum":1}}},{"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"terrain_multiplier"},"value":{"type":"number","exclusiveMinimum":1}}}]},"movement_modes":{"type":"array","items":{"$ref":"#/$defs/controlMovementModeV2"},"minItems":1,"uniqueItems":true}}},
+        {"type":"object","additionalProperties":false,"required":["kind","condition"],"properties":{"kind":{"const":"condition"},"condition":{"enum":["blinded","charmed","incapacitated","prone","restrained","stunned"]}}},
+        {"type":"object","additionalProperties":false,"required":["kind","distance_feet","distance_mode","movement_mode","direction","destination"],"properties":{"kind":{"const":"forced_movement"},"distance_feet":{"type":"integer","minimum":1},"distance_mode":{"enum":["exact","up_to"]},"movement_mode":{"enum":["push","pull","reposition","lift"]},"direction":{"enum":["straight_away_from_controller","toward_controller","controller_choice","vertical_up"]},"destination":{"enum":["legal_unoccupied_space","legal_destination"]}}},
+        {"type":"object","additionalProperties":false,"required":["kind","reduction","movement_modes"],"properties":{"kind":{"const":"speed_reduction"},"reduction":{"oneOf":[{"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"flat_feet"},"value":{"type":"integer","minimum":1}}},{"type":"object","additionalProperties":false,"required":["kind","numerator","denominator"],"properties":{"kind":{"const":"fraction"},"numerator":{"type":"integer","minimum":1},"denominator":{"type":"integer","minimum":1}}},{"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"terrain_multiplier"},"value":{"type":"number","exclusiveMinimum":1}}}]},"movement_modes":{"type":"array","items":{"$ref":"#/$defs/controlMovementModeV2"},"minItems":1,"uniqueItems":true}}},
         {"type":"object","additionalProperties":false,"required":["kind","movement_modes"],"properties":{"kind":{"const":"speed_zero"},"movement_modes":{"type":"array","items":{"$ref":"#/$defs/controlMovementModeV2"},"minItems":1,"uniqueItems":true}}},
         {"type":"object","additionalProperties":false,"required":["kind","scope"],"properties":{"kind":{"const":"attack_disadvantage"},"scope":{"enum":["next_attack","all_attacks"]},"count":{"type":"integer","minimum":1}}},
         {"type":"object","additionalProperties":false,"required":["kind","scope"],"properties":{"kind":{"const":"reaction_denial"},"scope":{"const":"all_reactions"}}},
         {"type":"object","additionalProperties":false,"required":["kind","movement_modes"],"properties":{"kind":{"const":"movement_option_denial"},"movement_modes":{"type":"array","items":{"$ref":"#/$defs/controlMovementModeV2"},"minItems":1,"uniqueItems":true}}},
-        {"type":"object","additionalProperties":false,"required":["kind","target","value"],"properties":{"kind":{"const":"numerical_modifier"},"target":{"$ref":"#/$defs/id"},"value":{"type":"number"}}}
+        {"type":"object","additionalProperties":false,"required":["kind","target","value"],"properties":{"kind":{"const":"numerical_modifier"},"target":{"const":"armor_class"},"value":{"type":"number","not":{"const":0}}}}
       ]
     },
     "controlComponentV2": {
@@ -143,28 +143,46 @@
     },
     "controlAreaV2": {
       "type":"object","additionalProperties":false,"required":["area_id","shape","origin","persistent","triggers","exit_behavior"],
-      "properties":{"area_id":{"$ref":"#/$defs/id"},"shape":{"enum":["sphere","cylinder","cone","line"]},"origin":{"enum":["controller","primary_target","selected_point","departure_or_arrival"]},"radius_feet":{"type":"integer","minimum":1},"height_feet":{"type":"integer","minimum":1},"length_feet":{"type":"integer","minimum":1},"width_feet":{"type":"integer","minimum":1},"persistent":{"type":"boolean"},"triggers":{"type":"array","items":{"$ref":"#/$defs/controlEventV2"},"minItems":1,"uniqueItems":true},"exit_behavior":{"enum":["ends_area_effects","none"]}}
+      "properties":{
+        "area_id":{"$ref":"#/$defs/id"},"shape":{"enum":["sphere","cylinder","cone","line"]},"origin":{"enum":["controller","primary_target","selected_point","departure_or_arrival"]},
+        "radius_feet":{"type":"integer","minimum":1},"height_feet":{"type":"integer","minimum":1},"length_feet":{"type":"integer","minimum":1},"width_feet":{"type":"integer","minimum":1},
+        "persistent":{"type":"boolean"},"triggers":{"type":"array","items":{"$ref":"#/$defs/controlEventV2"},"minItems":1,"uniqueItems":true},"exit_behavior":{"enum":["ends_area_effects","none"]},
+        "entry_policy":{"type":"object","additionalProperties":false,"required":["frequency","moved_area_counts_as_entry"],"properties":{"frequency":{"const":"once_per_turn"},"moved_area_counts_as_entry":{"type":"boolean"}}},
+        "movement":{"oneOf":[{"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"const":"stationary"}}},{"type":"object","additionalProperties":false,"required":["kind","controller_action","distance_feet"],"properties":{"kind":{"const":"controller_reposition"},"controller_action":{"const":"bonus_action"},"distance_feet":{"type":"integer","minimum":1}}}]}
+      },
+      "oneOf":[
+        {"required":["entry_policy","movement"],"properties":{"persistent":{"const":true},"entry_policy":{},"movement":{}}},
+        {"properties":{"persistent":{"const":false},"entry_policy":false,"movement":false}}
+      ]
     },
     "controlTargetCountV2": {
       "oneOf":[
         {"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"enum":["fixed","up_to"]},"value":{"type":"integer","minimum":1}}},
         {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"enum":["proficiency_bonus","cluster_remainder"]}}},
-        {"type":"object","additionalProperties":false,"required":["kind","slots","size_costs"],"properties":{"kind":{"const":"weighted_slots"},"slots":{"type":"integer","minimum":1},"size_costs":{"type":"object","minProperties":1,"additionalProperties":{"type":"integer","minimum":1}}}}
+        {"type":"object","additionalProperties":false,"required":["kind","slots","size_costs"],"properties":{"kind":{"const":"weighted_slots"},"slots":{"type":"integer","minimum":1},"size_costs":{"type":"object","minProperties":1,"additionalProperties":false,"properties":{"tiny":{"type":"integer","minimum":1},"small":{"type":"integer","minimum":1},"medium":{"type":"integer","minimum":1},"large":{"type":"integer","minimum":1}}}}}
+      ]
+    },
+    "controlTargetRestrictionV2": {
+      "oneOf":[
+        {"type":"object","additionalProperties":false,"required":["kind","requirement"],"properties":{"kind":{"const":"visibility"},"requirement":{"const":"controller_can_see"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","size"],"properties":{"kind":{"const":"maximum_size"},"size":{"const":"large_or_smaller"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","required"],"properties":{"kind":{"const":"unique_targets"},"required":{"const":true}}},
+        {"type":"object","additionalProperties":false,"required":["kind","required"],"properties":{"kind":{"const":"excludes_primary_target"},"required":{"const":true}}}
       ]
     },
     "controlTargetSelectorV2": {
       "type":"object","additionalProperties":false,"required":["selector_id","role","count","range","restrictions","gate_scope"],
-      "properties":{"selector_id":{"$ref":"#/$defs/id"},"role":{"enum":["primary","secondary","all"]},"count":{"$ref":"#/$defs/controlTargetCountV2"},"range":{"type":"object","additionalProperties":false,"required":["feet","origin"],"properties":{"feet":{"type":"integer","minimum":0},"origin":{"enum":["controller","primary_target","selected_point","departure_or_arrival"]}}},"restrictions":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"$ref":"#/$defs/id"},"value":{"type":"string","minLength":1}}}},"gate_scope":{"enum":["independent_per_target","shared"]},"area":{"$ref":"#/$defs/controlAreaV2"}}
+      "properties":{"selector_id":{"$ref":"#/$defs/id"},"role":{"enum":["primary","secondary","all"]},"count":{"$ref":"#/$defs/controlTargetCountV2"},"range":{"type":"object","additionalProperties":false,"required":["feet","origin"],"properties":{"feet":{"type":"integer","minimum":0},"origin":{"enum":["controller","primary_target","selected_point","departure_or_arrival"]}}},"restrictions":{"type":"array","items":{"$ref":"#/$defs/controlTargetRestrictionV2"}},"gate_scope":{"enum":["independent_per_target","shared"]},"area":{"$ref":"#/$defs/controlAreaV2"}}
     },
     "controlBranchV2": {
-      "type":"object","additionalProperties":false,"required":["branch_id","outcome","applies","replaces","terminates","refreshes"],
-      "properties":{"branch_id":{"$ref":"#/$defs/id"},"outcome":{"enum":["attack_hit","attack_miss","save_success","save_failure","no_save","other"]},"applies":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true},"replaces":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true},"terminates":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true},"refreshes":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true}}
+      "type":"object","additionalProperties":false,"required":["branch_id","outcome","applies","replaces","terminates","refreshes","next_gate_ids"],
+      "properties":{"branch_id":{"$ref":"#/$defs/id"},"outcome":{"enum":["attack_hit","attack_miss","save_success","save_failure","no_save","other"]},"applies":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true},"replaces":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true},"terminates":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true},"refreshes":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true},"next_gate_ids":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true}}
     },
     "controlResolutionV2": {
       "type":"object","additionalProperties":false,"required":["gate_id","selector_ids","trigger","gate_scope","resolution"],
       "properties":{"gate_id":{"$ref":"#/$defs/id"},"selector_ids":{"type":"array","items":{"$ref":"#/$defs/id"},"minItems":1,"uniqueItems":true},"trigger":{"$ref":"#/$defs/controlEventV2"},"gate_scope":{"enum":["independent_per_target","shared"]},"resolution":{"oneOf":[
         {"type":"object","additionalProperties":false,"required":["kind","branches"],"properties":{"kind":{"const":"attack_roll"},"branches":{"type":"array","items":{"$ref":"#/$defs/controlBranchV2"},"minItems":1}}},
-        {"type":"object","additionalProperties":false,"required":["kind","ability","branches"],"properties":{"kind":{"const":"saving_throw"},"ability":{"enum":["strength","constitution","dexterity","intelligence","charisma","discipline_signature"]},"branches":{"type":"array","items":{"$ref":"#/$defs/controlBranchV2"},"minItems":1}}},
+        {"type":"object","additionalProperties":false,"required":["kind","ability","branches"],"properties":{"kind":{"const":"saving_throw"},"ability":{"enum":["strength","constitution","dexterity","intelligence","wisdom","charisma","discipline_signature"]},"branches":{"type":"array","items":{"$ref":"#/$defs/controlBranchV2"},"minItems":1}}},
         {"type":"object","additionalProperties":false,"required":["kind","branches"],"properties":{"kind":{"const":"no_save"},"branches":{"type":"array","items":{"$ref":"#/$defs/controlBranchV2"},"minItems":1}}},
         {"type":"object","additionalProperties":false,"required":["kind","branches"],"properties":{"kind":{"const":"other"},"branches":{"type":"array","items":{"$ref":"#/$defs/controlBranchV2"},"minItems":1}}}
       ]}}
@@ -176,13 +194,14 @@
       ]
     },
     "controlTierModelV2": {
-      "type":"object","additionalProperties":false,"required":["effect_id","inheritance","policy","target_selectors","components","resolutions","concentration","relationships"],
+      "type":"object","additionalProperties":false,"required":["effect_id","inheritance","policy","target_selectors","components","root_gate_ids","resolutions","concentration","relationships"],
       "properties":{
         "effect_id":{"$ref":"#/$defs/id"},
         "inheritance":{"oneOf":[{"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"const":"none"}}},{"type":"object","additionalProperties":false,"required":["kind","source_tier"],"properties":{"kind":{"const":"resolved"},"source_tier":{"type":"integer","minimum":0,"maximum":2}}}]},
         "policy":{"type":"object","additionalProperties":false,"required":["activation","declaration","delivery","psi_cost","overload_tier","blood_tax","repeatability","mastery"],"properties":{"activation":{"enum":["action","bonus_action","reaction","on_hit","passive"]},"declaration":{"$ref":"#/$defs/controlEventV2"},"delivery":{"enum":["attack_rider","standalone"]},"psi_cost":{"type":"integer","minimum":0},"overload_tier":{"type":"integer","minimum":0,"maximum":2},"blood_tax":{"enum":["none","tier_formula"]},"repeatability":{"enum":["unlimited","once_per_attack_action","once_per_turn","limited_use"]},"mastery":{"enum":["stacks","replaces_on_declaration","not_applicable"]}}},
         "target_selectors":{"type":"array","items":{"$ref":"#/$defs/controlTargetSelectorV2"},"minItems":1},
         "components":{"type":"array","items":{"$ref":"#/$defs/controlComponentV2"},"minItems":1},
+        "root_gate_ids":{"type":"array","items":{"$ref":"#/$defs/id"},"minItems":1,"uniqueItems":true},
         "resolutions":{"type":"array","items":{"$ref":"#/$defs/controlResolutionV2"},"minItems":1},
         "concentration":{"$ref":"#/$defs/controlConcentrationV2"},
         "relationships":{"type":"object","additionalProperties":false,"required":["replacement_groups","dominance"],"properties":{"replacement_groups":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["group_id","component_ids"],"properties":{"group_id":{"$ref":"#/$defs/id"},"component_ids":{"type":"array","items":{"$ref":"#/$defs/id"},"minItems":2,"uniqueItems":true}}}},"dominance":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["dominant_component_id","suppressed_component_ids"],"properties":{"dominant_component_id":{"$ref":"#/$defs/id"},"suppressed_component_ids":{"type":"array","items":{"$ref":"#/$defs/id"},"minItems":1,"uniqueItems":true}}}}}}

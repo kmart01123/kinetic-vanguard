@@ -527,7 +527,7 @@ calculator:
           component:
             component_id: mastery_push_forced_movement
             target_selector_ids: [manifested_strike_large_or_smaller_target]
-            magnitude: {kind: forced_movement, distance_feet: 10, distance_mode: up_to, movement_mode: push, direction: straight_away_from_controller, path: legal_destination}
+            magnitude: {kind: forced_movement, distance_feet: 10, distance_mode: up_to, movement_mode: push, direction: straight_away_from_controller, destination: legal_destination}
             duration: {kind: instantaneous}
             cadence: {apply: [hit], repeat: [], end: [instantaneous_resolution]}
             stacking: {key: mastery_push_forced_movement, mode: independent, refresh: none, dominates_component_ids: []}
@@ -585,10 +585,7 @@ calculator:
                 role: all
                 count: {kind: cluster_remainder}
                 range: {feet: 60, origin: controller}
-                restrictions:
-                  - {kind: entry_frequency, value: once_per_turn}
-                  - {kind: moved_area_does_not_count_as_entry, value: "true"}
-                  - {kind: controller_bonus_action_area_movement_feet, value: "15"}
+                restrictions: []
                 gate_scope: independent_per_target
                 area:
                   area_id: ball_lightning_sphere
@@ -596,6 +593,8 @@ calculator:
                   origin: selected_point
                   radius_feet: 30
                   persistent: true
+                  entry_policy: {frequency: once_per_turn, moved_area_counts_as_entry: false}
+                  movement: {kind: controller_reposition, controller_action: bonus_action, distance_feet: 15}
                   triggers: [entry, start_turn]
                   exit_behavior: ends_area_effects
             components:
@@ -611,6 +610,7 @@ calculator:
                 duration: {kind: while_in_area, area_id: ball_lightning_sphere}
                 cadence: {apply: [entry, start_turn], repeat: [entry, start_turn], end: [exit]}
                 stacking: {key: ball_lightning_attack_disadvantage, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+            root_gate_ids: [ball_lightning_entry_save, ball_lightning_start_turn_save]
             resolutions:
               - gate_id: ball_lightning_entry_save
                 selector_ids: [ball_lightning_area_targets]
@@ -620,8 +620,8 @@ calculator:
                   kind: saving_throw
                   ability: charisma
                   branches:
-                    - {branch_id: ball_lightning_entry_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: ball_lightning_entry_failure, outcome: save_failure, applies: [ball_lightning_reaction_denial, ball_lightning_attack_disadvantage], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: ball_lightning_entry_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: ball_lightning_entry_failure, outcome: save_failure, applies: [ball_lightning_reaction_denial, ball_lightning_attack_disadvantage], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
               - gate_id: ball_lightning_start_turn_save
                 selector_ids: [ball_lightning_area_targets]
                 trigger: start_turn
@@ -630,8 +630,8 @@ calculator:
                   kind: saving_throw
                   ability: charisma
                   branches:
-                    - {branch_id: ball_lightning_start_turn_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: ball_lightning_start_turn_failure, outcome: save_failure, applies: [ball_lightning_reaction_denial, ball_lightning_attack_disadvantage], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: ball_lightning_start_turn_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: ball_lightning_start_turn_failure, outcome: save_failure, applies: [ball_lightning_reaction_denial, ball_lightning_attack_disadvantage], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
             concentration:
               kind: required
               startup: on_resolution
@@ -668,14 +668,14 @@ calculator:
                 count: {kind: fixed, value: 1}
                 range: {feet: 60, origin: controller}
                 restrictions:
-                  - {kind: visibility, value: controller_can_see}
+                  - {kind: visibility, requirement: controller_can_see}
                 gate_scope: independent_per_target
               - selector_id: forked_lightning_secondary
                 role: secondary
                 count: {kind: up_to, value: 5}
                 range: {feet: 30, origin: primary_target}
                 restrictions:
-                  - {kind: excludes_primary_target, value: "true"}
+                  - {kind: excludes_primary_target, required: true}
                 gate_scope: independent_per_target
             components:
               - component_id: forked_lightning_reaction_denial
@@ -696,6 +696,7 @@ calculator:
                 duration: {kind: relative, owner: controller, anchor: start_turn, offset_turns: 1}
                 cadence: {apply: [save], repeat: [], end: [start_turn]}
                 stacking: {key: forked_lightning_primary_speed_zero, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+            root_gate_ids: [forked_lightning_independent_saves]
             resolutions:
               - gate_id: forked_lightning_independent_saves
                 selector_ids: [forked_lightning_primary, forked_lightning_secondary]
@@ -705,8 +706,8 @@ calculator:
                   kind: saving_throw
                   ability: charisma
                   branches:
-                    - {branch_id: forked_lightning_save_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: forked_lightning_save_failure, outcome: save_failure, applies: [forked_lightning_reaction_denial, forked_lightning_attack_disadvantage, forked_lightning_primary_speed_zero], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: forked_lightning_save_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: forked_lightning_save_failure, outcome: save_failure, applies: [forked_lightning_reaction_denial, forked_lightning_attack_disadvantage, forked_lightning_primary_speed_zero], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
             concentration: {kind: none}
             relationships: {replacement_groups: [], dominance: []}
         - {entity_id: frozen_ground, tier: 0, disposition: unsupported_error, reason: pending_authority_population}
@@ -728,6 +729,7 @@ calculator:
                 duration: {kind: relative, owner: controller, anchor: end_turn, offset_turns: 1}
                 cadence: {apply: [hit], repeat: [], end: []}
                 stacking: {key: glacial_spike_speed_reduction, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+            root_gate_ids: [glacial_spike_t0_attack]
             resolutions:
               - gate_id: glacial_spike_t0_attack
                 selector_ids: [glacial_spike_target]
@@ -736,8 +738,8 @@ calculator:
                 resolution:
                   kind: attack_roll
                   branches:
-                    - {branch_id: glacial_spike_t0_hit, outcome: attack_hit, applies: [glacial_spike_speed_reduction], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: glacial_spike_t0_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: glacial_spike_t0_hit, outcome: attack_hit, applies: [glacial_spike_speed_reduction], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: glacial_spike_t0_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
             concentration: {kind: none}
             relationships: {replacement_groups: [], dominance: []}
         - entity_id: glacial_spike
@@ -762,6 +764,7 @@ calculator:
                 duration: {kind: relative, owner: controller, anchor: end_turn, offset_turns: 1}
                 cadence: {apply: [save], repeat: [], end: []}
                 stacking: {key: glacial_spike_speed_zero, mode: dominates, refresh: duration, replacement_group: glacial_spike_speed_state, dominates_component_ids: [glacial_spike_speed_reduction]}
+            root_gate_ids: [glacial_spike_t1_attack]
             resolutions:
               - gate_id: glacial_spike_t1_attack
                 selector_ids: [glacial_spike_target]
@@ -770,8 +773,8 @@ calculator:
                 resolution:
                   kind: attack_roll
                   branches:
-                    - {branch_id: glacial_spike_t1_hit, outcome: attack_hit, applies: [glacial_spike_speed_reduction], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: glacial_spike_t1_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: glacial_spike_t1_hit, outcome: attack_hit, applies: [glacial_spike_speed_reduction], replaces: [], terminates: [], refreshes: [], next_gate_ids: [glacial_spike_t1_save]}
+                    - {branch_id: glacial_spike_t1_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
               - gate_id: glacial_spike_t1_save
                 selector_ids: [glacial_spike_target]
                 trigger: save
@@ -780,8 +783,8 @@ calculator:
                   kind: saving_throw
                   ability: constitution
                   branches:
-                    - {branch_id: glacial_spike_t1_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [glacial_spike_speed_reduction]}
-                    - {branch_id: glacial_spike_t1_failure, outcome: save_failure, applies: [glacial_spike_speed_zero], replaces: [glacial_spike_speed_reduction], terminates: [], refreshes: []}
+                    - {branch_id: glacial_spike_t1_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [glacial_spike_speed_reduction], next_gate_ids: []}
+                    - {branch_id: glacial_spike_t1_failure, outcome: save_failure, applies: [glacial_spike_speed_zero], replaces: [glacial_spike_speed_reduction], terminates: [], refreshes: [], next_gate_ids: []}
             concentration: {kind: none}
             relationships:
               replacement_groups:
@@ -816,6 +819,7 @@ calculator:
                 duration: {kind: relative, owner: controller, anchor: end_turn, offset_turns: 1}
                 cadence: {apply: [save], repeat: [], end: []}
                 stacking: {key: glacial_spike_restrained, mode: dominates, refresh: duration, replacement_group: glacial_spike_speed_state, dominates_component_ids: [glacial_spike_speed_zero, glacial_spike_speed_reduction]}
+            root_gate_ids: [glacial_spike_t2_attack]
             resolutions:
               - gate_id: glacial_spike_t2_attack
                 selector_ids: [glacial_spike_target]
@@ -824,8 +828,8 @@ calculator:
                 resolution:
                   kind: attack_roll
                   branches:
-                    - {branch_id: glacial_spike_t2_hit, outcome: attack_hit, applies: [glacial_spike_speed_reduction], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: glacial_spike_t2_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: glacial_spike_t2_hit, outcome: attack_hit, applies: [glacial_spike_speed_reduction], replaces: [], terminates: [], refreshes: [], next_gate_ids: [glacial_spike_t2_save]}
+                    - {branch_id: glacial_spike_t2_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
               - gate_id: glacial_spike_t2_save
                 selector_ids: [glacial_spike_target]
                 trigger: save
@@ -834,8 +838,8 @@ calculator:
                   kind: saving_throw
                   ability: constitution
                   branches:
-                    - {branch_id: glacial_spike_t2_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [glacial_spike_speed_reduction]}
-                    - {branch_id: glacial_spike_t2_failure, outcome: save_failure, applies: [glacial_spike_restrained], replaces: [glacial_spike_speed_zero, glacial_spike_speed_reduction], terminates: [], refreshes: []}
+                    - {branch_id: glacial_spike_t2_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [glacial_spike_speed_reduction], next_gate_ids: []}
+                    - {branch_id: glacial_spike_t2_failure, outcome: save_failure, applies: [glacial_spike_restrained], replaces: [glacial_spike_speed_zero, glacial_spike_speed_reduction], terminates: [], refreshes: [], next_gate_ids: []}
             concentration: {kind: none}
             relationships:
               replacement_groups:
@@ -859,14 +863,14 @@ calculator:
                   size_costs: {tiny: 1, small: 1, medium: 1, large: 2}
                 range: {feet: 60, origin: controller}
                 restrictions:
-                  - {kind: visibility, value: controller_can_see}
-                  - {kind: maximum_size, value: large}
-                  - {kind: unique_target, value: "true"}
+                  - {kind: visibility, requirement: controller_can_see}
+                  - {kind: maximum_size, size: large_or_smaller}
+                  - {kind: unique_targets, required: true}
                 gate_scope: independent_per_target
             components:
               - component_id: mass_levitation_initial_lift
                 target_selector_ids: [mass_levitation_targets]
-                magnitude: {kind: forced_movement, distance_feet: 30, distance_mode: exact, movement_mode: lift, direction: vertical_up, path: legal_unoccupied_destination}
+                magnitude: {kind: forced_movement, distance_feet: 30, distance_mode: exact, movement_mode: lift, direction: vertical_up, destination: legal_unoccupied_space}
                 duration: {kind: instantaneous}
                 cadence: {apply: [save], repeat: [], end: [instantaneous_resolution]}
                 stacking: {key: mass_levitation_initial_lift, mode: independent, refresh: none, dominates_component_ids: []}
@@ -876,6 +880,7 @@ calculator:
                 duration: {kind: concentration, maximum_value: 1, unit: minute}
                 cadence: {apply: [save], repeat: [repeat_save], end: [repeat_save]}
                 stacking: {key: mass_levitation_restrained, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+            root_gate_ids: [mass_levitation_initial_saves, mass_levitation_repeat_saves]
             resolutions:
               - gate_id: mass_levitation_initial_saves
                 selector_ids: [mass_levitation_targets]
@@ -885,8 +890,8 @@ calculator:
                   kind: saving_throw
                   ability: strength
                   branches:
-                    - {branch_id: mass_levitation_initial_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: mass_levitation_initial_failure, outcome: save_failure, applies: [mass_levitation_initial_lift, mass_levitation_restrained], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: mass_levitation_initial_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: mass_levitation_initial_failure, outcome: save_failure, applies: [mass_levitation_initial_lift, mass_levitation_restrained], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
               - gate_id: mass_levitation_repeat_saves
                 selector_ids: [mass_levitation_targets]
                 trigger: repeat_save
@@ -895,8 +900,8 @@ calculator:
                   kind: saving_throw
                   ability: strength
                   branches:
-                    - {branch_id: mass_levitation_repeat_success, outcome: save_success, applies: [], replaces: [], terminates: [mass_levitation_restrained], refreshes: []}
-                    - {branch_id: mass_levitation_repeat_failure, outcome: save_failure, applies: [], replaces: [], terminates: [], refreshes: [mass_levitation_restrained]}
+                    - {branch_id: mass_levitation_repeat_success, outcome: save_success, applies: [], replaces: [], terminates: [mass_levitation_restrained], refreshes: [], next_gate_ids: []}
+                    - {branch_id: mass_levitation_repeat_failure, outcome: save_failure, applies: [], replaces: [], terminates: [], refreshes: [mass_levitation_restrained], next_gate_ids: []}
             concentration:
               kind: required
               startup: on_resolution
@@ -928,10 +933,11 @@ calculator:
             components:
               - component_id: telekinetic_shove_forced_movement
                 target_selector_ids: [telekinetic_shove_target]
-                magnitude: {kind: forced_movement, distance_feet: 10, distance_mode: exact, movement_mode: push, direction: horizontal_direction_chosen_by_controller, path: legal_destination}
+                magnitude: {kind: forced_movement, distance_feet: 10, distance_mode: exact, movement_mode: push, direction: controller_choice, destination: legal_destination}
                 duration: {kind: instantaneous}
                 cadence: {apply: [save], repeat: [], end: [instantaneous_resolution]}
                 stacking: {key: telekinetic_shove_forced_movement, mode: independent, refresh: none, dominates_component_ids: []}
+            root_gate_ids: [telekinetic_shove_t0_attack]
             resolutions:
               - gate_id: telekinetic_shove_t0_attack
                 selector_ids: [telekinetic_shove_target]
@@ -940,8 +946,8 @@ calculator:
                 resolution:
                   kind: attack_roll
                   branches:
-                    - {branch_id: telekinetic_shove_t0_hit, outcome: attack_hit, applies: [], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: telekinetic_shove_t0_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: telekinetic_shove_t0_hit, outcome: attack_hit, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: [telekinetic_shove_t0_save]}
+                    - {branch_id: telekinetic_shove_t0_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
               - gate_id: telekinetic_shove_t0_save
                 selector_ids: [telekinetic_shove_target]
                 trigger: save
@@ -950,8 +956,8 @@ calculator:
                   kind: saving_throw
                   ability: strength
                   branches:
-                    - {branch_id: telekinetic_shove_t0_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: telekinetic_shove_t0_failure, outcome: save_failure, applies: [telekinetic_shove_forced_movement], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: telekinetic_shove_t0_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: telekinetic_shove_t0_failure, outcome: save_failure, applies: [telekinetic_shove_forced_movement], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
             concentration: {kind: none}
             relationships: {replacement_groups: [], dominance: []}
         - entity_id: telekinetic_shove
@@ -971,10 +977,11 @@ calculator:
             components:
               - component_id: telekinetic_shove_forced_movement
                 target_selector_ids: [telekinetic_shove_target]
-                magnitude: {kind: forced_movement, distance_feet: 15, distance_mode: exact, movement_mode: push, direction: horizontal_direction_chosen_by_controller, path: legal_destination}
+                magnitude: {kind: forced_movement, distance_feet: 15, distance_mode: exact, movement_mode: push, direction: controller_choice, destination: legal_destination}
                 duration: {kind: instantaneous}
                 cadence: {apply: [save], repeat: [], end: [instantaneous_resolution]}
                 stacking: {key: telekinetic_shove_forced_movement, mode: independent, refresh: none, dominates_component_ids: []}
+            root_gate_ids: [telekinetic_shove_t1_attack]
             resolutions:
               - gate_id: telekinetic_shove_t1_attack
                 selector_ids: [telekinetic_shove_target]
@@ -983,8 +990,8 @@ calculator:
                 resolution:
                   kind: attack_roll
                   branches:
-                    - {branch_id: telekinetic_shove_t1_hit, outcome: attack_hit, applies: [], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: telekinetic_shove_t1_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: telekinetic_shove_t1_hit, outcome: attack_hit, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: [telekinetic_shove_t1_save]}
+                    - {branch_id: telekinetic_shove_t1_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
               - gate_id: telekinetic_shove_t1_save
                 selector_ids: [telekinetic_shove_target]
                 trigger: save
@@ -993,8 +1000,8 @@ calculator:
                   kind: saving_throw
                   ability: strength
                   branches:
-                    - {branch_id: telekinetic_shove_t1_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: telekinetic_shove_t1_failure, outcome: save_failure, applies: [telekinetic_shove_forced_movement], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: telekinetic_shove_t1_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: telekinetic_shove_t1_failure, outcome: save_failure, applies: [telekinetic_shove_forced_movement], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
             concentration: {kind: none}
             relationships: {replacement_groups: [], dominance: []}
         - entity_id: telekinetic_shove
@@ -1014,7 +1021,7 @@ calculator:
             components:
               - component_id: telekinetic_shove_forced_movement
                 target_selector_ids: [telekinetic_shove_target]
-                magnitude: {kind: forced_movement, distance_feet: 20, distance_mode: exact, movement_mode: push, direction: horizontal_direction_chosen_by_controller, path: legal_destination}
+                magnitude: {kind: forced_movement, distance_feet: 20, distance_mode: exact, movement_mode: push, direction: controller_choice, destination: legal_destination}
                 duration: {kind: instantaneous}
                 cadence: {apply: [save], repeat: [], end: [instantaneous_resolution]}
                 stacking: {key: telekinetic_shove_forced_movement, mode: independent, refresh: none, dominates_component_ids: []}
@@ -1024,6 +1031,7 @@ calculator:
                 duration: {kind: relative, owner: controller, anchor: end_turn, offset_turns: 1}
                 cadence: {apply: [save], repeat: [], end: []}
                 stacking: {key: telekinetic_shove_speed_zero, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+            root_gate_ids: [telekinetic_shove_t2_attack]
             resolutions:
               - gate_id: telekinetic_shove_t2_attack
                 selector_ids: [telekinetic_shove_target]
@@ -1032,8 +1040,8 @@ calculator:
                 resolution:
                   kind: attack_roll
                   branches:
-                    - {branch_id: telekinetic_shove_t2_hit, outcome: attack_hit, applies: [], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: telekinetic_shove_t2_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: telekinetic_shove_t2_hit, outcome: attack_hit, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: [telekinetic_shove_t2_save]}
+                    - {branch_id: telekinetic_shove_t2_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
               - gate_id: telekinetic_shove_t2_save
                 selector_ids: [telekinetic_shove_target]
                 trigger: save
@@ -1042,8 +1050,8 @@ calculator:
                   kind: saving_throw
                   ability: strength
                   branches:
-                    - {branch_id: telekinetic_shove_t2_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: []}
-                    - {branch_id: telekinetic_shove_t2_failure, outcome: save_failure, applies: [telekinetic_shove_forced_movement, telekinetic_shove_speed_zero], replaces: [], terminates: [], refreshes: []}
+                    - {branch_id: telekinetic_shove_t2_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: telekinetic_shove_t2_failure, outcome: save_failure, applies: [telekinetic_shove_forced_movement, telekinetic_shove_speed_zero], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
             concentration: {kind: none}
             relationships: {replacement_groups: [], dominance: []}
         - {entity_id: telekinetic_slam, tier: 0, disposition: unsupported_error, reason: pending_authority_population}
