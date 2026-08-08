@@ -100,6 +100,7 @@
       "oneOf":[
         {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"enum":["declaration","activation","hit","save","damage_context","concentration_end","instantaneous_resolution"]}}},
         {"type":"object","additionalProperties":false,"required":["kind","owner","turn_anchor"],"properties":{"kind":{"const":"turn"},"owner":{"enum":["controller","target"]},"turn_anchor":{"enum":["start","end","during"]}}},
+        {"type":"object","additionalProperties":false,"required":["kind","owner","turn_anchor"],"properties":{"kind":{"const":"turn"},"owner":{"const":"triggering_turn"},"turn_anchor":{"const":"end"}}},
         {"type":"object","additionalProperties":false,"required":["kind","owner","turn_anchor"],"properties":{"kind":{"const":"entry"},"owner":{"const":"any_creature"},"turn_anchor":{"const":"during_turn"}}},
         {"type":"object","additionalProperties":false,"required":["kind","owner","turn_anchor"],"properties":{"kind":{"const":"exit"},"owner":{"const":"target"},"turn_anchor":{"const":"during_turn"}}}
       ]
@@ -109,6 +110,7 @@
       "oneOf":[
         {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"const":"instantaneous"}}},
         {"type":"object","additionalProperties":false,"required":["kind","owner","anchor","offset_turns"],"properties":{"kind":{"const":"relative"},"owner":{"enum":["controller","target"]},"anchor":{"enum":["start_turn","end_turn"]},"offset_turns":{"type":"integer","minimum":0}}},
+        {"type":"object","additionalProperties":false,"required":["kind","owner","anchor","offset_turns"],"properties":{"kind":{"const":"relative"},"owner":{"const":"triggering_turn"},"anchor":{"const":"end_turn"},"offset_turns":{"const":0}}},
         {"type":"object","additionalProperties":false,"required":["kind","area_id"],"properties":{"kind":{"const":"while_in_area"},"area_id":{"$ref":"#/$defs/id"}}},
         {"type":"object","additionalProperties":false,"required":["kind","maximum_value","unit"],"properties":{"kind":{"const":"concentration"},"maximum_value":{"type":"integer","minimum":1},"unit":{"enum":["round","minute","hour"]}}}
       ]

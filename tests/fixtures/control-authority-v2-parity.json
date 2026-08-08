@@ -2408,6 +2408,71 @@
       "diagnostic": "control_v2.branch"
     },
     {
+      "id": "frozen_ground_rejects_target_owned_current_turn",
+      "target": {
+        "kind": "model",
+        "effect_id": "frozen_ground_t0_control"
+      },
+      "expected_valid": false,
+      "operations": [
+        {
+          "op": "set",
+          "path": [
+            "components",
+            1,
+            "duration",
+            "owner"
+          ],
+          "value": "target"
+        }
+      ],
+      "diagnostic": "control_v2.timing"
+    },
+    {
+      "id": "triggering_turn_duration_requires_end_turn_zero",
+      "target": {
+        "kind": "model",
+        "effect_id": "frozen_ground_t0_control"
+      },
+      "expected_valid": false,
+      "operations": [
+        {
+          "op": "set",
+          "path": [
+            "components",
+            1,
+            "duration",
+            "offset_turns"
+          ],
+          "value": 1
+        }
+      ],
+      "diagnostic": "control_v2.timing"
+    },
+    {
+      "id": "frozen_ground_rejects_target_owned_expiry_cadence",
+      "target": {
+        "kind": "model",
+        "effect_id": "frozen_ground_t0_control"
+      },
+      "expected_valid": false,
+      "operations": [
+        {
+          "op": "set",
+          "path": [
+            "components",
+            1,
+            "cadence",
+            "end",
+            0,
+            "owner"
+          ],
+          "value": "target"
+        }
+      ],
+      "diagnostic": "control_v2.timing"
+    },
+    {
       "id": "control_targets_missing_row",
       "target": {
         "kind": "control_targets"
@@ -2499,6 +2564,29 @@
           ],
           "value": {
             "sense": "darkvision",
+            "range_ft": 60,
+            "limitation": null
+          }
+        }
+      ]
+    },
+    {
+      "id": "control_targets_truesight_is_visual",
+      "target": {
+        "kind": "control_targets"
+      },
+      "expected_valid": false,
+      "operations": [
+        {
+          "op": "append",
+          "path": [
+            "supplement",
+            "targets",
+            0,
+            "nonvisual_senses"
+          ],
+          "value": {
+            "sense": "truesight",
             "range_ft": 60,
             "limitation": null
           }

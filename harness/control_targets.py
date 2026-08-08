@@ -12,7 +12,7 @@ from harness.model import DEFAULT_ROSTER, Target, file_sha256, load_targets
 HARNESS_ROOT = Path(__file__).resolve().parent
 DEFAULT_CONTROL_SUPPLEMENT = HARNESS_ROOT / "data" / "srd_control_targets.json"
 DEFAULT_CONTROL_PROVENANCE = HARNESS_ROOT / "provenance" / "srd-control-targets.json"
-SUPPORTED_NONVISUAL_SENSES = ("blindsight", "tremorsense", "truesight")
+SUPPORTED_NONVISUAL_SENSES = ("blindsight", "tremorsense")
 EXPECTED_SOURCE = {
     "ruleset": "D&D SRD 5.2.1",
     "official_pdf_url": "https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf",
@@ -23,10 +23,11 @@ EXPECTED_EXTRACTION = {
     "source_location": "Each monster stat block's Speed and Senses lines on the row's source_page",
     "fields": ["walking_speed", "fly_speed", "swim_speed", "climb_speed", "burrow_speed", "hover", "nonvisual_senses"],
     "ordinary_darkvision": "excluded",
+    "truesight": "excluded_as_enhanced_vision",
     "absence": "explicit_null_movement_modes_and_empty_nonvisual_sense_arrays",
     "inference": "none",
     "sense_limitations": "preserve_official_material_limitation_when_present",
-    "modifications": "Selected control-relevant facts, normalized feet to integer fields, lower-cased nonvisual sense names, and represented absence explicitly.",
+    "modifications": "Selected control-relevant movement facts and only Blindsight or Tremorsense facts, normalized feet to integer fields, lower-cased sense names, and represented absence explicitly; Truesight is excluded as enhanced vision.",
 }
 
 

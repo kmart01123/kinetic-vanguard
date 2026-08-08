@@ -173,6 +173,7 @@ export interface DamageHarnessFeatureRule {
 export type ControlEventV2=
   |{kind:"declaration"|"activation"|"hit"|"save"|"damage_context"|"concentration_end"|"instantaneous_resolution"}
   |{kind:"turn";owner:"controller"|"target";turn_anchor:"start"|"end"|"during"}
+  |{kind:"turn";owner:"triggering_turn";turn_anchor:"end"}
   |{kind:"entry";owner:"any_creature";turn_anchor:"during_turn"}
   |{kind:"exit";owner:"target";turn_anchor:"during_turn"};
 export type ControlMovementModeV2="walk"|"fly"|"swim"|"climb"|"burrow";
@@ -181,6 +182,7 @@ export type ControlDispositionV2="modeled"|"excluded_by_profile";
 export type ControlDurationV2=
   |{kind:"instantaneous"}
   |{kind:"relative";owner:"controller"|"target";anchor:"start_turn"|"end_turn";offset_turns:number}
+  |{kind:"relative";owner:"triggering_turn";anchor:"end_turn";offset_turns:0}
   |{kind:"while_in_area";area_id:string}
   |{kind:"concentration";maximum_value:number;unit:"round"|"minute"|"hour"};
 export type ControlMagnitudeV2=

@@ -1,6 +1,6 @@
 # Control Authority v2 population audit
 
-Status: implementation and local validation complete. The final independent 35-row canonical re-audit and test-coverage audit are approved. Exact-head CI evidence is recorded externally in the draft PR and governing issue after push, because embedding a head SHA or run ID in this tracked file would create a new head.
+Status: Implementation self-audit complete; independent review pending.
 
 Canonical basis: KineticVanguard.yaml is the sole mechanics authority. The table below records the complete resolved control semantics for the exact 26 rows that replace the pending authority ledger. Damage values are mentioned only when their ordering gates a control effect; they are not Control Value components.
 
@@ -18,7 +18,7 @@ The YAML, JSON Schema, TypeScript types and validator, TypeScript projection wra
 
 | Extension | Required fail-closed meaning |
 | --- | --- |
-| event_context | Replace ownerless cadence strings with typed events. Turn-relative events identify controller, affected target, or any creature as owner; start or end as anchor; current or next turn as relation; and declaration, hit, save, entry, exit, and instantaneous resolution as non-turn events. |
+| event_context | Replace ownerless cadence strings with typed events. Turn events identify the controller, affected target, or triggering turn; entry events identify any-creature turns. Triggering-turn expiry is fail-closed to the end anchor, while controller and target events retain their typed start, end, or during anchors. Declaration, hit, save, entry, exit, and instantaneous resolution remain explicit event kinds. |
 | save_semantics | Every saving throw states initial, repeat, or recurring role; normal, Advantage, or Disadvantage roll mode; affected-target ownership; exact timing; and independent-per-target or shared resolution. |
 | choice_binding | A choice has an ID, timing, options, and scope. Explosion versus Implosion is chosen once at rider declaration and shared by all affected targets. Phase Step chooses one endpoint, departure or arrival, for the whole burst. |
 | target_choice_and_placement | Distinguish creatures chosen by the controller from every creature in an area. Keep primary and secondary roles, uniqueness, weighted slots, size immunity, and area or endpoint placement separate from target range. |
@@ -35,7 +35,7 @@ The YAML, JSON Schema, TypeScript types and validator, TypeScript projection wra
 - Non-signature riders are limited to once per Attack action. Signature Riders cost 0 Psi and are otherwise repeatable across Manifested Strike attacks; only one rider in an Attack action can be Tier 2.
 - A standalone feature is declared and paid for when activated. The maintained action-economy policy permits one standalone psionic action per turn and no additional standalone psionic action from Action Surge.
 - Tier 0 has no Blood Tax. Tier 1 costs Blood Tax equal to Proficiency Bonus. Tier 2 costs twice Proficiency Bonus in total, replacing rather than adding to the Tier 1 amount.
-- “Controller start-next” means the start of the controller's next turn. “Controller end-next” means the end of the controller's next turn. “Affected current-end” means the end of the affected target's current turn.
+- “Controller start-next” means the start of the controller’s next turn. “Controller end-next” means the end of the controller’s next turn. “Triggering current-end” means the end of the turn in progress when the triggering save resolves: for entry, this can be another creature’s turn or the affected target’s own turn; for a target-start save, it is that target turn.
 - Unless a row states otherwise, a save is rolled by the affected target, uses normal roll mode, and has independent resolution for each selected or exposed target.
 
 ## Exact 26-row deterministic audit
@@ -48,9 +48,9 @@ The YAML, JSON Schema, TypeScript types and validator, TypeScript projection wra
 | arctic_tempest:T0 | Action; standalone | Psi 3; none | Up to three creatures within 60 feet; controller-chosen peers | One target-set choice on activation | Each chosen target makes its own initial normal Constitution save; independent outcomes | Failure: Restrained through controller end-next. Success: no control | None | None | None | None | event_context; save_semantics; target_choice_and_placement |
 | arctic_tempest:T1 | Action; standalone | Psi 3; PB | Same up-to-three chosen targets | Same target-set choice | Same independent initial normal Constitution saves | Complete T0 Restrained package is retained through controller end-next; damage is the only canonical delta | Resolved from T0 with full control retained | None | None | None | event_context; save_semantics; target_choice_and_placement; gate_inheritance |
 | arctic_tempest:T2 | Action; standalone | Psi 3; 2 × PB | Same up-to-three chosen targets | Same target-set choice | Same independent initial normal Constitution saves | Failure: Stunned instead of Restrained through controller end-next. Success: no control | Resolved from T1; Stunned replaces Restrained | None | None | None | event_context; save_semantics; target_choice_and_placement; gate_inheritance |
-| frozen_ground:T0 | Action; standalone | Psi 2; none | Every creature exposed to the area; no creature choice. Placement point within 60 feet is not a target-range limit | Controller selects one point within 60 feet | After activation and area startup, each creature makes a recurring normal Constitution save independently when it first enters on a turn or starts its own turn there. Entry is anchored to any creature's turn; start-turn is anchored to the affected target | Area-wide difficult terrain for the duration. Failed save: Speed 0 through affected current-end. Leaving does not end that timed Speed 0 | None | Required; startup on successful activation before exposure resolution; one slot; replacement; up to 1 minute; canonical termination list | Persistent stationary cylinder; 15-foot radius; 20-foot height; selected-point origin | Area is stationary; no target forced movement | event_context; save_semantics; target_choice_and_placement; area_property; concentration_startup |
-| frozen_ground:T1 | Action; standalone | Psi 2; PB | Same every-creature exposure | Same selected-point placement | Same two recurring independent normal Constitution-save triggers and ownership | Same difficult terrain and failed-save Speed 0 | Resolved from T0 | Same required concentration | Persistent stationary cylinder; radius becomes 25 feet; height remains 20 feet | Stationary | event_context; save_semantics; target_choice_and_placement; area_property; concentration_startup; gate_inheritance |
-| frozen_ground:T2 | Action; standalone | Psi 2; 2 × PB | Same every-creature exposure | Same selected-point placement | Same recurring independent normal Constitution saves | Area-wide difficult terrain remains. Failed save: Restrained through controller end-next replaces the retained T0 Speed 0 from that trigger. Exiting does not prematurely cancel timed Restrained | Resolved from T1; failed-save component replacement only | Same required concentration | Persistent stationary 25-foot-radius, 20-foot-high cylinder | Stationary | event_context; save_semantics; target_choice_and_placement; area_property; concentration_startup; gate_inheritance |
+| frozen_ground:T0 | Action; standalone | Psi 2; none | Every creature exposed to the area; no creature choice. Placement point within 60 feet is not a target-range limit | Controller selects one point within 60 feet | After activation and area startup, each creature makes a recurring normal Constitution save independently when it first enters on a turn or starts its own turn there. Entry is anchored to any creature's turn; start-turn is anchored to the affected target | Area-wide difficult terrain for the duration. Failed save: Speed 0 through triggering current-end. Leaving does not end that timed Speed 0 | None | Required; startup on successful activation before exposure resolution; one slot; replacement; up to 1 minute; canonical termination list | Persistent stationary cylinder; 15-foot radius; 20-foot height; selected-point origin | Area is stationary; no target forced movement | event_context; save_semantics; target_choice_and_placement; area_property; concentration_startup |
+| frozen_ground:T1 | Action; standalone | Psi 2; PB | Same every-creature exposure | Same selected-point placement | Same two recurring independent normal Constitution-save triggers and ownership | Same difficult terrain and failed-save Speed 0 through triggering current-end | Resolved from T0 | Same required concentration | Persistent stationary cylinder; radius becomes 25 feet; height remains 20 feet | Stationary | event_context; save_semantics; target_choice_and_placement; area_property; concentration_startup; gate_inheritance |
+| frozen_ground:T2 | Action; standalone | Psi 2; 2 × PB | Same every-creature exposure | Same selected-point placement | Same recurring independent normal Constitution saves | Area-wide difficult terrain remains. Failed save: Restrained through controller end-next replaces the retained T0 Speed 0 from that trigger; the inherited Speed 0 duration remains triggering current-end. Exiting does not prematurely cancel timed Restrained | Resolved from T1; failed-save component replacement only | Same required concentration | Persistent stationary 25-foot-radius, 20-foot-high cylinder | Stationary | event_context; save_semantics; target_choice_and_placement; area_property; concentration_startup; gate_inheritance |
 | snow_chains:T0 | Pre-roll declaration; on-hit attack rider | Psi 2; none | Struck target; primary | Rider and tier chosen once before roll | Declaration and payment, attack roll, then on hit no-save Speed 0, then one initial normal Constitution save. Miss ends graph after costs. Successful save retains the no-save component | Hit: Speed 0 through controller end-next. Failed save additionally Restrained through controller end-next | None | None | None | None | event_context; save_semantics; outcome_ordering |
 | snow_chains:T1 | Pre-roll declaration; on-hit attack rider | Psi 2; PB | Same struck primary | Same rider declaration | Same ordered hit, no-save component, then initial normal Constitution save | Speed 0 always on hit. Failed save: Restrained through controller end-next plus reaction denial through controller start-next | Resolved from T0; adds failed-save reaction denial | None | None | None | event_context; save_semantics; outcome_ordering; gate_inheritance |
 | snow_chains:T2 | Pre-roll declaration; on-hit attack rider | Psi 2; 2 × PB | Same struck primary | Same rider declaration | Same ordered hit, no-save component, then initial normal Constitution save | Hit always gives Speed 0 through controller end-next. Failure gives reaction denial through controller start-next and Stunned through controller end-next; Stunned replaces Restrained. Success retains Speed 0 only | Resolved from T1; retains Speed 0 and reaction denial, replaces Restrained with Stunned | None | None | None | event_context; save_semantics; outcome_ordering; gate_inheritance |
@@ -133,7 +133,7 @@ Maintained files:
 - harness/data/srd_control_targets.json
 - harness/provenance/srd-control-targets.json
 
-Final supplement SHA-256: ce79647cc2a6ce4a9c5d5a7b84a21b0106e3cc55da2f1da6c45377d1a91a3683. Final provenance SHA-256: 7be56099c66a64beb34f826997039b6ac8806feb523da879ea657edf0ea57b8b. Provenance pins the official SRD 5.2.1 PDF SHA-256 8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87 and row-auditable source pages. All 28 Speed and relevant Senses entries were independently checked against that source; no movement mode, hover status, or retained nonvisual sense was inferred.
+Final supplement SHA-256: f4604bd4b5fc07fdeb0ae65711c69b1fb5d08625bffd2b866f54624bfdb37757. Final provenance SHA-256: d388f2523be4eb50bebf3bfb0e7bb885524ab0445f6eca7b61abd2a57f4942fa. Provenance pins the official SRD 5.2.1 PDF SHA-256 8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87 and row-auditable source pages. All 28 movement entries and retained Blindsight/Tremorsense entries were source checked without inference. Truesight is explicitly excluded as enhanced vision, and ordinary Darkvision remains excluded.
 
 The data supplement joins fail closed to all 28 existing roster rows using the exact typed tuple Level plus Target, with no case folding, whitespace normalization, fuzzy matching, or damage-configuration dependency.
 
@@ -142,7 +142,7 @@ Each supplement row contains only officially sourced control facts:
 - walking Speed;
 - explicit fly, swim, climb, and burrow modes and speeds, with absence represented explicitly;
 - hover status;
-- typed relevant nonvisual senses, range, and any material official limitation; ordinary darkvision is excluded.
+- typed Blindsight and Tremorsense ranges plus any material official limitation; ordinary Darkvision and visual Truesight are excluded.
 
 Validation rejects duplicate, missing, or extra join keys; inferred values; negative, non-integer, or malformed speeds and ranges; hover without a fly mode; unknown movement modes; unknown sense kinds; unknown fields; and nondeterministic row ordering. Serialization is deterministic. The provenance file uses the same pinned official SRD 5.2.1 source and provides row-auditable source identity and location. Both files are added to build/inputs.json.
 
@@ -151,7 +151,7 @@ Readiness remains honestly separated:
 - authority readiness is the 35 / 14 / 0 / 49 ledger and authority benchmark_ready flag;
 - combined control-input readiness additionally requires exact 28-row supplement validation.
 
-No monster tactics, pathfinding, altitude selection, line-of-sight simulation, or behavioral heuristics enter the supplement or loader.
+No monster tactics, pathfinding, altitude selection, line-of-sight simulation, or behavioral heuristics enter the supplement or loader. A future methodology that needs Truesight must introduce a distinct visual-special-sense contract rather than reclassifying it as nonvisual.
 
 ## Damage roster baseline and boundary
 
@@ -161,7 +161,7 @@ No monster tactics, pathfinding, altitude selection, line-of-sight simulation, o
 - Final SHA-256: dfbda8f8e51d85b898d406a1b7dff63a40899bdf460fe5bc25d73c61d1d1ca5a (exact baseline match)
 - Damage comparator/configuration SHA-256 values remain 03d5da10742ef3bc4f63e57bacd9bc966ee68835e9629e47bab863b53ab5bf7d and d3f953192e29c9b098715e3c5a426b62f680dd097bec3d41a7a0831b7c47046c; both files are unchanged from main
 - Damage evaluator and planner proof: no diff from main in harness/model.py, harness/damage_harness.py, harness/damage_report.py, or harness/readme_damage.py
-- Structured damage projection proof: exact structural equality after removing only authority_path, authority_sha256, and schema_version; those identities changed from the clean-main path/hash/schema to the current path, 4add4d84eb01832eb69b02cfbaec12ad64360184d6ea0bd60f3bb281ea00193e, and 3.1.0
+- Structured damage projection proof: exact structural equality after removing only authority_path, authority_sha256, and schema_version. Clean-main identities were `/tmp/kv-damage-boundary.trXpeh/base/KineticVanguard.yaml`, `6d67a36ccd8c323c921099a2bf40abf8aeb28df87b25780bbe5d48cd83bfb80d`, and `3.0.0`; corrected-head identities are `/workspaces/kinetic-vanguard/KineticVanguard.yaml`, `8c533b1daf260eac73b4d0ea77a8c05296c7cbdb5431ec5dc783074b4066f6d5`, and `3.1.0`
 - Focused damage numerical, comparator, and planner sentinel results: 4/4 passed
 - Control-only target data cannot enter damage computation: the new loader is isolated in harness/control_targets.py; the damage roster, model, evaluator, comparator, and report sources are unchanged
 
@@ -175,23 +175,23 @@ These are the exact final commands, exit results, and relevant test counts or ar
 | --- | --- | --- |
 | TypeScript typecheck | npm run typecheck | Pass |
 | Canonical and semantic validation | npm run validate | Pass; 44 YAML-authored entities |
-| Focused TypeScript Control Authority tests | node --import tsx --test tests/harness-authority.test.ts tests/control-targets.test.ts tests/control-authority-v2-population.test.ts | Pass; 64/64, including 51/51 population and branch-exactness cases |
-| Complete TypeScript shared parity corpus | node --import tsx --test tests/control-authority-v2-parity.test.ts | Pass; 114/114 Node subtests over 113 unique shared cases, with all original 71 IDs retained |
-| Focused Python Control Authority tests | python3 -m unittest harness.tests.test_authority_v2 harness.tests.test_control_targets | Pass; 18/18 |
-| Complete Python shared parity corpus | python3 -m unittest harness.tests.test_authority_v2_parity | Pass; 1/1 corpus driver over the same 113 cases |
+| Focused TypeScript Control Authority tests | node --import tsx --test tests/harness-authority.test.ts tests/control-targets.test.ts tests/control-authority-v2-population.test.ts | Pass; 65/65 |
+| Complete TypeScript shared parity corpus | node --import tsx --test tests/control-authority-v2-parity.test.ts | Pass; 118/118 Node subtests over 117 unique shared cases, with all original 71 IDs retained |
+| Focused Python Control Authority tests | python3 -m unittest harness.tests.test_authority_v2 harness.tests.test_control_targets | Pass; 20/20 |
+| Complete Python shared parity corpus | python3 -m unittest harness.tests.test_authority_v2_parity | Pass; 1/1 corpus driver over the same 117 cases |
 | Control-target supplement exact-coverage validation | python3 -m harness.control_targets | Pass; 28 exact joins |
-| Maintained harness validation | npm run harness:validate | Pass; authority valid and benchmark-ready at 35/14/0/49, plus 28 exact target joins |
-| Harness suite | npm run test:harness | Pass; 77/77 |
+| Maintained harness validation | npm run harness:validate | Pass; authority `8c533b1daf260eac73b4d0ea77a8c05296c7cbdb5431ec5dc783074b4066f6d5` valid and benchmark-ready at 35/14/0/49, plus 28 exact target joins |
+| Harness suite | npm run test:harness | Pass; 79/79 |
 | Focused damage numerical, comparator, and planner sentinels | python3 -m unittest harness.tests.test_harness.FighterNumericalTests.test_exact_fighter_dpr_sentinels_cover_every_supported_level harness.tests.test_harness.ComparatorLeafContractTests.test_every_damage_comparator_leaf_is_numerically_live harness.tests.test_harness.DamagePlannerTests.test_pre_roll_rider_cost_is_spent_on_a_miss_without_outcome_lookahead harness.tests.test_harness.DamagePlannerTests.test_observed_state_policy_matches_reviewed_l20_sentinel | Pass; 4/4 |
-| Complete maintained non-analytical tests | npm test | Pass; 250/250 |
+| Complete maintained non-analytical tests | npm test | Pass; 255/255 |
 | Prototype build | npm run build | Pass; prototype HTML and manifest written |
 | Build determinism | npm run test:determinism | Pass; 4 artifacts identical |
 | Layout tests | npm run test:layout | Pass; 11/11 across Chromium and Firefox |
 | Authorized release-profile build and release identity | KV_RELEASE_APPROVED=1 npm run build:release, followed by the exact CI test/grep identity block | Pass; release status/rules version present and prototype/application-version markers absent |
-| Architecture and build-input tests | node --import tsx --test tests/architecture.test.ts tests/ci-contract.test.ts tests/harness-authority.test.ts | Pass; 35/35 |
+| Architecture and build-input tests | node --import tsx --test tests/architecture.test.ts tests/ci-contract.test.ts tests/harness-authority.test.ts | Pass; 36/36 |
 | Whitespace and patch integrity | git diff --check | Pass after final audit update |
 | Base damage roster byte identity | sha256sum harness/data/srd_targets.csv | Pass; dfbda8f8e51d85b898d406a1b7dff63a40899bdf460fe5bc25d73c61d1d1ca5a |
-| Final read-only canonical re-audit of all 35 modeled rows | Separate manual deterministic table review against canonical entity text | Approved; 35/35 modeled rows, 14/14 exact exclusions, all nine representatives, and branch-test coverage |
+| Implementation self-audit of all 35 modeled rows | Manual deterministic table review against canonical entity text | Complete; independent PR re-review pending |
 | ControlAuthorityV2Model.load with require_benchmark_ready true | python3 -m harness.authority --projection-version 2.1.0 --require-benchmark-ready | Pass; valid=true, benchmark_ready=true, 35/14/0/49 |
 
 Prohibited-run confirmation:
@@ -214,7 +214,7 @@ Prohibited-run confirmation:
 
 ## Final scope sign-off
 
-- Final separate re-audit found all 35 modeled rows faithful to canonical entity text: approved, 35/35
+- Implementation self-audit rechecked all 35 modeled rows against canonical entity text; independent PR re-review remains pending
 - All nine representative corrections above are enumerated in the draft PR description and issue completion record
 - Exact 14 exclusions remain unchanged: confirmed 14/14, with exact reasons
 - No legacy control, Control Value scoring, comparator v2, observed-state control planner, sensitivity, public promotion, or subclass-rule change entered the diff: confirmed

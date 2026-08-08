@@ -2948,7 +2948,7 @@ calculator:
                     - burrow
                 duration:
                   kind: relative
-                  owner: target
+                  owner: triggering_turn
                   anchor: end_turn
                   offset_turns: 0
                 cadence:
@@ -2962,7 +2962,7 @@ calculator:
                   repeat: []
                   end:
                     - kind: turn
-                      owner: target
+                      owner: triggering_turn
                       turn_anchor: end
                 stacking:
                   key: frozen_ground_speed_zero
@@ -3156,7 +3156,7 @@ calculator:
                     - burrow
                 duration:
                   kind: relative
-                  owner: target
+                  owner: triggering_turn
                   anchor: end_turn
                   offset_turns: 0
                 cadence:
@@ -3170,7 +3170,7 @@ calculator:
                   repeat: []
                   end:
                     - kind: turn
-                      owner: target
+                      owner: triggering_turn
                       turn_anchor: end
                 stacking:
                   key: frozen_ground_speed_zero
@@ -3364,7 +3364,7 @@ calculator:
                     - burrow
                 duration:
                   kind: relative
-                  owner: target
+                  owner: triggering_turn
                   anchor: end_turn
                   offset_turns: 0
                 cadence:
@@ -3384,7 +3384,7 @@ calculator:
                       owner: target
                       turn_anchor: start
                     - kind: turn
-                      owner: target
+                      owner: triggering_turn
                       turn_anchor: end
                 stacking:
                   key: frozen_ground_speed_zero

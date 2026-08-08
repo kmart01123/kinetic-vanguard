@@ -9,9 +9,14 @@ async function fixture():Promise<{supplement:any;supplementSource:string;roster:
 }
 
 test("control-target supplement joins all 28 exact roster keys",async()=>{
-  const {supplement,roster}=await fixture();assert.doesNotThrow(()=>validateControlTargetSupplement(supplement,roster));
+  const {supplement,supplementSource,roster}=await fixture();assert.doesNotThrow(()=>validateControlTargetSupplement(supplement,roster));
   const loaded=await loadControlTargetSupplement() as any;assert.equal(loaded.targets.length,28);
   assert.deepEqual(loaded.targets.filter((row:any)=>row.movement.hover).map((row:any)=>row.target),["Air Elemental","Deva","Solar"]);
+  const byName=Object.fromEntries(loaded.targets.map((row:any)=>[row.target,row])) as Record<string,any>;
+  assert.deepEqual(byName["Young Black Dragon"].nonvisual_senses,[{sense:"blindsight",range_ft:30,limitation:null}]);
+  assert.deepEqual(byName["Purple Worm"].nonvisual_senses,[{sense:"blindsight",range_ft:30,limitation:null},{sense:"tremorsense",range_ft:60,limitation:null}]);
+  assert.deepEqual(byName["Mummy Lord"].nonvisual_senses,[]);
+  assert.doesNotMatch(supplementSource,/truesight|darkvision/i);
 });
 
 test("control-target join rejects missing, duplicate, and reordered rows",async()=>{
@@ -26,6 +31,7 @@ test("control-target movement, hover, and senses are fail closed",async()=>{
   reject(value=>{value.targets[0].movement.walk_ft="10";},/positive integer/);
   reject(value=>{value.targets[0].movement.teleport_ft=30;},/keys are invalid/);
   reject(value=>{value.targets[1].movement.hover=true;},/hover requires a fly speed/);
+  reject(value=>{value.targets[0].nonvisual_senses.push({sense:"truesight",range_ft:60,limitation:null});},/unknown or unsupported/);
   reject(value=>{value.targets[0].nonvisual_senses.push({sense:"darkvision",range_ft:60,limitation:null});},/unknown or unsupported/);
 });
 
@@ -37,7 +43,9 @@ test("control-target pages, provenance policy, and both input hashes are fail cl
   const reject=(mutate:(value:any)=>void,pattern:RegExp)=>{const value=structuredClone(provenance);mutate(value);assert.throws(()=>validateControlTargetProvenance(value,roster,supplementSource),pattern);};
   reject(value=>{value.source.pages=363;},/pinned official SRD/);
   reject(value=>{value.join.expected_rows=27;},/join contract/);
+  assert.equal(provenance.extraction.truesight,"excluded_as_enhanced_vision");
   reject(value=>{value.extraction.inference="allowed";},/extraction policy/);
+  reject(value=>{value.extraction.truesight="included";},/extraction policy/);
   reject(value=>{value.data_sha256="0".repeat(64);},/supplement SHA-256/);
   reject(value=>{value.roster_sha256="0".repeat(64);},/roster SHA-256/);
 });

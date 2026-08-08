@@ -50,8 +50,15 @@ class ControlTargetSupplementTests(unittest.TestCase):
             [(sense.sense, sense.range_ft, sense.limitation) for sense in by_name["Purple Worm"].nonvisual_senses],
             [("blindsight", 30, None), ("tremorsense", 60, None)],
         )
+        self.assertEqual(
+            [(sense.sense, sense.range_ft, sense.limitation) for sense in by_name["Young Black Dragon"].nonvisual_senses],
+            [("blindsight", 30, None)],
+        )
+        self.assertEqual(by_name["Mummy Lord"].nonvisual_senses, ())
         self.assertEqual(by_name["Air Elemental"].nonvisual_senses, ())
-        self.assertNotIn("darkvision", DEFAULT_CONTROL_SUPPLEMENT.read_text(encoding="utf-8").lower())
+        supplement_source = DEFAULT_CONTROL_SUPPLEMENT.read_text(encoding="utf-8").lower()
+        self.assertNotIn("truesight", supplement_source)
+        self.assertNotIn("darkvision", supplement_source)
 
     def test_provenance_pins_the_verified_official_source_and_every_row_page(self) -> None:
         provenance = json.loads(DEFAULT_CONTROL_PROVENANCE.read_text(encoding="utf-8"))
@@ -69,6 +76,7 @@ class ControlTargetSupplementTests(unittest.TestCase):
         self.assertEqual(provenance["join"]["expected_rows"], 28)
         self.assertEqual(provenance["extraction"]["inference"], "none")
         self.assertEqual(provenance["extraction"]["ordinary_darkvision"], "excluded")
+        self.assertEqual(provenance["extraction"]["truesight"], "excluded_as_enhanced_vision")
 
     def test_missing_duplicate_and_extra_join_rows_fail_closed(self) -> None:
         self.assert_supplement_rejected(lambda value: value["targets"].pop(), "missing=.*Tarrasque")  # type: ignore[index]
@@ -83,6 +91,10 @@ class ControlTargetSupplementTests(unittest.TestCase):
     def test_inconsistent_hover_and_unknown_sense_fail_closed(self) -> None:
         self.assert_supplement_rejected(lambda value: value["targets"][1]["movement"].__setitem__("hover", True), "hover requires a fly speed")  # type: ignore[index]
         self.assert_supplement_rejected(
+            lambda value: value["targets"][0]["nonvisual_senses"].append({"sense": "truesight", "range_ft": 60, "limitation": None}),  # type: ignore[index]
+            "unknown or is not a supported nonvisual sense: truesight",
+        )
+        self.assert_supplement_rejected(
             lambda value: value["targets"][0]["nonvisual_senses"].append({"sense": "darkvision", "range_ft": 60, "limitation": None}),  # type: ignore[index]
             "unknown or is not a supported nonvisual sense: darkvision",
         )
@@ -93,14 +105,25 @@ class ControlTargetSupplementTests(unittest.TestCase):
         self.assert_supplement_rejected(lambda value: value["targets"][4]["nonvisual_senses"][0].__setitem__("limitation", ""), "limitation must be a non-empty trimmed string")  # type: ignore[index]
         self.assert_supplement_rejected(lambda value: value["targets"][0].__setitem__("source_page", 999), "source_page disagrees")  # type: ignore[index]
 
-    def test_provenance_hashes_are_enforced(self) -> None:
+    def test_provenance_truesight_disposition_is_fail_closed(self) -> None:
         value = json.loads(DEFAULT_CONTROL_PROVENANCE.read_text(encoding="utf-8"))
-        value["data_sha256"] = "0" * 64
+        value["extraction"]["truesight"] = "included"
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "srd-control-targets.json"
             path.write_text(json.dumps(value), encoding="utf-8")
-            with self.assertRaisesRegex(ValueError, "supplement SHA-256"):
+            with self.assertRaisesRegex(ValueError, "extraction policy"):
                 load_control_targets(provenance_path=path)
+
+    def test_provenance_hashes_are_enforced(self) -> None:
+        for field, pattern in (("data_sha256", "supplement SHA-256"), ("roster_sha256", "roster SHA-256")):
+            with self.subTest(field=field):
+                value = json.loads(DEFAULT_CONTROL_PROVENANCE.read_text(encoding="utf-8"))
+                value[field] = "0" * 64
+                with tempfile.TemporaryDirectory() as directory:
+                    path = Path(directory) / "srd-control-targets.json"
+                    path.write_text(json.dumps(value), encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError, pattern):
+                        load_control_targets(provenance_path=path)
 
 
 if __name__ == "__main__":

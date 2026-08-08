@@ -81,7 +81,7 @@ const validEvent=(value:unknown):boolean=>{
   const event=object(value);
   if(!event)return false;
   if(["declaration","activation","hit","save","damage_context","concentration_end","instantaneous_resolution"].includes(event.kind))return hasExactKeys(event,["kind"]);
-  if(event.kind==="turn")return hasExactKeys(event,["kind","owner","turn_anchor"])&&["controller","target"].includes(event.owner)&&["start","end","during"].includes(event.turn_anchor);
+  if(event.kind==="turn")return hasExactKeys(event,["kind","owner","turn_anchor"])&&((["controller","target"].includes(event.owner)&&["start","end","during"].includes(event.turn_anchor))||(event.owner==="triggering_turn"&&event.turn_anchor==="end"));
   if(event.kind==="entry")return hasExactKeys(event,["kind","owner","turn_anchor"])&&event.owner==="any_creature"&&event.turn_anchor==="during_turn";
   if(event.kind==="exit")return hasExactKeys(event,["kind","owner","turn_anchor"])&&event.owner==="target"&&event.turn_anchor==="during_turn";
   return false;
@@ -170,7 +170,7 @@ function validateDuration(value:unknown,diagnostics:Diagnostic[],path:string,are
       valid=hasExactKeys(duration,["kind"]);
       break;
     case "relative":
-      valid=hasExactKeys(duration,["kind","owner","anchor","offset_turns"])&&["controller","target"].includes(duration.owner)&&["start_turn","end_turn"].includes(duration.anchor)&&nonnegativeInteger(duration.offset_turns);
+      valid=hasExactKeys(duration,["kind","owner","anchor","offset_turns"])&&((["controller","target"].includes(duration.owner)&&["start_turn","end_turn"].includes(duration.anchor)&&nonnegativeInteger(duration.offset_turns))||(duration.owner==="triggering_turn"&&duration.anchor==="end_turn"&&duration.offset_turns===0));
       break;
     case "while_in_area":
       valid=hasExactKeys(duration,["kind","area_id"])&&validId(duration.area_id)&&areaIds.has(duration.area_id);
@@ -515,6 +515,12 @@ function validateModel(modelValue:unknown,row:ObjectValue,authority:Authority,le
     validateComponent(componentValue,diagnostics,path+"/components/"+String(index),selectorIds,areaIds,componentIds,concentration,choices,usedChoiceIds);
     const component=object(componentValue);
     if(object(component?.magnitude)?.kind==="difficult_terrain"&&!array(component?.target_selector_ids).some(id=>areaSelectorIds.has(id)))add(diagnostics,"control_v2.area","Difficult terrain must be an area-wide property of an area-owning selector",path+"/components/"+String(index)+"/magnitude");
+  }
+  if(row.entity_id==="frozen_ground"){
+    const speedZero=componentsById.get("frozen_ground_speed_zero");
+    if(!speedZero||!same(speedZero.duration,{kind:"relative",owner:"triggering_turn",anchor:"end_turn",offset_turns:0}))add(diagnostics,"control_v2.timing","Frozen Ground Speed 0 must expire at the end of the turn containing its entry or start-turn trigger",path+"/components");
+    const triggeringTurnEnd={kind:"turn",owner:"triggering_turn",turn_anchor:"end"},expectedEnd=row.tier===2?[{kind:"entry",owner:"any_creature",turn_anchor:"during_turn"},{kind:"turn",owner:"target",turn_anchor:"start"},triggeringTurnEnd]:[triggeringTurnEnd];
+    if(!same(object(speedZero?.cadence)?.end,expectedEnd))add(diagnostics,"control_v2.timing","Frozen Ground Speed 0 expiry cadence must end with the triggering turn while retaining only canonical replacement triggers",path+"/components");
   }
   for(const [choiceId,choice] of choices){
     if(choice.kind==="mode"){

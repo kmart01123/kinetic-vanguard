@@ -51,6 +51,13 @@ test("Wisdom saving throws remain schema- and semantic-valid",async()=>{
   const directory=await mkdtemp(join(tmpdir(),"kv-wisdom-authority-")),authorityPath=join(directory,"authority.yaml");
   try{await writeFile(authorityPath,stringify(candidate),"utf8");const loaded=await loadAuthority(authorityPath);assert.deepEqual(loaded.diagnostics,[]);assert.deepEqual(validateSemantics(loaded.authority).filter(item=>item.severity==="error"),[]);}finally{await rm(directory,{recursive:true,force:true});}
 });
+test("triggering-turn expiry events are schema-closed to the end anchor",async()=>{
+  const {authority}=await loadAuthority(),candidate=structuredClone(authority) as any,contract=candidate.calculator.harness_mechanics.control_authority_v2;
+  const frozen=contract.ledger.find((row:any)=>row.disposition==="modeled"&&row.model.effect_id==="frozen_ground_t0_control").model,speed=frozen.components.find((component:any)=>component.component_id==="frozen_ground_speed_zero"),expiry=speed.cadence.end.find((event:any)=>event.owner==="triggering_turn");assert.ok(expiry);expiry.turn_anchor="start";
+  const directory=await mkdtemp(join(tmpdir(),"kv-triggering-turn-schema-")),authorityPath=join(directory,"authority.yaml");
+  try{await writeFile(authorityPath,stringify(candidate),"utf8");const loaded=await loadAuthority(authorityPath);assert.ok(loaded.diagnostics.some(item=>item.code==="schema.invalid"),loaded.diagnostics.map(item=>item.message).join("; "));}finally{await rm(directory,{recursive:true,force:true});}
+});
+
 
 test("projection CLI selects 2.1 explicitly and rejects unknown versions",()=>{
   const executable="node_modules/.bin/tsx",base=["src/harness-authority.ts"];
@@ -89,6 +96,10 @@ test("control 2.1 semantic mutations fail closed with focused diagnostics",async
   expectCode("control_v2.branch",candidate=>{model(candidate,"static_discharge_t2_control").resolutions.find((gate:any)=>gate.resolution.kind==="damage_context").resolution.branches[0].outcome="other";});
   expectCode("control_v2.choice",candidate=>{model(candidate,"explosion_implosion_t0_control").choices[0].options.pop();});
   expectCode("control_v2.concentration",candidate=>{model(candidate,"frozen_ground_t0_control").concentration={kind:"none"};});
+  expectCode("control_v2.timing",candidate=>{model(candidate,"frozen_ground_t0_control").components.find((component:any)=>component.component_id==="frozen_ground_speed_zero").duration.owner="target";});
+  expectCode("control_v2.timing",candidate=>{model(candidate,"frozen_ground_t0_control").components.find((component:any)=>component.component_id==="frozen_ground_speed_zero").duration.anchor="start_turn";});
+  expectCode("control_v2.timing",candidate=>{const speed=model(candidate,"frozen_ground_t0_control").components.find((component:any)=>component.component_id==="frozen_ground_speed_zero");speed.cadence.end[0].owner="target";});
+  expectCode("control_v2.timing",candidate=>{const speed=model(candidate,"frozen_ground_t0_control").components.find((component:any)=>component.component_id==="frozen_ground_speed_zero");speed.cadence.end[0].turn_anchor="start";});
   expectCode("control_v2.timing",candidate=>{model(candidate,"forked_lightning_t2_control").policy.repeatability="once_per_attack_action";});
   expectCode("control_v2.coverage",candidate=>{contract(candidate).ledger.pop();});
   expectCode("control_v2.disposition",candidate=>{contract(candidate).ledger.find((row:any)=>row.disposition==="excluded_by_profile").profile_id="wrong_profile";});

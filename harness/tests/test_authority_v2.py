@@ -130,6 +130,64 @@ class ControlAuthorityV2Tests(unittest.TestCase):
             "incomplete damage_context",
         )
 
+    def test_frozen_ground_duration_tracks_the_turn_containing_each_trigger(self) -> None:
+        expected_duration = {
+            "kind": "relative", "owner": "triggering_turn", "anchor": "end_turn", "offset_turns": 0,
+        }
+        entry_trigger = {"kind": "entry", "owner": "any_creature", "turn_anchor": "during_turn"}
+        start_trigger = {"kind": "turn", "owner": "target", "turn_anchor": "start"}
+        triggering_turn_end = {"kind": "turn", "owner": "triggering_turn", "turn_anchor": "end"}
+        for tier in (0, 1, 2):
+            model = _model(self.projection, "frozen_ground", tier)
+            speed_zero = next(
+                component for component in model["components"]
+                if component["component_id"] == "frozen_ground_speed_zero"
+            )
+            self.assertEqual(speed_zero["duration"], expected_duration)
+            expected_end = [entry_trigger, start_trigger, triggering_turn_end] if tier == 2 else [triggering_turn_end]
+            self.assertEqual(speed_zero["cadence"]["end"], expected_end)
+            recurring = [gate for gate in model["resolutions"] if gate["resolution"].get("role") == "recurring"]
+            entry_gate = next(gate for gate in recurring if gate["trigger"] == entry_trigger)
+            start_gate = next(gate for gate in recurring if gate["trigger"] == start_trigger)
+            self.assertEqual(entry_gate["trigger"], entry_trigger)
+            self.assertEqual(start_gate["trigger"], start_trigger)
+            resolved_owner = lambda turn_owner: (
+                turn_owner if speed_zero["duration"]["owner"] == "triggering_turn"
+                else speed_zero["duration"]["owner"]
+            )
+            self.assertEqual(resolved_owner("another_creature"), "another_creature")
+            self.assertEqual(resolved_owner("target"), "target")
+            self.assertEqual(resolved_owner(start_gate["trigger"]["owner"]), "target")
+        self.assert_rejected(
+            lambda value: next(
+                component for component in _model(value, "frozen_ground", 0)["components"]
+                if component["component_id"] == "frozen_ground_speed_zero"
+            )["duration"].__setitem__("owner", "target"),
+            "Frozen Ground Speed 0.*triggering turn",
+        )
+        self.assert_rejected(
+            lambda value: next(
+                component for component in _model(value, "frozen_ground", 0)["components"]
+                if component["component_id"] == "frozen_ground_speed_zero"
+            )["duration"].__setitem__("anchor", "start_turn"),
+            "triggering_turn duration.*end_turn.*zero offset",
+        )
+
+        self.assert_rejected(
+            lambda value: next(
+                component for component in _model(value, "frozen_ground", 0)["components"]
+                if component["component_id"] == "frozen_ground_speed_zero"
+            )["cadence"]["end"][0].__setitem__("owner", "target"),
+            "expiry cadence.*triggering turn",
+        )
+        self.assert_rejected(
+            lambda value: next(
+                component for component in _model(value, "frozen_ground", 0)["components"]
+                if component["component_id"] == "frozen_ground_speed_zero"
+            )["cadence"]["end"][0].__setitem__("turn_anchor", "start"),
+            "triggering_turn event.*end anchor",
+        )
+
     def test_mass_contingent_gates_require_active_elevation_guard(self) -> None:
         for tier in (0, 1, 2):
             model = _model(self.projection, "mass_levitation", tier)

@@ -7,7 +7,7 @@
     "pages": 364
   },
   "data_file": "harness/data/srd_control_targets.json",
-  "data_sha256": "ce79647cc2a6ce4a9c5d5a7b84a21b0106e3cc55da2f1da6c45377d1a91a3683",
+  "data_sha256": "f4604bd4b5fc07fdeb0ae65711c69b1fb5d08625bffd2b866f54624bfdb37757",
   "roster_file": "harness/data/srd_targets.csv",
   "roster_sha256": "dfbda8f8e51d85b898d406a1b7dff63a40899bdf460fe5bc25d73c61d1d1ca5a",
   "join": {
@@ -20,9 +20,10 @@
     "source_location": "Each monster stat block's Speed and Senses lines on the row's source_page",
     "fields": ["walking_speed", "fly_speed", "swim_speed", "climb_speed", "burrow_speed", "hover", "nonvisual_senses"],
     "ordinary_darkvision": "excluded",
+    "truesight": "excluded_as_enhanced_vision",
     "absence": "explicit_null_movement_modes_and_empty_nonvisual_sense_arrays",
     "inference": "none",
     "sense_limitations": "preserve_official_material_limitation_when_present",
-    "modifications": "Selected control-relevant facts, normalized feet to integer fields, lower-cased nonvisual sense names, and represented absence explicitly."
+    "modifications": "Selected control-relevant movement facts and only Blindsight or Tremorsense facts, normalized feet to integer fields, lower-cased sense names, and represented absence explicitly; Truesight is excluded as enhanced vision."
   }
 }

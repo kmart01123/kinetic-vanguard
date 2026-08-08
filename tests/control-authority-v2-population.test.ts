@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {createControlAuthorityProjectionV2} from "../src/harness-authority.js";
 import {loadAuthority} from "../src/load.js";
+import type {ControlDurationV2,ControlEventV2} from "../src/types.js";
 
 type AnyRecord=Record<string,any>;
 const END_NEXT={kind:"relative",owner:"controller",anchor:"end_turn",offset_turns:1};
@@ -10,6 +11,10 @@ const CONTROLLER_END={kind:"turn",owner:"controller",turn_anchor:"end"};
 const CONTROLLER_START={kind:"turn",owner:"controller",turn_anchor:"start"};
 const TARGET_START={kind:"turn",owner:"target",turn_anchor:"start"};
 const ENTRY={kind:"entry",owner:"any_creature",turn_anchor:"during_turn"};
+const TRIGGERING_TURN_END={kind:"relative",owner:"triggering_turn",anchor:"end_turn",offset_turns:0} satisfies ControlDurationV2;
+const TRIGGERING_TURN_END_EVENT={kind:"turn",owner:"triggering_turn",turn_anchor:"end"} satisfies ControlEventV2;
+// @ts-expect-error triggering-turn events are restricted to the end anchor
+const INVALID_TRIGGERING_TURN_START_EVENT:ControlEventV2={kind:"turn",owner:"triggering_turn",turn_anchor:"start"};
 
 function modeled(control:AnyRecord,entityId:string,tier:number):AnyRecord{
   const rows=control.ledger.filter((row:AnyRecord)=>row.entity_id===entityId&&row.tier===tier);
@@ -85,8 +90,11 @@ test("Cryokinesis population preserves all twelve canonical row mechanics",async
     assert.ok(hasEvent(area.triggers,ENTRY));assert.ok(hasEvent(area.triggers,TARGET_START));assert.equal(model.concentration.startup,"on_activation");assert.deepEqual(model.concentration.maximum_duration,{value:1,unit:"minute"});
     const recurring=saves(model,"recurring");assert.equal(recurring.length,2);assert.ok(recurring.every(gate=>gate.resolution.ability==="constitution"&&gate.resolution.mode==="normal"&&gate.gate_scope==="independent_per_target"));for(const gate of recurring)assertEmptyBranch(gate,"save_success");
     const terrain=one(components(model,"difficult_terrain"),`${model.effect_id} difficult terrain`);assert.deepEqual(terrain.magnitude,{kind:"difficult_terrain",scope:"area",movement_cost_multiplier:2});
-    const timed=tier===2?one(conditions(model,"restrained"),`${model.effect_id} Restrained`):one(components(model,"speed_zero"),`${model.effect_id} Speed 0`);
-    assert.deepEqual(timed.duration,tier===2?END_NEXT:{kind:"relative",owner:"target",anchor:"end_turn",offset_turns:0});assert.notEqual(timed.duration.kind,"while_in_area");
+    const speed=one(components(model,"speed_zero"),`${model.effect_id} Speed 0`);assert.deepEqual(speed.duration,TRIGGERING_TURN_END);assert.notEqual(speed.duration.kind,"while_in_area");
+    const expectedEndEvents=tier===2?[ENTRY,TARGET_START,TRIGGERING_TURN_END_EVENT]:[TRIGGERING_TURN_END_EVENT];assert.deepEqual(speed.cadence.end,expectedEndEvents,"Frozen Ground expiry cadence follows the triggering turn");
+    const entryGate=one(recurring.filter((gate:AnyRecord)=>hasEvent([gate.trigger],ENTRY)),`${model.effect_id} entry save`),startGate=one(recurring.filter((gate:AnyRecord)=>hasEvent([gate.trigger],TARGET_START)),`${model.effect_id} start-turn save`);assert.deepEqual(entryGate.trigger,ENTRY);assert.deepEqual(startGate.trigger,TARGET_START);
+    const resolvedExpiryOwner=(triggeringTurnOwner:string):string=>speed.duration.owner==="triggering_turn"?triggeringTurnOwner:speed.duration.owner;assert.equal(resolvedExpiryOwner("another_creature"),"another_creature","forced entry expires with the other creature triggering turn");assert.equal(resolvedExpiryOwner("target"),"target","entry during the affected target own turn expires with that turn");assert.equal(resolvedExpiryOwner(startGate.trigger.owner),"target","start-turn exposure expires with that target turn");
+    if(tier===2){const restrained=one(conditions(model,"restrained"),`${model.effect_id} Restrained`);assert.deepEqual(restrained.duration,END_NEXT);}
   });
 
   for(const tier of [0,1,2])await t.test(`snow_chains:T${tier}`,()=>{
@@ -182,7 +190,7 @@ test("representative v2.1 corrections remain concrete and role-safe",async t=>{
   });
 });
 
-test("independent audit branch transitions remain exact",async t=>{
+test("focused branch transitions remain exact",async t=>{
   const control=(await createControlAuthorityProjectionV2()).control_authority;
   const gateFor=(model:AnyRecord,predicate:(gate:AnyRecord)=>boolean,label:string):AnyRecord=>one(model.resolutions.filter(predicate),`${model.effect_id} ${label}`);
   const exact=(gate:AnyRecord,outcome:string,expected:Partial<AnyRecord>={}):void=>{

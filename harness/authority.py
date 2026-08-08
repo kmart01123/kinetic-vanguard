@@ -258,8 +258,10 @@ def _validate_event(value: Any, label: str) -> dict[str, Any]:
         _exact_keys(event, {"kind"}, label)
     elif kind == "turn":
         _exact_keys(event, {"kind", "owner", "turn_anchor"}, label)
-        _choice(event["owner"], {"controller", "target"}, f"{label}.owner")
-        _choice(event["turn_anchor"], {"start", "end", "during"}, f"{label}.turn_anchor")
+        owner = _choice(event["owner"], {"controller", "target", "triggering_turn"}, f"{label}.owner")
+        turn_anchor = _choice(event["turn_anchor"], {"start", "end", "during"}, f"{label}.turn_anchor")
+        if owner == "triggering_turn" and turn_anchor != "end":
+            raise AuthorityError(f"{label} triggering_turn event must use the end anchor")
     elif kind == "entry":
         _exact_keys(event, {"kind", "owner", "turn_anchor"}, label)
         _choice(event["owner"], {"any_creature"}, f"{label}.owner")
@@ -457,9 +459,11 @@ def _validate_duration(value: Any, label: str) -> None:
         _exact_keys(duration, {"kind"}, label)
     elif kind == "relative":
         _exact_keys(duration, {"kind", "owner", "anchor", "offset_turns"}, label)
-        _choice(duration["owner"], {"controller", "target"}, f"{label}.owner")
-        _choice(duration["anchor"], {"start_turn", "end_turn"}, f"{label}.anchor")
-        _integer(duration["offset_turns"], f"{label}.offset_turns", 0)
+        owner = _choice(duration["owner"], {"controller", "target", "triggering_turn"}, f"{label}.owner")
+        anchor = _choice(duration["anchor"], {"start_turn", "end_turn"}, f"{label}.anchor")
+        offset_turns = _integer(duration["offset_turns"], f"{label}.offset_turns", 0)
+        if owner == "triggering_turn" and (anchor != "end_turn" or offset_turns != 0):
+            raise AuthorityError(f"{label} triggering_turn duration must use end_turn with zero offset")
     elif kind == "while_in_area":
         _exact_keys(duration, {"kind", "area_id"}, label)
         _identifier_value(duration["area_id"], f"{label}.area_id")
@@ -1194,6 +1198,28 @@ def _validate_model(value: Any, entity_id: str, tier: int, canonical: dict[str, 
     selector_set = set(selector_ids)
     component_set = set(component_ids)
     components_by_id = {component["component_id"]: component for component in components}
+
+    if entity_id == "frozen_ground":
+        speed_zero = components_by_id.get("frozen_ground_speed_zero")
+        if speed_zero is None or speed_zero["duration"] != {
+            "kind": "relative", "owner": "triggering_turn", "anchor": "end_turn", "offset_turns": 0,
+        }:
+            raise AuthorityError(
+                f"{label}.components Frozen Ground Speed 0 must expire at the end of the triggering turn"
+            )
+        triggering_turn_end = {"kind": "turn", "owner": "triggering_turn", "turn_anchor": "end"}
+        expected_end = (
+            [
+                {"kind": "entry", "owner": "any_creature", "turn_anchor": "during_turn"},
+                {"kind": "turn", "owner": "target", "turn_anchor": "start"},
+                triggering_turn_end,
+            ]
+            if tier == 2 else [triggering_turn_end]
+        )
+        if speed_zero["cadence"]["end"] != expected_end:
+            raise AuthorityError(
+                f"{label}.components Frozen Ground Speed 0 expiry cadence must end with the triggering turn"
+            )
 
     concentration_summary = _validate_concentration(model["concentration"], canonical, f"{label}.concentration")
     concentration_required = concentration_summary["required"]

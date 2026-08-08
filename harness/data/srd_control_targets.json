@@ -131,9 +131,7 @@
       "level": 15,
       "target": "Mummy Lord",
       "movement": {"walk_ft": 30, "fly_ft": null, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
-      "nonvisual_senses": [
-        {"sense": "truesight", "range_ft": 60, "limitation": null}
-      ],
+      "nonvisual_senses": [],
       "source_page": 309
     },
     {
@@ -157,27 +155,21 @@
       "level": 15,
       "target": "Marilith",
       "movement": {"walk_ft": 40, "fly_ft": null, "swim_ft": null, "climb_ft": 40, "burrow_ft": null, "hover": false},
-      "nonvisual_senses": [
-        {"sense": "truesight", "range_ft": 120, "limitation": null}
-      ],
+      "nonvisual_senses": [],
       "source_page": 306
     },
     {
       "level": 20,
       "target": "Balor",
       "movement": {"walk_ft": 40, "fly_ft": 80, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
-      "nonvisual_senses": [
-        {"sense": "truesight", "range_ft": 120, "limitation": null}
-      ],
+      "nonvisual_senses": [],
       "source_page": 261
     },
     {
       "level": 20,
       "target": "Pit Fiend",
       "movement": {"walk_ft": 30, "fly_ft": 60, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
-      "nonvisual_senses": [
-        {"sense": "truesight", "range_ft": 120, "limitation": null}
-      ],
+      "nonvisual_senses": [],
       "source_page": 314
     },
     {
@@ -202,27 +194,21 @@
       "level": 20,
       "target": "Lich",
       "movement": {"walk_ft": 30, "fly_ft": null, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
-      "nonvisual_senses": [
-        {"sense": "truesight", "range_ft": 120, "limitation": null}
-      ],
+      "nonvisual_senses": [],
       "source_page": 304
     },
     {
       "level": 20,
       "target": "Solar",
       "movement": {"walk_ft": 50, "fly_ft": 150, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": true},
-      "nonvisual_senses": [
-        {"sense": "truesight", "range_ft": 120, "limitation": null}
-      ],
+      "nonvisual_senses": [],
       "source_page": 326
     },
     {
       "level": 20,
       "target": "Kraken",
       "movement": {"walk_ft": 30, "fly_ft": null, "swim_ft": 120, "climb_ft": null, "burrow_ft": null, "hover": false},
-      "nonvisual_senses": [
-        {"sense": "truesight", "range_ft": 120, "limitation": null}
-      ],
+      "nonvisual_senses": [],
       "source_page": 303
     },
     {
