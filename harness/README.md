@@ -52,7 +52,9 @@ npm run readme:damage:check
 
 Both commands run a fresh full-roster damage evaluation from canonical authority and maintained damage inputs. The writer atomically replaces only the `BEGIN/END GENERATED DAMAGE MATRIX` region and refuses to overwrite a concurrent README edit. Both modes fingerprint all maintained build inputs before evaluation and abort if any input changes. The check recomputes the region and fails if the committed README differs. This path uses exact analytical enumeration and does not compare against or update a tracked golden output.
 
-Run the writer after an intentional authority, methodology, roster, damage-comparator, classification, reporting, or release-status change. Review the numerical diff before running the check. The snapshot's published or unreleased label derives from the README release lines and must agree with canonical `rules_version`.
+Run the writer only when fresh full-roster evidence is required because benchmark inputs, evaluator or planner logic, methodology, comparator or roster data changed, or a specific release gate explicitly requires fresh evidence. Review the numerical diff before running the check. A release metadata or status edit alone does not trigger either command.
+
+The generated damage evidence line is status-neutral and identifies the canonical rules evidence without duplicating publication state. Maintain the current published release and development line in the README's separate **Release status** section.
 
 ## Damage method
 
@@ -91,6 +93,6 @@ Filenames derive from YAML `rules_version`, for example `kv-14-2-0-damage-compar
 
 Provenance includes rules version, authority digest, roster digest, methodology-config digest, comparator-config digest, evaluator, compatibility-only seed/trial settings, aggregation, and review status. CSV rows carry structured component, SRD, and comparator notices; Markdown and HTML display the same notices in a visible licensing section.
 
-The README generator validates the complete authoritative damage matrix, all raw and derived result fields, all provenance and notice fields, comparator scope, and release state before selecting primary-target cluster-size-1 rows for its single public heat table. Generated outputs, caches, virtual environments, and `.codex-import/` are ignored and are not official source.
+The README generator validates the complete authoritative damage matrix, all raw and derived result fields, all provenance and notice fields, comparator scope, and canonical rules evidence identity before selecting primary-target cluster-size-1 rows for its single public heat table. Generated outputs, caches, virtual environments, and `.codex-import/` are ignored and are not official source.
 
 The v14.1 restoration and review record is historical. See `MIGRATION.md` and `provenance/damage-review.json` for its retained review context; use the current commands and files above for maintained work.

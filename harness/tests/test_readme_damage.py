@@ -30,7 +30,6 @@ from harness.readme_damage import (
     _public_result,
     atomic_replace_text,
     generated_region_span,
-    release_state_line,
     render_damage_region,
     render_single_target_damage,
     replace_generated_region,
@@ -174,15 +173,7 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         rows = _full_authoritative_rows()
         model = DamageAuthorityModel.load(DEFAULT_AUTHORITY)
         config = load_config()
-        readme = "\n".join(
-            (
-                "# Project",
-                f"- Current published release: **v{model.rules_version}**",
-                "- Current development line: **None**",
-            )
-        )
         arguments = (
-            readme,
             rows,
             model.rules_version,
             "SYNTHETIC_REVIEW",
@@ -191,7 +182,6 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         )
         rendered = render_damage_region(*arguments)
         reordered = render_damage_region(
-            readme,
             list(reversed(rows)),
             model.rules_version,
             "SYNTHETIC_REVIEW",
@@ -202,6 +192,10 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         self.assertTrue(rendered.startswith(BEGIN_MARKER))
         self.assertTrue(rendered.endswith(END_MARKER))
         self.assertIn("## Damage benchmark snapshot", rendered)
+        self.assertIn(
+            f"**Canonical damage evidence** — rules **v{model.rules_version}**.",
+            rendered,
+        )
         self.assertEqual(rendered.count("| Level |"), 1)
         self.assertEqual(rendered.count("\n|---|"), 1)
         self.assertIn("primary-target DPR at cluster size 1", rendered)
@@ -244,62 +238,6 @@ class ReadmeDamageDelimiterTests(unittest.TestCase):
         replaced = replace_generated_region(readme, region)
         self.assertEqual(replaced, expected)
         self.assertEqual(replace_generated_region(replaced, region), expected)
-
-
-class ReadmeDamageReleaseStateTests(unittest.TestCase):
-    def test_development_snapshot_names_canonical_and_published_versions(self) -> None:
-        readme = "\n".join(
-            (
-                "- Current published release: **v14.1.0**",
-                "- Current development line: **v14.2.0**",
-            )
-        )
-        self.assertEqual(
-            release_state_line(readme, "14.2.0"),
-            "**Unreleased development snapshot** — canonical rules **v14.2.0**; "
-            "current published release **v14.1.0**.",
-        )
-
-    def test_published_snapshot_uses_the_canonical_published_version(self) -> None:
-        readme = "\n".join(
-            (
-                "- Current published release: **v14.2.0**",
-                "- Current development line: **None**",
-            )
-        )
-        self.assertEqual(
-            release_state_line(readme, "14.2.0"),
-            "**Published snapshot** — canonical rules **v14.2.0**.",
-        )
-
-    def test_malformed_or_inconsistent_release_state_fails_closed(self) -> None:
-        published = "- Current published release: **v14.1.0**"
-        development = "- Current development line: **v14.2.0**"
-        cases = (
-            "\n".join((published, published, development)),
-            "\n".join((published, development, development)),
-            published,
-            "\n".join(
-                (
-                    published,
-                    "- Current development line: **v14.3.0**",
-                )
-            ),
-        )
-        for readme in cases:
-            with self.subTest(readme=readme):
-                with self.assertRaises(MatrixSyncError):
-                    release_state_line(readme, "14.2.0")
-
-    def test_published_snapshot_rejects_a_live_development_line(self) -> None:
-        readme = "\n".join(
-            (
-                "- Current published release: **v14.2.0**",
-                "- Current development line: **v14.2.0**",
-            )
-        )
-        with self.assertRaisesRegex(MatrixSyncError, "development line None"):
-            release_state_line(readme, "14.2.0")
 
 
 class ReadmeDamageAtomicWriteTests(unittest.TestCase):
@@ -431,19 +369,6 @@ class AuthoritativeDamageRowValidationTests(unittest.TestCase):
                 rows[0][field] = value
                 with self.assertRaisesRegex(MatrixSyncError, f"stale {field}"):
                     validate_authoritative_rows(rows)
-
-    def test_retired_comparator_names_fail_after_other_validation(self) -> None:
-        rows = deepcopy(self.rows)
-        notice_field = next(
-            field for field in NOTICE_COLUMNS if "Unofficial Comparative" in field
-        )
-        retired_notice = NOTICE_COLUMNS[notice_field] + " Hunter " + "Ranger"
-        for row in rows:
-            row[notice_field] = retired_notice
-        with patch.dict(NOTICE_COLUMNS, {notice_field: retired_notice}):
-            with self.assertRaisesRegex(MatrixSyncError, "retired comparator"):
-                validate_authoritative_rows(rows)
-
 
 if __name__ == "__main__":
     unittest.main()

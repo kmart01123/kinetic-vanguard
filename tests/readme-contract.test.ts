@@ -130,16 +130,12 @@ test("README exposes one synchronized damage snapshot and a static control statu
   assert.deepEqual(precedingLevelTwoHeadings, ["Release status"]);
 
   const region = readme.slice(begin, end + endMarker.length);
-  const { published, development } = readReleaseStatus(readme);
-  assert.ok(region.includes(`canonical rules **v${authority.rules_version}**`));
-  if (development === "None") {
-    assert.ok(region.includes("**Published snapshot**"));
-    assert.equal(published, authority.rules_version);
-  } else {
-    assert.equal(development, `v${authority.rules_version}`);
-    assert.ok(region.includes("**Unreleased development snapshot**"));
-    assert.ok(region.includes(`current published release **v${published}**`));
-  }
+  assert.ok(region.includes(`**Canonical damage evidence** — rules **v${authority.rules_version}**.`));
+  assert.doesNotMatch(
+    region,
+    /\*\*(?:Published|Unreleased development) snapshot\*\*|current published release/i,
+    "analytical evidence is independent of release-status metadata"
+  );
   assert.ok(region.includes(`Profile: \`${benchmarkConfig.kv_profile.id}\`.`));
   assert.ok(region.includes(`Numerical review status: \`${benchmarkConfig.methodology.status}\`.`));
   assert.match(region, /exact analytical full-roster damage results, not Monte Carlo estimates/i);

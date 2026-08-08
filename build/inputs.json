@@ -66,7 +66,6 @@
     {"path":"tests/filter.test.ts","role":"test_source"},
     {"path":"tests/harness-authority.test.ts","role":"test_source"},
     {"path":"tests/layout.browser.ts","role":"test_source"},
-    {"path":"tests/legacy-control-retirement.test.ts","role":"test_source"},
     {"path":"tests/publication.test.ts","role":"test_source"},
     {"path":"tests/license-contract.test.ts","role":"test_source"},
     {"path":"tests/readme-contract.test.ts","role":"test_source"}

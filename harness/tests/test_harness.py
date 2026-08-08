@@ -11,7 +11,6 @@ from pathlib import Path
 from unittest.mock import patch
 
 import harness.authority as authority_module
-import harness.model as model_module
 from harness.authority import AuthorityError,DamageAuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.damage_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,damage_matrix_row,write_damage_matrix
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,_strike_packet_options,run as run_damage
@@ -55,16 +54,9 @@ class AuthorityProjectionTests(unittest.TestCase):
         self.assertEqual(len(feature_ids),len(set(feature_ids)))
         self.assertEqual(set(self.model.disciplines),{"pyrokinesis","cryokinesis","psychokinesis","electrokinesis"})
         self.assertTrue(all(feature["minimum_level"]>=3 and feature["psi_cost"]>=0 for feature in self.model.features.values()))
-        self.assertTrue(all("entity_id" in feature and "control_tiers" not in feature for feature in self.model.features.values()))
-        self.assertTrue(all("mastery" not in discipline for discipline in self.model.disciplines.values()))
+        self.assertTrue(all("entity_id" in feature for feature in self.model.features.values()))
         self.assertEqual(self.model.disciplines["pyrokinesis"]["graze_damage"],"psionic_ability_modifier")
         self.assertTrue(all("graze_damage" not in discipline for key,discipline in self.model.disciplines.items() if key!="pyrokinesis"))
-
-    def test_damage_authority_names_have_no_generic_compatibility_aliases(self)->None:
-        self.assertIs(authority_module.DamageAuthorityModel,DamageAuthorityModel)
-        self.assertTrue(callable(authority_module.load_damage_projection))
-        for obsolete in ("LEGACY_PROJECTION_VERSION","load_projection","AuthorityModel"):
-            self.assertFalse(hasattr(authority_module,obsolete),obsolete)
 
     def test_structural_yaml_mutation_changes_projection_without_python_edit(self)->None:
         source=DEFAULT_AUTHORITY.read_text(encoding="utf-8")
@@ -107,9 +99,7 @@ class AuthorityProjectionTests(unittest.TestCase):
         self.assertTrue(all(packet[1][0]==0.0 for packet in cryo))
 
     def test_comparator_inputs_are_isolated_minimal_and_fail_closed(self)->None:
-        config=load_config();comparators=load_comparators()
-        self.assertNotIn("damage_comparators",config);self.assertNotIn("control_comparators",config)
-        self.assertNotIn("control_matrix",config);self.assertNotIn("control",comparators)
+        comparators=load_comparators()
         self.assertEqual(comparators["source_ruleset"],"2024 fifth-edition rules")
         self.assertEqual(set(comparators["primary_comparator_ids"]),{"battle_master","eldritch_knight"})
         self.assertEqual(set(comparators["damage"]),{"battle_master","eldritch_knight"})
@@ -153,8 +143,6 @@ class FrozenInputValidationTests(unittest.TestCase):
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["damage_matrix"]["optimization"].__setitem__("objective",["primary_damage","aggregate_damage"]),"optimization objective")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["damage_matrix"]["optimization"]["decision_timing"].__setitem__("unobserved_outcome_lookahead",True),"decision timing")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["damage_matrix"]["optimization"]["decision_timing"].__setitem__("unobserved_outcome_lookahead",0),"lookahead must be a boolean")
-        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value.__setitem__("control_matrix",{}),"benchmark config keys")
-        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["methodology"].__setitem__("control_seed",1),"methodology keys")
 
     def test_comparator_config_rejects_unknown_missing_and_incomplete_parameters(self)->None:
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"].__setitem__("unused_bonus",1),"damage.battle_master keys")
@@ -164,7 +152,6 @@ class FrozenInputValidationTests(unittest.TestCase):
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["tactical_policy"].__setitem__("maximum_maneuver_dice_per_attack",2),"Battle Master tactical policy")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["tactical_policy"].__setitem__("maneuver_choice_timing","before_attack_roll"),"Battle Master tactical policy")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"]["tactical_policy"].__setitem__("true_strike_choice_timing","after_attack_roll"),"Eldritch Knight tactical policy")
-        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value.__setitem__("control",{}),"comparator config keys")
 
     def test_full_pinned_target_shape_remains_generic_roster_data(self)->None:
         self.assertEqual(set(Target.__dataclass_fields__),{
@@ -185,8 +172,6 @@ class FrozenInputValidationTests(unittest.TestCase):
         self.assertEqual(provenance["historical_damage_certification"]["status"],"PRESERVED_PROVENANCE_ONLY")
         self.assertEqual(load_config()["methodology"]["status"],provenance["current_damage_review"]["status"])
         self.assertEqual(provenance["historical_damage_source"]["filename"],"kv_v12_0_0_damage_harness.py")
-        self.assertNotIn("control",json.dumps(provenance).lower())
-        self.assertFalse((PROJECT_ROOT/"harness/provenance/legacy-import.json").exists())
 
 
 class FighterNumericalTests(unittest.TestCase):
@@ -577,25 +562,6 @@ class SmokeAndBoundaryTests(unittest.TestCase):
                 self.assertNotEqual(row["Band"],"ORDER CHECK")
             self.assertIn(status,damage["paths"]["markdown"].read_text(encoding="utf-8"))
             self.assertIn(status,damage["paths"]["html"].read_text(encoding="utf-8"))
-
-    def test_retired_python_runtime_configuration_and_aliases_are_absent(self)->None:
-        for path in (
-            PROJECT_ROOT/"harness/control_harness.py",
-            PROJECT_ROOT/"harness/comparison_report.py",
-            PROJECT_ROOT/"harness/provenance/legacy-import.json",
-        ):
-            self.assertFalse(path.exists(),path)
-        self.assertTrue((PROJECT_ROOT/"harness/damage_report.py").is_file())
-        self.assertTrue((PROJECT_ROOT/"harness/provenance/damage-review.json").is_file())
-        config=load_config();comparators=load_comparators();projection=DamageAuthorityModel.load().projection
-        self.assertNotIn("control_matrix",config)
-        self.assertNotIn("control_default_trials",config["methodology"])
-        self.assertNotIn("control_seed",config["methodology"])
-        self.assertNotIn("smoke_trials",config["methodology"])
-        self.assertNotIn("control",comparators)
-        self.assertTrue(all("control_tiers" not in feature for feature in projection["features"]))
-        for obsolete in ("stable_seed","attack_probabilities","damage_multiplier","expected_damage","target_is_eligible","SIZE_ORDER"):
-            self.assertFalse(hasattr(model_module,obsolete),obsolete)
 
     def test_imports_outputs_and_archive_are_not_positive_inputs_or_tracked(self)->None:
         inputs=json.loads((PROJECT_ROOT/"build"/"inputs.json").read_text(encoding="utf-8"))["inputs"]

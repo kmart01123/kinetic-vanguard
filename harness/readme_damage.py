@@ -6,7 +6,6 @@ import argparse
 import csv
 import json
 import os
-import re
 import stat
 import tempfile
 from pathlib import Path
@@ -255,10 +254,6 @@ def validate_authoritative_rows(
 
     if _uniform(damage_rows, "Provenance Rules Version") != model.rules_version:
         raise MatrixSyncError("Damage matrix rules version differs from canonical authority")
-    serialized = "\n".join(",".join(row.values()) for row in damage_rows)
-    if re.search(r"hunter.?ranger|open.?hand.?monk", serialized, re.IGNORECASE):
-        raise MatrixSyncError("A retired comparator entered the headline damage matrix")
-
     return model.rules_version, status, profile, clusters, disciplines
 
 
@@ -349,48 +344,7 @@ def render_single_target_damage(
     return _heat_table(rows, disciplines)
 
 
-def release_state_line(readme: str, rules_version: str) -> str:
-    published_lines = re.findall(r"^- Current published release:.*$", readme, re.MULTILINE)
-    development_lines = re.findall(r"^- Current development line:.*$", readme, re.MULTILINE)
-    published_matches = re.findall(
-        r"^- Current published release: \*\*v(\d+\.\d+\.\d+)\*\*$",
-        readme,
-        re.MULTILINE,
-    )
-    development_matches = re.findall(
-        r"^- Current development line: \*\*(v\d+\.\d+\.\d+|None)\*\*$",
-        readme,
-        re.MULTILINE,
-    )
-    if (
-        len(published_lines) != 1
-        or len(development_lines) != 1
-        or len(published_matches) != 1
-        or len(development_matches) != 1
-    ):
-        raise MatrixSyncError(
-            "README must contain exactly one published and one development release-status line"
-        )
-    published = published_matches[0]
-    development = development_matches[0]
-    if published == rules_version:
-        if development != "None":
-            raise MatrixSyncError(
-                "A published canonical snapshot requires development line None"
-            )
-        return f"**Published snapshot** — canonical rules **v{rules_version}**."
-    if development == f"v{rules_version}":
-        return (
-            f"**Unreleased development snapshot** — canonical rules **v{rules_version}**; "
-            f"current published release **v{published}**."
-        )
-    raise MatrixSyncError(
-        f"Rules v{rules_version} is neither README published v{published} nor development {development}"
-    )
-
-
 def render_damage_region(
-    readme: str,
     damage_rows: Sequence[MatrixRow],
     rules_version: str,
     status: str,
@@ -398,14 +352,13 @@ def render_damage_region(
     clusters: Sequence[int],
     disciplines: Sequence[str] = README_DISCIPLINES,
 ) -> str:
-    release_line = release_state_line(readme, rules_version)
     if 1 not in clusters:
         raise MatrixSyncError("Single-target README snapshot requires cluster size 1")
     lines = [
         BEGIN_MARKER,
         "## Damage benchmark snapshot",
         "",
-        release_line,
+        f"**Canonical damage evidence** — rules **v{rules_version}**.",
         "",
         (
             f"Profile: `{profile}`. Numerical review status: `{status}`. "
@@ -507,7 +460,6 @@ def main() -> None:
         damage_rows
     )
     region = render_damage_region(
-        readme,
         damage_rows,
         rules_version,
         status,

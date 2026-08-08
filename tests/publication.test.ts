@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { JSDOM } from "jsdom";
 import { executeBuild } from "../src/build.js";
 import { loadAuthority } from "../src/load.js";
@@ -312,7 +314,21 @@ test("paragraph text beginning with Example is not classified heuristically",asy
 });
 
 
-test("release build fails closed before emitting deployable output",async()=>{await assert.rejects(()=>executeBuild("release"),/Build blocked/);});
+test("release build without explicit authorization fails closed before emitting release artifacts",async()=>{
+  const temporary=await mkdtemp(join(tmpdir(),"kv-unauthorized-release-"));
+  const outputRoot=join(temporary,"artifacts");
+  const previousApproval=process.env.KV_RELEASE_APPROVED;
+  try{
+    delete process.env.KV_RELEASE_APPROVED;
+    await assert.rejects(()=>executeBuild("release",outputRoot),/release\.approval_required/);
+    for(const artifact of ["KineticVanguard.html","build-manifest.json"]){
+      await assert.rejects(access(join(outputRoot,artifact)),(error:any)=>error?.code==="ENOENT");
+    }
+  }finally{
+    if(previousApproval===undefined)delete process.env.KV_RELEASE_APPROVED;else process.env.KV_RELEASE_APPROVED=previousApproval;
+    await rm(temporary,{recursive:true,force:true});
+  }
+});
 
 test("committed Name selection opens exactly once, preserves history state, and remains synchronized",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");

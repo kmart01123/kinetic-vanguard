@@ -21,7 +21,7 @@ Version 14.2.0 development retires the superseded Control Reliability implementa
 <!-- BEGIN GENERATED DAMAGE MATRIX -->
 ## Damage benchmark snapshot
 
-**Unreleased development snapshot** — canonical rules **v14.2.0**; current published release **v14.1.0**.
+**Canonical damage evidence** — rules **v14.2.0**.
 
 Profile: `official_default_25_percent_hp`. Numerical review status: `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`. These are exact analytical full-roster damage results, not Monte Carlo estimates.
 
