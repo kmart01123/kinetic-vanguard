@@ -201,12 +201,109 @@ export interface HarnessFeatureRule {
   starts_persistent_zone?:boolean;
   control_tiers?:HarnessControlTier[];
 }
+export type ControlEventV2="declaration"|"hit"|"entry"|"start_turn"|"save"|"repeat_save"|"exit"|"instantaneous_resolution";
+export type ControlMovementModeV2="walk"|"fly"|"swim"|"climb"|"burrow";
+export type ControlForcedMovementDirectionV2="straight_away_from_controller"|"toward_controller"|"controller_choice"|"vertical_up";
+export type ControlForcedMovementDestinationV2="legal_unoccupied_space"|"legal_destination";
+export type ControlSaveAbilityV2=CalculatorSave|"wisdom"|"discipline_signature";
+export type ControlDispositionV2="modeled"|"excluded_by_profile"|"unsupported_error";
+export type ControlDurationV2=
+  |{kind:"instantaneous"}
+  |{kind:"relative";owner:"controller"|"target";anchor:"start_turn"|"end_turn";offset_turns:number}
+  |{kind:"while_in_area";area_id:string}
+  |{kind:"concentration";maximum_value:number;unit:"round"|"minute"|"hour"};
+export type ControlMagnitudeV2=
+  |{kind:"condition";condition:HarnessCondition}
+  |{kind:"forced_movement";distance_feet:number;distance_mode:"exact"|"up_to";movement_mode:"push"|"pull"|"reposition"|"lift";direction:ControlForcedMovementDirectionV2;destination:ControlForcedMovementDestinationV2}
+  |{kind:"speed_reduction";reduction:{kind:"flat_feet";value:number}|{kind:"fraction";numerator:number;denominator:number}|{kind:"terrain_multiplier";value:number};movement_modes:ControlMovementModeV2[]}
+  |{kind:"speed_zero";movement_modes:ControlMovementModeV2[]}
+  |{kind:"attack_disadvantage";scope:"next_attack"|"all_attacks";count?:number}
+  |{kind:"reaction_denial";scope:"all_reactions"}
+  |{kind:"movement_option_denial";movement_modes:ControlMovementModeV2[]}
+  |{kind:"numerical_modifier";target:"armor_class";value:number};
+export interface ControlComponentV2 {
+  component_id:string;
+  target_selector_ids:string[];
+  magnitude:ControlMagnitudeV2;
+  duration:ControlDurationV2;
+  cadence:{apply:ControlEventV2[];repeat:ControlEventV2[];end:ControlEventV2[]};
+  stacking:{key:string;mode:"stacks"|"nonstacking"|"replace"|"dominates"|"independent";refresh:"duration"|"none";replacement_group?:string;dominates_component_ids:string[]};
+}
+export type ControlAreaV2={
+  area_id:string;
+  shape:"sphere"|"cylinder"|"cone"|"line";
+  origin:"controller"|"primary_target"|"selected_point"|"departure_or_arrival";
+  radius_feet?:number;
+  height_feet?:number;
+  length_feet?:number;
+  width_feet?:number;
+  triggers:ControlEventV2[];
+  exit_behavior:"ends_area_effects"|"none";
+}&(
+  |{persistent:true;entry_policy:{frequency:"once_per_turn";moved_area_counts_as_entry:boolean};movement:{kind:"stationary"}|{kind:"controller_reposition";controller_action:"bonus_action";distance_feet:number}}
+  |{persistent:false;entry_policy?:never;movement?:never}
+);
+export interface ControlTargetSelectorV2 {
+  selector_id:string;
+  role:"primary"|"secondary"|"all";
+  count:{kind:"fixed"|"up_to"|"proficiency_bonus"|"cluster_remainder"|"weighted_slots";value?:number;slots?:number;size_costs?:Partial<Record<"tiny"|"small"|"medium"|"large",number>>};
+  range:{feet:number;origin:"controller"|"primary_target"|"selected_point"|"departure_or_arrival"};
+  restrictions:ControlTargetRestrictionV2[];
+  gate_scope:"independent_per_target"|"shared";
+  area?:ControlAreaV2;
+}
+export type ControlTargetRestrictionV2=
+  |{kind:"visibility";requirement:"controller_can_see"}
+  |{kind:"maximum_size";size:"large_or_smaller"}
+  |{kind:"unique_targets";required:true}
+  |{kind:"excludes_primary_target";required:true};
+export interface ControlBranchV2 {branch_id:string;outcome:"attack_hit"|"attack_miss"|"save_success"|"save_failure"|"no_save"|"other";applies:string[];replaces:string[];terminates:string[];refreshes:string[];next_gate_ids:string[]}
+export type ControlResolutionBodyV2=
+  |{kind:"attack_roll";branches:ControlBranchV2[]}
+  |{kind:"saving_throw";ability:ControlSaveAbilityV2;branches:ControlBranchV2[]}
+  |{kind:"no_save";branches:ControlBranchV2[]}
+  |{kind:"other";branches:ControlBranchV2[]};
+export interface ControlResolutionV2 {
+  gate_id:string;
+  selector_ids:string[];
+  trigger:ControlEventV2;
+  gate_scope:"independent_per_target"|"shared";
+  resolution:ControlResolutionBodyV2;
+}
+export type ControlConcentrationV2=
+  |{kind:"none"}
+  |{kind:"required";startup:"on_resolution";occupancy:"one_controller_slot";replacement:"new_effect_ends_existing";maximum_duration:{value:number;unit:"round"|"minute"|"hour"};termination:Array<"failed_concentration_save"|"controller_incapacitated"|"controller_death"|"duration_expires"|"voluntary_end">};
+export interface ControlTierModelV2 {
+  effect_id:string;
+  inheritance:{kind:"none"}|{kind:"resolved";source_tier:0|1|2};
+  policy:{activation:"action"|"bonus_action"|"reaction"|"on_hit"|"passive";declaration:ControlEventV2;delivery:"attack_rider"|"standalone";psi_cost:number;overload_tier:0|1|2;blood_tax:"none"|"tier_formula";repeatability:"unlimited"|"once_per_attack_action"|"once_per_turn"|"limited_use";mastery:"stacks"|"replaces_on_declaration"|"not_applicable"};
+  target_selectors:ControlTargetSelectorV2[];
+  components:ControlComponentV2[];
+  root_gate_ids:string[];
+  resolutions:ControlResolutionV2[];
+  concentration:ControlConcentrationV2;
+  relationships:{replacement_groups:Array<{group_id:string;component_ids:string[]}>;dominance:Array<{dominant_component_id:string;suppressed_component_ids:string[]}>};
+}
+export type ControlLedgerEntryV2=
+  |{entity_id:string;tier:0|1|2;disposition:"modeled";model:ControlTierModelV2}
+  |{entity_id:string;tier:0|1|2;disposition:"excluded_by_profile";profile_id:string;reason:"selectable_advanced_training_disabled"|"outside_headline_control_value"|"incoming_enemy_attacks_unmodeled"}
+  |{entity_id:string;tier:0|1|2;disposition:"unsupported_error";reason:"pending_authority_population"};
+export interface ControlAuthorityV2 {
+  contract_version:"2.0.0";
+  active_profile:{id:string;selectable_advanced_training:"excluded";tactical_master:"included";legendary_resistance:"metadata_only";unsupported_disposition:"error"};
+  target_data_requirements:Array<"walking_speed"|"movement_modes"|"hover"|"nonvisual_senses">;
+  policy_inputs:{horizon_rounds:number;action_economy:{attack_rider_declaration:"before_attack_roll";standalone_action_limit_per_turn:1;action_surge_additional_standalone:false};resources:{psi_source:"psi_point_bands";blood_tax_source:"harness_overload";tier_two_limit_per_attack_action:1};concentration:{pressure:"endogenous_only";startup_blood_tax_check:"exempt";occupancy:"one_controller_slot";replacement:"new_effect_ends_existing";termination:Array<"failed_concentration_save"|"controller_incapacitated"|"controller_death"|"duration_expires"|"voluntary_end">}};
+  masteries:Array<{mastery_id:string;minimum_level:number;trigger:ControlEventV2[];component:ControlComponentV2}>;
+  tactical_master:{minimum_level:9;choice_mastery_ids:string[];choice_timing:"declaration";behavior:"replaces_kinetic_mastery"};
+  ledger:ControlLedgerEntryV2[];
+}
 export interface HarnessMechanics {
   action_economy:{standalone_psionic_action_limit_per_turn:1;action_surge_allows_additional_standalone_psionic_action:false};
   manifested_strike:{entity_id:"common_manifested_strike";damage_type_source:"discipline";holdout_damage_type:"force";holdout_damage_divisor:2;critical_dice_multiplier:2;attack_bonus:{base:number;components:Array<"psionic_ability_modifier"|"proficiency_bonus"|"psionic_focus">};save_dc:{base:number;components:Array<"psionic_ability_modifier"|"proficiency_bonus"|"psionic_focus">}};
   overload:{entity_id:"common_overload";blood_tax_per_tier:{base:number;proficiency_bonus_multiplier:number};tier_two_limit_per_attack_action:1;mastery:{minimum_level:18;uses_per_rest:1;blood_tax_divisor:2;minimum_per_overload:1}};
   disciplines:HarnessDiscipline[];
   feature_rules:HarnessFeatureRule[];
+  control_authority_v2:ControlAuthorityV2;
 }
 
 export interface Calculator {

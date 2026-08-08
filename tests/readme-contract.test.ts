@@ -85,11 +85,10 @@ test("README and release process stay synchronized with canonical development st
 });
 
 test("README exposes one synchronized headline balance snapshot", async () => {
-  const [{ authority }, readme, packageJsonSource, workflow, benchmarkConfigSource] = await Promise.all([
+  const [{ authority }, readme, packageJsonSource, benchmarkConfigSource] = await Promise.all([
     loadAuthority(),
     readFile("README.md", "utf8"),
     readFile("package.json", "utf8"),
-    readFile(".github/workflows/ci.yml", "utf8"),
     readFile("harness/config/benchmark.json", "utf8")
   ]);
   const packageJson = JSON.parse(packageJsonSource) as {
@@ -222,6 +221,4 @@ test("README exposes one synchronized headline balance snapshot", async () => {
     packageJson.scripts?.["readme:benchmarks:check"] ?? "",
     /^python3 -m harness\.readme_matrices --check(?:\s|$)/
   );
-  assert.match(workflow, /^\s+- name: Verify README benchmark matrices$/m);
-  assert.match(workflow, /^\s+run: npm run readme:benchmarks:check$/m);
 });

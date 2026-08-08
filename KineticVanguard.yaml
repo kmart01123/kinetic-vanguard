@@ -473,6 +473,593 @@ calculator:
         repeatability: once_per_attack_action
         control_tiers:
           - {tier: 2, application: failed_save, save: discipline_signature, effects: [{gate: on_failed_save, outcomes: [reaction_denial], duration: until_start_next_turn}]}
+    control_authority_v2:
+      contract_version: 2.0.0
+      active_profile:
+        id: official_default_25_percent_hp
+        selectable_advanced_training: excluded
+        tactical_master: included
+        legendary_resistance: metadata_only
+        unsupported_disposition: error
+      target_data_requirements:
+        - walking_speed
+        - movement_modes
+        - hover
+        - nonvisual_senses
+      policy_inputs:
+        horizon_rounds: 3
+        action_economy:
+          attack_rider_declaration: before_attack_roll
+          standalone_action_limit_per_turn: 1
+          action_surge_additional_standalone: false
+        resources:
+          psi_source: psi_point_bands
+          blood_tax_source: harness_overload
+          tier_two_limit_per_attack_action: 1
+        concentration:
+          pressure: endogenous_only
+          startup_blood_tax_check: exempt
+          occupancy: one_controller_slot
+          replacement: new_effect_ends_existing
+          termination:
+            - failed_concentration_save
+            - controller_incapacitated
+            - controller_death
+            - duration_expires
+            - voluntary_end
+      masteries:
+        - mastery_id: mastery_slow
+          minimum_level: 3
+          trigger: [hit]
+          component:
+            component_id: mastery_slow_speed_reduction
+            target_selector_ids: [manifested_strike_target]
+            magnitude:
+              kind: speed_reduction
+              reduction: {kind: flat_feet, value: 10}
+              movement_modes: [walk, fly, swim, climb, burrow]
+            duration: {kind: relative, owner: controller, anchor: start_turn, offset_turns: 1}
+            cadence: {apply: [hit], repeat: [], end: [start_turn]}
+            stacking: {key: mastery_slow_speed_reduction, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+        - mastery_id: mastery_push
+          minimum_level: 3
+          trigger: [hit]
+          component:
+            component_id: mastery_push_forced_movement
+            target_selector_ids: [manifested_strike_large_or_smaller_target]
+            magnitude: {kind: forced_movement, distance_feet: 10, distance_mode: up_to, movement_mode: push, direction: straight_away_from_controller, destination: legal_destination}
+            duration: {kind: instantaneous}
+            cadence: {apply: [hit], repeat: [], end: [instantaneous_resolution]}
+            stacking: {key: mastery_push_forced_movement, mode: independent, refresh: none, dominates_component_ids: []}
+        - mastery_id: mastery_sap
+          minimum_level: 3
+          trigger: [hit]
+          component:
+            component_id: mastery_sap_attack_disadvantage
+            target_selector_ids: [manifested_strike_target]
+            magnitude: {kind: attack_disadvantage, scope: next_attack, count: 1}
+            duration: {kind: relative, owner: controller, anchor: start_turn, offset_turns: 1}
+            cadence: {apply: [hit], repeat: [], end: [start_turn]}
+            stacking: {key: mastery_sap_attack_disadvantage, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+      tactical_master:
+        minimum_level: 9
+        choice_mastery_ids: [mastery_push, mastery_sap, mastery_slow]
+        choice_timing: declaration
+        behavior: replaces_kinetic_mastery
+      ledger:
+        - {entity_id: absolute_zero, tier: 0, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: absolute_zero, tier: 1, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: absolute_zero, tier: 2, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: advanced_beguile, tier: 0, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: selectable_advanced_training_disabled}
+        - {entity_id: advanced_beguile, tier: 1, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: selectable_advanced_training_disabled}
+        - {entity_id: advanced_beguile, tier: 2, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: selectable_advanced_training_disabled}
+        - {entity_id: advanced_deflection_screen, tier: 2, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: incoming_enemy_attacks_unmodeled}
+        - {entity_id: advanced_gravitic_press, tier: 0, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: selectable_advanced_training_disabled}
+        - {entity_id: advanced_gravitic_press, tier: 1, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: selectable_advanced_training_disabled}
+        - {entity_id: advanced_gravitic_press, tier: 2, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: selectable_advanced_training_disabled}
+        - {entity_id: advanced_improved_phase_step, tier: 2, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: selectable_advanced_training_disabled}
+        - {entity_id: advanced_mind_lock, tier: 0, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: selectable_advanced_training_disabled}
+        - {entity_id: advanced_mind_lock, tier: 1, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: selectable_advanced_training_disabled}
+        - {entity_id: advanced_mind_lock, tier: 2, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: selectable_advanced_training_disabled}
+        - {entity_id: advanced_phase_step, tier: 2, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: arctic_tempest, tier: 0, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: arctic_tempest, tier: 1, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: arctic_tempest, tier: 2, disposition: unsupported_error, reason: pending_authority_population}
+        - entity_id: ball_lightning
+          tier: 2
+          disposition: modeled
+          model:
+            effect_id: ball_lightning_t2_control
+            inheritance: {kind: resolved, source_tier: 1}
+            policy:
+              activation: action
+              declaration: declaration
+              delivery: standalone
+              psi_cost: 5
+              overload_tier: 2
+              blood_tax: tier_formula
+              repeatability: once_per_turn
+              mastery: not_applicable
+            target_selectors:
+              - selector_id: ball_lightning_area_targets
+                role: all
+                count: {kind: cluster_remainder}
+                range: {feet: 60, origin: controller}
+                restrictions: []
+                gate_scope: independent_per_target
+                area:
+                  area_id: ball_lightning_sphere
+                  shape: sphere
+                  origin: selected_point
+                  radius_feet: 30
+                  persistent: true
+                  entry_policy: {frequency: once_per_turn, moved_area_counts_as_entry: false}
+                  movement: {kind: controller_reposition, controller_action: bonus_action, distance_feet: 15}
+                  triggers: [entry, start_turn]
+                  exit_behavior: ends_area_effects
+            components:
+              - component_id: ball_lightning_reaction_denial
+                target_selector_ids: [ball_lightning_area_targets]
+                magnitude: {kind: reaction_denial, scope: all_reactions}
+                duration: {kind: while_in_area, area_id: ball_lightning_sphere}
+                cadence: {apply: [entry, start_turn], repeat: [entry, start_turn], end: [exit]}
+                stacking: {key: ball_lightning_reaction_denial, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+              - component_id: ball_lightning_attack_disadvantage
+                target_selector_ids: [ball_lightning_area_targets]
+                magnitude: {kind: attack_disadvantage, scope: all_attacks}
+                duration: {kind: while_in_area, area_id: ball_lightning_sphere}
+                cadence: {apply: [entry, start_turn], repeat: [entry, start_turn], end: [exit]}
+                stacking: {key: ball_lightning_attack_disadvantage, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+            root_gate_ids: [ball_lightning_entry_save, ball_lightning_start_turn_save]
+            resolutions:
+              - gate_id: ball_lightning_entry_save
+                selector_ids: [ball_lightning_area_targets]
+                trigger: entry
+                gate_scope: independent_per_target
+                resolution:
+                  kind: saving_throw
+                  ability: charisma
+                  branches:
+                    - {branch_id: ball_lightning_entry_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: ball_lightning_entry_failure, outcome: save_failure, applies: [ball_lightning_reaction_denial, ball_lightning_attack_disadvantage], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+              - gate_id: ball_lightning_start_turn_save
+                selector_ids: [ball_lightning_area_targets]
+                trigger: start_turn
+                gate_scope: independent_per_target
+                resolution:
+                  kind: saving_throw
+                  ability: charisma
+                  branches:
+                    - {branch_id: ball_lightning_start_turn_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: ball_lightning_start_turn_failure, outcome: save_failure, applies: [ball_lightning_reaction_denial, ball_lightning_attack_disadvantage], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+            concentration:
+              kind: required
+              startup: on_resolution
+              occupancy: one_controller_slot
+              replacement: new_effect_ends_existing
+              maximum_duration: {value: 1, unit: minute}
+              termination: [failed_concentration_save, controller_incapacitated, controller_death, duration_expires, voluntary_end]
+            relationships: {replacement_groups: [], dominance: []}
+        - {entity_id: electron_burst, tier: 2, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: explosion_implosion, tier: 0, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: explosion_implosion, tier: 1, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: explosion_implosion, tier: 2, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: flare, tier: 0, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: flare, tier: 1, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: flare, tier: 2, disposition: unsupported_error, reason: pending_authority_population}
+        - entity_id: forked_lightning
+          tier: 2
+          disposition: modeled
+          model:
+            effect_id: forked_lightning_t2_control
+            inheritance: {kind: resolved, source_tier: 1}
+            policy:
+              activation: action
+              declaration: declaration
+              delivery: standalone
+              psi_cost: 3
+              overload_tier: 2
+              blood_tax: tier_formula
+              repeatability: once_per_turn
+              mastery: not_applicable
+            target_selectors:
+              - selector_id: forked_lightning_primary
+                role: primary
+                count: {kind: fixed, value: 1}
+                range: {feet: 60, origin: controller}
+                restrictions:
+                  - {kind: visibility, requirement: controller_can_see}
+                gate_scope: independent_per_target
+              - selector_id: forked_lightning_secondary
+                role: secondary
+                count: {kind: up_to, value: 5}
+                range: {feet: 30, origin: primary_target}
+                restrictions:
+                  - {kind: excludes_primary_target, required: true}
+                gate_scope: independent_per_target
+            components:
+              - component_id: forked_lightning_reaction_denial
+                target_selector_ids: [forked_lightning_primary, forked_lightning_secondary]
+                magnitude: {kind: reaction_denial, scope: all_reactions}
+                duration: {kind: relative, owner: controller, anchor: start_turn, offset_turns: 1}
+                cadence: {apply: [save], repeat: [], end: [start_turn]}
+                stacking: {key: forked_lightning_reaction_denial, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+              - component_id: forked_lightning_attack_disadvantage
+                target_selector_ids: [forked_lightning_primary, forked_lightning_secondary]
+                magnitude: {kind: attack_disadvantage, scope: all_attacks}
+                duration: {kind: relative, owner: controller, anchor: start_turn, offset_turns: 1}
+                cadence: {apply: [save], repeat: [], end: [start_turn]}
+                stacking: {key: forked_lightning_attack_disadvantage, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+              - component_id: forked_lightning_primary_speed_zero
+                target_selector_ids: [forked_lightning_primary]
+                magnitude: {kind: speed_zero, movement_modes: [walk, fly, swim, climb, burrow]}
+                duration: {kind: relative, owner: controller, anchor: start_turn, offset_turns: 1}
+                cadence: {apply: [save], repeat: [], end: [start_turn]}
+                stacking: {key: forked_lightning_primary_speed_zero, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+            root_gate_ids: [forked_lightning_independent_saves]
+            resolutions:
+              - gate_id: forked_lightning_independent_saves
+                selector_ids: [forked_lightning_primary, forked_lightning_secondary]
+                trigger: save
+                gate_scope: independent_per_target
+                resolution:
+                  kind: saving_throw
+                  ability: charisma
+                  branches:
+                    - {branch_id: forked_lightning_save_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: forked_lightning_save_failure, outcome: save_failure, applies: [forked_lightning_reaction_denial, forked_lightning_attack_disadvantage, forked_lightning_primary_speed_zero], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+            concentration: {kind: none}
+            relationships: {replacement_groups: [], dominance: []}
+        - {entity_id: frozen_ground, tier: 0, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: frozen_ground, tier: 1, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: frozen_ground, tier: 2, disposition: unsupported_error, reason: pending_authority_population}
+        - entity_id: glacial_spike
+          tier: 0
+          disposition: modeled
+          model:
+            effect_id: glacial_spike_t0_control
+            inheritance: {kind: none}
+            policy: {activation: on_hit, declaration: declaration, delivery: attack_rider, psi_cost: 0, overload_tier: 0, blood_tax: none, repeatability: unlimited, mastery: stacks}
+            target_selectors:
+              - {selector_id: glacial_spike_target, role: primary, count: {kind: fixed, value: 1}, range: {feet: 60, origin: controller}, restrictions: [], gate_scope: shared}
+            components:
+              - component_id: glacial_spike_speed_reduction
+                target_selector_ids: [glacial_spike_target]
+                magnitude: {kind: speed_reduction, reduction: {kind: flat_feet, value: 10}, movement_modes: [walk, fly, swim, climb, burrow]}
+                duration: {kind: relative, owner: controller, anchor: end_turn, offset_turns: 1}
+                cadence: {apply: [hit], repeat: [], end: []}
+                stacking: {key: glacial_spike_speed_reduction, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+            root_gate_ids: [glacial_spike_t0_attack]
+            resolutions:
+              - gate_id: glacial_spike_t0_attack
+                selector_ids: [glacial_spike_target]
+                trigger: hit
+                gate_scope: shared
+                resolution:
+                  kind: attack_roll
+                  branches:
+                    - {branch_id: glacial_spike_t0_hit, outcome: attack_hit, applies: [glacial_spike_speed_reduction], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: glacial_spike_t0_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+            concentration: {kind: none}
+            relationships: {replacement_groups: [], dominance: []}
+        - entity_id: glacial_spike
+          tier: 1
+          disposition: modeled
+          model:
+            effect_id: glacial_spike_t1_control
+            inheritance: {kind: resolved, source_tier: 0}
+            policy: {activation: on_hit, declaration: declaration, delivery: attack_rider, psi_cost: 0, overload_tier: 1, blood_tax: tier_formula, repeatability: unlimited, mastery: stacks}
+            target_selectors:
+              - {selector_id: glacial_spike_target, role: primary, count: {kind: fixed, value: 1}, range: {feet: 60, origin: controller}, restrictions: [], gate_scope: shared}
+            components:
+              - component_id: glacial_spike_speed_reduction
+                target_selector_ids: [glacial_spike_target]
+                magnitude: {kind: speed_reduction, reduction: {kind: flat_feet, value: 10}, movement_modes: [walk, fly, swim, climb, burrow]}
+                duration: {kind: relative, owner: controller, anchor: end_turn, offset_turns: 1}
+                cadence: {apply: [hit], repeat: [save], end: [save]}
+                stacking: {key: glacial_spike_speed_reduction, mode: nonstacking, refresh: duration, replacement_group: glacial_spike_speed_state, dominates_component_ids: []}
+              - component_id: glacial_spike_speed_zero
+                target_selector_ids: [glacial_spike_target]
+                magnitude: {kind: speed_zero, movement_modes: [walk, fly, swim, climb, burrow]}
+                duration: {kind: relative, owner: controller, anchor: end_turn, offset_turns: 1}
+                cadence: {apply: [save], repeat: [], end: []}
+                stacking: {key: glacial_spike_speed_zero, mode: dominates, refresh: duration, replacement_group: glacial_spike_speed_state, dominates_component_ids: [glacial_spike_speed_reduction]}
+            root_gate_ids: [glacial_spike_t1_attack]
+            resolutions:
+              - gate_id: glacial_spike_t1_attack
+                selector_ids: [glacial_spike_target]
+                trigger: hit
+                gate_scope: shared
+                resolution:
+                  kind: attack_roll
+                  branches:
+                    - {branch_id: glacial_spike_t1_hit, outcome: attack_hit, applies: [glacial_spike_speed_reduction], replaces: [], terminates: [], refreshes: [], next_gate_ids: [glacial_spike_t1_save]}
+                    - {branch_id: glacial_spike_t1_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+              - gate_id: glacial_spike_t1_save
+                selector_ids: [glacial_spike_target]
+                trigger: save
+                gate_scope: shared
+                resolution:
+                  kind: saving_throw
+                  ability: constitution
+                  branches:
+                    - {branch_id: glacial_spike_t1_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [glacial_spike_speed_reduction], next_gate_ids: []}
+                    - {branch_id: glacial_spike_t1_failure, outcome: save_failure, applies: [glacial_spike_speed_zero], replaces: [glacial_spike_speed_reduction], terminates: [], refreshes: [], next_gate_ids: []}
+            concentration: {kind: none}
+            relationships:
+              replacement_groups:
+                - {group_id: glacial_spike_speed_state, component_ids: [glacial_spike_speed_reduction, glacial_spike_speed_zero]}
+              dominance:
+                - {dominant_component_id: glacial_spike_speed_zero, suppressed_component_ids: [glacial_spike_speed_reduction]}
+        - entity_id: glacial_spike
+          tier: 2
+          disposition: modeled
+          model:
+            effect_id: glacial_spike_t2_control
+            inheritance: {kind: resolved, source_tier: 1}
+            policy: {activation: on_hit, declaration: declaration, delivery: attack_rider, psi_cost: 0, overload_tier: 2, blood_tax: tier_formula, repeatability: unlimited, mastery: stacks}
+            target_selectors:
+              - {selector_id: glacial_spike_target, role: primary, count: {kind: fixed, value: 1}, range: {feet: 60, origin: controller}, restrictions: [], gate_scope: shared}
+            components:
+              - component_id: glacial_spike_speed_reduction
+                target_selector_ids: [glacial_spike_target]
+                magnitude: {kind: speed_reduction, reduction: {kind: flat_feet, value: 10}, movement_modes: [walk, fly, swim, climb, burrow]}
+                duration: {kind: relative, owner: controller, anchor: end_turn, offset_turns: 1}
+                cadence: {apply: [hit], repeat: [save], end: [save]}
+                stacking: {key: glacial_spike_speed_reduction, mode: nonstacking, refresh: duration, replacement_group: glacial_spike_speed_state, dominates_component_ids: []}
+              - component_id: glacial_spike_speed_zero
+                target_selector_ids: [glacial_spike_target]
+                magnitude: {kind: speed_zero, movement_modes: [walk, fly, swim, climb, burrow]}
+                duration: {kind: relative, owner: controller, anchor: end_turn, offset_turns: 1}
+                cadence: {apply: [save], repeat: [], end: [save]}
+                stacking: {key: glacial_spike_speed_zero, mode: replace, refresh: duration, replacement_group: glacial_spike_speed_state, dominates_component_ids: [glacial_spike_speed_reduction]}
+              - component_id: glacial_spike_restrained
+                target_selector_ids: [glacial_spike_target]
+                magnitude: {kind: condition, condition: restrained}
+                duration: {kind: relative, owner: controller, anchor: end_turn, offset_turns: 1}
+                cadence: {apply: [save], repeat: [], end: []}
+                stacking: {key: glacial_spike_restrained, mode: dominates, refresh: duration, replacement_group: glacial_spike_speed_state, dominates_component_ids: [glacial_spike_speed_zero, glacial_spike_speed_reduction]}
+            root_gate_ids: [glacial_spike_t2_attack]
+            resolutions:
+              - gate_id: glacial_spike_t2_attack
+                selector_ids: [glacial_spike_target]
+                trigger: hit
+                gate_scope: shared
+                resolution:
+                  kind: attack_roll
+                  branches:
+                    - {branch_id: glacial_spike_t2_hit, outcome: attack_hit, applies: [glacial_spike_speed_reduction], replaces: [], terminates: [], refreshes: [], next_gate_ids: [glacial_spike_t2_save]}
+                    - {branch_id: glacial_spike_t2_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+              - gate_id: glacial_spike_t2_save
+                selector_ids: [glacial_spike_target]
+                trigger: save
+                gate_scope: shared
+                resolution:
+                  kind: saving_throw
+                  ability: constitution
+                  branches:
+                    - {branch_id: glacial_spike_t2_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [glacial_spike_speed_reduction], next_gate_ids: []}
+                    - {branch_id: glacial_spike_t2_failure, outcome: save_failure, applies: [glacial_spike_restrained], replaces: [glacial_spike_speed_zero, glacial_spike_speed_reduction], terminates: [], refreshes: [], next_gate_ids: []}
+            concentration: {kind: none}
+            relationships:
+              replacement_groups:
+                - {group_id: glacial_spike_speed_state, component_ids: [glacial_spike_speed_reduction, glacial_spike_speed_zero, glacial_spike_restrained]}
+              dominance:
+                - {dominant_component_id: glacial_spike_speed_zero, suppressed_component_ids: [glacial_spike_speed_reduction]}
+                - {dominant_component_id: glacial_spike_restrained, suppressed_component_ids: [glacial_spike_speed_zero, glacial_spike_speed_reduction]}
+        - entity_id: mass_levitation
+          tier: 0
+          disposition: modeled
+          model:
+            effect_id: mass_levitation_t0_control
+            inheritance: {kind: none}
+            policy: {activation: action, declaration: declaration, delivery: standalone, psi_cost: 5, overload_tier: 0, blood_tax: none, repeatability: once_per_turn, mastery: not_applicable}
+            target_selectors:
+              - selector_id: mass_levitation_targets
+                role: all
+                count:
+                  kind: weighted_slots
+                  slots: 5
+                  size_costs: {tiny: 1, small: 1, medium: 1, large: 2}
+                range: {feet: 60, origin: controller}
+                restrictions:
+                  - {kind: visibility, requirement: controller_can_see}
+                  - {kind: maximum_size, size: large_or_smaller}
+                  - {kind: unique_targets, required: true}
+                gate_scope: independent_per_target
+            components:
+              - component_id: mass_levitation_initial_lift
+                target_selector_ids: [mass_levitation_targets]
+                magnitude: {kind: forced_movement, distance_feet: 30, distance_mode: exact, movement_mode: lift, direction: vertical_up, destination: legal_unoccupied_space}
+                duration: {kind: instantaneous}
+                cadence: {apply: [save], repeat: [], end: [instantaneous_resolution]}
+                stacking: {key: mass_levitation_initial_lift, mode: independent, refresh: none, dominates_component_ids: []}
+              - component_id: mass_levitation_restrained
+                target_selector_ids: [mass_levitation_targets]
+                magnitude: {kind: condition, condition: restrained}
+                duration: {kind: concentration, maximum_value: 1, unit: minute}
+                cadence: {apply: [save], repeat: [repeat_save], end: [repeat_save]}
+                stacking: {key: mass_levitation_restrained, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+            root_gate_ids: [mass_levitation_initial_saves, mass_levitation_repeat_saves]
+            resolutions:
+              - gate_id: mass_levitation_initial_saves
+                selector_ids: [mass_levitation_targets]
+                trigger: save
+                gate_scope: independent_per_target
+                resolution:
+                  kind: saving_throw
+                  ability: strength
+                  branches:
+                    - {branch_id: mass_levitation_initial_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: mass_levitation_initial_failure, outcome: save_failure, applies: [mass_levitation_initial_lift, mass_levitation_restrained], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+              - gate_id: mass_levitation_repeat_saves
+                selector_ids: [mass_levitation_targets]
+                trigger: repeat_save
+                gate_scope: independent_per_target
+                resolution:
+                  kind: saving_throw
+                  ability: strength
+                  branches:
+                    - {branch_id: mass_levitation_repeat_success, outcome: save_success, applies: [], replaces: [], terminates: [mass_levitation_restrained], refreshes: [], next_gate_ids: []}
+                    - {branch_id: mass_levitation_repeat_failure, outcome: save_failure, applies: [], replaces: [], terminates: [], refreshes: [mass_levitation_restrained], next_gate_ids: []}
+            concentration:
+              kind: required
+              startup: on_resolution
+              occupancy: one_controller_slot
+              replacement: new_effect_ends_existing
+              maximum_duration: {value: 1, unit: minute}
+              termination: [failed_concentration_save, controller_incapacitated, controller_death, duration_expires, voluntary_end]
+            relationships: {replacement_groups: [], dominance: []}
+        - {entity_id: mass_levitation, tier: 1, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: mass_levitation, tier: 2, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: snow_chains, tier: 0, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: snow_chains, tier: 1, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: snow_chains, tier: 2, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: static_discharge, tier: 2, disposition: unsupported_error, reason: pending_authority_population}
+        - entity_id: telekinetic_shove
+          tier: 0
+          disposition: modeled
+          model:
+            effect_id: telekinetic_shove_t0_control
+            inheritance: {kind: none}
+            policy: {activation: on_hit, declaration: declaration, delivery: attack_rider, psi_cost: 0, overload_tier: 0, blood_tax: none, repeatability: unlimited, mastery: replaces_on_declaration}
+            target_selectors:
+              - selector_id: telekinetic_shove_target
+                role: primary
+                count: {kind: fixed, value: 1}
+                range: {feet: 60, origin: controller}
+                restrictions: []
+                gate_scope: shared
+            components:
+              - component_id: telekinetic_shove_forced_movement
+                target_selector_ids: [telekinetic_shove_target]
+                magnitude: {kind: forced_movement, distance_feet: 10, distance_mode: exact, movement_mode: push, direction: controller_choice, destination: legal_destination}
+                duration: {kind: instantaneous}
+                cadence: {apply: [save], repeat: [], end: [instantaneous_resolution]}
+                stacking: {key: telekinetic_shove_forced_movement, mode: independent, refresh: none, dominates_component_ids: []}
+            root_gate_ids: [telekinetic_shove_t0_attack]
+            resolutions:
+              - gate_id: telekinetic_shove_t0_attack
+                selector_ids: [telekinetic_shove_target]
+                trigger: hit
+                gate_scope: shared
+                resolution:
+                  kind: attack_roll
+                  branches:
+                    - {branch_id: telekinetic_shove_t0_hit, outcome: attack_hit, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: [telekinetic_shove_t0_save]}
+                    - {branch_id: telekinetic_shove_t0_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+              - gate_id: telekinetic_shove_t0_save
+                selector_ids: [telekinetic_shove_target]
+                trigger: save
+                gate_scope: shared
+                resolution:
+                  kind: saving_throw
+                  ability: strength
+                  branches:
+                    - {branch_id: telekinetic_shove_t0_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: telekinetic_shove_t0_failure, outcome: save_failure, applies: [telekinetic_shove_forced_movement], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+            concentration: {kind: none}
+            relationships: {replacement_groups: [], dominance: []}
+        - entity_id: telekinetic_shove
+          tier: 1
+          disposition: modeled
+          model:
+            effect_id: telekinetic_shove_t1_control
+            inheritance: {kind: resolved, source_tier: 0}
+            policy: {activation: on_hit, declaration: declaration, delivery: attack_rider, psi_cost: 0, overload_tier: 1, blood_tax: tier_formula, repeatability: unlimited, mastery: replaces_on_declaration}
+            target_selectors:
+              - selector_id: telekinetic_shove_target
+                role: primary
+                count: {kind: fixed, value: 1}
+                range: {feet: 60, origin: controller}
+                restrictions: []
+                gate_scope: shared
+            components:
+              - component_id: telekinetic_shove_forced_movement
+                target_selector_ids: [telekinetic_shove_target]
+                magnitude: {kind: forced_movement, distance_feet: 15, distance_mode: exact, movement_mode: push, direction: controller_choice, destination: legal_destination}
+                duration: {kind: instantaneous}
+                cadence: {apply: [save], repeat: [], end: [instantaneous_resolution]}
+                stacking: {key: telekinetic_shove_forced_movement, mode: independent, refresh: none, dominates_component_ids: []}
+            root_gate_ids: [telekinetic_shove_t1_attack]
+            resolutions:
+              - gate_id: telekinetic_shove_t1_attack
+                selector_ids: [telekinetic_shove_target]
+                trigger: hit
+                gate_scope: shared
+                resolution:
+                  kind: attack_roll
+                  branches:
+                    - {branch_id: telekinetic_shove_t1_hit, outcome: attack_hit, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: [telekinetic_shove_t1_save]}
+                    - {branch_id: telekinetic_shove_t1_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+              - gate_id: telekinetic_shove_t1_save
+                selector_ids: [telekinetic_shove_target]
+                trigger: save
+                gate_scope: shared
+                resolution:
+                  kind: saving_throw
+                  ability: strength
+                  branches:
+                    - {branch_id: telekinetic_shove_t1_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: telekinetic_shove_t1_failure, outcome: save_failure, applies: [telekinetic_shove_forced_movement], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+            concentration: {kind: none}
+            relationships: {replacement_groups: [], dominance: []}
+        - entity_id: telekinetic_shove
+          tier: 2
+          disposition: modeled
+          model:
+            effect_id: telekinetic_shove_t2_control
+            inheritance: {kind: resolved, source_tier: 1}
+            policy: {activation: on_hit, declaration: declaration, delivery: attack_rider, psi_cost: 0, overload_tier: 2, blood_tax: tier_formula, repeatability: unlimited, mastery: replaces_on_declaration}
+            target_selectors:
+              - selector_id: telekinetic_shove_target
+                role: primary
+                count: {kind: fixed, value: 1}
+                range: {feet: 60, origin: controller}
+                restrictions: []
+                gate_scope: shared
+            components:
+              - component_id: telekinetic_shove_forced_movement
+                target_selector_ids: [telekinetic_shove_target]
+                magnitude: {kind: forced_movement, distance_feet: 20, distance_mode: exact, movement_mode: push, direction: controller_choice, destination: legal_destination}
+                duration: {kind: instantaneous}
+                cadence: {apply: [save], repeat: [], end: [instantaneous_resolution]}
+                stacking: {key: telekinetic_shove_forced_movement, mode: independent, refresh: none, dominates_component_ids: []}
+              - component_id: telekinetic_shove_speed_zero
+                target_selector_ids: [telekinetic_shove_target]
+                magnitude: {kind: speed_zero, movement_modes: [walk, fly, swim, climb, burrow]}
+                duration: {kind: relative, owner: controller, anchor: end_turn, offset_turns: 1}
+                cadence: {apply: [save], repeat: [], end: []}
+                stacking: {key: telekinetic_shove_speed_zero, mode: nonstacking, refresh: duration, dominates_component_ids: []}
+            root_gate_ids: [telekinetic_shove_t2_attack]
+            resolutions:
+              - gate_id: telekinetic_shove_t2_attack
+                selector_ids: [telekinetic_shove_target]
+                trigger: hit
+                gate_scope: shared
+                resolution:
+                  kind: attack_roll
+                  branches:
+                    - {branch_id: telekinetic_shove_t2_hit, outcome: attack_hit, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: [telekinetic_shove_t2_save]}
+                    - {branch_id: telekinetic_shove_t2_miss, outcome: attack_miss, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+              - gate_id: telekinetic_shove_t2_save
+                selector_ids: [telekinetic_shove_target]
+                trigger: save
+                gate_scope: shared
+                resolution:
+                  kind: saving_throw
+                  ability: strength
+                  branches:
+                    - {branch_id: telekinetic_shove_t2_success, outcome: save_success, applies: [], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+                    - {branch_id: telekinetic_shove_t2_failure, outcome: save_failure, applies: [telekinetic_shove_forced_movement, telekinetic_shove_speed_zero], replaces: [], terminates: [], refreshes: [], next_gate_ids: []}
+            concentration: {kind: none}
+            relationships: {replacement_groups: [], dominance: []}
+        - {entity_id: telekinetic_slam, tier: 0, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: telekinetic_slam, tier: 1, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: telekinetic_slam, tier: 2, disposition: unsupported_error, reason: pending_authority_population}
+        - {entity_id: thermal_fracture, tier: 0, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: outside_headline_control_value}
+        - {entity_id: thermal_fracture, tier: 1, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: outside_headline_control_value}
+        - {entity_id: thermal_fracture, tier: 2, disposition: excluded_by_profile, profile_id: official_default_25_percent_hp, reason: outside_headline_control_value}
   features:
     - entity_id: glacial_spike
       delivery: on_hit_rider
@@ -4702,7 +5289,7 @@ navigation:
           title: Ball Lightning
   default_category_id: common_features
 rules_version: 14.1.0
-schema_version: 2.1.0
+schema_version: 2.2.0
 vocabularies:
   acquisition_modes:
     - id: granted
