@@ -21,7 +21,7 @@ const onboardingStrings=(value:any,result:string[]=[]):string[]=>{if(typeof valu
 test("YAML authority is schema-valid, semantically valid, and complete",async()=>{
   const loaded=await loadAuthority();const diagnostics=[...loaded.diagnostics,...validateSemantics(loaded.authority)];
   assert.deepEqual(diagnostics,[]);
-  assert.equal(loaded.authority.schema_version,"2.1.0");
+  assert.equal(loaded.authority.schema_version,"2.2.0");
   assert.equal(loaded.authority.rules_version,"14.1.0");
   const audit=loaded.authority.audits?.find(item=>item.id==="yaml_rules_authority")!;
   assert.deepEqual([...audit.subject_ids].sort(),loaded.authority.entities.map(entity=>entity.id).sort());
