@@ -14,7 +14,7 @@ from typing import Any
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AUTHORITY = PROJECT_ROOT / "KineticVanguard.yaml"
-LEGACY_PROJECTION_VERSION = "1.0.0"
+DAMAGE_PROJECTION_VERSION = "1.0.0"
 CONTROL_PROJECTION_VERSION = "2.0.0"
 CONTROL_LEDGER_SIZE = 49
 
@@ -277,16 +277,16 @@ def _run_projector(authority_path: str | Path, projection_version: str | None = 
     return projection
 
 
-def load_projection(authority_path: str | Path = DEFAULT_AUTHORITY) -> dict[str, Any]:
+def load_damage_projection(authority_path: str | Path = DEFAULT_AUTHORITY) -> dict[str, Any]:
     projection = _run_projector(authority_path)
     required = {"projection_version", "authority_path", "authority_sha256", "rules_version", "progressions", "disciplines", "features"}
     missing = sorted(required - projection.keys())
     if missing:
         raise AuthorityError(f"Projection is missing required fields: {', '.join(missing)}")
-    if projection["projection_version"] != LEGACY_PROJECTION_VERSION:
+    if projection["projection_version"] != DAMAGE_PROJECTION_VERSION:
         raise AuthorityError(
-            f"Unsupported legacy projection version: {projection['projection_version']!r}; "
-            f"expected {LEGACY_PROJECTION_VERSION}"
+            f"Unsupported damage projection version: {projection['projection_version']!r}; "
+            f"expected {DAMAGE_PROJECTION_VERSION}"
         )
     return projection
 
@@ -1366,14 +1366,14 @@ def validate_control_projection_v2(projection: Any) -> dict[str, Any]:
 
 
 def load_control_projection_v2(authority_path: str | Path = DEFAULT_AUTHORITY) -> dict[str, Any]:
-    """Request projection v2 explicitly and reject any malformed or legacy result."""
+    """Request projection v2 explicitly and reject any malformed or non-v2 result."""
 
     return validate_control_projection_v2(_run_projector(authority_path, CONTROL_PROJECTION_VERSION))
 
 
 @dataclass(frozen=True, init=False)
 class ControlAuthorityV2Model:
-    """Validated structured control authority, kept separate from the legacy model."""
+    """Validated structured control authority, kept separate from the damage model."""
 
     __projection: dict[str, Any]
 
@@ -1447,12 +1447,12 @@ def band_value(bands: list[dict[str, int]], level: int, label: str) -> int:
 
 
 @dataclass(frozen=True)
-class AuthorityModel:
+class DamageAuthorityModel:
     projection: dict[str, Any]
 
     @classmethod
-    def load(cls, authority_path: str | Path = DEFAULT_AUTHORITY) -> "AuthorityModel":
-        return cls(load_projection(authority_path))
+    def load(cls, authority_path: str | Path = DEFAULT_AUTHORITY) -> "DamageAuthorityModel":
+        return cls(load_damage_projection(authority_path))
 
     @property
     def rules_version(self) -> str:
@@ -1520,12 +1520,12 @@ class AuthorityModel:
 
 
 def main(argv: list[str] | None = None) -> int:
-    parser = argparse.ArgumentParser(description="Validate a Kinetic Vanguard harness authority projection")
+    parser = argparse.ArgumentParser(description="Validate a Kinetic Vanguard damage or structured control authority projection")
     parser.add_argument("--authority", default=str(DEFAULT_AUTHORITY), help="path to canonical authority YAML")
     parser.add_argument(
         "--projection-version",
-        choices=(LEGACY_PROJECTION_VERSION, CONTROL_PROJECTION_VERSION),
-        default=LEGACY_PROJECTION_VERSION,
+        choices=(DAMAGE_PROJECTION_VERSION, CONTROL_PROJECTION_VERSION),
+        default=DAMAGE_PROJECTION_VERSION,
         help="projection contract to request and validate",
     )
     parser.add_argument(
@@ -1535,10 +1535,10 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
     try:
-        if args.projection_version == LEGACY_PROJECTION_VERSION:
+        if args.projection_version == DAMAGE_PROJECTION_VERSION:
             if args.require_benchmark_ready:
                 raise AuthorityError("--require-benchmark-ready is only valid for projection version 2.0.0")
-            projection = load_projection(args.authority)
+            projection = load_damage_projection(args.authority)
             summary = {
                 "projection_version": projection["projection_version"],
                 "authority_sha256": projection["authority_sha256"],

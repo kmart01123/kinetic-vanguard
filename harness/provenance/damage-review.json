@@ -1,0 +1,49 @@
+{
+  "pinned_srd": {
+    "ruleset": "D&D SRD 5.2.1",
+    "official_pdf_sha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",
+    "pages": 364,
+    "roster_rows": 28
+  },
+  "historical_damage_source": {
+    "rules_version": "12.0.0",
+    "filename": "kv_v12_0_0_damage_harness.py",
+    "sha256": "1ee4db9d07ef4db24edf84d12776e00ad6f64990b8743c7df25eada33be44bc4"
+  },
+  "historical_damage_certification": {
+    "rules_version": "12.0.0",
+    "carried_forward_in": "12.1.0",
+    "status": "PRESERVED_PROVENANCE_ONLY",
+    "historical_trials_per_row": 25000
+  },
+  "current_damage_review": {
+    "rules_version": "14.1.0",
+    "status": "REVIEWED_WITH_DOCUMENTED_DIFFERENCES",
+    "review_date": "2026-08-07",
+    "durable_record": "GitHub PR #20",
+    "evaluator": "exact_analytical_enumeration",
+    "fresh_monte_carlo_certification": false,
+    "preserved_policy_rows": 336,
+    "historical_trials_per_row": 25000,
+    "fixed_policy_primary_mean_absolute_dpr_delta": 0.0323168649,
+    "fixed_policy_primary_maximum_absolute_dpr_delta": 0.1760340171,
+    "fixed_policy_aggregate_mean_absolute_dpr_delta": 0.0374950681,
+    "fixed_policy_aggregate_maximum_absolute_dpr_delta": 0.34012,
+    "adaptive_aggregate_rows_improved": 123,
+    "adaptive_aggregate_rows_equal": 213,
+    "adaptive_aggregate_rows_regressed": 0,
+    "adaptive_primary_rows_lower_for_aggregate_objective": 9
+  },
+  "current_comparator_review": {
+    "rules_version": "14.1.0",
+    "source_ruleset": "2024 fifth-edition rules",
+    "review_date": "2026-08-07",
+    "durable_record": "GitHub PR #20",
+    "target_build_points": 56,
+    "independent_reference_maximum_absolute_dpr_delta": 1.14e-13,
+    "eldritch_knight_targets_changed": 13,
+    "eldritch_knight_mean_dpr_delta": 0.345503015604,
+    "battle_master_targets_changed": 28,
+    "battle_master_mean_dpr_delta": 2.606555720195
+  }
+}

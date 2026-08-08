@@ -10,10 +10,11 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
-from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
-from harness.control_harness import _comparator_scenario,_effect_available,_kv_scenario,run as run_control
-from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,run as run_damage
+import harness.authority as authority_module
+import harness.model as model_module
+from harness.authority import AuthorityError,DamageAuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
+from harness.damage_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,damage_matrix_row,write_damage_matrix
+from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,_strike_packet_options,run as run_damage
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,load_comparators,load_config,load_targets
 
 
@@ -42,18 +43,28 @@ def _path_label(path:tuple[object,...])->str:
 class AuthorityProjectionTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls)->None:
-        cls.model=AuthorityModel.load()
+        cls.model=DamageAuthorityModel.load()
 
-    def test_real_root_authority_and_complete_stable_id_inventory(self)->None:
+    def test_real_root_damage_authority_and_complete_stable_id_inventory(self)->None:
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
-        self.assertEqual(self.model.rules_version,"14.1.0")
-        self.assertEqual(self.model.projection["schema_version"],"2.2.0")
+        self.assertEqual(self.model.rules_version,"14.2.0")
+        self.assertEqual(self.model.projection["schema_version"],"3.0.0")
+        self.assertEqual(self.model.projection["projection_version"],authority_module.DAMAGE_PROJECTION_VERSION)
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":1,"action_surge_allows_additional_standalone_psionic_action":False})
         feature_ids=list(self.model.features)
         self.assertEqual(len(feature_ids),len(set(feature_ids)))
         self.assertEqual(set(self.model.disciplines),{"pyrokinesis","cryokinesis","psychokinesis","electrokinesis"})
         self.assertTrue(all(feature["minimum_level"]>=3 and feature["psi_cost"]>=0 for feature in self.model.features.values()))
-        self.assertTrue(all("entity_id" in feature for feature in self.model.features.values()))
+        self.assertTrue(all("entity_id" in feature and "control_tiers" not in feature for feature in self.model.features.values()))
+        self.assertTrue(all("mastery" not in discipline for discipline in self.model.disciplines.values()))
+        self.assertEqual(self.model.disciplines["pyrokinesis"]["graze_damage"],"psionic_ability_modifier")
+        self.assertTrue(all("graze_damage" not in discipline for key,discipline in self.model.disciplines.items() if key!="pyrokinesis"))
+
+    def test_damage_authority_names_have_no_generic_compatibility_aliases(self)->None:
+        self.assertIs(authority_module.DamageAuthorityModel,DamageAuthorityModel)
+        self.assertTrue(callable(authority_module.load_damage_projection))
+        for obsolete in ("LEGACY_PROJECTION_VERSION","load_projection","AuthorityModel"):
+            self.assertFalse(hasattr(authority_module,obsolete),obsolete)
 
     def test_structural_yaml_mutation_changes_projection_without_python_edit(self)->None:
         source=DEFAULT_AUTHORITY.read_text(encoding="utf-8")
@@ -62,7 +73,7 @@ class AuthorityProjectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             authority=Path(directory)/"KineticVanguard.yaml"
             authority.write_text(source.replace(probe,"id: pyrokinesis\n        damage_type: cold",1),encoding="utf-8")
-            mutated=AuthorityModel.load(authority)
+            mutated=DamageAuthorityModel.load(authority)
         self.assertEqual(self.model.disciplines["pyrokinesis"]["damage_type"],"fire")
         self.assertEqual(mutated.disciplines["pyrokinesis"]["damage_type"],"cold")
 
@@ -71,7 +82,7 @@ class AuthorityProjectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             authority=Path(directory)/"KineticVanguard.yaml"
             authority.write_text(source.replace("  harness_mechanics:\n","  missing_harness_mechanics:\n",1),encoding="utf-8")
-            with self.assertRaises(AuthorityError):AuthorityModel.load(authority)
+            with self.assertRaises(AuthorityError):DamageAuthorityModel.load(authority)
         with self.assertRaisesRegex(AuthorityError,"unavailable"):self.model.feature("flare",7,2)
         with self.assertRaisesRegex(AuthorityError,"Unsupported"):self.model.feature("glacial_spike",7,9)
 
@@ -82,18 +93,26 @@ class AuthorityProjectionTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             authority=Path(directory)/"KineticVanguard.yaml"
             authority.write_text(source.replace(probe,"      action_surge_allows_additional_standalone_psionic_action: true",1),encoding="utf-8")
-            with self.assertRaisesRegex(AuthorityError,"action_economy|action_surge_allows_additional"):AuthorityModel.load(authority)
+            with self.assertRaisesRegex(AuthorityError,"action_economy|action_surge_allows_additional"):DamageAuthorityModel.load(authority)
 
     def test_progression_bands_cover_every_supported_level_once(self)->None:
         for name in ("proficiency_bonus","psi_points","psionic_focus","manifested_strike_die"):
             for level in range(3,21):self.assertIsInstance(self.model.progression(name,level),int)
 
+    def test_optional_graze_damage_is_the_only_discipline_damage_mastery_input(self)->None:
+        target=replace(load_targets()[0],damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset())
+        pyro=_strike_packet_options(self.model,target,"pyrokinesis",7,5,8)
+        cryo=_strike_packet_options(self.model,target,"cryokinesis",7,5,8)
+        self.assertTrue(all(packet[1][0]==5.0 for packet in pyro))
+        self.assertTrue(all(packet[1][0]==0.0 for packet in cryo))
+
     def test_comparator_inputs_are_isolated_minimal_and_fail_closed(self)->None:
         config=load_config();comparators=load_comparators()
         self.assertNotIn("damage_comparators",config);self.assertNotIn("control_comparators",config)
+        self.assertNotIn("control_matrix",config);self.assertNotIn("control",comparators)
         self.assertEqual(comparators["source_ruleset"],"2024 fifth-edition rules")
         self.assertEqual(set(comparators["primary_comparator_ids"]),{"battle_master","eldritch_knight"})
-        self.assertEqual(set(comparators["damage"]),{"battle_master","eldritch_knight"});self.assertEqual(set(comparators["control"]),{"battle_master","eldritch_knight"})
+        self.assertEqual(set(comparators["damage"]),{"battle_master","eldritch_knight"})
         source=DEFAULT_COMPARATORS.read_text(encoding="utf-8")
         for forbidden in ('"label"','"status"','"description"','"rules_text"','"feature_text"','"spell_text"','"maneuver_text"','"flavor"'):self.assertNotIn(forbidden,source)
         self.assertNotRegex(DEFAULT_AUTHORITY.read_text(encoding="utf-8"),r"(?i)battle.?master|eldritch.?knight")
@@ -130,11 +149,12 @@ class FrozenInputValidationTests(unittest.TestCase):
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["fighter_mechanics"]["combat_prowess"].__setitem__("uses_per_turn",True),"uses_per_turn must be an integer")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["fighter_mechanics"]["combat_prowess"].__setitem__("activation_policy","first_eligible_miss"),"Combat Prowess semantics")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["fighter_mechanics"]["combat_prowess"].__setitem__("eligible_after_failed_attack_roll_bonus",False),"Combat Prowess semantics")
-        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["damage_matrix"]["control_feedback"].__setitem__("modeled_self_attack_exception","none"),"control-feedback policy")
+        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["damage_matrix"]["non_damage_effect_boundary"].__setitem__("modeled_self_attack_exception","none"),"non-damage effect boundary")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["damage_matrix"]["optimization"].__setitem__("objective",["primary_damage","aggregate_damage"]),"optimization objective")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["damage_matrix"]["optimization"]["decision_timing"].__setitem__("unobserved_outcome_lookahead",True),"decision timing")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["damage_matrix"]["optimization"]["decision_timing"].__setitem__("unobserved_outcome_lookahead",0),"lookahead must be a boolean")
-        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["control_matrix"]["kv_scenarios"]["psychokinesis"][1].__setitem__("target_roles",["tertiary"]),"target roles")
+        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value.__setitem__("control_matrix",{}),"benchmark config keys")
+        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["methodology"].__setitem__("control_seed",1),"methodology keys")
 
     def test_comparator_config_rejects_unknown_missing_and_incomplete_parameters(self)->None:
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"].__setitem__("unused_bonus",1),"damage.battle_master keys")
@@ -144,17 +164,35 @@ class FrozenInputValidationTests(unittest.TestCase):
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["tactical_policy"].__setitem__("maximum_maneuver_dice_per_attack",2),"Battle Master tactical policy")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["tactical_policy"].__setitem__("maneuver_choice_timing","before_attack_roll"),"Battle Master tactical policy")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"]["tactical_policy"].__setitem__("true_strike_choice_timing","after_attack_roll"),"Eldritch Knight tactical policy")
+        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value.__setitem__("control",{}),"comparator config keys")
 
-    def test_current_review_status_matches_maintained_provenance(self)->None:
-        provenance=json.loads((PROJECT_ROOT/"harness/provenance/legacy-import.json").read_text(encoding="utf-8"))
-        self.assertEqual(provenance["historical_certification"]["status"],"PRESERVED_PROVENANCE_ONLY")
-        self.assertEqual(load_config()["methodology"]["status"],provenance["current_numerical_review"]["status"])
+    def test_full_pinned_target_shape_remains_generic_roster_data(self)->None:
+        self.assertEqual(set(Target.__dataclass_fields__),{
+            "level","name","ac","saves","magic_resistance","legendary_resistance","size","creature_type",
+            "condition_immunities","damage_resistances","damage_immunities","damage_vulnerabilities",
+            "hp","source","source_page","source_url",
+        })
+        target=load_targets()[0]
+        self.assertTrue(target.size and target.creature_type and target.condition_immunities is not None)
+
+    def test_current_review_status_matches_damage_only_provenance(self)->None:
+        path=PROJECT_ROOT/"harness/provenance/damage-review.json"
+        provenance=json.loads(path.read_text(encoding="utf-8"))
+        self.assertEqual(set(provenance),{
+            "pinned_srd","historical_damage_source","historical_damage_certification",
+            "current_damage_review","current_comparator_review",
+        })
+        self.assertEqual(provenance["historical_damage_certification"]["status"],"PRESERVED_PROVENANCE_ONLY")
+        self.assertEqual(load_config()["methodology"]["status"],provenance["current_damage_review"]["status"])
+        self.assertEqual(provenance["historical_damage_source"]["filename"],"kv_v12_0_0_damage_harness.py")
+        self.assertNotIn("control",json.dumps(provenance).lower())
+        self.assertFalse((PROJECT_ROOT/"harness/provenance/legacy-import.json").exists())
 
 
 class FighterNumericalTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls)->None:
-        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.targets=load_targets()
+        cls.model=DamageAuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.targets=load_targets()
 
     def test_exact_fighter_dpr_sentinels_cover_every_supported_level(self)->None:
         expected={
@@ -261,7 +299,7 @@ class FighterNumericalTests(unittest.TestCase):
 class ComparatorLeafContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls)->None:
-        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.base=load_targets()[0]
+        cls.model=DamageAuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.base=load_targets()[0]
 
     def target(self,level:int,*,damage_immunity:str|None=None,condition_immunities:tuple[str,...]=())->Target:
         return replace(
@@ -304,46 +342,11 @@ class ComparatorLeafContractTests(unittest.TestCase):
             with self.subTest(path=_path_label(path)):
                 self.assertNotEqual(_comparator_dpr(self.model,self.config,changed,target,build),baselines[key])
 
-    def test_every_control_comparator_leaf_has_observable_semantics(self)->None:
-        for path in _leaf_paths(self.comparators["control"],("control",)):
-            build=str(path[1]);row_field=str(path[2]);scenario_index=int(path[3]) if row_field=="scenarios" else None
-            field=str(path[4]) if scenario_index is not None else row_field
-            before=deepcopy(self.comparators);after=deepcopy(self.comparators);current=_path_value(after,path)
-            condition_immunities:tuple[str,...]=()
-            if field=="id":replacement=f"{current}_contract_probe";_set_path(after,path,replacement)
-            elif field=="save":replacement="wisdom" if current=="strength" else "strength";_set_path(after,path,replacement)
-            elif field=="conditions":
-                condition_immunities=(str(current),);replacement="stunned" if current!="stunned" else "blinded";_set_path(after,path,replacement)
-            elif field=="outcomes":_set_path(after,path[:-1],[])
-            elif field=="maximum_size":_set_path(after,path,"tiny")
-            elif isinstance(current,bool):_set_path(after,path,not current)
-            elif isinstance(current,int):_set_path(after,path,current+1)
-            else:raise AssertionError(f"No control semantic mutation for {_path_label(path)}")
-
-            if scenario_index is not None:
-                level=int(before["control"][build]["scenarios"][scenario_index].get("minimum_level",before["control"][build]["minimum_level"]))
-                before_scenario=before["control"][build]["scenarios"][scenario_index];after_scenario=after["control"][build]["scenarios"][scenario_index]
-            else:
-                level=next((int(part) for part in path if isinstance(part,str) and part in {"7","11","15","20"}),11 if build=="eldritch_knight" and field=="attack_ability_modifier" else 7)
-                scenario_index=0 if build=="battle_master" or field not in {"attack_ability_modifier","magic_weapon_bonus_by_level"} else 1
-                before_scenario=before["control"][build]["scenarios"][scenario_index];after_scenario=after["control"][build]["scenarios"][scenario_index]
-                if build=="eldritch_knight" and field=="minimum_level":
-                    before_scenario.pop("minimum_level",None);after_scenario.pop("minimum_level",None)
-                elif int(before_scenario.get("minimum_level",level))>level:
-                    before_scenario["minimum_level"]=level;after_scenario["minimum_level"]=level
-
-            target=self.target(level,condition_immunities=condition_immunities)
-            baseline=_comparator_scenario(self.model,before,target,build,before_scenario)
-            changed=_comparator_scenario(self.model,after,target,build,after_scenario)
-            signature=lambda row:(row["scenario"],row["eligible"],row["reach"],row["named"],row["whole"])
-            with self.subTest(path=_path_label(path)):
-                self.assertNotEqual(signature(changed),signature(baseline))
-
 
 class DamagePlannerTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls)->None:
-        cls.model=AuthorityModel.load();cls.config=load_config();cls.base=next(item for item in load_targets(levels={20}) if item.name=="Balor");cls.mastery=cls.model.projection["core"]["overload"]["mastery"]
+        cls.model=DamageAuthorityModel.load();cls.config=load_config();cls.base=next(item for item in load_targets(levels={20}) if item.name=="Balor");cls.mastery=cls.model.projection["core"]["overload"]["mastery"]
 
     def planner(self,attacks_per_action:int)->_KVDamagePlanner:
         target=replace(self.base,ac=30,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());packages=(Package(None,0,0,0),Package("branching_bolt",0,0,0));riders={packages[0]:(0.0,0.0),packages[1]:(100.0,100.0)}
@@ -403,67 +406,22 @@ class DamagePlannerTests(unittest.TestCase):
         self.assertTrue(selection.endswith("|representative=locally-modal-path|policy=observed-state-adaptive"))
 
 
-class CanonicalControlTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls)->None:
-        cls.model=AuthorityModel.load();cls.config=load_config();cls.base=next(item for item in load_targets() if item.level==20 and item.name=="Balor")
-
-    def target(self,*immunities:str)->Target:
-        return replace(self.base,size="medium",condition_immunities=frozenset(immunities))
-
-    def test_condition_immunity_removes_only_the_matching_canonical_effect(self)->None:
-        target=self.target("stunned")
-        row=_kv_scenario(self.model,self.config,target,"cryokinesis","snow_chains",2)
-        self.assertGreater(row["reach"],0.0)
-        self.assertEqual(row["named"],row["reach"])
-        self.assertEqual(row["whole"],row["reach"])
-
-    def test_target_roles_follow_canonical_primary_and_secondary_effects(self)->None:
-        target=self.target();control=next(item for item in self.model.features["forked_lightning"]["control_tiers"] if int(item["tier"])==2)
-        common,primary_only=control["effects"]
-        self.assertTrue(_effect_available(target,common,"primary"));self.assertTrue(_effect_available(target,common,"secondary"))
-        self.assertTrue(_effect_available(target,primary_only,"primary"));self.assertFalse(_effect_available(target,primary_only,"secondary"))
-        primary=_kv_scenario(self.model,self.config,target,"electrokinesis","forked_lightning",2,"primary")
-        secondary=_kv_scenario(self.model,self.config,target,"electrokinesis","forked_lightning",2,"secondary")
-        self.assertEqual(primary["scenario"],"forked_lightning:T2");self.assertEqual(secondary["scenario"],"forked_lightning:T2:secondary")
-
-    def test_dependent_effect_is_unavailable_when_its_required_condition_is_immune(self)->None:
-        control=next(item for item in self.model.features["mass_levitation"]["control_tiers"] if int(item["tier"])==1);dependent=control["effects"][1]
-        self.assertEqual(dependent["requires_condition"],"restrained")
-        self.assertTrue(_effect_available(self.target(),dependent,"primary"));self.assertFalse(_effect_available(self.target("restrained"),dependent,"primary"))
-        available=_kv_scenario(self.model,self.config,self.target(),"psychokinesis","mass_levitation",1)
-        immune=_kv_scenario(self.model,self.config,self.target("restrained"),"psychokinesis","mass_levitation",1)
-        self.assertGreater(available["named"],0.0);self.assertEqual(immune["named"],0.0);self.assertEqual(immune["whole"],0.0)
-
-    def test_reviewed_kraken_corrections_keep_valid_components_only(self)->None:
-        kraken=next(item for item in load_targets(levels={20}) if item.name=="Kraken")
-        absolute=_kv_scenario(self.model,self.config,kraken,"cryokinesis","absolute_zero",1)
-        self.assertAlmostEqual(absolute["whole"],15.0,places=12)
-        for tier in (0,1):
-            primary=_kv_scenario(self.model,self.config,kraken,"psychokinesis","explosion_implosion",tier,"primary")
-            secondary=_kv_scenario(self.model,self.config,kraken,"psychokinesis","explosion_implosion",tier,"secondary")
-            self.assertEqual(primary["whole"],0.0)
-            self.assertAlmostEqual(secondary["whole"],4.75,places=12)
-
-
 class ClassificationTests(unittest.TestCase):
-    def test_shared_envelope_classifier_is_swap_invariant_and_inclusive(self)->None:
+    def test_damage_envelope_classifier_is_swap_invariant_and_inclusive(self)->None:
         expected=((9,"COLD"),(10,"IDEAL"),(15,"IDEAL"),(20,"IDEAL"),(21,"HOT"))
         for eldritch_knight,battle_master in ((10,20),(20,10)):
             for kv,band in expected:
                 with self.subTest(kv=kv,ek=eldritch_knight,bm=battle_master):
                     self.assertEqual(classify_envelope(kv,eldritch_knight,battle_master),band)
-                    for kind in ("damage","control"):
-                        self.assertEqual(matrix_row({},kv,eldritch_knight,battle_master,kind)["Band"],band)
+                    self.assertEqual(damage_matrix_row({},kv,eldritch_knight,battle_master)["Band"],band)
 
     def test_swap_preserves_band_delta_and_dynamic_boundary_values(self)->None:
-        for kind in ("damage","control"):
-            for kv,band,delta in ((8,"COLD","-20.00"),(10,"IDEAL","0.00"),(15,"IDEAL","0.00"),(20,"IDEAL","0.00"),(24,"HOT","+20.00")):
-                forward=matrix_row({},kv,10,20,kind)
-                reversed_order=matrix_row({},kv,20,10,kind)
-                for field in ("Band","Boundary Delta %","Lower Boundary","Upper Boundary"):
-                    self.assertEqual(forward[field],reversed_order[field])
-                self.assertEqual((forward["Band"],forward["Boundary Delta %"]),(band,delta))
+        for kv,band,delta in ((8,"COLD","-20.00"),(10,"IDEAL","0.00"),(15,"IDEAL","0.00"),(20,"IDEAL","0.00"),(24,"HOT","+20.00")):
+            forward=damage_matrix_row({},kv,10,20)
+            reversed_order=damage_matrix_row({},kv,20,10)
+            for field in ("Band","Boundary Delta %","Lower Boundary","Upper Boundary"):
+                self.assertEqual(forward[field],reversed_order[field])
+            self.assertEqual((forward["Band"],forward["Boundary Delta %"]),(band,delta))
 
     def test_unavailable_equal_and_invalid_inputs_fail_or_classify_explicitly(self)->None:
         for values in ((15,0,20),(15,20,0),(float("nan"),10,20),(15,float("inf"),20)):
@@ -472,34 +430,29 @@ class ClassificationTests(unittest.TestCase):
         for values in ((float("nan"),10,20),(15,float("inf"),20)):
             with self.subTest(matrix_values=values):
                 with self.assertRaisesRegex(ValueError,"must be finite"):
-                    matrix_row({},*values,"damage")
+                    damage_matrix_row({},*values)
         self.assertEqual(classify_envelope(9,10,10),"COLD")
         self.assertEqual(classify_envelope(10,10,10),"IDEAL")
         self.assertEqual(classify_envelope(11,10,10),"HOT")
-        with self.assertRaisesRegex(ValueError,"Unsupported benchmark type"):
-            matrix_row({},15,10,20,"unsupported")
 
     def test_percentage_uses_displayed_aggregate_raw_values(self)->None:
-        row=matrix_row({"Level":7},10.0,8.0,20.0,"damage")
+        row=damage_matrix_row({"Level":7},10.0,8.0,20.0)
         self.assertEqual(row["Benchmark Type"],"Damage")
         self.assertEqual(row["KV as % of EK"],"125.00")
         self.assertEqual(row["KV as % of BM"],"50.00")
         self.assertEqual(row["Band"],"IDEAL")
         self.assertEqual(row["Boundary Delta %"],"0.00")
 
-    def test_matrix_row_identifies_dynamic_boundaries_and_ties(self)->None:
-        expected=(
-            (10,20,"Eldritch Knight","Battle Master"),
-            (20,10,"Battle Master","Eldritch Knight"),
-        )
+    def test_damage_matrix_row_identifies_dynamic_boundaries_and_ties(self)->None:
+        expected=((10,20,"Eldritch Knight","Battle Master"),(20,10,"Battle Master","Eldritch Knight"))
         for eldritch_knight,battle_master,lower_name,upper_name in expected:
-            row=matrix_row({},15,eldritch_knight,battle_master,"control")
-            self.assertEqual(row["Benchmark Type"],"Control Reliability")
+            row=damage_matrix_row({},15,eldritch_knight,battle_master)
+            self.assertEqual(row["Benchmark Type"],"Damage")
             self.assertEqual(row["Lower Comparator"],lower_name)
             self.assertEqual(row["Upper Comparator"],upper_name)
             self.assertEqual(row["Lower Boundary"],"10.000000")
             self.assertEqual(row["Upper Boundary"],"20.000000")
-        tied=matrix_row({},10,10,10,"damage")
+        tied=damage_matrix_row({},10,10,10)
         self.assertEqual(tied["Lower Comparator"],"Eldritch Knight + Battle Master")
         self.assertEqual(tied["Upper Comparator"],"Eldritch Knight + Battle Master")
         self.assertEqual(tied["Lower Boundary"],"10.000000")
@@ -530,36 +483,32 @@ class ClassificationTests(unittest.TestCase):
         for retained in ("Copyright (c) 2026, NixNinja","BSD-3-Clause","CC BY 4.0","LICENSE-CODE","LICENSE.md","NOTICE.md"):
             self.assertIn(retained,component)
 
-    def test_csv_markdown_html_share_full_envelope_evidence(self)->None:
-        row=matrix_row({"Level":7,"Discipline":"cryokinesis"},10,8,20,"damage")
-        control_row=matrix_row({"Level":7,"Discipline":"cryokinesis"},25,20,10,"control")
+    def test_csv_markdown_html_share_full_damage_envelope_evidence(self)->None:
+        row=damage_matrix_row({"Level":7,"Discipline":"cryokinesis"},10,8,20)
         provenance={"rules_version":"14.1.0","authority_sha256":"probe","roster_sha256":"probe"}
         self.assertEqual([key for key in row if key in VALUE_COLUMNS],VALUE_COLUMNS)
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory)
-            paths=write_matrix(root/"damage","14.1.0","damage",[row],provenance)
-            control_paths=write_matrix(root/"control","14.1.0","control",[control_row],provenance)
+            paths=write_damage_matrix(root/"damage","14.1.0",[row],provenance)
             bad=dict(row);bad["Band"]="ORDER CHECK"
             with self.assertRaisesRegex(ValueError,"unsupported band"):
-                write_matrix(root/"bad","14.1.0","damage",[bad],provenance)
+                write_damage_matrix(root/"bad","14.1.0",[bad],provenance)
             incomplete=dict(row);del incomplete["Lower Boundary"]
             with self.assertRaisesRegex(ValueError,"missing evidence"):
-                write_matrix(root/"incomplete","14.1.0","damage",[incomplete],provenance)
+                write_damage_matrix(root/"incomplete","14.1.0",[incomplete],provenance)
             stale_band=dict(row);stale_band["Band"]="HOT"
             with self.assertRaisesRegex(ValueError,"stale Band"):
-                write_matrix(root/"stale-band","14.1.0","damage",[stale_band],provenance)
+                write_damage_matrix(root/"stale-band","14.1.0",[stale_band],provenance)
             stale_delta=dict(row);stale_delta["Boundary Delta %"]="+1.00"
             with self.assertRaisesRegex(ValueError,"stale Boundary Delta"):
-                write_matrix(root/"stale-delta","14.1.0","damage",[stale_delta],provenance)
+                write_damage_matrix(root/"stale-delta","14.1.0",[stale_delta],provenance)
+            stale_type=dict(row);stale_type["Benchmark Type"]="Not Damage"
             with self.assertRaisesRegex(ValueError,"stale Benchmark Type"):
-                write_matrix(root/"wrong-kind","14.1.0","damage",[control_row],provenance)
-            with self.assertRaisesRegex(ValueError,"Unsupported comparison matrix kind"):
-                write_matrix(root/"unknown-kind","14.1.0","unknown",[row],provenance)
+                write_damage_matrix(root/"stale-type","14.1.0",[stale_type],provenance)
             with paths["csv"].open(encoding="utf-8") as stream:
                 csv_row=next(csv.DictReader(stream))
-            markdown=paths["markdown"].read_text(encoding="utf-8");html=paths["html"].read_text(encoding="utf-8")
-            control_markdown=control_paths["markdown"].read_text(encoding="utf-8")
-            control_html=control_paths["html"].read_text(encoding="utf-8")
+            markdown=paths["markdown"].read_text(encoding="utf-8")
+            html=paths["html"].read_text(encoding="utf-8")
         self.assertTrue(all(csv_row[key]==value for key,value in row.items()))
         self.assertEqual(csv_row["Provenance Rules Version"],"14.1.0")
         self.assertEqual(csv_row["Provenance Authority Sha256"],"probe")
@@ -571,111 +520,82 @@ class ClassificationTests(unittest.TestCase):
         self.assertEqual(csv_row["Upper Boundary"],"20.000000")
         for value in row.values():
             self.assertIn(value,markdown);self.assertIn(value,html)
+        self.assertTrue(markdown.startswith("# Kinetic Vanguard 14.1.0 Damage Comparison Matrix"))
+        self.assertIn("<title>Kinetic Vanguard 14.1.0 Damage Comparison Matrix</title>",html)
         self.assertIn("## Licensing and notices",markdown)
         self.assertIn("<h2>Licensing and notices</h2>",html)
         for label,value in LEGAL_NOTICES:
             self.assertEqual(markdown.count(value),1,label)
             self.assertEqual(html.count(value),1,label)
-        limitation=("Control Reliability measures how often the configured control package takes effect. "
-                    "It does not measure the relative severity, duration, area, or strategic value of different control effects. "
-                    "A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.")
-        self.assertTrue(control_markdown.startswith("# Kinetic Vanguard 14.1.0 Control Reliability Comparison Matrix"))
-        self.assertIn("<title>Kinetic Vanguard 14.1.0 Control Reliability Comparison Matrix</title>",control_html)
-        self.assertIn("<h1>Kinetic Vanguard 14.1.0 Control Reliability Comparison Matrix</h1>",control_html)
-        self.assertIn(limitation,control_markdown)
-        self.assertIn(limitation,control_html)
-        for rendered in (markdown,html,control_markdown,control_html):
+        for rendered in (markdown,html):
             self.assertNotIn("ORDER CHECK",rendered)
             self.assertNotIn("Hunter Ranger",rendered)
             self.assertNotIn("Open Hand Monk",rendered)
 
 
 class SmokeAndBoundaryTests(unittest.TestCase):
-    def test_fixed_seed_smokes_write_versioned_outputs_and_selection_audit(self)->None:
+    def test_fixed_seed_damage_smoke_writes_versioned_outputs_deterministically(self)->None:
         with tempfile.TemporaryDirectory() as directory:
-            root=Path(directory);damage=run_damage(DEFAULT_AUTHORITY,root/"damage",{7},2,16,19);control=run_control(DEFAULT_AUTHORITY,root/"control",{7},1,16,19)
-            parallel_damage=run_damage(DEFAULT_AUTHORITY,root/"damage-parallel",{7},2,16,19,workers=2);repeated_control=run_control(DEFAULT_AUTHORITY,root/"control-repeated",{7},1,31,29)
-            self.assertEqual(damage["matrix_rows"],24);self.assertEqual(control["matrix_rows"],4)
-            for result in (damage,control,parallel_damage,repeated_control):
+            root=Path(directory)
+            damage=run_damage(DEFAULT_AUTHORITY,root/"damage",{7},2,16,19)
+            parallel=run_damage(DEFAULT_AUTHORITY,root/"damage-parallel",{7},2,16,19,workers=2)
+            self.assertEqual(damage["matrix_rows"],24)
+            self.assertEqual(parallel["matrix_rows"],24)
+            for result in (damage,parallel):
                 self.assertEqual(set(result["paths"]),{"csv","markdown","html"})
-                self.assertTrue(all("14-1-0" in path.name and path.is_file() for path in result["paths"].values()))
-            audit=root/"control"/"kv-14-1-0-control-selection-audit.csv"
-            with audit.open(encoding="utf-8") as stream:
-                rows=list(csv.DictReader(stream))
-            self.assertTrue(rows);self.assertTrue(all(row["Selected Scenario"] for row in rows))
-            self.assertTrue(all(row["Rules Version"]=="14.1.0" and row["Authority SHA-256"] and row["Roster SHA-256"] for row in rows))
-            self.assertTrue(all(row["Comparator Config SHA-256"] for row in rows))
-            self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in rows))
-            with (root/"damage"/"kv-14-1-0-damage-detail.csv").open(encoding="utf-8") as stream:
+                self.assertTrue(all("14-2-0" in path.name and path.is_file() for path in result["paths"].values()))
+            detail=root/"damage"/"kv-14-2-0-damage-detail.csv"
+            with detail.open(encoding="utf-8") as stream:
                 damage_row=next(csv.DictReader(stream))
             self.assertAlmostEqual(float(damage_row["Eldritch Knight DPR"]),13.900000000000018,places=12)
-            self.assertAlmostEqual(float(damage_row["Battle Master DPR"]),24.57556956900116,places=12);self.assertTrue(damage_row["Comparator Config SHA-256"])
+            self.assertAlmostEqual(float(damage_row["Battle Master DPR"]),24.57556956900116,places=12)
+            self.assertTrue(damage_row["Comparator Config SHA-256"])
             self.assertEqual({key:damage_row[key] for key in NOTICE_COLUMNS},NOTICE_COLUMNS)
-            with (root/"control"/"kv-14-1-0-control-detail.csv").open(encoding="utf-8") as stream:
-                control_rows=list(csv.DictReader(stream))
-            keyed={(row["Build"],row["Scenario"]):row for row in control_rows}
-            self.assertEqual(keyed[("battle_master","menacing_attack")]["Whole-package control stick %"],"56.250000")
-            self.assertEqual(keyed[("eldritch_knight","blindness_deafness")]["Whole-package control stick %"],"55.000000")
-            self.assertTrue(all(row["Comparator Config SHA-256"] for row in control_rows))
-            self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in control_rows))
-            self.assertEqual((root/"damage"/"kv-14-1-0-damage-detail.csv").read_bytes(),(root/"damage-parallel"/"kv-14-1-0-damage-detail.csv").read_bytes())
+            self.assertEqual(detail.read_bytes(),(root/"damage-parallel"/detail.name).read_bytes())
             for format_name in damage["paths"]:
-                self.assertEqual(damage["paths"][format_name].read_bytes(),parallel_damage["paths"][format_name].read_bytes())
-            self.assertEqual((root/"control"/"kv-14-1-0-control-detail.csv").read_bytes(),(root/"control-repeated"/"kv-14-1-0-control-detail.csv").read_bytes())
-            self.assertEqual((root/"control"/"kv-14-1-0-control-selection-audit.csv").read_bytes(),(root/"control-repeated"/"kv-14-1-0-control-selection-audit.csv").read_bytes())
+                self.assertEqual(damage["paths"][format_name].read_bytes(),parallel["paths"][format_name].read_bytes())
             status=load_config()["methodology"]["status"]
-            for result in (damage,control,parallel_damage,repeated_control):
-                matrix_path=result["paths"]["csv"]
-                with matrix_path.open(encoding="utf-8") as stream:matrix_rows=list(csv.DictReader(stream))
-                expected_type="Damage" if "damage" in matrix_path.name else "Control Reliability"
-                self.assertTrue(matrix_rows);self.assertTrue(all(row["Provenance Status"]==status for row in matrix_rows))
-                self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in matrix_rows))
-                self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
-                self.assertTrue(all(row["Provenance Trial Seed Role"]=="historical_compatibility_metadata" for row in matrix_rows))
-                self.assertTrue(all(row["Benchmark Type"]==expected_type for row in matrix_rows))
-                for row in matrix_rows:
-                    comparators={"Eldritch Knight":float(row["Eldritch Knight"]),"Battle Master":float(row["Battle Master"])}
-                    lower=min(comparators.values());upper=max(comparators.values())
-                    self.assertEqual(row["Lower Boundary"],f"{lower:.6f}")
-                    self.assertEqual(row["Upper Boundary"],f"{upper:.6f}")
-                    if lower==upper:
-                        self.assertEqual(row["Lower Comparator"],"Eldritch Knight + Battle Master")
-                        self.assertEqual(row["Upper Comparator"],"Eldritch Knight + Battle Master")
-                    else:
-                        self.assertEqual(comparators[row["Lower Comparator"]],lower)
-                        self.assertEqual(comparators[row["Upper Comparator"]],upper)
-                    self.assertNotEqual(row["Band"],"ORDER CHECK")
-                self.assertIn(status,result["paths"]["markdown"].read_text(encoding="utf-8"));self.assertIn(status,result["paths"]["html"].read_text(encoding="utf-8"))
+            with damage["paths"]["csv"].open(encoding="utf-8") as stream:
+                matrix_rows=list(csv.DictReader(stream))
+            self.assertTrue(matrix_rows)
+            self.assertTrue(all(row["Provenance Status"]==status for row in matrix_rows))
+            self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in matrix_rows))
+            self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
+            self.assertTrue(all(row["Provenance Trial Seed Role"]=="historical_compatibility_metadata" for row in matrix_rows))
+            self.assertTrue(all(row["Benchmark Type"]=="Damage" for row in matrix_rows))
+            for row in matrix_rows:
+                comparators={"Eldritch Knight":float(row["Eldritch Knight"]),"Battle Master":float(row["Battle Master"])}
+                lower=min(comparators.values());upper=max(comparators.values())
+                self.assertEqual(row["Lower Boundary"],f"{lower:.6f}")
+                self.assertEqual(row["Upper Boundary"],f"{upper:.6f}")
+                if lower==upper:
+                    self.assertEqual(row["Lower Comparator"],"Eldritch Knight + Battle Master")
+                    self.assertEqual(row["Upper Comparator"],"Eldritch Knight + Battle Master")
+                else:
+                    self.assertEqual(comparators[row["Lower Comparator"]],lower)
+                    self.assertEqual(comparators[row["Upper Comparator"]],upper)
+                self.assertNotEqual(row["Band"],"ORDER CHECK")
+            self.assertIn(status,damage["paths"]["markdown"].read_text(encoding="utf-8"))
+            self.assertIn(status,damage["paths"]["html"].read_text(encoding="utf-8"))
 
-    def test_full_control_crossover_uses_ordinary_dynamic_envelope_bands(self)->None:
-        config=load_config();methodology=config["methodology"]
-        with tempfile.TemporaryDirectory() as directory:
-            result=run_control(
-                DEFAULT_AUTHORITY,Path(directory),{7,11,15,20},None,
-                int(methodology["control_default_trials"]),int(methodology["control_seed"]),
-                False,True,
-            )
-            with result["paths"]["csv"].open(encoding="utf-8") as stream:
-                rows=list(csv.DictReader(stream))
-        self.assertEqual(len(rows),16)
-        self.assertEqual(sum(row["Band"]=="HOT" for row in rows),14)
-        self.assertEqual(sum(row["Band"]=="COLD" for row in rows),2)
-        self.assertTrue(all(row["Band"] not in {"IDEAL","ORDER CHECK"} for row in rows))
-        level_seven={row["Discipline"]:row for row in rows if row["Level"]=="7"}
-        expected={
-            "cryokinesis":("HOT","+65.70"),
-            "electrokinesis":("HOT","+65.70"),
-            "psychokinesis":("HOT","+44.19"),
-            "pyrokinesis":("COLD","-100.00"),
-        }
-        self.assertEqual(set(level_seven),set(expected))
-        for discipline,(band,delta) in expected.items():
-            row=level_seven[discipline]
-            self.assertEqual((row["Band"],row["Boundary Delta %"]),(band,delta))
-            self.assertEqual(row["Eldritch Knight"],"41.250000")
-            self.assertEqual(row["Battle Master"],"48.656250")
-            self.assertEqual(row["Lower Comparator"],"Eldritch Knight")
-            self.assertEqual(row["Upper Comparator"],"Battle Master")
+    def test_retired_python_runtime_configuration_and_aliases_are_absent(self)->None:
+        for path in (
+            PROJECT_ROOT/"harness/control_harness.py",
+            PROJECT_ROOT/"harness/comparison_report.py",
+            PROJECT_ROOT/"harness/provenance/legacy-import.json",
+        ):
+            self.assertFalse(path.exists(),path)
+        self.assertTrue((PROJECT_ROOT/"harness/damage_report.py").is_file())
+        self.assertTrue((PROJECT_ROOT/"harness/provenance/damage-review.json").is_file())
+        config=load_config();comparators=load_comparators();projection=DamageAuthorityModel.load().projection
+        self.assertNotIn("control_matrix",config)
+        self.assertNotIn("control_default_trials",config["methodology"])
+        self.assertNotIn("control_seed",config["methodology"])
+        self.assertNotIn("smoke_trials",config["methodology"])
+        self.assertNotIn("control",comparators)
+        self.assertTrue(all("control_tiers" not in feature for feature in projection["features"]))
+        for obsolete in ("stable_seed","attack_probabilities","damage_multiplier","expected_damage","target_is_eligible","SIZE_ORDER"):
+            self.assertFalse(hasattr(model_module,obsolete),obsolete)
 
     def test_imports_outputs_and_archive_are_not_positive_inputs_or_tracked(self)->None:
         inputs=json.loads((PROJECT_ROOT/"build"/"inputs.json").read_text(encoding="utf-8"))["inputs"]
