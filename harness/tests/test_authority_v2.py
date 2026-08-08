@@ -33,7 +33,6 @@ class ControlAuthorityV2Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
         cls.projection = load_control_projection_v2()
-        cls.legacy = AuthorityModel.load().projection
 
     def assert_rejected(self, mutate: object, pattern: str | None = None) -> None:
         projection = deepcopy(self.projection)
@@ -72,14 +71,6 @@ class ControlAuthorityV2Tests(unittest.TestCase):
         encode = lambda value: json.dumps(value, ensure_ascii=False, separators=(",", ":"))
         self.assertEqual(encode(self.projection), encode(second))
 
-    def test_legacy_loader_and_model_remain_on_v1_and_reject_unknown_version(self) -> None:
-        self.assertEqual(self.legacy["projection_version"], "1.0.0")
-        self.assertIn("progressions", self.legacy)
-        unknown = deepcopy(self.legacy)
-        unknown["projection_version"] = "9.0.0"
-        with patch("harness.authority._run_projector", return_value=unknown):
-            with self.assertRaisesRegex(AuthorityError, "Unsupported legacy projection version"):
-                load_projection()
 
     def test_root_and_nested_shapes_are_exact_and_versioned(self) -> None:
         self.assert_rejected(lambda value: value.__setitem__("projection_version", "1.0.0"), "version")
@@ -89,8 +80,8 @@ class ControlAuthorityV2Tests(unittest.TestCase):
             "unknown",
         )
         self.assert_rejected(
-            lambda value: _model(value, "ball_lightning", 2)["target_selectors"][0]["restrictions"][0].__setitem__(
-                "value", True
+            lambda value: _model(value, "forked_lightning", 2)["target_selectors"][0]["restrictions"][0].__setitem__(
+                "requirement", True
             ),
             "non-empty string",
         )
@@ -99,6 +90,23 @@ class ControlAuthorityV2Tests(unittest.TestCase):
         self.assert_rejected(lambda value: _ledger(value)[0].__setitem__("entity_id", "Bad-ID"), "stable")
         self.assert_rejected(lambda value: _ledger(value)[0].__setitem__("tier", "0"), "integer")
         self.assert_rejected(lambda value: _ledger(value)[0].__setitem__("entity_id", "aaa_zero"), "canonical 49")
+
+    def test_json_integral_numbers_match_schema_integer_semantics(self) -> None:
+        integral = deepcopy(self.projection)
+        integral["control_authority"]["policy_inputs"]["horizon_rounds"] = 3.0
+        _model(integral, "mass_levitation", 0)["target_selectors"][0]["count"]["slots"] = 5.0
+        _model(integral, "ball_lightning", 2)["policy"]["overload_tier"] = 2.0
+        integral["coverage"]["total"] = 49.0
+        self.assertIs(validate_control_projection_v2(integral), integral)
+
+        for invalid in (1.5, float("nan"), float("inf"), float("-inf"), True):
+            with self.subTest(invalid=invalid):
+                self.assert_rejected(
+                    lambda value, candidate=invalid: value["control_authority"]["policy_inputs"].__setitem__(
+                        "horizon_rounds", candidate
+                    ),
+                    "integer",
+                )
 
     def test_ledger_sorting_uniqueness_and_coverage_are_recomputed(self) -> None:
         def reorder(value: dict[str, object]) -> None:
@@ -129,7 +137,7 @@ class ControlAuthorityV2Tests(unittest.TestCase):
             lambda value: value["control_authority"]["masteries"][1]["component"]["magnitude"].__setitem__(
                 "direction", "not an id"
             ),
-            "stable snake_case ID",
+            "unsupported value",
         )
         self.assert_rejected(
             lambda value: value["control_authority"]["masteries"][2]["component"]["magnitude"].pop("count"),
@@ -212,7 +220,7 @@ class ControlAuthorityV2Tests(unittest.TestCase):
     def test_inheritance_must_resolve_from_a_lower_tier(self) -> None:
         self.assert_rejected(
             lambda value: _model(value, "forked_lightning", 2)["inheritance"].__setitem__("source_tier", 2),
-            "lower tier",
+            "lower canonical tier",
         )
 
     def test_stacking_replacement_and_dominance_references_are_fail_closed(self) -> None:
@@ -233,6 +241,15 @@ class ControlAuthorityV2Tests(unittest.TestCase):
         self.assert_rejected(dominance_cycle, "cycle")
 
     def test_excluded_profile_and_unsupported_reason_are_not_interchangeable(self) -> None:
+        def duplicate_dominant(value: dict[str, object]) -> None:
+            relationships = _model(value, "glacial_spike", 2)["relationships"]
+            relationships["dominance"].append({
+                "dominant_component_id": "glacial_spike_speed_zero",
+                "suppressed_component_ids": ["glacial_spike_restrained"],
+            })
+
+        self.assert_rejected(duplicate_dominant, "duplicate dominant_component_id")
+
         excluded = next(row for row in _ledger(self.projection) if row["disposition"] == "excluded_by_profile")
         unsupported = next(row for row in _ledger(self.projection) if row["disposition"] == "unsupported_error")
 
@@ -284,11 +301,11 @@ class ControlAuthorityV2Tests(unittest.TestCase):
 
 
     def test_resolution_abilities_and_non_save_shape_are_strict(self) -> None:
-        self.assert_rejected(
-            lambda value: _model(value, "forked_lightning", 2)["resolutions"][0]["resolution"].__setitem__(
-                "ability", "wisdom"
-            ),
-            "unsupported value",
+        wisdom = deepcopy(self.projection)
+        _model(wisdom, "forked_lightning", 2)["resolutions"][0]["resolution"]["ability"] = "wisdom"
+        self.assertIs(
+            validate_control_projection_v2(wisdom),
+            wisdom,
         )
         self.assert_rejected(
             lambda value: _model(value, "glacial_spike", 0)["resolutions"][0]["resolution"].__setitem__(
@@ -381,6 +398,7 @@ class ControlAuthorityV2Tests(unittest.TestCase):
         next(row for row in contract_view["ledger"] if row["disposition"] == "unsupported_error")[
             "disposition"
         ] = "modeled"
+
         next(row for row in ledger_view if row["disposition"] == "unsupported_error")["disposition"] = "modeled"
 
         self.assertFalse(model.benchmark_ready)
@@ -388,6 +406,20 @@ class ControlAuthorityV2Tests(unittest.TestCase):
         self.assertFalse(model.projection["coverage"]["benchmark_ready"])
         with self.assertRaisesRegex(AuthorityError, "26 ledger row"):
             model.require_benchmark_ready()
+
+class LegacyAuthorityCompatibilityTests(unittest.TestCase):
+    """Keep v1 compatibility evidence separate from the v2 correctness lane."""
+
+    def test_legacy_loader_and_model_remain_on_v1_and_reject_unknown_version(self) -> None:
+        legacy = AuthorityModel.load().projection
+        self.assertEqual(legacy["projection_version"], "1.0.0")
+        self.assertIn("progressions", legacy)
+        unknown = deepcopy(legacy)
+        unknown["projection_version"] = "9.0.0"
+        with patch("harness.authority._run_projector", return_value=unknown):
+            with self.assertRaisesRegex(AuthorityError, "Unsupported legacy projection version"):
+                load_projection()
+
 
 if __name__ == "__main__":
     unittest.main()

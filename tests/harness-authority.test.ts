@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import test from "node:test";
-import { readFile } from "node:fs/promises";
+import { mkdtemp,readFile,rm,writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import { stringify } from "yaml";
 import { createControlAuthorityProjectionV2,createHarnessProjection } from "../src/harness-authority.js";
 import { loadAuthority } from "../src/load.js";
 import { validateSemantics } from "../src/validate.js";
@@ -49,29 +52,51 @@ test("control authority v2 canonical fixtures preserve representative mechanics"
   const glacialReduction=component(glacial,"glacial_spike_speed_reduction");
   assert.deepEqual(glacialReduction.magnitude,{kind:"speed_reduction",reduction:{kind:"flat_feet",value:10},movement_modes:["walk","fly","swim","climb","burrow"]});
   assert.deepEqual(glacialReduction.cadence,{apply:["hit"],repeat:["save"],end:["save"]});
+  assert.equal(control_authority.policy_inputs.action_economy.attack_rider_declaration,"before_attack_roll");
+  assert.deepEqual(glacial.root_gate_ids,["glacial_spike_t1_attack"]);
+  assert.deepEqual({declaration:glacial.policy.declaration,psi_cost:glacial.policy.psi_cost,overload_tier:glacial.policy.overload_tier},{declaration:"declaration",psi_cost:0,overload_tier:1});
   const glacialHit=resolution(glacial,"glacial_spike_t1_attack");assert.equal(glacialHit.trigger,"hit");
   assert.deepEqual(branch(glacialHit,"attack_hit").applies,["glacial_spike_speed_reduction"]);
+  assert.deepEqual(branch(glacialHit,"attack_hit").next_gate_ids,["glacial_spike_t1_save"]);
+  assert.deepEqual(branch(glacialHit,"attack_miss").next_gate_ids,[]);
   const glacialSave=resolution(glacial,"glacial_spike_t1_save");
-  assert.deepEqual(branch(glacialSave,"save_success"),{branch_id:"glacial_spike_t1_success",outcome:"save_success",applies:[],replaces:[],terminates:[],refreshes:["glacial_spike_speed_reduction"]});
-  assert.deepEqual(branch(glacialSave,"save_failure"),{branch_id:"glacial_spike_t1_failure",outcome:"save_failure",applies:["glacial_spike_speed_zero"],replaces:["glacial_spike_speed_reduction"],terminates:[],refreshes:[]});
+  assert.deepEqual(branch(glacialSave,"save_success"),{branch_id:"glacial_spike_t1_success",outcome:"save_success",applies:[],replaces:[],terminates:[],refreshes:["glacial_spike_speed_reduction"],next_gate_ids:[]});
+  assert.deepEqual(branch(glacialSave,"save_failure"),{branch_id:"glacial_spike_t1_failure",outcome:"save_failure",applies:["glacial_spike_speed_zero"],replaces:["glacial_spike_speed_reduction"],terminates:[],refreshes:[],next_gate_ids:[]});
+
+  for(const tier of [1,2] as const){
+    const model=modeled("glacial_spike",tier),attack=resolution(model,"glacial_spike_t"+tier+"_attack"),save=resolution(model,"glacial_spike_t"+tier+"_save");
+    assert.deepEqual(model.root_gate_ids,["glacial_spike_t"+tier+"_attack"]);
+    assert.deepEqual(branch(attack,"attack_hit").next_gate_ids,["glacial_spike_t"+tier+"_save"]);
+    assert.deepEqual(branch(attack,"attack_miss").next_gate_ids,[]);
+    assert.ok(save.resolution.branches.every(item=>item.next_gate_ids.length===0));
+  }
 
   const shoveMagnitudes=([0,1,2] as const).map(tier=>{
-    const magnitude=component(modeled("telekinetic_shove",tier),"telekinetic_shove_forced_movement").magnitude;
+    const model=modeled("telekinetic_shove",tier),magnitude=component(model,"telekinetic_shove_forced_movement").magnitude;
     if(magnitude.kind!=="forced_movement")assert.fail("telekinetic shove must force movement");
-    return {distance_feet:magnitude.distance_feet,distance_mode:magnitude.distance_mode,movement_mode:magnitude.movement_mode};
+    const attack=resolution(model,"telekinetic_shove_t"+tier+"_attack"),save=resolution(model,"telekinetic_shove_t"+tier+"_save");
+    assert.deepEqual(model.root_gate_ids,["telekinetic_shove_t"+tier+"_attack"]);
+    assert.deepEqual(branch(attack,"attack_hit").next_gate_ids,["telekinetic_shove_t"+tier+"_save"]);
+    assert.deepEqual(branch(attack,"attack_miss").next_gate_ids,[]);
+    assert.ok(save.resolution.branches.every(item=>item.next_gate_ids.length===0));
+    assert.deepEqual({declaration:model.policy.declaration,psi_cost:model.policy.psi_cost,overload_tier:model.policy.overload_tier},{declaration:"declaration",psi_cost:0,overload_tier:tier});
+    return {distance_feet:magnitude.distance_feet,distance_mode:magnitude.distance_mode,movement_mode:magnitude.movement_mode,direction:magnitude.direction,destination:magnitude.destination};
   });
   assert.deepEqual(shoveMagnitudes,[
-    {distance_feet:10,distance_mode:"exact",movement_mode:"push"},
-    {distance_feet:15,distance_mode:"exact",movement_mode:"push"},
-    {distance_feet:20,distance_mode:"exact",movement_mode:"push"}
+    {distance_feet:10,distance_mode:"exact",movement_mode:"push",direction:"controller_choice",destination:"legal_destination"},
+    {distance_feet:15,distance_mode:"exact",movement_mode:"push",direction:"controller_choice",destination:"legal_destination"},
+    {distance_feet:20,distance_mode:"exact",movement_mode:"push",direction:"controller_choice",destination:"legal_destination"}
   ]);
   const masteryPush=control_authority.masteries.find(item=>item.mastery_id==="mastery_push");assert.ok(masteryPush);
   const masteryPushMagnitude=masteryPush.component.magnitude;if(masteryPushMagnitude.kind!=="forced_movement")assert.fail("mastery push must force movement");
-  assert.deepEqual({distance_feet:masteryPushMagnitude.distance_feet,distance_mode:masteryPushMagnitude.distance_mode,movement_mode:masteryPushMagnitude.movement_mode},{distance_feet:10,distance_mode:"up_to",movement_mode:"push"});
+  assert.deepEqual(masteryPushMagnitude,{kind:"forced_movement",distance_feet:10,distance_mode:"up_to",movement_mode:"push",direction:"straight_away_from_controller",destination:"legal_destination"});
 
   const ball=modeled("ball_lightning",2);
   const ballSelector=ball.target_selectors.find(item=>item.selector_id==="ball_lightning_area_targets");assert.ok(ballSelector);
-  assert.deepEqual(ballSelector.area,{area_id:"ball_lightning_sphere",shape:"sphere",origin:"selected_point",radius_feet:30,persistent:true,triggers:["entry","start_turn"],exit_behavior:"ends_area_effects"});
+  assert.deepEqual(ballSelector.restrictions,[]);
+  assert.deepEqual(ballSelector.area,{area_id:"ball_lightning_sphere",shape:"sphere",origin:"selected_point",radius_feet:30,persistent:true,triggers:["entry","start_turn"],exit_behavior:"ends_area_effects",entry_policy:{frequency:"once_per_turn",moved_area_counts_as_entry:false},movement:{kind:"controller_reposition",controller_action:"bonus_action",distance_feet:15}});
+  assert.deepEqual(ball.root_gate_ids,["ball_lightning_entry_save","ball_lightning_start_turn_save"]);
+  assert.ok(ball.resolutions.flatMap(item=>item.resolution.branches).every(item=>item.next_gate_ids.length===0));
   assert.deepEqual(component(ball,"ball_lightning_reaction_denial").cadence,{apply:["entry","start_turn"],repeat:["entry","start_turn"],end:["exit"]});
   assert.deepEqual(ball.resolutions.map(item=>({trigger:item.trigger,gate_scope:item.gate_scope})),[
     {trigger:"entry",gate_scope:"independent_per_target"},
@@ -80,7 +105,11 @@ test("control authority v2 canonical fixtures preserve representative mechanics"
   assert.deepEqual(ball.concentration,{kind:"required",startup:"on_resolution",occupancy:"one_controller_slot",replacement:"new_effect_ends_existing",maximum_duration:{value:1,unit:"minute"},termination:["failed_concentration_save","controller_incapacitated","controller_death","duration_expires","voluntary_end"]});
 
   const levitation=modeled("mass_levitation",0);
+  assert.deepEqual(levitation.root_gate_ids,["mass_levitation_initial_saves","mass_levitation_repeat_saves"]);
+  assert.ok(levitation.resolutions.flatMap(item=>item.resolution.branches).every(item=>item.next_gate_ids.length===0));
   assert.deepEqual(levitation.target_selectors[0]!.count,{kind:"weighted_slots",slots:5,size_costs:{tiny:1,small:1,medium:1,large:2}});
+  assert.deepEqual(levitation.target_selectors[0]!.restrictions,[{kind:"visibility",requirement:"controller_can_see"},{kind:"maximum_size",size:"large_or_smaller"},{kind:"unique_targets",required:true}]);
+  assert.deepEqual(component(levitation,"mass_levitation_initial_lift").magnitude,{kind:"forced_movement",distance_feet:30,distance_mode:"exact",movement_mode:"lift",direction:"vertical_up",destination:"legal_unoccupied_space"});
   const repeatSave=resolution(levitation,"mass_levitation_repeat_saves"),repeatSaveResolution=repeatSave.resolution;
   if(repeatSaveResolution.kind!=="saving_throw")assert.fail("mass levitation repeat gate must be a saving throw");
   assert.deepEqual({
@@ -94,6 +123,8 @@ test("control authority v2 canonical fixtures preserve representative mechanics"
 
   const forked=modeled("forked_lightning",2);
   assert.deepEqual(forked.inheritance,{kind:"resolved",source_tier:1});
+  assert.deepEqual(forked.root_gate_ids,["forked_lightning_independent_saves"]);
+  assert.deepEqual(forked.target_selectors.map(item=>item.restrictions),[[{kind:"visibility",requirement:"controller_can_see"}],[{kind:"excludes_primary_target",required:true}]]);
   assert.deepEqual(forked.target_selectors.map(({selector_id,role,count,range})=>({selector_id,role,count,range})),[
     {selector_id:"forked_lightning_primary",role:"primary",count:{kind:"fixed",value:1},range:{feet:60,origin:"controller"}},
     {selector_id:"forked_lightning_secondary",role:"secondary",count:{kind:"up_to",value:5},range:{feet:30,origin:"primary_target"}}
@@ -104,6 +135,19 @@ test("control authority v2 canonical fixtures preserve representative mechanics"
 
   assert.deepEqual(control_authority.ledger.find(item=>item.entity_id==="advanced_beguile"&&item.tier===0),{entity_id:"advanced_beguile",tier:0,disposition:"excluded_by_profile",profile_id:"official_default_25_percent_hp",reason:"selectable_advanced_training_disabled"});
   assert.deepEqual(control_authority.ledger.find(item=>item.entity_id==="absolute_zero"&&item.tier===0),{entity_id:"absolute_zero",tier:0,disposition:"unsupported_error",reason:"pending_authority_population"});
+});
+
+test("Wisdom saving throws pass the real v2 JSON Schema and semantic validator",async()=>{
+  const {authority}=await loadAuthority(),candidate=structuredClone(authority) as any;
+  const forked=candidate.calculator.harness_mechanics.control_authority_v2.ledger.find((row:any)=>row.disposition==="modeled"&&row.model.effect_id==="forked_lightning_t2_control");
+  forked.model.resolutions[0].resolution.ability="wisdom";
+  const directory=await mkdtemp(join(tmpdir(),"kv-wisdom-authority-")),authorityPath=join(directory,"authority.yaml");
+  try{
+    await writeFile(authorityPath,stringify(candidate),"utf8");
+    const loaded=await loadAuthority(authorityPath);
+    assert.deepEqual(loaded.diagnostics,[]);
+    assert.deepEqual(validateSemantics(loaded.authority).filter(item=>item.severity==="error"),[]);
+  }finally{await rm(directory,{recursive:true,force:true});}
 });
 
 test("projection-version CLI defaults to v1, emits v2 explicitly, and rejects unknown versions",()=>{
@@ -164,11 +208,13 @@ test("control authority v2 semantic mutations fail with focused diagnostics",asy
   expectCode("control_v2.stacking",candidate=>{const entry=modeled(candidate,(model:any)=>model.effect_id==="telekinetic_shove_t0_control");entry.model.components[0].stacking.mode="replace";});
   expectCode("control_v2.coverage",candidate=>{v2(candidate).ledger.pop();});
   expectCode("control_v2.disposition",candidate=>{const entry=v2(candidate).ledger.find((item:any)=>item.disposition==="excluded_by_profile");entry.profile_id="wrong_profile";});
+  expectCode("control_v2.timing",candidate=>{const entity=candidate.entities.find((item:any)=>item.id==="ball_lightning"),entry=modeled(candidate,(model:any)=>model.effect_id==="ball_lightning_t2_control");entity.psi_cost=6;entry.model.policy.psi_cost=6;});
+  expectCode("control_v2.concentration",candidate=>{const entity=candidate.entities.find((item:any)=>item.id==="ball_lightning"),entry=modeled(candidate,(model:any)=>model.effect_id==="ball_lightning_t2_control");entity.requires_concentration=false;entry.model.concentration={kind:"none"};});
 });
 
 test("official harness source is positive input while imports and generated outputs remain excluded",async()=>{
   const inputs=JSON.parse(await readFile("build/inputs.json","utf8")).inputs as Array<{path:string;role:string}>;const paths=inputs.map(input=>input.path);
-  for(const required of ["src/harness-authority.ts","harness/authority.py","harness/damage_harness.py","harness/control_harness.py","harness/readme_matrices.py","harness/comparison_report.py","harness/config/benchmark.json","harness/comparators/fighter-subclasses.json","harness/data/srd_targets.csv","harness/provenance/legacy-import.json","harness/tests/test_authority_v2.py","harness/tests/test_harness.py","harness/tests/test_readme_matrices.py"])assert.ok(paths.includes(required),required);
+  for(const required of ["src/harness-authority.ts","harness/authority.py","harness/damage_harness.py","harness/control_harness.py","harness/readme_matrices.py","harness/comparison_report.py","harness/config/benchmark.json","harness/comparators/fighter-subclasses.json","harness/data/srd_targets.csv","harness/provenance/legacy-import.json","harness/tests/test_authority_v2.py","harness/tests/test_authority_v2_parity.py","harness/tests/test_harness.py","harness/tests/test_readme_matrices.py","tests/control-authority-v2-parity.test.ts","tests/fixtures/control-authority-v2-parity.json"])assert.ok(paths.includes(required),required);
   assert.ok(paths.every(path=>!path.startsWith(".codex-import/")&&!path.endsWith(".zip")&&!path.includes("harness/results")));
   const [ignore,workflow,packageJson]=await Promise.all([readFile(".gitignore","utf8"),readFile(".github/workflows/ci.yml","utf8"),readFile("package.json","utf8")]);
   assert.match(ignore,/^\.codex-import\/$/m);assert.match(ignore,/^harness\/results\/$/m);assert.match(workflow,/npm run test:harness/);assert.match(workflow,/npm run harness:validate/);assert.match(packageJson,/"test:harness"/);
