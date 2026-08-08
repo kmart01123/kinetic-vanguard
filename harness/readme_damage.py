@@ -8,6 +8,7 @@ import json
 import os
 import stat
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Sequence
 
@@ -31,6 +32,7 @@ BEGIN_MARKER = "<!-- BEGIN GENERATED DAMAGE MATRIX -->"
 END_MARKER = "<!-- END GENERATED DAMAGE MATRIX -->"
 README_PATH = PROJECT_ROOT / "README.md"
 BUILD_INPUTS_PATH = PROJECT_ROOT / "build" / "inputs.json"
+DAMAGE_REVIEW_PATH = PROJECT_ROOT / "harness" / "provenance" / "damage-review.json"
 DAMAGE_SCOPES = ("primary-target DPR", "aggregate cluster DPR")
 README_DISCIPLINES = (
     "cryokinesis",
@@ -53,10 +55,155 @@ PROVENANCE_FIELDS = (
     "Provenance Status",
 )
 MatrixRow = dict[str, str]
+CARRIED_FORWARD_REVIEW = "CARRIED_FORWARD_WITHOUT_FRESH_NUMERICAL_REVIEW"
 
 
 class MatrixSyncError(ValueError):
     pass
+
+
+@dataclass(frozen=True)
+class DamageReviewDisposition:
+    current_rules_version: str
+    review_basis_rules_version: str
+    review_status: str
+    review_disposition: str
+    fresh_full_roster_run: bool
+    fresh_numerical_certification: bool
+    fresh_monte_carlo_certification: bool
+    reason: str
+    durable_record: str
+
+
+def _review_object(value: object, label: str) -> dict[str, object]:
+    if not isinstance(value, dict):
+        raise MatrixSyncError(f"{label} must be an object")
+    return value
+
+
+def _review_string(value: object, label: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise MatrixSyncError(f"{label} must be a non-empty string")
+    return value
+
+
+def load_damage_review_disposition(
+    current_rules_version: str,
+    review_status: str,
+    path: Path = DAMAGE_REVIEW_PATH,
+) -> DamageReviewDisposition:
+    try:
+        provenance = _review_object(
+            json.loads(path.read_text(encoding="utf-8")),
+            "Damage-review provenance",
+        )
+        historical_review = _review_object(
+            provenance["current_damage_review"],
+            "current_damage_review",
+        )
+        comparator_review = _review_object(
+            provenance["current_comparator_review"],
+            "current_comparator_review",
+        )
+        raw = _review_object(
+            provenance["current_development_disposition"],
+            "current_development_disposition",
+        )
+    except (OSError, json.JSONDecodeError, KeyError) as error:
+        raise MatrixSyncError("Cannot read damage-review disposition") from error
+
+    required = {
+        "current_rules_version",
+        "review_basis_rules_version",
+        "review_disposition",
+        "fresh_full_roster_run",
+        "fresh_numerical_certification",
+        "fresh_monte_carlo_certification",
+        "reason",
+        "durable_record",
+    }
+    if set(raw) != required:
+        raise MatrixSyncError(
+            "current_development_disposition keys are invalid; "
+            f"missing={sorted(required - raw.keys())}, "
+            f"unknown={sorted(raw.keys() - required)}"
+        )
+
+    strings = {
+        field: _review_string(raw[field], f"current_development_disposition.{field}")
+        for field in (
+            "current_rules_version",
+            "review_basis_rules_version",
+            "review_disposition",
+            "reason",
+            "durable_record",
+        )
+    }
+    booleans: dict[str, bool] = {}
+    for field in (
+        "fresh_full_roster_run",
+        "fresh_numerical_certification",
+        "fresh_monte_carlo_certification",
+    ):
+        value = raw[field]
+        if type(value) is not bool:
+            raise MatrixSyncError(
+                f"current_development_disposition.{field} must be a boolean"
+            )
+        booleans[field] = value
+
+    basis_version = _review_string(
+        historical_review.get("rules_version"),
+        "current_damage_review.rules_version",
+    )
+    historical_status = _review_string(
+        historical_review.get("status"),
+        "current_damage_review.status",
+    )
+    comparator_version = _review_string(
+        comparator_review.get("rules_version"),
+        "current_comparator_review.rules_version",
+    )
+    if strings["current_rules_version"] != current_rules_version:
+        raise MatrixSyncError(
+            "Current damage-review disposition differs from canonical rules version"
+        )
+    if strings["review_basis_rules_version"] == strings["current_rules_version"]:
+        raise MatrixSyncError(
+            "Carried-forward review basis must differ from current rules version"
+        )
+    if strings["review_basis_rules_version"] != basis_version:
+        raise MatrixSyncError(
+            "Damage review-basis version differs from the durable damage review"
+        )
+    if comparator_version != basis_version:
+        raise MatrixSyncError(
+            "Damage and comparator review-basis versions must agree"
+        )
+    if historical_status != review_status:
+        raise MatrixSyncError(
+            "Damage matrix review status differs from the durable review basis"
+        )
+    if strings["review_disposition"] != CARRIED_FORWARD_REVIEW:
+        raise MatrixSyncError("Unsupported current damage-review disposition")
+    if any(booleans.values()):
+        raise MatrixSyncError(
+            "Carried-forward damage evidence cannot claim a fresh run or certification"
+        )
+
+    return DamageReviewDisposition(
+        current_rules_version=strings["current_rules_version"],
+        review_basis_rules_version=strings["review_basis_rules_version"],
+        review_status=historical_status,
+        review_disposition=strings["review_disposition"],
+        fresh_full_roster_run=booleans["fresh_full_roster_run"],
+        fresh_numerical_certification=booleans["fresh_numerical_certification"],
+        fresh_monte_carlo_certification=booleans[
+            "fresh_monte_carlo_certification"
+        ],
+        reason=strings["reason"],
+        durable_record=strings["durable_record"],
+    )
 
 
 def synchronization_input_fingerprints() -> dict[str, str]:
@@ -347,23 +494,49 @@ def render_single_target_damage(
 def render_damage_region(
     damage_rows: Sequence[MatrixRow],
     rules_version: str,
-    status: str,
+    review: DamageReviewDisposition,
     profile: str,
     clusters: Sequence[int],
     disciplines: Sequence[str] = README_DISCIPLINES,
 ) -> str:
     if 1 not in clusters:
         raise MatrixSyncError("Single-target README snapshot requires cluster size 1")
+    if review.current_rules_version != rules_version:
+        raise MatrixSyncError(
+            "README review disposition differs from canonical rules version"
+        )
+    if review.review_basis_rules_version == review.current_rules_version:
+        raise MatrixSyncError(
+            "README review basis must differ from a carried-forward rules version"
+        )
+    if review.review_disposition != CARRIED_FORWARD_REVIEW or any(
+        (
+            review.fresh_full_roster_run,
+            review.fresh_numerical_certification,
+            review.fresh_monte_carlo_certification,
+        )
+    ):
+        raise MatrixSyncError(
+            "README carried-forward evidence requires false fresh-run and "
+            "certification flags"
+        )
     lines = [
         BEGIN_MARKER,
         "## Damage benchmark snapshot",
         "",
-        f"**Canonical damage evidence** — rules **v{rules_version}**.",
+        f"**Canonical damage evidence** — generated under rules **v{rules_version}**.",
+        "",
+        f"Profile: `{profile}`.",
         "",
         (
-            f"Profile: `{profile}`. Numerical review status: `{status}`. "
-            "These are exact analytical full-roster damage results, not Monte Carlo "
-            "estimates."
+            "Numerical-review basis: reviewed rules "
+            f"**v{review.review_basis_rules_version}** evidence "
+            f"(`{review.review_status}`). The exact analytical full-roster results "
+            f"are carried forward under canonical rules **v{review.current_rules_version}** "
+            "without being relabeled as a current-version review. No fresh "
+            f"**v{review.current_rules_version}** full-roster run, numerical "
+            "certification, or Monte Carlo certification was performed. "
+            f"Reason: {review.reason}"
         ),
         "",
         (
@@ -376,10 +549,10 @@ def render_damage_region(
         "",
         (
             "This single-target view is primary-target DPR at cluster size 1. README "
-            "cells contain only the public damage result. Detailed release CSV, Markdown, "
-            "and HTML reports retain raw aggregates, ratios, boundaries, classifications, "
-            "and provenance; all other primary-target and aggregate-cluster results remain "
-            "in those reports."
+            "cells contain only the public damage result. Generated detailed analytical "
+            "CSV, Markdown, and HTML reports retain raw aggregates, ratios, boundaries, "
+            "classifications, and provenance; all other primary-target and "
+            "aggregate-cluster results remain in those reports."
         ),
         "",
         render_single_target_damage(damage_rows, disciplines),
@@ -455,14 +628,24 @@ def main() -> None:
     input_fingerprints = synchronization_input_fingerprints()
     readme = README_PATH.read_text(encoding="utf-8")
     generated_region_span(readme)
+    model = DamageAuthorityModel.load(DEFAULT_AUTHORITY)
+    config = load_config()
+    review = load_damage_review_disposition(
+        model.rules_version,
+        str(config["methodology"]["status"]),
+    )
     damage_rows = generate_authoritative_rows(args.workers)
     rules_version, status, profile, clusters, disciplines = validate_authoritative_rows(
         damage_rows
     )
+    if review.current_rules_version != rules_version or review.review_status != status:
+        raise MatrixSyncError(
+            "Generated damage matrix differs from preflight review disposition"
+        )
     region = render_damage_region(
         damage_rows,
         rules_version,
-        status,
+        review,
         profile,
         clusters,
         disciplines,

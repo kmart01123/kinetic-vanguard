@@ -1,6 +1,6 @@
 # Kinetic Vanguard maintained damage harness
 
-Status: **REVIEWED_WITH_DOCUMENTED_DIFFERENCES for the v14.2 development line**. The maintained evaluator is damage-only. The Control Reliability implementation and its report pipeline were retired from current `main`; the frozen v14.1 release remains the historical source for those results.
+Status: current canonical rules **v14.2.0**; durable numerical-review basis **v14.1.0** (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`), carried forward because PR #46 intentionally changed neither damage-relevant mechanics nor numerical evaluator semantics. No fresh v14.2 full-roster run, numerical certification, or Monte Carlo certification was performed. The maintained evaluator is damage-only. The Control Reliability implementation and its report pipeline were retired from current `main`; the frozen v14.1 release remains the historical source for those results.
 
 `KineticVanguard.yaml` is the sole Kinetic Vanguard rules authority. Python does not parse feature prose or carry parallel Kinetic Vanguard progression, Psi, save, damage, tier, or targeting tables. The TypeScript loader validates the canonical YAML and emits `DamageHarnessProjection`; Python's `DamageAuthorityModel` loads that projection by stable entity ID and fails closed on missing, duplicate, unavailable, or inconsistent mechanics.
 
@@ -54,7 +54,7 @@ Both commands run a fresh full-roster damage evaluation from canonical authority
 
 Run the writer only when fresh full-roster evidence is required because benchmark inputs, evaluator or planner logic, methodology, comparator or roster data changed, or a specific release gate explicitly requires fresh evidence. Review the numerical diff before running the check. A release metadata or status edit alone does not trigger either command.
 
-The generated damage evidence line is status-neutral and identifies the canonical rules evidence without duplicating publication state. Maintain the current published release and development line in the README's separate **Release status** section.
+The generated damage evidence line is status-neutral and identifies the canonical rules version without duplicating publication state. Its adjacent provenance text distinguishes that current authority from the durable numerical-review basis and records whether fresh current-version evidence exists. Maintain the current published release and development line in the README's separate **Release status** section.
 
 ## Damage method
 
@@ -62,7 +62,7 @@ The headline profile is `official_default_25_percent_hp`: 25% of fixed-HP budget
 
 Every comparator action slot is an Attack action. Kinetic Vanguard may instead spend one slot on its canonically capped standalone psionic Action. The planner optimizes each target, discipline, and cluster independently from legally observable state, then averages target results across the roster. Its lexicographic objective is aggregate damage followed by primary-target damage. It cannot look ahead into unresolved outcomes. Thermal Fracture's Armor Class reduction is the one explicit non-damage effect allowed to feed back into self-attack damage; the configured boundary rejects other condition, control, outcome, and ally-turn feedback.
 
-The evaluator analytically enumerates d20, saving-throw, and damage-die outcomes. Seeds and trial counts remain historical compatibility metadata; generated provenance identifies `exact_analytical_enumeration` as the evaluator. The current review status is `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`, not a fresh Monte Carlo certification.
+The evaluator analytically enumerates d20, saving-throw, and damage-die outcomes. Seeds and trial counts remain historical compatibility metadata; generated provenance identifies `exact_analytical_enumeration` as the evaluator. The durable v14.1 review-basis status is `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`; it is not a claim of fresh v14.2 numerical or Monte Carlo certification.
 
 Damage produces separate primary-target and aggregate-cluster DPR rows. Headline percentages use displayed equal-weight roster aggregates:
 
@@ -72,7 +72,9 @@ KV as % of comparator = 100 × KV aggregate / comparator aggregate
 
 For each row, the lower boundary is the smaller Battle Master/Eldritch Knight result and the upper boundary is the larger. COLD is below the lower boundary, IDEAL includes both boundaries, and HOT is above the upper boundary. `Boundary Delta %` is signed against the nearest crossed boundary; `N/A` is reserved for an unavailable comparison, including a required zero denominator. Comparator crossover is ordinary evidence, not a separate state.
 
-### Numerical review evidence
+### Durable v14.1 numerical-review basis
+
+The following numerical findings belong to the retained v14.1 review basis. PR #46 carries that basis forward because it intentionally changes neither damage-relevant mechanics nor numerical evaluator semantics; it does not relabel the findings as a fresh v14.2 review.
 
 - Exact reevaluation of all 336 preserved historical damage policies agrees with the 25,000-trial rows at sampling scale: primary DPR mean absolute delta `0.0323169` and maximum `0.176034`; aggregate DPR mean absolute delta `0.0374951` and maximum `0.340120`.
 - The observed-state policy improves aggregate damage in 123 rows, ties 213, and regresses in none. Nine rows trade lower primary-target damage for higher aggregate damage under the declared aggregate-first objective.
@@ -91,8 +93,8 @@ The comparator model identifies the 2024 fifth-edition ruleset. It is not a comp
 
 Filenames derive from YAML `rules_version`, for example `kv-14-2-0-damage-comparison-matrix.csv`. The damage matrix is emitted as CSV, Markdown, and self-contained HTML from one numerical row model. Every format retains raw Kinetic Vanguard, Battle Master, and Eldritch Knight aggregates; ordinary ratios; lower and upper comparator identities and values; classification; signed boundary delta; and provenance.
 
-Provenance includes rules version, authority digest, roster digest, methodology-config digest, comparator-config digest, evaluator, compatibility-only seed/trial settings, aggregation, and review status. CSV rows carry structured component, SRD, and comparator notices; Markdown and HTML display the same notices in a visible licensing section.
+Generated-run provenance includes rules version, authority digest, roster digest, methodology-config digest, comparator-config digest, evaluator, compatibility-only seed/trial settings, aggregation, and the review-basis status. The maintained `provenance/damage-review.json` separately records the current authority version, durable review-basis version, and whether fresh full-roster or numerical certification was performed. CSV rows carry structured component, SRD, and comparator notices; Markdown and HTML display the same notices in a visible licensing section.
 
 The README generator validates the complete authoritative damage matrix, all raw and derived result fields, all provenance and notice fields, comparator scope, and canonical rules evidence identity before selecting primary-target cluster-size-1 rows for its single public heat table. Generated outputs, caches, virtual environments, and `.codex-import/` are ignored and are not official source.
 
-The v14.1 restoration and review record is historical. See `MIGRATION.md` and `provenance/damage-review.json` for its retained review context; use the current commands and files above for maintained work.
+The v14.1 restoration and numerical-review record remains the durable basis for the current damage snapshot. See `MIGRATION.md` and `provenance/damage-review.json` for that retained record and PR #46's explicit current-development disposition; use the current commands and files above for maintained work.

@@ -95,20 +95,52 @@ test("README and release process stay synchronized with canonical development st
   assert.match(pullRequestTemplate, /Main branch gate/);
 });
 
-test("README exposes one synchronized damage snapshot and a static control status", async () => {
-  const [{ authority }, readme, packageJsonSource, benchmarkConfigSource] = await Promise.all([
+test("README keeps current authority, historical review basis, and publication status distinct", async () => {
+  const [{ authority }, readme, packageJsonSource, benchmarkConfigSource, damageReviewSource, harnessReadme] = await Promise.all([
     loadAuthority(),
     readFile("README.md", "utf8"),
     readFile("package.json", "utf8"),
-    readFile("harness/config/benchmark.json", "utf8")
+    readFile("harness/config/benchmark.json", "utf8"),
+    readFile("harness/provenance/damage-review.json", "utf8"),
+    readFile("harness/README.md", "utf8")
   ]);
   const packageJson = JSON.parse(packageJsonSource) as {
     readonly scripts?: Readonly<Record<string, string>>;
   };
   const benchmarkConfig = JSON.parse(benchmarkConfigSource) as {
-    readonly methodology: { readonly status: string };
     readonly kv_profile: { readonly id: string };
   };
+  const damageReview = JSON.parse(damageReviewSource) as {
+    readonly current_damage_review: {
+      readonly rules_version: string;
+      readonly status: string;
+      readonly review_date: string;
+      readonly durable_record: string;
+    };
+    readonly current_development_disposition: {
+      readonly current_rules_version: string;
+      readonly review_basis_rules_version: string;
+      readonly review_disposition: string;
+      readonly fresh_full_roster_run: boolean;
+      readonly fresh_numerical_certification: boolean;
+      readonly fresh_monte_carlo_certification: boolean;
+      readonly reason: string;
+      readonly durable_record: string;
+    };
+  };
+  const review = damageReview.current_damage_review;
+  const disposition = damageReview.current_development_disposition;
+  assert.equal(disposition.current_rules_version, authority.rules_version);
+  assert.equal(disposition.review_basis_rules_version, review.rules_version);
+  assert.notEqual(disposition.current_rules_version, disposition.review_basis_rules_version);
+  assert.equal(review.rules_version, "14.1.0");
+  assert.equal(review.review_date, "2026-08-07");
+  assert.equal(review.durable_record, "GitHub PR #20");
+  assert.equal(disposition.review_disposition, "CARRIED_FORWARD_WITHOUT_FRESH_NUMERICAL_REVIEW");
+  assert.equal(disposition.fresh_full_roster_run, false);
+  assert.equal(disposition.fresh_numerical_certification, false);
+  assert.equal(disposition.fresh_monte_carlo_certification, false);
+  assert.equal(disposition.durable_record, "GitHub PR #46");
 
   const beginMarker = "<!-- BEGIN GENERATED DAMAGE MATRIX -->";
   const endMarker = "<!-- END GENERATED DAMAGE MATRIX -->";
@@ -130,15 +162,21 @@ test("README exposes one synchronized damage snapshot and a static control statu
   assert.deepEqual(precedingLevelTwoHeadings, ["Release status"]);
 
   const region = readme.slice(begin, end + endMarker.length);
-  assert.ok(region.includes(`**Canonical damage evidence** — rules **v${authority.rules_version}**.`));
+  assert.ok(region.includes(`**Canonical damage evidence** — generated under rules **v${authority.rules_version}**.`));
   assert.doesNotMatch(
     region,
-    /\*\*(?:Published|Unreleased development) snapshot\*\*|current published release/i,
+    /\*\*(?:Published|Unreleased development) snapshot\*\*|current published release|Current development line/i,
     "analytical evidence is independent of release-status metadata"
   );
   assert.ok(region.includes(`Profile: \`${benchmarkConfig.kv_profile.id}\`.`));
-  assert.ok(region.includes(`Numerical review status: \`${benchmarkConfig.methodology.status}\`.`));
-  assert.match(region, /exact analytical full-roster damage results, not Monte Carlo estimates/i);
+  assert.ok(region.includes(
+    `Numerical-review basis: reviewed rules **v${review.rules_version}** evidence (\`${review.status}\`).`
+  ));
+  assert.ok(region.includes(
+    `without being relabeled as a current-version review. No fresh **v${authority.rules_version}** full-roster run, numerical certification, or Monte Carlo certification was performed.`
+  ));
+  assert.ok(region.includes(`Reason: ${disposition.reason}`));
+  assert.doesNotMatch(region, /Numerical review status:/i);
   assert.match(region, /^## Damage benchmark snapshot$/m);
   assert.doesNotMatch(region, /^### /m);
 
@@ -166,7 +204,7 @@ test("README exposes one synchronized damage snapshot and a static control statu
   assert.match(region, /COLD.*below both.*HOT.*above both/s);
   assert.match(region, /signed distance outside the nearest envelope boundary/);
   assert.match(region, /N\/A.*reserved for a comparison that cannot be evaluated/);
-  assert.match(region, /Detailed release CSV, Markdown, and HTML reports retain raw/);
+  assert.match(region, /Generated detailed analytical CSV, Markdown, and HTML reports retain raw/);
   assert.doesNotMatch(region, /KV DPR|KV as % of EK|KV as % of BM/);
   assert.doesNotMatch(region, /IDEAL \([^)]*%\)|COLD \(\+|HOT \(-/);
 
@@ -180,6 +218,12 @@ test("README exposes one synchronized damage snapshot and a static control statu
     "[`NOTICE.md`](NOTICE.md)"
   ]) assert.ok(region.includes(source), `snapshot links to ${source}`);
   assert.match(region, /not affiliated with or endorsed by Wizards of the Coast/i);
+
+  for (const statement of [
+    `canonical rules **v${disposition.current_rules_version}**`,
+    `numerical-review basis **v${disposition.review_basis_rules_version}**`,
+    "No fresh v14.2 full-roster run, numerical certification, or Monte Carlo certification was performed"
+  ]) assert.ok(harnessReadme.includes(statement), `harness guide states ${statement}`);
 
   const status = readme.slice(controlStatus, publication);
   assert.match(status, /v14\.1.*Control Reliability.*historical release evidence/s);

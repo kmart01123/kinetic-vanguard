@@ -162,16 +162,33 @@ class FrozenInputValidationTests(unittest.TestCase):
         target=load_targets()[0]
         self.assertTrue(target.size and target.creature_type and target.condition_immunities is not None)
 
-    def test_current_review_status_matches_damage_only_provenance(self)->None:
+    def test_current_disposition_preserves_the_v14_1_review_basis(self)->None:
         path=PROJECT_ROOT/"harness/provenance/damage-review.json"
         provenance=json.loads(path.read_text(encoding="utf-8"))
         self.assertEqual(set(provenance),{
             "pinned_srd","historical_damage_source","historical_damage_certification",
-            "current_damage_review","current_comparator_review",
+            "current_damage_review","current_development_disposition","current_comparator_review",
         })
         self.assertEqual(provenance["historical_damage_certification"]["status"],"PRESERVED_PROVENANCE_ONLY")
-        self.assertEqual(load_config()["methodology"]["status"],provenance["current_damage_review"]["status"])
         self.assertEqual(provenance["historical_damage_source"]["filename"],"kv_v12_0_0_damage_harness.py")
+        review=provenance["current_damage_review"]
+        self.assertEqual(review["rules_version"],"14.1.0")
+        self.assertEqual(review["status"],"REVIEWED_WITH_DOCUMENTED_DIFFERENCES")
+        self.assertEqual(review["review_date"],"2026-08-07")
+        self.assertEqual(review["durable_record"],"GitHub PR #20")
+        self.assertEqual(review["evaluator"],"exact_analytical_enumeration")
+        self.assertEqual(review["preserved_policy_rows"],336)
+        self.assertIs(review["fresh_monte_carlo_certification"],False)
+        disposition=provenance["current_development_disposition"]
+        self.assertEqual(disposition["current_rules_version"],DamageAuthorityModel.load().rules_version)
+        self.assertEqual(disposition["review_basis_rules_version"],review["rules_version"])
+        self.assertNotEqual(disposition["current_rules_version"],disposition["review_basis_rules_version"])
+        self.assertEqual(disposition["review_disposition"],"CARRIED_FORWARD_WITHOUT_FRESH_NUMERICAL_REVIEW")
+        self.assertIs(disposition["fresh_full_roster_run"],False)
+        self.assertIs(disposition["fresh_numerical_certification"],False)
+        self.assertIs(disposition["fresh_monte_carlo_certification"],False)
+        self.assertEqual(disposition["reason"],"No intentional change to damage-relevant mechanics or numerical evaluator semantics.")
+        self.assertEqual(disposition["durable_record"],"GitHub PR #46")
 
 
 class FighterNumericalTests(unittest.TestCase):

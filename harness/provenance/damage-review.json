@@ -34,6 +34,16 @@
     "adaptive_aggregate_rows_regressed": 0,
     "adaptive_primary_rows_lower_for_aggregate_objective": 9
   },
+  "current_development_disposition": {
+    "current_rules_version": "14.2.0",
+    "review_basis_rules_version": "14.1.0",
+    "review_disposition": "CARRIED_FORWARD_WITHOUT_FRESH_NUMERICAL_REVIEW",
+    "fresh_full_roster_run": false,
+    "fresh_numerical_certification": false,
+    "fresh_monte_carlo_certification": false,
+    "reason": "No intentional change to damage-relevant mechanics or numerical evaluator semantics.",
+    "durable_record": "GitHub PR #46"
+  },
   "current_comparator_review": {
     "rules_version": "14.1.0",
     "source_ruleset": "2024 fifth-edition rules",

@@ -1,9 +1,11 @@
 from __future__ import annotations
 
+import json
 import stat
 import tempfile
 import unittest
 from copy import deepcopy
+from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
@@ -30,6 +32,7 @@ from harness.readme_damage import (
     _public_result,
     atomic_replace_text,
     generated_region_span,
+    load_damage_review_disposition,
     render_damage_region,
     render_single_target_damage,
     replace_generated_region,
@@ -173,10 +176,14 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         rows = _full_authoritative_rows()
         model = DamageAuthorityModel.load(DEFAULT_AUTHORITY)
         config = load_config()
+        review = load_damage_review_disposition(
+            model.rules_version,
+            str(config["methodology"]["status"]),
+        )
         arguments = (
             rows,
             model.rules_version,
-            "SYNTHETIC_REVIEW",
+            review,
             "synthetic_profile",
             tuple(int(value) for value in config["methodology"]["cluster_sizes"]),
         )
@@ -184,7 +191,7 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         reordered = render_damage_region(
             list(reversed(rows)),
             model.rules_version,
-            "SYNTHETIC_REVIEW",
+            review,
             "synthetic_profile",
             tuple(int(value) for value in config["methodology"]["cluster_sizes"]),
         )
@@ -193,9 +200,40 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         self.assertTrue(rendered.endswith(END_MARKER))
         self.assertIn("## Damage benchmark snapshot", rendered)
         self.assertIn(
-            f"**Canonical damage evidence** — rules **v{model.rules_version}**.",
+            f"**Canonical damage evidence** — generated under rules "
+            f"**v{model.rules_version}**.",
             rendered,
         )
+        self.assertIn(
+            f"Numerical-review basis: reviewed rules "
+            f"**v{review.review_basis_rules_version}** evidence "
+            f"(`{review.review_status}`).",
+            rendered,
+        )
+        self.assertIn(
+            f"without being relabeled as a current-version review. No fresh "
+            f"**v{model.rules_version}** full-roster run, numerical certification, "
+            "or Monte Carlo certification was performed.",
+            rendered,
+        )
+        self.assertIn(
+            "Reason: No intentional change to damage-relevant mechanics or "
+            "numerical evaluator semantics.",
+            rendered,
+        )
+        self.assertIn("Generated detailed analytical CSV, Markdown, and HTML reports", rendered)
+        self.assertNotIn("Numerical review status:", rendered)
+        self.assertFalse(review.fresh_full_roster_run)
+        self.assertFalse(review.fresh_numerical_certification)
+        self.assertFalse(review.fresh_monte_carlo_certification)
+        with self.assertRaisesRegex(MatrixSyncError, "carried-forward evidence"):
+            render_damage_region(
+                rows,
+                model.rules_version,
+                replace(review, fresh_numerical_certification=True),
+                "synthetic_profile",
+                tuple(int(value) for value in config["methodology"]["cluster_sizes"]),
+            )
         self.assertEqual(rendered.count("| Level |"), 1)
         self.assertEqual(rendered.count("\n|---|"), 1)
         self.assertIn("primary-target DPR at cluster size 1", rendered)
@@ -203,6 +241,28 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         self.assertIn(COMPARATOR_NOTICE, rendered)
         self.assertIn("LICENSE.md", rendered)
         self.assertIn("NOTICE.md", rendered)
+
+    def test_review_disposition_rejects_stale_current_or_basis_versions(self) -> None:
+        source = json.loads(
+            readme_damage.DAMAGE_REVIEW_PATH.read_text(encoding="utf-8")
+        )
+        config = load_config()
+        cases = (
+            ("current", "current_rules_version", "14.3.0", "canonical rules version"),
+            ("basis", "review_basis_rules_version", "14.0.0", "review-basis version"),
+        )
+        for label, field, value, pattern in cases:
+            with self.subTest(label=label), tempfile.TemporaryDirectory() as directory:
+                mutated = deepcopy(source)
+                mutated["current_development_disposition"][field] = value
+                path = Path(directory) / "damage-review.json"
+                path.write_text(json.dumps(mutated), encoding="utf-8")
+                with self.assertRaisesRegex(MatrixSyncError, pattern):
+                    load_damage_review_disposition(
+                        "14.2.0",
+                        str(config["methodology"]["status"]),
+                        path,
+                    )
 
     def test_markdown_table_has_exact_header_width_and_escaping(self) -> None:
         rendered = _markdown_table(

@@ -21,13 +21,15 @@ Version 14.2.0 development retires the superseded Control Reliability implementa
 <!-- BEGIN GENERATED DAMAGE MATRIX -->
 ## Damage benchmark snapshot
 
-**Canonical damage evidence** — rules **v14.2.0**.
+**Canonical damage evidence** — generated under rules **v14.2.0**.
 
-Profile: `official_default_25_percent_hp`. Numerical review status: `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`. These are exact analytical full-roster damage results, not Monte Carlo estimates.
+Profile: `official_default_25_percent_hp`.
+
+Numerical-review basis: reviewed rules **v14.1.0** evidence (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`). The exact analytical full-roster results are carried forward under canonical rules **v14.2.0** without being relabeled as a current-version review. No fresh **v14.2.0** full-roster run, numerical certification, or Monte Carlo certification was performed. Reason: No intentional change to damage-relevant mechanics or numerical evaluator semantics.
 
 Battle Master and Eldritch Knight define the comparison envelope. `IDEAL` means Kinetic Vanguard falls between the two damage results, inclusive. `COLD` is below both; `HOT` is above both. The percentage on COLD and HOT cells is the signed distance outside the nearest envelope boundary. `N/A` is reserved for a comparison that cannot be evaluated.
 
-This single-target view is primary-target DPR at cluster size 1. README cells contain only the public damage result. Detailed release CSV, Markdown, and HTML reports retain raw aggregates, ratios, boundaries, classifications, and provenance; all other primary-target and aggregate-cluster results remain in those reports.
+This single-target view is primary-target DPR at cluster size 1. README cells contain only the public damage result. Generated detailed analytical CSV, Markdown, and HTML reports retain raw aggregates, ratios, boundaries, classifications, and provenance; all other primary-target and aggregate-cluster results remain in those reports.
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
@@ -81,7 +83,7 @@ npm run test:harness
 npm run readme:damage:check
 ```
 
-The optional full-roster command is `npm run harness:damage -- --output-dir harness/results/damage`. Generated results are ignored. See `harness/README.md` for methodology, provenance, damage-matrix interpretation, and current numerical-review status.
+The optional full-roster command is `npm run harness:damage -- --output-dir harness/results/damage`. Generated results are ignored. See `harness/README.md` for methodology, provenance, damage-matrix interpretation, and the distinction between current authority and its durable numerical-review basis.
 `npm run build` writes the development publication to `artifacts/KineticVanguard.prototype.html`. It always carries a visible and accessibility-exposed `NON-RELEASE PROTOTYPE` identity.
 
 
