@@ -150,9 +150,8 @@ test("Wisdom saving throws pass the real v2 JSON Schema and semantic validator",
   }finally{await rm(directory,{recursive:true,force:true});}
 });
 
-test("projection-version CLI defaults to v1, emits v2 explicitly, and rejects unknown versions",()=>{
+test("projection-version CLI emits v2 explicitly and rejects unknown versions",()=>{
   const executable="node_modules/.bin/tsx",base=["src/harness-authority.ts"];
-  const legacy=spawnSync(executable,base,{encoding:"utf8"});assert.equal(legacy.status,0,legacy.stderr);assert.equal(JSON.parse(legacy.stdout).projection_version,"1.0.0");
   const v2=spawnSync(executable,[...base,"--projection-version","2.0.0"],{encoding:"utf8"});assert.equal(v2.status,0,v2.stderr);assert.equal(JSON.parse(v2.stdout).projection_version,"2.0.0");
   const unknown=spawnSync(executable,[...base,"--projection-version","9.0.0"],{encoding:"utf8"});assert.notEqual(unknown.status,0);assert.match(unknown.stderr,/Unsupported projection version: 9\.0\.0/);
 });

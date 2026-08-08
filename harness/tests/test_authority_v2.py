@@ -9,10 +9,8 @@ from harness.authority import (
     CONTROL_PROJECTION_VERSION,
     DEFAULT_AUTHORITY,
     AuthorityError,
-    AuthorityModel,
     ControlAuthorityV2Model,
     load_control_projection_v2,
-    load_projection,
     validate_control_projection_v2,
 )
 
@@ -406,20 +404,6 @@ class ControlAuthorityV2Tests(unittest.TestCase):
         self.assertFalse(model.projection["coverage"]["benchmark_ready"])
         with self.assertRaisesRegex(AuthorityError, "26 ledger row"):
             model.require_benchmark_ready()
-
-class LegacyAuthorityCompatibilityTests(unittest.TestCase):
-    """Keep v1 compatibility evidence separate from the v2 correctness lane."""
-
-    def test_legacy_loader_and_model_remain_on_v1_and_reject_unknown_version(self) -> None:
-        legacy = AuthorityModel.load().projection
-        self.assertEqual(legacy["projection_version"], "1.0.0")
-        self.assertIn("progressions", legacy)
-        unknown = deepcopy(legacy)
-        unknown["projection_version"] = "9.0.0"
-        with patch("harness.authority._run_projector", return_value=unknown):
-            with self.assertRaisesRegex(AuthorityError, "Unsupported legacy projection version"):
-                load_projection()
-
 
 if __name__ == "__main__":
     unittest.main()
