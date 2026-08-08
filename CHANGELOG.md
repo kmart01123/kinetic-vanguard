@@ -6,7 +6,8 @@
 
 - Narrowed the maintained benchmark architecture to an explicit damage authority, projection, configuration, comparator, report, README generator, and command boundary.
 - Replaced the generated two-matrix README snapshot with one damage heat table and a static control-methodology status that points v14.1 reproduction to frozen release evidence and identifies the v14.2 redesign sequence.
-- Preserved Control Authority v2 as a separate fail-closed structured contract with TypeScript/Python parity coverage; it does not publish a v14.2 control result.
+- Completed Control Authority v2.1 with 35 modeled rows, 14 maintained profile exclusions, zero unsupported rows, typed event/save/choice/movement/area/persistent-state semantics, and shared TypeScript/Python parity coverage; it remains separate from damage and does not publish a v14.2 control result.
+- Added a fail-closed 28-row SRD control-target supplement for official movement modes, hover, and relevant nonvisual senses while preserving the maintained damage roster byte-for-byte.
 - Codified the standing policy for retiring superseded implementations from current development while preserving released history through frozen branches, tags, Releases, evidence assets, and Git history.
 
 ### Removed

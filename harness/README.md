@@ -17,7 +17,7 @@ The runtime hashes canonical authority, methodology, comparator assumptions, and
 
 ### Control Authority v2 is separate
 
-Control Authority v2 remains a structured, fail-closed contract for the control-methodology redesign. Its schema validation and shared TypeScript/Python parity corpus remain maintained. It is not part of `DamageHarnessProjection`, is not consumed by the damage benchmark, and does not evaluate, classify, or publish a v14.2 control result.
+Control Authority v2.1 is the complete 35-modeled/14-excluded structured authority for the control-methodology redesign. Its `benchmark_ready` flag is scoped to authority completeness. Combined control-input readiness additionally requires the exact 28-row `data/srd_control_targets.json` supplement and `provenance/srd-control-targets.json` to validate against the unchanged `data/srd_targets.csv` roster; `npm run harness:validate` enforces both boundaries. The supplement records only official movement modes, hover, and relevant nonvisual senses and is loaded through `harness.control_targets`; it is not consumed by `DamageHarnessProjection` or the damage benchmark. This contract does not evaluate, classify, or publish a v14.2 control result.
 
 ## Commands
 
