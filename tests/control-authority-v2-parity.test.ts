@@ -4,10 +4,11 @@ import test from "node:test";
 import Ajv2020Module from "ajv/dist/2020.js";
 import addFormatsModule from "ajv-formats";
 import {validateControlAuthorityV2} from "../src/control-authority-v2.js";
+import {validateControlTargetProvenance,validateControlTargetSupplement} from "../src/control-targets.js";
 import {loadAuthority} from "../src/load.js";
 
 type PathSegment=string|number;
-type Target={kind:"authority"}|{kind:"model";effect_id:string}|{kind:"mastery";mastery_id:string};
+type Target={kind:"authority"}|{kind:"model";effect_id:string}|{kind:"mastery";mastery_id:string}|{kind:"control_targets"};
 type Operation=
   |{op:"set";path:PathSegment[];value:unknown}
   |{op:"delete";path:PathSegment[]}
@@ -41,6 +42,7 @@ function atPath(root:any,path:PathSegment[],caseId:string):any{
 }
 
 function targetFor(authority:any,target:Target,caseId:string):any{
+  if(target.kind==="control_targets")throw new Error(caseId+": control-target mutations use their own fixture wrapper");
   const root=authority.calculator.harness_mechanics.control_authority_v2;
   if(target.kind==="authority")return root;
   if(target.kind==="mastery"){
@@ -83,7 +85,14 @@ function applyOperation(target:any,operation:Operation,caseId:string):void{
 }
 
 test("shared control-authority-v2 mutation corpus has TypeScript acceptance parity",async t=>{
-  const [{authority},corpusSource,schemaSource]=await Promise.all([loadAuthority(),readFile("tests/fixtures/control-authority-v2-parity.json","utf8"),readFile("schema/KineticVanguard.schema.json","utf8")]);
+  const [{authority},corpusSource,schemaSource,supplementSource,rosterSource,provenanceSource]=await Promise.all([
+    loadAuthority(),
+    readFile("tests/fixtures/control-authority-v2-parity.json","utf8"),
+    readFile("schema/KineticVanguard.schema.json","utf8"),
+    readFile("harness/data/srd_control_targets.json","utf8"),
+    readFile("harness/data/srd_targets.csv","utf8"),
+    readFile("harness/provenance/srd-control-targets.json","utf8"),
+  ]);
   const corpus=JSON.parse(corpusSource) as ParityCorpus;
   const Ajv2020=((Ajv2020Module as any).default??Ajv2020Module) as new(options:any)=>any,addFormats=((addFormatsModule as any).default??addFormatsModule) as (ajv:any)=>void;
   const ajv=new Ajv2020({allErrors:true,strict:true});addFormats(ajv);
@@ -92,6 +101,17 @@ test("shared control-authority-v2 mutation corpus has TypeScript acceptance pari
   assert.ok(corpus.description.includes("v1 is never an oracle"));
   assert.equal(new Set(corpus.cases.map(item=>item.id)).size,corpus.cases.length);
   for(const parityCase of corpus.cases)await t.test(parityCase.id,()=>{
+    if(parityCase.target.kind==="control_targets"){
+      const wrapper={supplement:JSON.parse(supplementSource),provenance:JSON.parse(provenanceSource)};
+      for(const operation of parityCase.operations)applyOperation(wrapper,operation,parityCase.id);
+      let valid=true;
+      try{
+        validateControlTargetSupplement(wrapper.supplement,rosterSource);
+        validateControlTargetProvenance(wrapper.provenance,rosterSource,supplementSource);
+      }catch{valid=false;}
+      assert.equal(valid,parityCase.expected_valid,parityCase.id+": TypeScript control-target acceptance diverged");
+      return;
+    }
     const candidate=structuredClone(authority) as any,target=targetFor(candidate,parityCase.target,parityCase.id);
     for(const operation of parityCase.operations)applyOperation(target,operation,parityCase.id);
     const schemaValid=Boolean(validateSchema(candidate)),diagnostics=validateControlAuthorityV2(candidate);

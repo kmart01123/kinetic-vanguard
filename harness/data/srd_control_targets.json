@@ -1,0 +1,238 @@
+{
+  "format_version": 1,
+  "join_key": [
+    "level",
+    "target"
+  ],
+  "targets": [
+    {
+      "level": 7,
+      "target": "Air Elemental",
+      "movement": {"walk_ft": 10, "fly_ft": 90, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": true},
+      "nonvisual_senses": [],
+      "source_page": 258
+    },
+    {
+      "level": 7,
+      "target": "Troll",
+      "movement": {"walk_ft": 30, "fly_ft": null, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [],
+      "source_page": 333
+    },
+    {
+      "level": 7,
+      "target": "Chimera",
+      "movement": {"walk_ft": 30, "fly_ft": 60, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [],
+      "source_page": 273
+    },
+    {
+      "level": 7,
+      "target": "Mage",
+      "movement": {"walk_ft": 30, "fly_ft": null, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [],
+      "source_page": 305
+    },
+    {
+      "level": 7,
+      "target": "Young Black Dragon",
+      "movement": {"walk_ft": 40, "fly_ft": 80, "swim_ft": 40, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "blindsight", "range_ft": 30, "limitation": null}
+      ],
+      "source_page": 264
+    },
+    {
+      "level": 7,
+      "target": "Stone Giant",
+      "movement": {"walk_ft": 40, "fly_ft": null, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [],
+      "source_page": 330
+    },
+    {
+      "level": 7,
+      "target": "Hydra",
+      "movement": {"walk_ft": 40, "fly_ft": null, "swim_ft": 40, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [],
+      "source_page": 300
+    },
+    {
+      "level": 7,
+      "target": "Young Green Dragon",
+      "movement": {"walk_ft": 40, "fly_ft": 80, "swim_ft": 40, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "blindsight", "range_ft": 30, "limitation": null}
+      ],
+      "source_page": 293
+    },
+    {
+      "level": 11,
+      "target": "Aboleth",
+      "movement": {"walk_ft": 10, "fly_ft": null, "swim_ft": 40, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [],
+      "source_page": 258
+    },
+    {
+      "level": 11,
+      "target": "Stone Golem",
+      "movement": {"walk_ft": 30, "fly_ft": null, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [],
+      "source_page": 330
+    },
+    {
+      "level": 11,
+      "target": "Deva",
+      "movement": {"walk_ft": 30, "fly_ft": 90, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": true},
+      "nonvisual_senses": [],
+      "source_page": 279
+    },
+    {
+      "level": 11,
+      "target": "Archmage",
+      "movement": {"walk_ft": 30, "fly_ft": null, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [],
+      "source_page": 305
+    },
+    {
+      "level": 11,
+      "target": "Adult White Dragon",
+      "movement": {"walk_ft": 40, "fly_ft": 80, "swim_ft": 40, "climb_ft": null, "burrow_ft": 30, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "blindsight", "range_ft": 60, "limitation": null}
+      ],
+      "source_page": 340
+    },
+    {
+      "level": 11,
+      "target": "Vampire",
+      "movement": {"walk_ft": 40, "fly_ft": null, "swim_ft": null, "climb_ft": 40, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [],
+      "source_page": 335
+    },
+    {
+      "level": 15,
+      "target": "Adult Black Dragon",
+      "movement": {"walk_ft": 40, "fly_ft": 80, "swim_ft": 40, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "blindsight", "range_ft": 60, "limitation": null}
+      ],
+      "source_page": 264
+    },
+    {
+      "level": 15,
+      "target": "Adult Green Dragon",
+      "movement": {"walk_ft": 40, "fly_ft": 80, "swim_ft": 40, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "blindsight", "range_ft": 60, "limitation": null}
+      ],
+      "source_page": 294
+    },
+    {
+      "level": 15,
+      "target": "Mummy Lord",
+      "movement": {"walk_ft": 30, "fly_ft": null, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "truesight", "range_ft": 60, "limitation": null}
+      ],
+      "source_page": 309
+    },
+    {
+      "level": 15,
+      "target": "Purple Worm",
+      "movement": {"walk_ft": 50, "fly_ft": null, "swim_ft": null, "climb_ft": null, "burrow_ft": 50, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "blindsight", "range_ft": 30, "limitation": null},
+        {"sense": "tremorsense", "range_ft": 60, "limitation": null}
+      ],
+      "source_page": 316
+    },
+    {
+      "level": 15,
+      "target": "Iron Golem",
+      "movement": {"walk_ft": 30, "fly_ft": null, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [],
+      "source_page": 302
+    },
+    {
+      "level": 15,
+      "target": "Marilith",
+      "movement": {"walk_ft": 40, "fly_ft": null, "swim_ft": null, "climb_ft": 40, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "truesight", "range_ft": 120, "limitation": null}
+      ],
+      "source_page": 306
+    },
+    {
+      "level": 20,
+      "target": "Balor",
+      "movement": {"walk_ft": 40, "fly_ft": 80, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "truesight", "range_ft": 120, "limitation": null}
+      ],
+      "source_page": 261
+    },
+    {
+      "level": 20,
+      "target": "Pit Fiend",
+      "movement": {"walk_ft": 30, "fly_ft": 60, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "truesight", "range_ft": 120, "limitation": null}
+      ],
+      "source_page": 314
+    },
+    {
+      "level": 20,
+      "target": "Ancient White Dragon",
+      "movement": {"walk_ft": 40, "fly_ft": 80, "swim_ft": 40, "climb_ft": null, "burrow_ft": 40, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "blindsight", "range_ft": 60, "limitation": null}
+      ],
+      "source_page": 341
+    },
+    {
+      "level": 20,
+      "target": "Ancient Black Dragon",
+      "movement": {"walk_ft": 40, "fly_ft": 80, "swim_ft": 40, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "blindsight", "range_ft": 60, "limitation": null}
+      ],
+      "source_page": 265
+    },
+    {
+      "level": 20,
+      "target": "Lich",
+      "movement": {"walk_ft": 30, "fly_ft": null, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "truesight", "range_ft": 120, "limitation": null}
+      ],
+      "source_page": 304
+    },
+    {
+      "level": 20,
+      "target": "Solar",
+      "movement": {"walk_ft": 50, "fly_ft": 150, "swim_ft": null, "climb_ft": null, "burrow_ft": null, "hover": true},
+      "nonvisual_senses": [
+        {"sense": "truesight", "range_ft": 120, "limitation": null}
+      ],
+      "source_page": 326
+    },
+    {
+      "level": 20,
+      "target": "Kraken",
+      "movement": {"walk_ft": 30, "fly_ft": null, "swim_ft": 120, "climb_ft": null, "burrow_ft": null, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "truesight", "range_ft": 120, "limitation": null}
+      ],
+      "source_page": 303
+    },
+    {
+      "level": 20,
+      "target": "Tarrasque",
+      "movement": {"walk_ft": 60, "fly_ft": null, "swim_ft": null, "climb_ft": 60, "burrow_ft": 40, "hover": false},
+      "nonvisual_senses": [
+        {"sense": "blindsight", "range_ft": 120, "limitation": null}
+      ],
+      "source_page": 331
+    }
+  ]
+}

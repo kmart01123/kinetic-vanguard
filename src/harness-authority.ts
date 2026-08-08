@@ -19,12 +19,23 @@ export interface DamageHarnessProjection {
 }
 
 export interface ControlAuthorityProjectionV2 {
-  projection_version:"2.0.0";
+  projection_version:"2.1.0";
   authority_path:string;
   authority_sha256:string;
   rules_version:string;
   schema_version:string;
   supported_level_range:{minimum:number;maximum:number};
+  canonical_inputs:{entities:Array<{
+    entity_id:string;
+    activation:"action"|"bonus_action"|"reaction"|"on_hit"|"passive";
+    feature_role:"rider"|"standalone";
+    psi_cost:number;
+    requires_concentration:boolean;
+    calculator_tiers:Array<0|1|2>;
+    concentration_duration?:string;
+    calculator_delivery?:"on_hit_rider"|"standalone";
+    feature_rule_repeatability?:"unlimited"|"once_per_attack_action";
+  }>};
   control_authority:ControlAuthorityV2;
   coverage:{total:number;modeled:number;excluded_by_profile:number;unsupported_error:number;benchmark_ready:boolean};
 }
@@ -55,18 +66,37 @@ export async function createControlAuthorityProjectionV2(authorityPath="KineticV
   if(diagnostics.some(item=>item.severity==="error"))throw new Error(`Control authority v2 projection blocked:\n${summarizeDiagnostics(diagnostics)}`);
   const authority=loaded.authority,calculator=authority.calculator;
   const controlAuthority=structuredClone(calculator.harness_mechanics.control_authority_v2);
-  if(controlAuthority.contract_version!=="2.0.0")throw new Error(`Unsupported control authority contract version: ${String(controlAuthority.contract_version)}`);
+  if(controlAuthority.contract_version!=="2.1.0")throw new Error(`Unsupported control authority contract version: ${String(controlAuthority.contract_version)}`);
   controlAuthority.ledger.sort((left,right)=>codepointCompare(left.entity_id,right.entity_id)||(left.tier-right.tier));
+  const entitiesById=new Map(authority.entities.map(entity=>[entity.id,entity]));
+  const calculatorFeaturesById=new Map(calculator.features.map(feature=>[feature.entity_id,feature]));
+  const featureRulesById=new Map(calculator.harness_mechanics.feature_rules.map(rule=>[rule.entity_id,rule]));
+  const modeledEntityIds=[...new Set(controlAuthority.ledger.filter(row=>row.disposition==="modeled").map(row=>row.entity_id))].sort(codepointCompare);
+  const canonicalInputs=modeledEntityIds.map(entityId=>{
+    const entity=entitiesById.get(entityId),featureRole=entity?.classifications.feature_role,activation=entity?.activation;
+    if(!entity||!(["action","bonus_action","reaction","on_hit","passive"] as string[]).includes(String(activation))||!(["rider","standalone"] as string[]).includes(String(featureRole))||!Number.isInteger(entity.psi_cost)||Number(entity.psi_cost)<0)throw new Error(`Control authority entity ${entityId} lacks canonical policy metadata`);
+    const calculatorFeature=calculatorFeaturesById.get(entityId);
+    const row:{entity_id:string;activation:"action"|"bonus_action"|"reaction"|"on_hit"|"passive";feature_role:"rider"|"standalone";psi_cost:number;requires_concentration:boolean;calculator_tiers:Array<0|1|2>;concentration_duration?:string;calculator_delivery?:"on_hit_rider"|"standalone";feature_rule_repeatability?:"unlimited"|"once_per_attack_action"}={
+      entity_id:entityId,activation:activation as "action"|"bonus_action"|"reaction"|"on_hit"|"passive",feature_role:featureRole as "rider"|"standalone",psi_cost:entity.psi_cost!,requires_concentration:entity.requires_concentration===true,calculator_tiers:calculatorFeature?.tiers.map(tier=>tier.tier)??[]
+    };
+    if(entity.concentration_duration!==undefined)row.concentration_duration=entity.concentration_duration;
+    const calculatorDelivery=calculatorFeature?.delivery;
+    if(calculatorDelivery==="on_hit_rider"||calculatorDelivery==="standalone")row.calculator_delivery=calculatorDelivery;
+    const repeatability=featureRulesById.get(entityId)?.repeatability;
+    if(repeatability!==undefined)row.feature_rule_repeatability=repeatability;
+    return row;
+  });
   const modeled=controlAuthority.ledger.filter(item=>item.disposition==="modeled").length;
   const excludedByProfile=controlAuthority.ledger.filter(item=>item.disposition==="excluded_by_profile").length;
-  const unsupportedError=controlAuthority.ledger.filter(item=>item.disposition==="unsupported_error").length;
+  const unsupportedError=controlAuthority.ledger.filter(item=>(item as {disposition:string}).disposition==="unsupported_error").length;
   return {
-    projection_version:"2.0.0",
+    projection_version:"2.1.0",
     authority_path:resolve(authorityPath),
     authority_sha256:sha256(loaded.sourceBytes),
     rules_version:authority.rules_version,
     schema_version:authority.schema_version,
     supported_level_range:{minimum:calculator.fighter_level_minimum,maximum:calculator.fighter_level_maximum},
+    canonical_inputs:{entities:canonicalInputs},
     control_authority:controlAuthority,
     coverage:{total:controlAuthority.ledger.length,modeled,excluded_by_profile:excludedByProfile,unsupported_error:unsupportedError,benchmark_ready:unsupportedError===0}
   };
@@ -76,8 +106,8 @@ function option(args:string[],name:string):string|undefined{const index=args.ind
 
 async function main():Promise<void>{
   const args=process.argv.slice(2),authorityPath=option(args,"--authority")??"KineticVanguard.yaml",projectionVersion=option(args,"--projection-version")??"1.0.0";
-  if(projectionVersion!=="1.0.0"&&projectionVersion!=="2.0.0")throw new Error(`Unsupported projection version: ${projectionVersion}`);
-  const projection=projectionVersion==="2.0.0"?await createControlAuthorityProjectionV2(authorityPath):await createDamageHarnessProjection(authorityPath);
+  if(projectionVersion!=="1.0.0"&&projectionVersion!=="2.1.0")throw new Error(`Unsupported projection version: ${projectionVersion}`);
+  const projection=projectionVersion==="2.1.0"?await createControlAuthorityProjectionV2(authorityPath):await createDamageHarnessProjection(authorityPath);
   process.stdout.write(JSON.stringify(projection,null,args.includes("--pretty")?2:undefined)+"\n");
 }
 

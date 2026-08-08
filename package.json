@@ -18,7 +18,7 @@
     "test": "tsx --test tests/*.test.ts",
     "test:layout": "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 tsx --test tests/layout.browser.ts",
     "test:determinism": "tsx src/determinism.ts",
-    "harness:validate": "python3 -m harness.damage_harness --output-dir /tmp/kv-harness-validation --validate-only && python3 -m harness.authority --projection-version 2.0.0",
+    "harness:validate": "python3 -m harness.damage_harness --output-dir /tmp/kv-harness-validation --validate-only && python3 -m harness.authority --projection-version 2.1.0 --require-benchmark-ready && python3 -m harness.control_targets",
     "test:harness": "python3 -m unittest discover -s harness/tests -p 'test_*.py'",
     "harness:damage": "python3 -m harness.damage_harness",
     "readme:damage": "python3 -m harness.readme_damage --write --workers 4",
