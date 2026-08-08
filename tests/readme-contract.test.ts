@@ -162,7 +162,16 @@ test("README keeps current authority, historical review basis, and publication s
   assert.deepEqual(precedingLevelTwoHeadings, ["Release status"]);
 
   const region = readme.slice(begin, end + endMarker.length);
-  assert.ok(region.includes(`**Canonical damage evidence** — generated under rules **v${authority.rules_version}**.`));
+  assert.ok(region.includes(`**Current canonical damage authority:** rules **v${authority.rules_version}**.`));
+  if (!disposition.fresh_full_roster_run) {
+    const plainRegion = region.replace(/[*_`]/g, "");
+    const currentRulesPattern = disposition.current_rules_version.split(".").join("\\.");
+    assert.doesNotMatch(
+      plainRegion,
+      new RegExp(`\\bgenerated\\s+under\\s+rules\\s+v${currentRulesPattern}\\b`, "i"),
+      "carried-forward public text cannot claim generation under the current rules version"
+    );
+  }
   assert.doesNotMatch(
     region,
     /\*\*(?:Published|Unreleased development) snapshot\*\*|current published release|Current development line/i,
@@ -173,7 +182,7 @@ test("README keeps current authority, historical review basis, and publication s
     `Numerical-review basis: reviewed rules **v${review.rules_version}** evidence (\`${review.status}\`).`
   ));
   assert.ok(region.includes(
-    `without being relabeled as a current-version review. No fresh **v${authority.rules_version}** full-roster run, numerical certification, or Monte Carlo certification was performed.`
+    `Snapshot values are carried forward from that reviewed evidence and were not regenerated for **v${authority.rules_version}**. No fresh **v${authority.rules_version}** full-roster run, numerical certification, or Monte Carlo certification was performed.`
   ));
   assert.ok(region.includes(`Reason: ${disposition.reason}`));
   assert.doesNotMatch(region, /Numerical review status:/i);

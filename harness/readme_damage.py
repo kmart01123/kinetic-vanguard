@@ -1,4 +1,4 @@
-"""Synchronize the README damage snapshot from a fresh authoritative matrix."""
+"""Synchronize the README damage snapshot from validated authoritative rows."""
 
 from __future__ import annotations
 
@@ -524,16 +524,16 @@ def render_damage_region(
         BEGIN_MARKER,
         "## Damage benchmark snapshot",
         "",
-        f"**Canonical damage evidence** — generated under rules **v{rules_version}**.",
+        f"**Current canonical damage authority:** rules **v{rules_version}**.",
         "",
         f"Profile: `{profile}`.",
         "",
         (
             "Numerical-review basis: reviewed rules "
             f"**v{review.review_basis_rules_version}** evidence "
-            f"(`{review.review_status}`). The exact analytical full-roster results "
-            f"are carried forward under canonical rules **v{review.current_rules_version}** "
-            "without being relabeled as a current-version review. No fresh "
+            f"(`{review.review_status}`). Snapshot values are carried forward from "
+            "that reviewed evidence and were not regenerated for "
+            f"**v{review.current_rules_version}**. No fresh "
             f"**v{review.current_rules_version}** full-roster run, numerical "
             "certification, or Monte Carlo certification was performed. "
             f"Reason: {review.reason}"

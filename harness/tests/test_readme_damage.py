@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import stat
 import tempfile
 import unittest
@@ -200,7 +201,7 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         self.assertTrue(rendered.endswith(END_MARKER))
         self.assertIn("## Damage benchmark snapshot", rendered)
         self.assertIn(
-            f"**Canonical damage evidence** — generated under rules "
+            f"**Current canonical damage authority:** rules "
             f"**v{model.rules_version}**.",
             rendered,
         )
@@ -211,7 +212,8 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
             rendered,
         )
         self.assertIn(
-            f"without being relabeled as a current-version review. No fresh "
+            f"Snapshot values are carried forward from that reviewed evidence and "
+            f"were not regenerated for **v{model.rules_version}**. No fresh "
             f"**v{model.rules_version}** full-roster run, numerical certification, "
             "or Monte Carlo certification was performed.",
             rendered,
@@ -224,6 +226,15 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         self.assertIn("Generated detailed analytical CSV, Markdown, and HTML reports", rendered)
         self.assertNotIn("Numerical review status:", rendered)
         self.assertFalse(review.fresh_full_roster_run)
+        plain_rendered = re.sub(r"[*_`]", "", rendered)
+        self.assertNotRegex(
+            plain_rendered,
+            re.compile(
+                rf"\bgenerated\s+under\s+rules\s+v"
+                rf"{re.escape(review.current_rules_version)}\b",
+                re.IGNORECASE,
+            ),
+        )
         self.assertFalse(review.fresh_numerical_certification)
         self.assertFalse(review.fresh_monte_carlo_certification)
         with self.assertRaisesRegex(MatrixSyncError, "carried-forward evidence"):

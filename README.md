@@ -21,11 +21,11 @@ Version 14.2.0 development retires the superseded Control Reliability implementa
 <!-- BEGIN GENERATED DAMAGE MATRIX -->
 ## Damage benchmark snapshot
 
-**Canonical damage evidence** — generated under rules **v14.2.0**.
+**Current canonical damage authority:** rules **v14.2.0**.
 
 Profile: `official_default_25_percent_hp`.
 
-Numerical-review basis: reviewed rules **v14.1.0** evidence (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`). The exact analytical full-roster results are carried forward under canonical rules **v14.2.0** without being relabeled as a current-version review. No fresh **v14.2.0** full-roster run, numerical certification, or Monte Carlo certification was performed. Reason: No intentional change to damage-relevant mechanics or numerical evaluator semantics.
+Numerical-review basis: reviewed rules **v14.1.0** evidence (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`). Snapshot values are carried forward from that reviewed evidence and were not regenerated for **v14.2.0**. No fresh **v14.2.0** full-roster run, numerical certification, or Monte Carlo certification was performed. Reason: No intentional change to damage-relevant mechanics or numerical evaluator semantics.
 
 Battle Master and Eldritch Knight define the comparison envelope. `IDEAL` means Kinetic Vanguard falls between the two damage results, inclusive. `COLD` is below both; `HOT` is above both. The percentage on COLD and HOT cells is the signed distance outside the nearest envelope boundary. `N/A` is reserved for a comparison that cannot be evaluated.
 
