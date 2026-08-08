@@ -36,11 +36,11 @@ test("CI exposes a stable main branch gate backed by complete verification", asy
   assert.equal(verification["continue-on-error"], undefined);
   assert.equal(
     verification.steps?.find((step: any) => step.run === "npm run harness:validate")?.name,
-    "Validate damage authority and Control Authority v2 projections"
+    "Validate damage authority, Control Authority v2, and control-target inputs"
   );
   assert.equal(
     verification.steps?.find((step: any) => step.run === "npm run test:harness")?.name,
-    "Test maintained damage and Control Authority v2 contracts"
+    "Test maintained damage, Control Authority v2, and control-target contracts"
   );
   const requiredVerificationCommands = [
     "npm run typecheck",

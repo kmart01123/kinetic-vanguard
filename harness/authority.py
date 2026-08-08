@@ -15,14 +15,13 @@ from typing import Any
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DEFAULT_AUTHORITY = PROJECT_ROOT / "KineticVanguard.yaml"
 DAMAGE_PROJECTION_VERSION = "1.0.0"
-CONTROL_PROJECTION_VERSION = "2.0.0"
-CONTROL_LEDGER_SIZE = 49
-
+CONTROL_PROJECTION_VERSION = "2.1.0"
 _IDENTIFIER = re.compile(r"^[a-z][a-z0-9]*(?:_[a-z0-9]+)*$")
 _SEMVER = re.compile(r"^[0-9]+\.[0-9]+\.[0-9]+$")
 _SHA256 = re.compile(r"^[0-9a-f]{64}$")
-_EVENTS = {
-    "declaration", "hit", "entry", "start_turn", "save", "repeat_save", "exit", "instantaneous_resolution"
+_SCALAR_EVENTS = {
+    "declaration", "activation", "hit", "save", "damage_context", "concentration_end",
+    "instantaneous_resolution",
 }
 _CONCENTRATION_TERMINATION = {
     "failed_concentration_save", "controller_incapacitated", "controller_death", "duration_expires", "voluntary_end"
@@ -32,8 +31,7 @@ _SAVE_ABILITIES = {
     "strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma", "discipline_signature"
 }
 _CONDITIONS = {"blinded", "charmed", "incapacitated", "prone", "restrained", "stunned"}
-_FORCED_DIRECTIONS = {"straight_away_from_controller", "toward_controller", "controller_choice", "vertical_up"}
-_FORCED_DESTINATIONS = {"legal_unoccupied_space", "legal_destination"}
+_FORCED_DIRECTIONS = {"away_from_reference", "toward_reference", "controller_choice", "vertical_up"}
 _SIZE_COST_KEYS = {"tiny", "small", "medium", "large"}
 _CONTROL_LEDGER_KEYS = (
     ("absolute_zero", 0), ("absolute_zero", 1), ("absolute_zero", 2),
@@ -58,12 +56,6 @@ _CONTROL_LEDGER_KEYS = (
     ("telekinetic_slam", 0), ("telekinetic_slam", 1), ("telekinetic_slam", 2),
     ("thermal_fracture", 0), ("thermal_fracture", 1), ("thermal_fracture", 2),
 )
-_CONTROL_MODELED_KEYS = frozenset({
-    ("ball_lightning", 2), ("forked_lightning", 2),
-    ("glacial_spike", 0), ("glacial_spike", 1), ("glacial_spike", 2),
-    ("mass_levitation", 0),
-    ("telekinetic_shove", 0), ("telekinetic_shove", 1), ("telekinetic_shove", 2),
-})
 _CONTROL_EXCLUDED_REASONS = {
     ("advanced_beguile", 0): "selectable_advanced_training_disabled",
     ("advanced_beguile", 1): "selectable_advanced_training_disabled",
@@ -80,12 +72,19 @@ _CONTROL_EXCLUDED_REASONS = {
     ("thermal_fracture", 1): "outside_headline_control_value",
     ("thermal_fracture", 2): "outside_headline_control_value",
 }
-_CONTROL_COVERAGE = {"modeled": 9, "excluded_by_profile": 14, "unsupported_error": 26, "total": 49}
+CONTROL_LEDGER_SIZE = len(_CONTROL_LEDGER_KEYS)
+_CONTROL_MODELED_KEYS = frozenset(key for key in _CONTROL_LEDGER_KEYS if key not in _CONTROL_EXCLUDED_REASONS)
+_CONTROL_COVERAGE = {
+    "modeled": len(_CONTROL_MODELED_KEYS),
+    "excluded_by_profile": len(_CONTROL_EXCLUDED_REASONS),
+    "unsupported_error": 0,
+    "total": len(_CONTROL_LEDGER_KEYS),
+}
 _EXPECTED_MASTERIES = [
     {
         "mastery_id": "mastery_slow",
         "minimum_level": 3,
-        "trigger": ["hit"],
+        "trigger": [{"kind": "hit"}],
         "component": {
             "component_id": "mastery_slow_speed_reduction",
             "target_selector_ids": ["manifested_strike_target"],
@@ -95,7 +94,11 @@ _EXPECTED_MASTERIES = [
                 "movement_modes": ["walk", "fly", "swim", "climb", "burrow"],
             },
             "duration": {"kind": "relative", "owner": "controller", "anchor": "start_turn", "offset_turns": 1},
-            "cadence": {"apply": ["hit"], "repeat": [], "end": ["start_turn"]},
+            "cadence": {
+                "apply": [{"kind": "hit"}],
+                "repeat": [],
+                "end": [{"kind": "turn", "owner": "controller", "turn_anchor": "start"}],
+            },
             "stacking": {
                 "key": "mastery_slow_speed_reduction",
                 "mode": "nonstacking",
@@ -107,7 +110,7 @@ _EXPECTED_MASTERIES = [
     {
         "mastery_id": "mastery_push",
         "minimum_level": 3,
-        "trigger": ["hit"],
+        "trigger": [{"kind": "hit"}],
         "component": {
             "component_id": "mastery_push_forced_movement",
             "target_selector_ids": ["manifested_strike_large_or_smaller_target"],
@@ -116,11 +119,23 @@ _EXPECTED_MASTERIES = [
                 "distance_feet": 10,
                 "distance_mode": "up_to",
                 "movement_mode": "push",
-                "direction": "straight_away_from_controller",
-                "destination": "legal_destination",
+                "reference_point": "controller",
+                "axis": "any",
+                "direction": "away_from_reference",
+                "destination": {
+                    "selection": "rule_determined",
+                    "visibility": "not_required",
+                    "occupancy": "unoccupied_required",
+                },
+                "path": {"line": "straight", "blocked": "nearest_unoccupied_along_path"},
+                "resolution_order": "independent",
             },
             "duration": {"kind": "instantaneous"},
-            "cadence": {"apply": ["hit"], "repeat": [], "end": ["instantaneous_resolution"]},
+            "cadence": {
+                "apply": [{"kind": "hit"}],
+                "repeat": [],
+                "end": [{"kind": "instantaneous_resolution"}],
+            },
             "stacking": {
                 "key": "mastery_push_forced_movement",
                 "mode": "independent",
@@ -132,13 +147,17 @@ _EXPECTED_MASTERIES = [
     {
         "mastery_id": "mastery_sap",
         "minimum_level": 3,
-        "trigger": ["hit"],
+        "trigger": [{"kind": "hit"}],
         "component": {
             "component_id": "mastery_sap_attack_disadvantage",
             "target_selector_ids": ["manifested_strike_target"],
             "magnitude": {"kind": "attack_disadvantage", "scope": "next_attack", "count": 1},
             "duration": {"kind": "relative", "owner": "controller", "anchor": "start_turn", "offset_turns": 1},
-            "cadence": {"apply": ["hit"], "repeat": [], "end": ["start_turn"]},
+            "cadence": {
+                "apply": [{"kind": "hit"}],
+                "repeat": [],
+                "end": [{"kind": "turn", "owner": "controller", "turn_anchor": "start"}],
+            },
             "stacking": {
                 "key": "mastery_sap_attack_disadvantage",
                 "mode": "nonstacking",
@@ -232,12 +251,41 @@ def _id_array(value: Any, label: str, minimum: int = 0) -> list[str]:
     return result
 
 
-def _event_array(value: Any, label: str, minimum: int = 0) -> list[str]:
+def _validate_event(value: Any, label: str) -> dict[str, Any]:
+    event = _object(value, label)
+    kind = _string(event.get("kind"), f"{label}.kind")
+    if kind in _SCALAR_EVENTS:
+        _exact_keys(event, {"kind"}, label)
+    elif kind == "turn":
+        _exact_keys(event, {"kind", "owner", "turn_anchor"}, label)
+        owner = _choice(event["owner"], {"controller", "target", "triggering_turn"}, f"{label}.owner")
+        turn_anchor = _choice(event["turn_anchor"], {"start", "end", "during"}, f"{label}.turn_anchor")
+        if owner == "triggering_turn" and turn_anchor != "end":
+            raise AuthorityError(f"{label} triggering_turn event must use the end anchor")
+    elif kind == "entry":
+        _exact_keys(event, {"kind", "owner", "turn_anchor"}, label)
+        _choice(event["owner"], {"any_creature"}, f"{label}.owner")
+        _choice(event["turn_anchor"], {"during_turn"}, f"{label}.turn_anchor")
+    elif kind == "exit":
+        _exact_keys(event, {"kind", "owner", "turn_anchor"}, label)
+        _choice(event["owner"], {"target"}, f"{label}.owner")
+        _choice(event["turn_anchor"], {"during_turn"}, f"{label}.turn_anchor")
+    else:
+        raise AuthorityError(f"{label}.kind has unsupported value {kind!r}")
+    return event
+
+
+def _event_array(value: Any, label: str, minimum: int = 0) -> list[dict[str, Any]]:
     rows = _array(value, label, minimum)
-    result = [_choice(item, _EVENTS, f"{label}[{index}]") for index, item in enumerate(rows)]
-    if len(result) != len(set(result)):
+    result = [_validate_event(item, f"{label}[{index}]") for index, item in enumerate(rows)]
+    normalized = [json.dumps(item, sort_keys=True, separators=(",", ":")) for item in result]
+    if len(normalized) != len(set(normalized)):
         raise AuthorityError(f"{label} contains duplicate events")
     return result
+
+
+def _event_kind(value: Any) -> str | None:
+    return value.get("kind") if isinstance(value, dict) else None
 
 
 def _movement_modes(value: Any, label: str, minimum: int = 1) -> list[str]:
@@ -297,7 +345,8 @@ def _validate_magnitude(value: Any, label: str) -> None:
         magnitude.get("kind"),
         {
             "condition", "forced_movement", "speed_reduction", "speed_zero", "attack_disadvantage",
-            "reaction_denial", "movement_option_denial", "numerical_modifier",
+            "difficult_terrain", "persistent_elevation", "fall", "reaction_denial",
+            "movement_option_denial", "numerical_modifier",
         },
         f"{label}.kind",
     )
@@ -307,14 +356,44 @@ def _validate_magnitude(value: Any, label: str) -> None:
     elif kind == "forced_movement":
         _exact_keys(
             magnitude,
-            {"kind", "distance_feet", "distance_mode", "movement_mode", "direction", "destination"},
+            {
+                "kind", "distance_feet", "distance_mode", "movement_mode", "reference_point", "axis",
+                "direction", "destination", "path", "resolution_order",
+            },
             label,
         )
         _integer(magnitude["distance_feet"], f"{label}.distance_feet", 1)
         _choice(magnitude["distance_mode"], {"exact", "up_to"}, f"{label}.distance_mode")
-        _choice(magnitude["movement_mode"], {"push", "pull", "reposition", "lift"}, f"{label}.movement_mode")
-        _choice(magnitude["direction"], _FORCED_DIRECTIONS, f"{label}.direction")
-        _choice(magnitude["destination"], _FORCED_DESTINATIONS, f"{label}.destination")
+        movement_mode = _choice(
+            magnitude["movement_mode"], {"push", "pull", "reposition", "lift"}, f"{label}.movement_mode"
+        )
+        _choice(
+            magnitude["reference_point"],
+            {"controller", "primary_target", "selected_point", "target_current_position"},
+            f"{label}.reference_point",
+        )
+        axis = _choice(magnitude["axis"], {"horizontal", "vertical", "any"}, f"{label}.axis")
+        direction = _choice(magnitude["direction"], _FORCED_DIRECTIONS, f"{label}.direction")
+        if direction == "vertical_up" and (axis != "vertical" or movement_mode != "lift"):
+            raise AuthorityError(f"{label} vertical_up movement must be a vertical lift")
+        destination = _object(magnitude["destination"], f"{label}.destination")
+        _exact_keys(destination, {"selection", "visibility", "occupancy"}, f"{label}.destination")
+        _choice(destination["selection"], {"controller_choice", "rule_determined"}, f"{label}.destination.selection")
+        _choice(destination["visibility"], {"required", "not_required"}, f"{label}.destination.visibility")
+        _choice(
+            destination["occupancy"], {"unoccupied_required", "not_specified"}, f"{label}.destination.occupancy"
+        )
+        movement_path = _object(magnitude["path"], f"{label}.path")
+        _exact_keys(movement_path, {"line", "blocked"}, f"{label}.path")
+        line = _choice(movement_path["line"], {"straight", "not_required"}, f"{label}.path.line")
+        blocked = _choice(
+            movement_path["blocked"],
+            {"nearest_unoccupied_along_path", "movement_not_permitted", "not_specified"},
+            f"{label}.path.blocked",
+        )
+        if blocked in {"nearest_unoccupied_along_path", "movement_not_permitted"} and line != "straight":
+            raise AuthorityError(f"{label}.path blocked behavior requires a straight path")
+        _choice(magnitude["resolution_order"], {"controller_selected", "independent"}, f"{label}.resolution_order")
     elif kind == "speed_reduction":
         _exact_keys(magnitude, {"kind", "reduction", "movement_modes"}, label)
         reduction = _object(magnitude["reduction"], f"{label}.reduction")
@@ -337,6 +416,18 @@ def _validate_magnitude(value: Any, label: str) -> None:
     elif kind == "speed_zero":
         _exact_keys(magnitude, {"kind", "movement_modes"}, label)
         _movement_modes(magnitude["movement_modes"], f"{label}.movement_modes")
+    elif kind == "difficult_terrain":
+        _exact_keys(magnitude, {"kind", "scope", "movement_cost_multiplier"}, label)
+        _choice(magnitude["scope"], {"area"}, f"{label}.scope")
+        if _integer(magnitude["movement_cost_multiplier"], f"{label}.movement_cost_multiplier") != 2:
+            raise AuthorityError(f"{label}.movement_cost_multiplier must be 2")
+    elif kind == "persistent_elevation":
+        _exact_keys(magnitude, {"kind", "state", "position_reference"}, label)
+        _choice(magnitude["state"], {"hovering"}, f"{label}.state")
+        _choice(magnitude["position_reference"], {"current_position"}, f"{label}.position_reference")
+    elif kind == "fall":
+        _exact_keys(magnitude, {"kind", "origin"}, label)
+        _choice(magnitude["origin"], {"current_position"}, f"{label}.origin")
     elif kind == "attack_disadvantage":
         _exact_keys(magnitude, {"kind", "scope"}, label, {"count"})
         scope = _choice(magnitude["scope"], {"next_attack", "all_attacks"}, f"{label}.scope")
@@ -368,9 +459,11 @@ def _validate_duration(value: Any, label: str) -> None:
         _exact_keys(duration, {"kind"}, label)
     elif kind == "relative":
         _exact_keys(duration, {"kind", "owner", "anchor", "offset_turns"}, label)
-        _choice(duration["owner"], {"controller", "target"}, f"{label}.owner")
-        _choice(duration["anchor"], {"start_turn", "end_turn"}, f"{label}.anchor")
-        _integer(duration["offset_turns"], f"{label}.offset_turns", 0)
+        owner = _choice(duration["owner"], {"controller", "target", "triggering_turn"}, f"{label}.owner")
+        anchor = _choice(duration["anchor"], {"start_turn", "end_turn"}, f"{label}.anchor")
+        offset_turns = _integer(duration["offset_turns"], f"{label}.offset_turns", 0)
+        if owner == "triggering_turn" and (anchor != "end_turn" or offset_turns != 0):
+            raise AuthorityError(f"{label} triggering_turn duration must use end_turn with zero offset")
     elif kind == "while_in_area":
         _exact_keys(duration, {"kind", "area_id"}, label)
         _identifier_value(duration["area_id"], f"{label}.area_id")
@@ -386,6 +479,7 @@ def _validate_component(value: Any, label: str) -> dict[str, Any]:
         component,
         {"component_id", "target_selector_ids", "magnitude", "duration", "cadence", "stacking"},
         label,
+        {"choice_requirement"},
     )
     _identifier_value(component["component_id"], f"{label}.component_id")
     _id_array(component["target_selector_ids"], f"{label}.target_selector_ids", 1)
@@ -396,6 +490,11 @@ def _validate_component(value: Any, label: str) -> dict[str, Any]:
     _event_array(cadence["apply"], f"{label}.cadence.apply", 1)
     _event_array(cadence["repeat"], f"{label}.cadence.repeat")
     _event_array(cadence["end"], f"{label}.cadence.end")
+    if "choice_requirement" in component:
+        requirement = _object(component["choice_requirement"], f"{label}.choice_requirement")
+        _exact_keys(requirement, {"choice_id", "option_id"}, f"{label}.choice_requirement")
+        _identifier_value(requirement["choice_id"], f"{label}.choice_requirement.choice_id")
+        _identifier_value(requirement["option_id"], f"{label}.choice_requirement.option_id")
     stacking = _object(component["stacking"], f"{label}.stacking")
     _exact_keys(
         stacking,
@@ -423,14 +522,12 @@ def _validate_component(value: Any, label: str) -> dict[str, Any]:
 def _validate_selector_count(value: Any, label: str) -> None:
     count = _object(value, label)
     kind = _choice(
-        count.get("kind"), {"fixed", "up_to", "proficiency_bonus", "cluster_remainder", "weighted_slots"}, f"{label}.kind"
+        count.get("kind"), {"fixed", "up_to", "up_to_proficiency_bonus", "all_eligible", "weighted_slots"}, f"{label}.kind"
     )
     if kind in {"fixed", "up_to"}:
         _exact_keys(count, {"kind", "value"}, label)
         _integer(count["value"], f"{label}.value", 1)
-    elif kind == "proficiency_bonus":
-        _exact_keys(count, {"kind"}, label)
-    elif kind == "cluster_remainder":
+    elif kind in {"up_to_proficiency_bonus", "all_eligible"}:
         _exact_keys(count, {"kind"}, label)
     else:
         _exact_keys(count, {"kind", "slots", "size_costs"}, label)
@@ -463,41 +560,95 @@ def _validate_restriction(value: Any, label: str) -> str:
     return kind
 
 
-def _validate_area(value: Any, label: str) -> dict[str, Any]:
+def _validate_choices(value: Any, label: str) -> dict[str, dict[str, Any]]:
+    choices: dict[str, dict[str, Any]] = {}
+    for index, choice_value in enumerate(_array(value, label)):
+        choice_label = f"{label}[{index}]"
+        choice = _object(choice_value, choice_label)
+        _exact_keys(choice, {"choice_id", "kind", "timing", "resolution", "scope", "options"}, choice_label)
+        choice_id = _identifier_value(choice["choice_id"], f"{choice_label}.choice_id")
+        if choice_id in choices:
+            raise AuthorityError(f"{label} contains duplicate choice IDs")
+        kind = _choice(choice["kind"], {"mode", "placement"}, f"{choice_label}.kind")
+        timing = _validate_event(choice["timing"], f"{choice_label}.timing")
+        _choice(choice["resolution"], {"once_per_effect"}, f"{choice_label}.resolution")
+        scope = _choice(choice["scope"], {"all_targets", "area_origin"}, f"{choice_label}.scope")
+        options = _id_array(choice["options"], f"{choice_label}.options", 2)
+        if kind == "mode" and (timing != {"kind": "declaration"} or scope != "all_targets"):
+            raise AuthorityError(f"{choice_label} mode choices must bind all targets on declaration")
+        if kind == "placement" and (timing != {"kind": "activation"} or scope != "area_origin"):
+            raise AuthorityError(f"{choice_label} placement choices must bind the area origin on activation")
+        choices[choice_id] = {**choice, "options": options}
+    return choices
+
+
+def _validate_area(
+    value: Any,
+    choices: dict[str, dict[str, Any]],
+    used_choice_ids: set[str],
+    label: str,
+) -> dict[str, Any]:
     area = _object(value, label)
-    required = {"area_id", "shape", "origin", "persistent", "triggers", "exit_behavior"}
+    required = {"area_id", "shape", "placement", "persistent", "triggers", "exit_behavior"}
     dimensions = {"radius_feet", "height_feet", "length_feet", "width_feet"}
     persistence_fields = {"entry_policy", "movement"}
     _exact_keys(area, required, label, dimensions | persistence_fields)
     _identifier_value(area["area_id"], f"{label}.area_id")
     shape = _choice(area["shape"], {"sphere", "cylinder", "cone", "line"}, f"{label}.shape")
-    _choice(
-        area["origin"],
-        {"controller", "primary_target", "selected_point", "departure_or_arrival"},
-        f"{label}.origin",
+    placement = _object(area["placement"], f"{label}.placement")
+    placement_kind = _choice(
+        placement.get("kind"), {"controller", "primary_target", "selected_point", "endpoint_choice"},
+        f"{label}.placement.kind",
     )
+    if placement_kind in {"controller", "primary_target"}:
+        _exact_keys(placement, {"kind"}, f"{label}.placement")
+    elif placement_kind == "selected_point":
+        _exact_keys(placement, {"kind", "range", "stationary"}, f"{label}.placement")
+        placement_range = _object(placement["range"], f"{label}.placement.range")
+        _exact_keys(placement_range, {"feet", "origin"}, f"{label}.placement.range")
+        _integer(placement_range["feet"], f"{label}.placement.range.feet", 0)
+        _choice(placement_range["origin"], {"controller"}, f"{label}.placement.range.origin")
+        _boolean(placement["stationary"], f"{label}.placement.stationary")
+    else:
+        _exact_keys(placement, {"kind", "choice_id", "departure", "arrival"}, f"{label}.placement")
+        choice_id = _identifier_value(placement["choice_id"], f"{label}.placement.choice_id")
+        choice = choices.get(choice_id)
+        if choice is None or choice["kind"] != "placement" or sorted(choice["options"]) != ["arrival_space", "departure_space"]:
+            raise AuthorityError(f"{label}.placement.choice_id must reference the endpoint placement choice")
+        used_choice_ids.add(choice_id)
+        departure = _object(placement["departure"], f"{label}.placement.departure")
+        _exact_keys(departure, {"origin"}, f"{label}.placement.departure")
+        _choice(departure["origin"], {"controller_current_space"}, f"{label}.placement.departure.origin")
+        arrival = _object(placement["arrival"], f"{label}.placement.arrival")
+        _exact_keys(arrival, {"range", "visibility", "occupancy"}, f"{label}.placement.arrival")
+        arrival_range = _object(arrival["range"], f"{label}.placement.arrival.range")
+        _exact_keys(arrival_range, {"feet", "origin"}, f"{label}.placement.arrival.range")
+        _integer(arrival_range["feet"], f"{label}.placement.arrival.range.feet", 1)
+        _choice(arrival_range["origin"], {"departure_space"}, f"{label}.placement.arrival.range.origin")
+        _choice(arrival["visibility"], {"required"}, f"{label}.placement.arrival.visibility")
+        _choice(arrival["occupancy"], {"unoccupied_required"}, f"{label}.placement.arrival.occupancy")
     expected = {
-        "sphere": {"radius_feet"},
-        "cylinder": {"radius_feet", "height_feet"},
-        "cone": {"length_feet"},
-        "line": {"length_feet", "width_feet"},
+        "sphere": {"radius_feet"}, "cylinder": {"radius_feet", "height_feet"},
+        "cone": {"length_feet"}, "line": {"length_feet", "width_feet"},
     }[shape]
     present = dimensions & area.keys()
     if present != expected:
         raise AuthorityError(
-            f"{label} has incomplete {shape} dimensions; "
-            f"expected={sorted(expected)}, present={sorted(present)}"
+            f"{label} has incomplete {shape} dimensions; expected={sorted(expected)}, present={sorted(present)}"
         )
     for field in expected:
         _integer(area[field], f"{label}.{field}", 1)
     persistent = _boolean(area["persistent"], f"{label}.persistent")
     triggers = _event_array(area["triggers"], f"{label}.triggers", 1)
-    exit_behavior = _choice(area["exit_behavior"], {"ends_area_effects", "none"}, f"{label}.exit_behavior")
+    _choice(area["exit_behavior"], {"ends_area_effects", "none"}, f"{label}.exit_behavior")
     if persistent:
         if not persistence_fields <= area.keys():
             raise AuthorityError(f"{label} persistent area requires entry_policy and movement")
-        if not {"entry", "start_turn"} <= set(triggers) or exit_behavior != "ends_area_effects":
-            raise AuthorityError(f"{label} persistent area requires entry/start_turn triggers and exit termination")
+        if (
+            {"kind": "entry", "owner": "any_creature", "turn_anchor": "during_turn"} not in triggers
+            or {"kind": "turn", "owner": "target", "turn_anchor": "start"} not in triggers
+        ):
+            raise AuthorityError(f"{label} persistent area requires entry and target-start triggers")
         entry_policy = _object(area["entry_policy"], f"{label}.entry_policy")
         _exact_keys(entry_policy, {"frequency", "moved_area_counts_as_entry"}, f"{label}.entry_policy")
         _choice(entry_policy["frequency"], {"once_per_turn"}, f"{label}.entry_policy.frequency")
@@ -510,36 +661,55 @@ def _validate_area(value: Any, label: str) -> dict[str, Any]:
             _exact_keys(movement, {"kind"}, f"{label}.movement")
         else:
             _exact_keys(
-                movement,
-                {"kind", "controller_action", "distance_feet"},
+                movement, {"kind", "controller_action", "timing", "distance_feet", "distance_mode"},
                 f"{label}.movement",
             )
             _choice(movement["controller_action"], {"bonus_action"}, f"{label}.movement.controller_action")
+            timing = _validate_event(movement["timing"], f"{label}.movement.timing")
+            if timing != {"kind": "turn", "owner": "controller", "turn_anchor": "during"}:
+                raise AuthorityError(f"{label}.movement.timing must be during the controller turn")
             _integer(movement["distance_feet"], f"{label}.movement.distance_feet", 1)
+            _choice(movement["distance_mode"], {"up_to"}, f"{label}.movement.distance_mode")
+        if placement_kind == "selected_point" and placement["stationary"] != (movement_kind == "stationary"):
+            raise AuthorityError(f"{label}.placement.stationary must agree with persistent movement")
     elif persistence_fields & area.keys():
         raise AuthorityError(f"{label} nonpersistent area must not define entry_policy or movement")
+    if placement_kind == "endpoint_choice" and persistent:
+        raise AuthorityError(f"{label} endpoint-choice areas must be nonpersistent")
     return area
 
 
-def _validate_selector(value: Any, label: str) -> tuple[str, dict[str, dict[str, Any]]]:
+def _validate_selector(
+    value: Any,
+    choices: dict[str, dict[str, Any]],
+    used_choice_ids: set[str],
+    label: str,
+) -> tuple[str, dict[str, dict[str, Any]]]:
     selector = _object(value, label)
     _exact_keys(
         selector,
-        {"selector_id", "role", "count", "range", "restrictions", "gate_scope"},
+        {"selector_id", "role", "selection", "count", "range", "restrictions", "gate_scope"},
         label,
         {"area"},
     )
     selector_id = _identifier_value(selector["selector_id"], f"{label}.selector_id")
     _choice(selector["role"], {"primary", "secondary", "all"}, f"{label}.role")
+    selection = _choice(
+        selector["selection"], {"controller_choice", "all_in_area", "automatic"}, f"{label}.selection"
+    )
     _validate_selector_count(selector["count"], f"{label}.count")
     reach = _object(selector["range"], f"{label}.range")
-    _exact_keys(reach, {"feet", "origin"}, f"{label}.range")
-    _integer(reach["feet"], f"{label}.range.feet", 0)
-    _choice(
-        reach["origin"],
-        {"controller", "primary_target", "selected_point", "departure_or_arrival"},
-        f"{label}.range.origin",
-    )
+    range_kind = _choice(reach.get("kind"), {"distance", "area"}, f"{label}.range.kind")
+    if range_kind == "distance":
+        _exact_keys(reach, {"kind", "feet", "origin"}, f"{label}.range")
+        _integer(reach["feet"], f"{label}.range.feet", 0)
+        _choice(reach["origin"], {"controller", "primary_target"}, f"{label}.range.origin")
+        if "area" in selector:
+            raise AuthorityError(f"{label} distance selectors must not own an area")
+    else:
+        _exact_keys(reach, {"kind"}, f"{label}.range")
+        if "area" not in selector or _object(selector["count"], f"{label}.count")["kind"] != "all_eligible":
+            raise AuthorityError(f"{label} area selectors require an area and all_eligible count")
     restrictions = _array(selector["restrictions"], f"{label}.restrictions")
     restriction_kinds = [
         _validate_restriction(item, f"{label}.restrictions[{index}]")
@@ -547,15 +717,19 @@ def _validate_selector(value: Any, label: str) -> tuple[str, dict[str, dict[str,
     ]
     if len(restriction_kinds) != len(set(restriction_kinds)):
         raise AuthorityError(f"{label}.restrictions contains duplicate restriction kinds")
+    if selector["role"] == "secondary" and "excludes_primary_target" not in restriction_kinds:
+        raise AuthorityError(f"{label} secondary selectors must explicitly exclude the primary target")
     _choice(selector["gate_scope"], {"independent_per_target", "shared"}, f"{label}.gate_scope")
     areas: dict[str, dict[str, Any]] = {}
     if "area" in selector:
-        area = _validate_area(selector["area"], f"{label}.area")
+        area = _validate_area(selector["area"], choices, used_choice_ids, f"{label}.area")
         areas[area["area_id"]] = area
+    if selection == "all_in_area" and not areas:
+        raise AuthorityError(f"{label}.selection all_in_area requires an area")
     return selector_id, areas
 
 
-def _validate_policy(value: Any, entity_id: str, tier: int, label: str) -> None:
+def _validate_policy(value: Any, tier: int, canonical: dict[str, Any], label: str) -> None:
     policy = _object(value, label)
     _exact_keys(
         policy,
@@ -568,7 +742,9 @@ def _validate_policy(value: Any, entity_id: str, tier: int, label: str) -> None:
     activation = _choice(
         policy["activation"], {"action", "bonus_action", "reaction", "on_hit", "passive"}, f"{label}.activation"
     )
-    _choice(policy["declaration"], {"declaration"}, f"{label}.declaration")
+    declaration = _validate_event(policy["declaration"], f"{label}.declaration")
+    if declaration != {"kind": "declaration"}:
+        raise AuthorityError(f"{label}.declaration must be the declaration event")
     delivery = _choice(policy["delivery"], {"attack_rider", "standalone"}, f"{label}.delivery")
     psi_cost = _integer(policy["psi_cost"], f"{label}.psi_cost", 0)
     overload_tier = _integer(policy["overload_tier"], f"{label}.overload_tier", 0)
@@ -587,41 +763,72 @@ def _validate_policy(value: Any, entity_id: str, tier: int, label: str) -> None:
     mastery = _choice(
         policy["mastery"], {"stacks", "replaces_on_declaration", "not_applicable"}, f"{label}.mastery"
     )
-    expected = {
-        "ball_lightning": ("action", "standalone", 5, "once_per_turn", "not_applicable"),
-        "forked_lightning": ("action", "standalone", 3, "once_per_turn", "not_applicable"),
-        "mass_levitation": ("action", "standalone", 5, "once_per_turn", "not_applicable"),
-        "glacial_spike": ("on_hit", "attack_rider", 0, "unlimited", "stacks"),
-        "telekinetic_shove": ("on_hit", "attack_rider", 0, "unlimited", "replaces_on_declaration"),
-    }[entity_id]
-    if (activation, delivery, psi_cost, repeatability, mastery) != expected:
-        raise AuthorityError(f"{label} must match the canonical entity policy")
+    expected_delivery = "attack_rider" if canonical["feature_role"] == "rider" else "standalone"
+    calculator_delivery = canonical.get("calculator_delivery")
+    if calculator_delivery is not None:
+        projected_delivery = "attack_rider" if calculator_delivery == "on_hit_rider" else "standalone"
+        if projected_delivery != expected_delivery:
+            raise AuthorityError(f"{label} canonical entity and calculator delivery metadata disagree")
+    expected_repeatability = (
+        "once_per_turn" if expected_delivery == "standalone" else canonical.get("feature_rule_repeatability")
+    )
+    expected_mastery = (
+        "not_applicable" if expected_delivery == "standalone"
+        else "replaces_on_declaration" if canonical["entity_id"] == "telekinetic_shove" else "stacks"
+    )
+    if (
+        activation != canonical["activation"] or delivery != expected_delivery
+        or psi_cost != canonical["psi_cost"] or repeatability != expected_repeatability or mastery != expected_mastery
+    ):
+        raise AuthorityError(f"{label} must derive from canonical entity, calculator, and feature-rule metadata")
 
 
-def _validate_concentration(value: Any, label: str) -> None:
+def _canonical_concentration_duration(canonical: dict[str, Any]) -> tuple[int, str] | None:
+    duration = canonical.get("concentration_duration")
+    if not isinstance(duration, str):
+        return None
+    match = re.fullmatch(r"Up to ([1-9][0-9]*) (round|minute|hour)s?", duration)
+    return (int(match.group(1)), match.group(2)) if match else None
+
+
+def _validate_concentration(value: Any, canonical: dict[str, Any], label: str) -> dict[str, Any]:
     concentration = _object(value, label)
     kind = _choice(concentration.get("kind"), {"none", "required"}, f"{label}.kind")
     if kind == "none":
         _exact_keys(concentration, {"kind"}, label)
-        return
+        if canonical["requires_concentration"]:
+            raise AuthorityError(f"{label} must model canonical concentration")
+        return {"required": False}
     _exact_keys(
         concentration,
         {"kind", "startup", "occupancy", "replacement", "maximum_duration", "termination"},
         label,
     )
-    _choice(concentration["startup"], {"on_resolution"}, f"{label}.startup")
+    startup = _choice(
+        concentration["startup"], {"on_activation", "on_hit", "on_resolution"}, f"{label}.startup"
+    )
+    expected_startup = "on_hit" if canonical["activation"] == "on_hit" else "on_activation"
+    if startup != expected_startup:
+        raise AuthorityError(f"{label}.startup must match canonical activation timing")
     _choice(concentration["occupancy"], {"one_controller_slot"}, f"{label}.occupancy")
     _choice(concentration["replacement"], {"new_effect_ends_existing"}, f"{label}.replacement")
     maximum = _object(concentration["maximum_duration"], f"{label}.maximum_duration")
     _exact_keys(maximum, {"value", "unit"}, f"{label}.maximum_duration")
-    _integer(maximum["value"], f"{label}.maximum_duration.value", 1)
-    _choice(maximum["unit"], {"round", "minute", "hour"}, f"{label}.maximum_duration.unit")
+    maximum_value = _integer(maximum["value"], f"{label}.maximum_duration.value", 1)
+    maximum_unit = _choice(maximum["unit"], {"round", "minute", "hour"}, f"{label}.maximum_duration.unit")
     termination = _array(concentration["termination"], f"{label}.termination", 1)
     values = [_choice(item, _CONCENTRATION_TERMINATION, f"{label}.termination[{index}]") for index, item in enumerate(termination)]
     if len(values) != len(set(values)):
         raise AuthorityError(f"{label}.termination contains duplicate events")
     if set(values) != _CONCENTRATION_TERMINATION:
         raise AuthorityError(f"{label}.termination must enumerate every canonical termination event")
+    expected_duration = _canonical_concentration_duration(canonical)
+    if (
+        not canonical["requires_concentration"] or expected_duration is None
+        or (maximum_value, maximum_unit) != expected_duration
+    ):
+        raise AuthorityError(f"{label}.maximum_duration must match canonical concentration metadata")
+    return {"required": True, "maximum_value": maximum_value, "unit": maximum_unit}
 
 
 def _validate_branch(value: Any, label: str, component_ids: set[str]) -> dict[str, Any]:
@@ -634,7 +841,7 @@ def _validate_branch(value: Any, label: str, component_ids: set[str]) -> dict[st
     branch_id = _identifier_value(branch["branch_id"], f"{label}.branch_id")
     outcome = _choice(
         branch["outcome"],
-        {"attack_hit", "attack_miss", "save_success", "save_failure", "no_save", "other"},
+        {"attack_hit", "attack_miss", "save_success", "save_failure", "no_save", "damage_context", "other"},
         f"{label}.outcome",
     )
     transitions: dict[str, set[str]] = {}
@@ -658,6 +865,8 @@ def _validate_branch(value: Any, label: str, component_ids: set[str]) -> dict[st
             f"{', '.join(sorted(conflicting))}"
         )
     next_gate_ids = _id_array(branch["next_gate_ids"], f"{label}.next_gate_ids")
+    if outcome == "attack_miss" and (referenced or next_gate_ids):
+        raise AuthorityError(f"{label} attack_miss branches must not resolve effects or continue the gate graph")
     return {
         "branch_id": branch_id,
         "outcome": outcome,
@@ -675,21 +884,42 @@ def _validate_resolution(
     components_by_id: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     gate = _object(value, label)
-    _exact_keys(gate, {"gate_id", "selector_ids", "trigger", "gate_scope", "resolution"}, label)
+    _exact_keys(
+        gate, {"gate_id", "selector_ids", "trigger", "gate_scope", "resolution"}, label,
+        {"requires_active_component_ids"},
+    )
     gate_id = _identifier_value(gate["gate_id"], f"{label}.gate_id")
     selected = _id_array(gate["selector_ids"], f"{label}.selector_ids", 1)
     unknown_selectors = sorted(set(selected) - selector_ids)
     if unknown_selectors:
         raise AuthorityError(f"{label}.selector_ids references unknown selectors: {', '.join(unknown_selectors)}")
-    trigger = _choice(gate["trigger"], _EVENTS, f"{label}.trigger")
+    active_component_ids = set(
+        _id_array(gate.get("requires_active_component_ids", []), f"{label}.requires_active_component_ids")
+    )
+    unknown_guards = sorted(active_component_ids - component_ids)
+    if unknown_guards or ("requires_active_component_ids" in gate and not active_component_ids):
+        raise AuthorityError(f"{label}.requires_active_component_ids must reference known local components")
+    trigger = _validate_event(gate["trigger"], f"{label}.trigger")
     gate_scope = _choice(gate["gate_scope"], {"independent_per_target", "shared"}, f"{label}.gate_scope")
     resolution = _object(gate["resolution"], f"{label}.resolution")
     kind = _choice(
-        resolution.get("kind"), {"attack_roll", "saving_throw", "no_save", "other"}, f"{label}.resolution.kind"
+        resolution.get("kind"), {"attack_roll", "saving_throw", "no_save", "damage_context", "other"},
+        f"{label}.resolution.kind",
     )
+    role: str | None = None
     if kind == "saving_throw":
-        _exact_keys(resolution, {"kind", "ability", "branches"}, f"{label}.resolution")
+        _exact_keys(resolution, {"kind", "ability", "role", "mode", "branches"}, f"{label}.resolution")
         _choice(resolution["ability"], _SAVE_ABILITIES, f"{label}.resolution.ability")
+        role = _choice(resolution["role"], {"initial", "repeat", "recurring"}, f"{label}.resolution.role")
+        _choice(resolution["mode"], {"normal", "advantage", "disadvantage"}, f"{label}.resolution.mode")
+        target_start = trigger == {"kind": "turn", "owner": "target", "turn_anchor": "start"}
+        entry = _event_kind(trigger) == "entry"
+        if role == "repeat" and not target_start:
+            raise AuthorityError(f"{label}.resolution repeat saves require target-turn-start timing")
+        if role == "recurring" and not (target_start or entry):
+            raise AuthorityError(f"{label}.resolution recurring saves require entry or target-turn-start timing")
+        if role == "initial" and (target_start or entry):
+            raise AuthorityError(f"{label}.resolution initial saves cannot use recurring timing")
     else:
         _exact_keys(resolution, {"kind", "branches"}, f"{label}.resolution")
     branches = _array(resolution["branches"], f"{label}.resolution.branches", 1)
@@ -713,7 +943,12 @@ def _validate_resolution(
         }.items():
             for component_id in branch[transition]:
                 cadence = components_by_id[component_id]["cadence"][cadence_field]
-                if trigger not in cadence:
+                post_hit_initial_save = (
+                    transition in {"refreshes", "replaces"} and trigger == {"kind": "save"}
+                    and kind == "saving_throw" and role == "initial"
+                    and {"kind": "hit"} in components_by_id[component_id]["cadence"]["apply"]
+                )
+                if trigger not in cadence and not post_hit_initial_save:
                     raise AuthorityError(
                         f"{branch_label}.{transition} requires {component_id}.cadence.{cadence_field} to include {trigger}"
                     )
@@ -725,6 +960,7 @@ def _validate_resolution(
         "attack_roll": {"attack_hit", "attack_miss"},
         "saving_throw": {"save_success", "save_failure"},
         "no_save": {"no_save"},
+        "damage_context": {"damage_context"},
         "other": {"other"},
     }[kind]
     if set(outcomes) != expected:
@@ -734,9 +970,11 @@ def _validate_resolution(
     return {
         "gate_id": gate_id,
         "selector_ids": set(selected),
+        "requires_active_component_ids": active_component_ids,
         "trigger": trigger,
         "gate_scope": gate_scope,
         "kind": kind,
+        "role": role,
         "branches": branch_summaries,
         "referenced_components": referenced,
     }
@@ -879,7 +1117,8 @@ def _validate_gate_graph(
     attack_miss_reachable = descendants(attack_miss_targets)
     if delivery == "attack_rider":
         non_attack_roots = sorted(
-            gate_id for gate_id in root_gate_ids if gates_by_id[gate_id]["kind"] != "attack_roll"
+            gate_id for gate_id in root_gate_ids
+            if gates_by_id[gate_id]["kind"] != "attack_roll" or _event_kind(gates_by_id[gate_id]["trigger"]) != "hit"
         )
         if non_attack_roots:
             raise AuthorityError(f"{label} attack-rider root gates must use attack_roll resolution")
@@ -891,7 +1130,7 @@ def _validate_gate_graph(
             for gate_id, gate in gates_by_id.items()
             if gate_id not in root_gate_ids
             and gate["kind"] == "saving_throw"
-            and gate["trigger"] == "save"
+            and gate["trigger"] == {"kind": "save"}
             and gate_id not in attack_hit_reachable
         )
         if invalid_save_gates:
@@ -903,12 +1142,12 @@ def _validate_gate_graph(
             raise AuthorityError(f"{label} attack_miss branches must not reach saving gates: {', '.join(miss_to_save)}")
 
 
-def _validate_model(value: Any, entity_id: str, tier: int, label: str) -> dict[str, Any]:
+def _validate_model(value: Any, entity_id: str, tier: int, canonical: dict[str, Any], label: str) -> dict[str, Any]:
     model = _object(value, label)
     _exact_keys(
         model,
         {
-            "effect_id", "inheritance", "policy", "target_selectors", "components", "resolutions",
+            "effect_id", "inheritance", "policy", "choices", "target_selectors", "components", "resolutions",
             "root_gate_ids", "concentration", "relationships",
         },
         label,
@@ -924,17 +1163,19 @@ def _validate_model(value: Any, entity_id: str, tier: int, label: str) -> dict[s
     else:
         _exact_keys(inheritance, {"kind", "source_tier"}, f"{label}.inheritance")
         source_tier = _integer(inheritance["source_tier"], f"{label}.inheritance.source_tier", 0)
-        if source_tier not in {0, 1, 2} or source_tier >= tier:
-            raise AuthorityError(f"{label}.inheritance.source_tier must be a lower canonical tier")
-    _validate_policy(model["policy"], entity_id, tier, f"{label}.policy")
+        if source_tier not in {0, 1, 2} or source_tier != tier - 1:
+            raise AuthorityError(f"{label}.inheritance.source_tier must be the immediately preceding canonical tier")
+    _validate_policy(model["policy"], tier, canonical, f"{label}.policy")
     policy = _object(model["policy"], f"{label}.policy")
+    choices = _validate_choices(model["choices"], f"{label}.choices")
+    used_choice_ids: set[str] = set()
     selector_rows = _array(model["target_selectors"], f"{label}.target_selectors", 1)
     selector_ids: list[str] = []
     selectors_by_id: dict[str, dict[str, Any]] = {}
     areas_by_id: dict[str, tuple[dict[str, Any], str]] = {}
     for index, selector_value in enumerate(selector_rows):
         selector_label = f"{label}.target_selectors[{index}]"
-        selector_id, selector_areas = _validate_selector(selector_value, selector_label)
+        selector_id, selector_areas = _validate_selector(selector_value, choices, used_choice_ids, selector_label)
         selector_ids.append(selector_id)
         selectors_by_id[selector_id] = _object(selector_value, selector_label)
         for area_id, area in selector_areas.items():
@@ -958,12 +1199,32 @@ def _validate_model(value: Any, entity_id: str, tier: int, label: str) -> dict[s
     component_set = set(component_ids)
     components_by_id = {component["component_id"]: component for component in components}
 
-    _validate_concentration(model["concentration"], f"{label}.concentration")
-    concentration = _object(model["concentration"], f"{label}.concentration")
-    concentration_required = concentration["kind"] == "required"
-    canonical_concentration_required = entity_id in {"ball_lightning", "mass_levitation"}
-    if concentration_required != canonical_concentration_required:
-        raise AuthorityError(f"{label}.concentration does not match the canonical entity concentration flag")
+    if entity_id == "frozen_ground":
+        speed_zero = components_by_id.get("frozen_ground_speed_zero")
+        if speed_zero is None or speed_zero["duration"] != {
+            "kind": "relative", "owner": "triggering_turn", "anchor": "end_turn", "offset_turns": 0,
+        }:
+            raise AuthorityError(
+                f"{label}.components Frozen Ground Speed 0 must expire at the end of the triggering turn"
+            )
+        triggering_turn_end = {"kind": "turn", "owner": "triggering_turn", "turn_anchor": "end"}
+        expected_end = (
+            [
+                {"kind": "entry", "owner": "any_creature", "turn_anchor": "during_turn"},
+                {"kind": "turn", "owner": "target", "turn_anchor": "start"},
+                triggering_turn_end,
+            ]
+            if tier == 2 else [triggering_turn_end]
+        )
+        if speed_zero["cadence"]["end"] != expected_end:
+            raise AuthorityError(
+                f"{label}.components Frozen Ground Speed 0 expiry cadence must end with the triggering turn"
+            )
+
+    concentration_summary = _validate_concentration(model["concentration"], canonical, f"{label}.concentration")
+    concentration_required = concentration_summary["required"]
+    mode_bindings: dict[str, list[str]] = {}
+    area_selector_ids = {selector_id for _area, selector_id in areas_by_id.values()}
     for index, component in enumerate(components):
         unknown_selectors = sorted(set(component["target_selector_ids"]) - selector_set)
         if unknown_selectors:
@@ -971,17 +1232,32 @@ def _validate_model(value: Any, entity_id: str, tier: int, label: str) -> dict[s
         duration = _object(component["duration"], f"{label}.components[{index}].duration")
         if duration["kind"] == "while_in_area" and duration["area_id"] not in areas_by_id:
             raise AuthorityError(f"{label}.components[{index}].duration references an unknown area")
+        if component["magnitude"]["kind"] == "difficult_terrain" and not (
+            set(component["target_selector_ids"]) & area_selector_ids
+        ):
+            raise AuthorityError(f"{label}.components[{index}] difficult terrain must use an area-owning selector")
+        requirement = component.get("choice_requirement")
+        if requirement is not None:
+            choice = choices.get(requirement["choice_id"])
+            if choice is None or choice["kind"] != "mode" or requirement["option_id"] not in choice["options"]:
+                raise AuthorityError(f"{label}.components[{index}].choice_requirement is not a declared mode option")
+            used_choice_ids.add(requirement["choice_id"])
+            mode_bindings.setdefault(requirement["choice_id"], []).append(requirement["option_id"])
         if duration["kind"] == "concentration":
             if not concentration_required:
                 raise AuthorityError(f"{label}.components[{index}].duration requires model concentration")
-            maximum = concentration["maximum_duration"]
             if (
-                duration["maximum_value"] != maximum["value"]
-                or duration["unit"] != maximum["unit"]
+                duration["maximum_value"] != concentration_summary["maximum_value"]
+                or duration["unit"] != concentration_summary["unit"]
             ):
                 raise AuthorityError(
                     f"{label}.components[{index}].duration must match model concentration maximum_duration"
                 )
+    for choice_id, choice in choices.items():
+        if choice["kind"] == "mode" and sorted(mode_bindings.get(choice_id, [])) != sorted(choice["options"]):
+            raise AuthorityError(f"{label}.choices {choice_id!r} must bind every mode option exactly once")
+        if choice_id not in used_choice_ids:
+            raise AuthorityError(f"{label}.choices {choice_id!r} must govern a component or area placement")
     root_gate_ids = _id_array(model["root_gate_ids"], f"{label}.root_gate_ids", 1)
     gate_summaries: list[dict[str, Any]] = []
     branch_references: set[str] = set()
@@ -995,11 +1271,31 @@ def _validate_model(value: Any, entity_id: str, tier: int, label: str) -> dict[s
         )
         gate_summaries.append(gate_summary)
         branch_references.update(gate_summary["referenced_components"])
-        for selector_id in gate_summary["selector_ids"]:
-            if selectors_by_id[selector_id]["gate_scope"] != gate_summary["gate_scope"]:
-                raise AuthorityError(
-                    f"{label}.resolutions[{index}].gate_scope must match every referenced selector"
-                )
+        branch = gate_summary["branches"][0] if len(gate_summary["branches"]) == 1 else None
+        transitions = branch["transitions"] if branch is not None else None
+        area_activation_only = transitions is not None and not (
+            transitions["replaces"] or transitions["terminates"] or transitions["refreshes"]
+        ) and (
+            not transitions["applies"]
+            or all(components_by_id[component_id]["magnitude"].get("scope") == "area" for component_id in transitions["applies"])
+        )
+        shared_area_activation = (
+            gate_summary["gate_scope"] == "shared" and gate_summary["trigger"] == {"kind": "activation"}
+            and gate_summary["kind"] == "no_save" and bool(gate_summary["selector_ids"])
+            and all(
+                selector_id in area_selector_ids
+                and selectors_by_id[selector_id]["gate_scope"] == "independent_per_target"
+                for selector_id in gate_summary["selector_ids"]
+            )
+            and area_activation_only
+        )
+        if not all(
+            selectors_by_id[selector_id]["gate_scope"] == gate_summary["gate_scope"]
+            for selector_id in gate_summary["selector_ids"]
+        ) and not shared_area_activation:
+            raise AuthorityError(
+                f"{label}.resolutions[{index}].gate_scope must match selectors or be a shared area-activation gate"
+            )
     gate_ids = [gate["gate_id"] for gate in gate_summaries]
     if len(gate_ids) != len(set(gate_ids)):
         raise AuthorityError(f"{label}.resolutions contains duplicate gate IDs")
@@ -1016,27 +1312,111 @@ def _validate_model(value: Any, entity_id: str, tier: int, label: str) -> dict[s
     gates_by_id = {gate["gate_id"]: gate for gate in gate_summaries}
     _validate_gate_graph(root_gate_ids, gates_by_id, policy["delivery"], label)
 
+    elevation_ids = {
+        component["component_id"] for component in components
+        if component["magnitude"]["kind"] == "persistent_elevation"
+    }
+    fall_ids = {
+        component["component_id"] for component in components if component["magnitude"]["kind"] == "fall"
+    }
+    if elevation_ids:
+        def complete_fall(branch: dict[str, Any]) -> bool:
+            transitions = branch["transitions"]
+            return bool(fall_ids & transitions["applies"]) and elevation_ids <= transitions["terminates"]
+
+        concentration_end_branches = [
+            branch for gate in gate_summaries if _event_kind(gate["trigger"]) == "concentration_end"
+            for branch in gate["branches"]
+        ]
+        repeat_success_branches = [
+            branch for gate in gate_summaries if gate["kind"] == "saving_throw" and gate["role"] == "repeat"
+            for branch in gate["branches"] if branch["outcome"] == "save_success"
+        ]
+        if (
+            not concentration_required or not fall_ids
+            or not any(complete_fall(branch) for branch in concentration_end_branches)
+            or not any(complete_fall(branch) for branch in repeat_success_branches)
+        ):
+            raise AuthorityError(
+                f"{label} persistent elevation requires current-position fall on repeat success and concentration end"
+            )
+        graph = {
+            gate_id: {
+                next_gate_id for branch in gate["branches"] for next_gate_id in branch["next_gate_ids"]
+            }
+            for gate_id, gate in gates_by_id.items()
+        }
+
+        def descendants(starts: set[str]) -> set[str]:
+            reached: set[str] = set()
+            pending = list(starts)
+            while pending:
+                gate_id = pending.pop()
+                if gate_id in reached:
+                    continue
+                reached.add(gate_id)
+                pending.extend(graph.get(gate_id, set()) - reached)
+            return reached
+
+        initial_gates = [
+            gate for gate in gate_summaries if gate["kind"] == "saving_throw" and gate["role"] == "initial"
+        ]
+        failure_starts = {
+            next_gate_id for gate in initial_gates for branch in gate["branches"]
+            if branch["outcome"] == "save_failure" for next_gate_id in branch["next_gate_ids"]
+        }
+        success_starts = {
+            next_gate_id for gate in initial_gates for branch in gate["branches"]
+            if branch["outcome"] == "save_success" for next_gate_id in branch["next_gate_ids"]
+        }
+        failure_reachable, success_reachable = descendants(failure_starts), descendants(success_starts)
+        reposition_ids = {
+            component["component_id"] for component in components
+            if component["magnitude"]["kind"] == "forced_movement"
+            and component["magnitude"]["movement_mode"] == "reposition"
+        }
+        contingent_ids = {
+            gate["gate_id"] for gate in gate_summaries
+            if _event_kind(gate["trigger"]) == "concentration_end"
+            or (gate["kind"] == "saving_throw" and gate["role"] == "repeat")
+            or any(branch["referenced_components"] & reposition_ids for branch in gate["branches"])
+        }
+        if (
+            not initial_gates or contingent_ids & set(root_gate_ids)
+            or not contingent_ids <= failure_reachable or contingent_ids & success_reachable
+            or any(gates_by_id[gate_id]["requires_active_component_ids"] != elevation_ids for gate_id in contingent_ids)
+        ):
+            raise AuthorityError(
+                f"{label} elevation repeat, reposition, and concentration-end gates must be guarded after initial-save failure"
+            )
+
     for area_id, (area, selector_id) in areas_by_id.items():
         if not area["persistent"]:
             continue
-        for event in ("entry", "start_turn"):
+        for event in (
+            {"kind": "entry", "owner": "any_creature", "turn_anchor": "during_turn"},
+            {"kind": "turn", "owner": "target", "turn_anchor": "start"},
+        ):
             if not any(
                 gate["trigger"] == event and selector_id in gate["selector_ids"]
                 for gate in gate_summaries
             ):
                 raise AuthorityError(
-                    f"{label} persistent area {area_id!r} requires a matching {event} resolution gate"
+                    f"{label} persistent area {area_id!r} requires a matching typed exposure gate"
                 )
+        selector_components = [
+            component for component in components if selector_id in component["target_selector_ids"]
+        ]
         area_components = [
             component
-            for component in components
+            for component in selector_components
             if component["duration"].get("kind") == "while_in_area"
             and component["duration"].get("area_id") == area_id
         ]
-        if not area_components:
-            raise AuthorityError(f"{label} persistent area {area_id!r} requires an area-duration component")
+        if not selector_components:
+            raise AuthorityError(f"{label} persistent area {area_id!r} requires an owning-selector component")
         for component in area_components:
-            if selector_id not in component["target_selector_ids"] or "exit" not in component["cadence"]["end"]:
+            if {"kind": "exit", "owner": "target", "turn_anchor": "during_turn"} not in component["cadence"]["end"]:
                 raise AuthorityError(
                     f"{label} persistent area {area_id!r} components require the owning selector and exit cadence"
                 )
@@ -1073,7 +1453,52 @@ def _validate_model(value: Any, entity_id: str, tier: int, label: str) -> dict[s
     }
 
 
-def _validate_contract(value: Any, label: str) -> tuple[dict[str, int], list[dict[str, Any]]]:
+def _validate_canonical_inputs(value: Any, label: str) -> dict[str, dict[str, Any]]:
+    inputs = _object(value, label)
+    _exact_keys(inputs, {"entities"}, label)
+    entities: dict[str, dict[str, Any]] = {}
+    order: list[str] = []
+    for index, row_value in enumerate(_array(inputs["entities"], f"{label}.entities", 1)):
+        row_label = f"{label}.entities[{index}]"
+        row = _object(row_value, row_label)
+        _exact_keys(
+            row,
+            {"entity_id", "activation", "feature_role", "psi_cost", "requires_concentration", "calculator_tiers"},
+            row_label,
+            {"concentration_duration", "calculator_delivery", "feature_rule_repeatability"},
+        )
+        entity_id = _identifier_value(row["entity_id"], f"{row_label}.entity_id")
+        if entity_id in entities:
+            raise AuthorityError(f"{label}.entities contains duplicate entity IDs")
+        _choice(row["activation"], {"action", "bonus_action", "reaction", "on_hit", "passive"}, f"{row_label}.activation")
+        _choice(row["feature_role"], {"rider", "standalone"}, f"{row_label}.feature_role")
+        _integer(row["psi_cost"], f"{row_label}.psi_cost", 0)
+        _boolean(row["requires_concentration"], f"{row_label}.requires_concentration")
+        tiers = _array(row["calculator_tiers"], f"{row_label}.calculator_tiers")
+        normalized_tiers = [_integer(tier, f"{row_label}.calculator_tiers[{tier_index}]", 0) for tier_index, tier in enumerate(tiers)]
+        if any(tier not in {0, 1, 2} for tier in normalized_tiers) or normalized_tiers != sorted(set(normalized_tiers)):
+            raise AuthorityError(f"{row_label}.calculator_tiers must be unique sorted tiers 0 through 2")
+        if "concentration_duration" in row:
+            _string(row["concentration_duration"], f"{row_label}.concentration_duration")
+        if "calculator_delivery" in row:
+            _choice(row["calculator_delivery"], {"on_hit_rider", "standalone"}, f"{row_label}.calculator_delivery")
+        if "feature_rule_repeatability" in row:
+            _choice(
+                row["feature_rule_repeatability"], {"unlimited", "once_per_attack_action"},
+                f"{row_label}.feature_rule_repeatability",
+            )
+        entities[entity_id] = row
+        order.append(entity_id)
+    if order != sorted(order):
+        raise AuthorityError(f"{label}.entities must be sorted by entity_id")
+    return entities
+
+
+def _validate_contract(
+    value: Any,
+    canonical_by_id: dict[str, dict[str, Any]],
+    label: str,
+) -> tuple[dict[str, int], list[dict[str, Any]]]:
     contract = _object(value, label)
     _exact_keys(
         contract,
@@ -1229,7 +1654,8 @@ def _validate_contract(value: Any, label: str) -> tuple[dict[str, int], list[dic
     choices = _id_array(tactical["choice_mastery_ids"], f"{label}.tactical_master.choice_mastery_ids", 3)
     if choices != ["mastery_push", "mastery_sap", "mastery_slow"] or set(choices) != set(mastery_ids):
         raise AuthorityError(f"{label}.tactical_master.choice_mastery_ids must reference the canonical choices")
-    _choice(tactical["choice_timing"], {"declaration"}, f"{label}.tactical_master.choice_timing")
+    if _validate_event(tactical["choice_timing"], f"{label}.tactical_master.choice_timing") != {"kind": "declaration"}:
+        raise AuthorityError(f"{label}.tactical_master.choice_timing must be declaration")
     _choice(tactical["behavior"], {"replaces_kinetic_mastery"}, f"{label}.tactical_master.behavior")
 
     ledger = _array(contract["ledger"], f"{label}.ledger", CONTROL_LEDGER_SIZE)
@@ -1248,22 +1674,21 @@ def _validate_contract(value: Any, label: str) -> tuple[dict[str, int], list[dic
             raise AuthorityError(f"{row_label}.tier must be 0, 1, or 2")
         disposition = _choice(
             row.get("disposition"),
-            {"modeled", "excluded_by_profile", "unsupported_error"},
+            {"modeled", "excluded_by_profile"},
             f"{row_label}.disposition",
         )
         key = (entity_id, tier)
-        expected_disposition = (
-            "modeled" if key in _CONTROL_MODELED_KEYS
-            else "excluded_by_profile" if key in _CONTROL_EXCLUDED_REASONS
-            else "unsupported_error"
-        )
+        expected_disposition = "excluded_by_profile" if key in _CONTROL_EXCLUDED_REASONS else "modeled"
         if disposition != expected_disposition:
-            raise AuthorityError(f"{row_label}.disposition does not match the canonical foundation")
+            raise AuthorityError(f"{row_label}.disposition does not match the maintained 2.1 ledger")
         keys.append(key)
         counts[disposition] += 1
         if disposition == "modeled":
             _exact_keys(row, {"entity_id", "tier", "disposition", "model"}, row_label)
-            summary = _validate_model(row["model"], entity_id, tier, f"{row_label}.model")
+            canonical = canonical_by_id.get(entity_id)
+            if canonical is None:
+                raise AuthorityError(f"{row_label} lacks projected canonical entity metadata")
+            summary = _validate_model(row["model"], entity_id, tier, canonical, f"{row_label}.model")
             effect_ids.append(summary["effect_id"])
             modeled_summaries[key] = summary
         elif disposition == "excluded_by_profile":
@@ -1279,18 +1704,20 @@ def _validate_contract(value: Any, label: str) -> tuple[dict[str, int], list[dic
                 f"{row_label}.reason",
             )
             if reason != _CONTROL_EXCLUDED_REASONS[key]:
-                raise AuthorityError(f"{row_label}.reason does not match the canonical foundation")
-        else:
-            _exact_keys(row, {"entity_id", "tier", "disposition", "reason"}, row_label)
-            _choice(row["reason"], {"pending_authority_population"}, f"{row_label}.reason")
+                raise AuthorityError(f"{row_label}.reason does not match the maintained profile exclusion")
     if len(keys) != len(set(keys)):
         raise AuthorityError(f"{label}.ledger contains duplicate entity/tier rows")
     if keys != sorted(keys):
         raise AuthorityError(f"{label}.ledger must be sorted by entity_id and then tier")
     if keys != list(_CONTROL_LEDGER_KEYS):
-        raise AuthorityError(f"{label}.ledger does not cover the canonical 49 entity/tier rows")
+        raise AuthorityError(
+            f"{label}.ledger does not cover the canonical {len(_CONTROL_LEDGER_KEYS)} entity/tier rows"
+        )
     if len(effect_ids) != len(set(effect_ids)):
         raise AuthorityError(f"{label}.ledger contains duplicate modeled effect IDs")
+    modeled_entity_ids = {entity_id for entity_id, tier in _CONTROL_MODELED_KEYS}
+    if set(canonical_by_id) != modeled_entity_ids:
+        raise AuthorityError(f"{label} canonical input entity universe must match modeled ledger entities")
 
     for (entity_id, tier), summary in modeled_summaries.items():
         source_tier = summary["source_tier"]
@@ -1307,7 +1734,10 @@ def _validate_contract(value: Any, label: str) -> tuple[dict[str, int], list[dic
                 f"selectors={missing_selectors}, components={missing_components}"
             )
     if counts != _CONTROL_COVERAGE:
-        raise AuthorityError(f"{label}.ledger must preserve the canonical 9/14/26 coverage foundation")
+        raise AuthorityError(
+            f"{label}.ledger must contain {len(_CONTROL_MODELED_KEYS)} modeled tiers, "
+            f"{len(_CONTROL_EXCLUDED_REASONS)} maintained exclusions, and no unsupported rows"
+        )
     return counts, ledger
 
 def validate_control_projection_v2(projection: Any) -> dict[str, Any]:
@@ -1318,7 +1748,7 @@ def validate_control_projection_v2(projection: Any) -> dict[str, Any]:
         root,
         {
             "projection_version", "authority_path", "authority_sha256", "rules_version", "schema_version",
-            "supported_level_range", "control_authority", "coverage",
+            "supported_level_range", "canonical_inputs", "control_authority", "coverage",
         },
         "projection",
     )
@@ -1337,13 +1767,16 @@ def validate_control_projection_v2(projection: Any) -> dict[str, Any]:
         version = _string(root[field], f"projection.{field}")
         if not _SEMVER.fullmatch(version):
             raise AuthorityError(f"projection.{field} must be semantic version x.y.z")
+    if root["schema_version"] != "3.1.0":
+        raise AuthorityError("projection.schema_version must be 3.1.0 for Control Authority 2.1")
     level_range = _object(root["supported_level_range"], "projection.supported_level_range")
     _exact_keys(level_range, {"minimum", "maximum"}, "projection.supported_level_range")
     minimum_level = _integer(level_range["minimum"], "projection.supported_level_range.minimum", 1)
     maximum_level = _integer(level_range["maximum"], "projection.supported_level_range.maximum", minimum_level)
     if (minimum_level, maximum_level) != (3, 20):
         raise AuthorityError("projection.supported_level_range must be Fighter levels 3 through 20")
-    counts, _ = _validate_contract(root["control_authority"], "projection.control_authority")
+    canonical_by_id = _validate_canonical_inputs(root["canonical_inputs"], "projection.canonical_inputs")
+    counts, _ = _validate_contract(root["control_authority"], canonical_by_id, "projection.control_authority")
     declared = _object(root["coverage"], "projection.coverage")
     _exact_keys(
         declared,
@@ -1537,7 +1970,9 @@ def main(argv: list[str] | None = None) -> int:
     try:
         if args.projection_version == DAMAGE_PROJECTION_VERSION:
             if args.require_benchmark_ready:
-                raise AuthorityError("--require-benchmark-ready is only valid for projection version 2.0.0")
+                raise AuthorityError(
+                    f"--require-benchmark-ready is only valid for projection version {CONTROL_PROJECTION_VERSION}"
+                )
             projection = load_damage_projection(args.authority)
             summary = {
                 "projection_version": projection["projection_version"],

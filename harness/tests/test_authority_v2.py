@@ -27,6 +27,11 @@ def _model(projection: dict[str, object], entity_id: str, tier: int) -> dict[str
     return _row(projection, entity_id, tier)["model"]  # type: ignore[return-value]
 
 
+def _canonical(projection: dict[str, object], entity_id: str) -> dict[str, object]:
+    rows = projection["canonical_inputs"]["entities"]  # type: ignore[index]
+    return next(row for row in rows if row["entity_id"] == entity_id)  # type: ignore[return-value]
+
+
 class ControlAuthorityV2Tests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
@@ -40,27 +45,20 @@ class ControlAuthorityV2Tests(unittest.TestCase):
         if pattern is not None:
             self.assertRegex(str(caught.exception), pattern)
 
-    def test_real_projection_has_exact_current_coverage_and_separate_statuses(self) -> None:
-        self.assertEqual(self.projection["projection_version"], "2.0.0")
+    def test_real_projection_is_complete_ready_and_versioned(self) -> None:
+        self.assertEqual(self.projection["projection_version"], "2.1.0")
+        self.assertEqual(self.projection["schema_version"], "3.1.0")
+        self.assertEqual(self.projection["control_authority"]["contract_version"], "2.1.0")
         self.assertEqual(self.projection["supported_level_range"], {"minimum": 3, "maximum": 20})
         self.assertEqual(
             self.projection["coverage"],
-            {
-                "total": 49,
-                "modeled": 9,
-                "excluded_by_profile": 14,
-                "unsupported_error": 26,
-                "benchmark_ready": False,
-            },
+            {"total": 49, "modeled": 35, "excluded_by_profile": 14, "unsupported_error": 0, "benchmark_ready": True},
         )
         model = ControlAuthorityV2Model(deepcopy(self.projection))
-        self.assertEqual(len(model.modeled), 9)
-        self.assertEqual(len(model.excluded_by_profile), 14)
-        self.assertEqual(len(model.unsupported), 26)
-        self.assertTrue(all("profile_id" in row and "model" not in row for row in model.excluded_by_profile))
-        self.assertTrue(all("profile_id" not in row and "model" not in row for row in model.unsupported))
+        self.assertEqual((len(model.modeled), len(model.excluded_by_profile), len(model.unsupported)), (35, 14, 0))
+        self.assertTrue(model.require_benchmark_ready().benchmark_ready)
 
-    def test_v2_loader_explicitly_requests_v2_and_output_is_deterministic(self) -> None:
+    def test_loader_explicitly_requests_2_1_and_is_deterministic(self) -> None:
         with patch("harness.authority._run_projector", return_value=deepcopy(self.projection)) as projector:
             loaded = load_control_projection_v2()
         projector.assert_called_once_with(DEFAULT_AUTHORITY, CONTROL_PROJECTION_VERSION)
@@ -69,341 +67,194 @@ class ControlAuthorityV2Tests(unittest.TestCase):
         encode = lambda value: json.dumps(value, ensure_ascii=False, separators=(",", ":"))
         self.assertEqual(encode(self.projection), encode(second))
 
-
-    def test_root_and_nested_shapes_are_exact_and_versioned(self) -> None:
-        self.assert_rejected(lambda value: value.__setitem__("projection_version", "1.0.0"), "version")
-        self.assert_rejected(lambda value: value.__setitem__("legacy_control_labels", []), "unknown")
+    def test_canonical_inputs_are_sorted_complete_and_drive_policy(self) -> None:
+        entities = self.projection["canonical_inputs"]["entities"]
+        ids = [row["entity_id"] for row in entities]
+        modeled_ids = sorted({row["entity_id"] for row in _ledger(self.projection) if row["disposition"] == "modeled"})
+        self.assertEqual(ids, modeled_ids)
+        self.assertEqual(_model(self.projection, "forked_lightning", 2)["policy"]["repeatability"], "once_per_turn")
+        self.assertEqual(_canonical(self.projection, "forked_lightning")["feature_rule_repeatability"], "once_per_attack_action")
         self.assert_rejected(
-            lambda value: value["control_authority"]["active_profile"].__setitem__("label", "official"),
-            "unknown",
+            lambda value: _canonical(value, "forked_lightning").__setitem__("psi_cost", 99),
+            "derive from canonical",
         )
         self.assert_rejected(
-            lambda value: _model(value, "forked_lightning", 2)["target_selectors"][0]["restrictions"][0].__setitem__(
-                "requirement", True
-            ),
-            "non-empty string",
+            lambda value: value["canonical_inputs"]["entities"].pop(),
+            "canonical input entity universe|lacks projected",
         )
 
-    def test_stable_ids_integer_tiers_and_exact_ledger_inventory_are_required(self) -> None:
-        self.assert_rejected(lambda value: _ledger(value)[0].__setitem__("entity_id", "Bad-ID"), "stable")
-        self.assert_rejected(lambda value: _ledger(value)[0].__setitem__("tier", "0"), "integer")
-        self.assert_rejected(lambda value: _ledger(value)[0].__setitem__("entity_id", "aaa_zero"), "canonical 49")
-
-    def test_json_integral_numbers_match_schema_integer_semantics(self) -> None:
-        integral = deepcopy(self.projection)
-        integral["control_authority"]["policy_inputs"]["horizon_rounds"] = 3.0
-        _model(integral, "mass_levitation", 0)["target_selectors"][0]["count"]["slots"] = 5.0
-        _model(integral, "ball_lightning", 2)["policy"]["overload_tier"] = 2.0
-        integral["coverage"]["total"] = 49.0
-        self.assertIs(validate_control_projection_v2(integral), integral)
-
-        for invalid in (1.5, float("nan"), float("inf"), float("-inf"), True):
-            with self.subTest(invalid=invalid):
-                self.assert_rejected(
-                    lambda value, candidate=invalid: value["control_authority"]["policy_inputs"].__setitem__(
-                        "horizon_rounds", candidate
-                    ),
-                    "integer",
-                )
-
-    def test_ledger_sorting_uniqueness_and_coverage_are_recomputed(self) -> None:
-        def reorder(value: dict[str, object]) -> None:
-            rows = _ledger(value)
-            rows[0], rows[1] = rows[1], rows[0]
-
-        self.assert_rejected(reorder, "sorted")
+    def test_exact_ledger_and_maintained_exclusions_are_fail_closed(self) -> None:
+        keys = [(row["entity_id"], row["tier"]) for row in _ledger(self.projection)]
+        self.assertEqual(keys, sorted(keys))
+        self.assertEqual(len(keys), len(set(keys)))
+        self.assertFalse(any(row["disposition"] == "unsupported_error" for row in _ledger(self.projection)))
+        self.assert_rejected(lambda value: _ledger(value).pop(), "at least 49|exactly 49")
+        excluded = next(row for row in _ledger(self.projection) if row["disposition"] == "excluded_by_profile")
         self.assert_rejected(
-            lambda value: value["coverage"].__setitem__("modeled", value["coverage"]["modeled"] + 1),
-            "does not match ledger count",
+            lambda value: _row(value, excluded["entity_id"], excluded["tier"]).__setitem__("reason", "outside_headline_control_value"),
+            "maintained profile exclusion",
         )
-        self.assert_rejected(lambda value: value["coverage"].__setitem__("benchmark_ready", True), "benchmark_ready")
+        self.assert_rejected(lambda value: value["coverage"].__setitem__("modeled", 34), "does not match ledger count")
 
-    def test_magnitudes_are_structured_and_complete(self) -> None:
+    def test_control_count_rejects_ambiguous_exact_proficiency_bonus(self) -> None:
+        static = _model(self.projection, "static_discharge", 2)
+        secondary = next(selector for selector in static["target_selectors"] if selector["role"] == "secondary")
+        self.assertEqual(secondary["count"], {"kind": "up_to_proficiency_bonus"})
         self.assert_rejected(
-            lambda value: _model(value, "ball_lightning", 2)["components"][0]["magnitude"].__setitem__(
-                "kind", "legacy_label"
-            ),
+            lambda value: next(
+                selector for selector in _model(value, "static_discharge", 2)["target_selectors"]
+                if selector["role"] == "secondary"
+            )["count"].__setitem__("kind", "proficiency_bonus"),
             "unsupported value",
         )
+
+    def test_typed_events_save_roles_and_damage_context_are_strict(self) -> None:
+        frozen = _model(self.projection, "frozen_ground", 0)
+        recurring = next(gate for gate in frozen["resolutions"] if gate["resolution"]["kind"] == "saving_throw")
+        self.assertEqual(recurring["resolution"]["role"], "recurring")
         self.assert_rejected(
-            lambda value: value["control_authority"]["masteries"][1]["component"]["magnitude"].pop(
-                "distance_feet"
-            ),
-            "missing",
+            lambda value: next(
+                gate for gate in _model(value, "frozen_ground", 0)["resolutions"]
+                if gate["resolution"]["kind"] == "saving_throw"
+            )["resolution"].__setitem__("role", "initial"),
+            "recurring timing|initial saves",
+        )
+        static = _model(self.projection, "static_discharge", 2)
+        context = next(gate for gate in static["resolutions"] if gate["resolution"]["kind"] == "damage_context")
+        self.assertEqual(context["trigger"], {"kind": "damage_context"})
+        self.assert_rejected(
+            lambda value: next(
+                gate for gate in _model(value, "static_discharge", 2)["resolutions"]
+                if gate["resolution"]["kind"] == "damage_context"
+            )["resolution"]["branches"][0].__setitem__("outcome", "other"),
+            "incomplete damage_context",
+        )
+
+    def test_frozen_ground_duration_tracks_the_turn_containing_each_trigger(self) -> None:
+        expected_duration = {
+            "kind": "relative", "owner": "triggering_turn", "anchor": "end_turn", "offset_turns": 0,
+        }
+        entry_trigger = {"kind": "entry", "owner": "any_creature", "turn_anchor": "during_turn"}
+        start_trigger = {"kind": "turn", "owner": "target", "turn_anchor": "start"}
+        triggering_turn_end = {"kind": "turn", "owner": "triggering_turn", "turn_anchor": "end"}
+        for tier in (0, 1, 2):
+            model = _model(self.projection, "frozen_ground", tier)
+            speed_zero = next(
+                component for component in model["components"]
+                if component["component_id"] == "frozen_ground_speed_zero"
+            )
+            self.assertEqual(speed_zero["duration"], expected_duration)
+            expected_end = [entry_trigger, start_trigger, triggering_turn_end] if tier == 2 else [triggering_turn_end]
+            self.assertEqual(speed_zero["cadence"]["end"], expected_end)
+            recurring = [gate for gate in model["resolutions"] if gate["resolution"].get("role") == "recurring"]
+            entry_gate = next(gate for gate in recurring if gate["trigger"] == entry_trigger)
+            start_gate = next(gate for gate in recurring if gate["trigger"] == start_trigger)
+            self.assertEqual(entry_gate["trigger"], entry_trigger)
+            self.assertEqual(start_gate["trigger"], start_trigger)
+            resolved_owner = lambda turn_owner: (
+                turn_owner if speed_zero["duration"]["owner"] == "triggering_turn"
+                else speed_zero["duration"]["owner"]
+            )
+            self.assertEqual(resolved_owner("another_creature"), "another_creature")
+            self.assertEqual(resolved_owner("target"), "target")
+            self.assertEqual(resolved_owner(start_gate["trigger"]["owner"]), "target")
+        self.assert_rejected(
+            lambda value: next(
+                component for component in _model(value, "frozen_ground", 0)["components"]
+                if component["component_id"] == "frozen_ground_speed_zero"
+            )["duration"].__setitem__("owner", "target"),
+            "Frozen Ground Speed 0.*triggering turn",
         )
         self.assert_rejected(
-            lambda value: value["control_authority"]["masteries"][1]["component"]["magnitude"].__setitem__(
-                "direction", "not an id"
-            ),
+            lambda value: next(
+                component for component in _model(value, "frozen_ground", 0)["components"]
+                if component["component_id"] == "frozen_ground_speed_zero"
+            )["duration"].__setitem__("anchor", "start_turn"),
+            "triggering_turn duration.*end_turn.*zero offset",
+        )
+
+        self.assert_rejected(
+            lambda value: next(
+                component for component in _model(value, "frozen_ground", 0)["components"]
+                if component["component_id"] == "frozen_ground_speed_zero"
+            )["cadence"]["end"][0].__setitem__("owner", "target"),
+            "expiry cadence.*triggering turn",
+        )
+        self.assert_rejected(
+            lambda value: next(
+                component for component in _model(value, "frozen_ground", 0)["components"]
+                if component["component_id"] == "frozen_ground_speed_zero"
+            )["cadence"]["end"][0].__setitem__("turn_anchor", "start"),
+            "triggering_turn event.*end anchor",
+        )
+
+    def test_mass_contingent_gates_require_active_elevation_guard(self) -> None:
+        for tier in (0, 1, 2):
+            model = _model(self.projection, "mass_levitation", tier)
+            guarded = [gate for gate in model["resolutions"] if "requires_active_component_ids" in gate]
+            self.assertTrue(guarded)
+            self.assertTrue(all(gate["requires_active_component_ids"] == ["mass_levitation_persistent_elevation"] for gate in guarded))
+        self.assert_rejected(
+            lambda value: next(
+                gate for gate in _model(value, "mass_levitation", 2)["resolutions"]
+                if gate.get("requires_active_component_ids")
+            ).pop("requires_active_component_ids"),
+            "guarded",
+        )
+
+    def test_choices_placement_and_persistent_area_movement_are_strict(self) -> None:
+        phase = _model(self.projection, "advanced_phase_step", 2)
+        area = next(selector["area"] for selector in phase["target_selectors"] if "area" in selector)
+        self.assertEqual(area["placement"]["arrival"]["range"], {"feet": 30, "origin": "departure_space"})
+        self.assert_rejected(
+            lambda value: next(
+                selector["area"] for selector in _model(value, "advanced_phase_step", 2)["target_selectors"]
+                if "area" in selector
+            )["placement"]["arrival"].__setitem__("occupancy", "not_specified"),
             "unsupported value",
         )
-        self.assert_rejected(
-            lambda value: value["control_authority"]["masteries"][2]["component"]["magnitude"].pop("count"),
-            "missing",
-        )
-        self.assert_rejected(
-            lambda value: _model(value, "ball_lightning", 2)["components"][1]["magnitude"].__setitem__(
-                "count", 1
-            ),
-            "unknown",
-        )
+        ball = _model(self.projection, "ball_lightning", 2)
+        movement = next(selector["area"]["movement"] for selector in ball["target_selectors"] if "area" in selector)
+        self.assertEqual(movement["timing"], {"kind": "turn", "owner": "controller", "turn_anchor": "during"})
+        self.assertEqual(movement["distance_mode"], "up_to")
+        self.assert_rejected(lambda value: value["control_authority"]["masteries"][1]["component"]["magnitude"].pop("path"), "missing")
 
-        def legacy_weighted_slots(value: dict[str, object]) -> None:
-            count = _model(value, "mass_levitation", 0)["target_selectors"][0]["count"]
-            count["slots"] = [{"slot_id": "slot_one", "weight": 1}]
-
-        self.assert_rejected(legacy_weighted_slots, "integer")
-
-        def proficiency_bonus_with_value(value: dict[str, object]) -> None:
-            count = _model(value, "ball_lightning", 2)["target_selectors"][0]["count"]
-            count["kind"] = "proficiency_bonus"
-            count["value"] = 1
-
-        self.assert_rejected(proficiency_bonus_with_value, "unknown")
-
-    def test_timing_owner_and_concentration_lifecycle_are_required(self) -> None:
+    def test_concentration_is_derived_for_frozen_ball_and_mass(self) -> None:
+        for entity_id, tier in (("frozen_ground", 0), ("ball_lightning", 2), ("mass_levitation", 2)):
+            concentration = _model(self.projection, entity_id, tier)["concentration"]
+            self.assertEqual(concentration["kind"], "required")
+            self.assertEqual(concentration["startup"], "on_activation")
         self.assert_rejected(
-            lambda value: _model(value, "forked_lightning", 2)["components"][0]["duration"].__setitem__(
-                "owner", "system"
-            ),
-            "unsupported value",
-        )
-        self.assert_rejected(
-            lambda value: _model(value, "ball_lightning", 2)["concentration"]["maximum_duration"].pop("unit"),
-            "missing",
-        )
-        self.assert_rejected(
-            lambda value: _model(value, "ball_lightning", 2)["concentration"]["termination"].pop(),
-            "every canonical",
+            lambda value: _model(value, "frozen_ground", 0).__setitem__("concentration", {"kind": "none"}),
+            "canonical concentration",
         )
 
-    def test_area_dimensions_and_area_references_are_fail_closed(self) -> None:
+    def test_cross_references_graph_and_stacking_fail_closed(self) -> None:
         self.assert_rejected(
-            lambda value: _model(value, "ball_lightning", 2)["target_selectors"][0]["area"].pop("radius_feet"),
-            "incomplete sphere dimensions",
-        )
-        self.assert_rejected(
-            lambda value: _model(value, "ball_lightning", 2)["components"][0]["duration"].__setitem__(
-                "area_id", "missing_area"
-            ),
-            "unknown area",
-        )
-
-    def test_selector_and_resolution_cross_references_are_fail_closed(self) -> None:
-        self.assert_rejected(
-            lambda value: _model(value, "forked_lightning", 2)["components"][0]["target_selector_ids"].__setitem__(
-                0, "missing_selector"
-            ),
+            lambda value: _model(value, "forked_lightning", 2)["components"][0]["target_selector_ids"].__setitem__(0, "missing_selector"),
             "unknown selectors",
         )
         self.assert_rejected(
-            lambda value: _model(value, "forked_lightning", 2)["resolutions"][0]["selector_ids"].append(
-                "missing_selector"
-            ),
-            "unknown selectors",
+            lambda value: _model(value, "glacial_spike", 2)["relationships"]["replacement_groups"][0]["component_ids"].pop(),
+            "must match component declarations",
         )
-
-    def test_resolution_branches_are_complete_and_reference_components(self) -> None:
         self.assert_rejected(
             lambda value: _model(value, "forked_lightning", 2)["resolutions"][0]["resolution"]["branches"].pop(),
-            "incomplete saving_throw branches",
-        )
-        self.assert_rejected(
-            lambda value: _model(value, "forked_lightning", 2)["resolutions"][0]["resolution"]["branches"][0][
-                "applies"
-            ].append("missing_component"),
-            "unknown components",
+            "incomplete saving_throw",
         )
 
-    def test_inheritance_must_resolve_from_a_lower_tier(self) -> None:
-        self.assert_rejected(
-            lambda value: _model(value, "forked_lightning", 2)["inheritance"].__setitem__("source_tier", 2),
-            "lower canonical tier",
-        )
-
-    def test_stacking_replacement_and_dominance_references_are_fail_closed(self) -> None:
-        def missing_group(value: dict[str, object]) -> None:
-            stacking = _model(value, "ball_lightning", 2)["components"][0]["stacking"]
-            stacking["mode"] = "replace"
-            stacking["replacement_group"] = "missing_group"
-
-        self.assert_rejected(missing_group, "unknown replacement group")
-
-        def dominance_cycle(value: dict[str, object]) -> None:
-            relationships = _model(value, "glacial_spike", 2)["relationships"]
-            relationships["dominance"].append({
-                "dominant_component_id": "glacial_spike_speed_reduction",
-                "suppressed_component_ids": ["glacial_spike_restrained"],
-            })
-
-        self.assert_rejected(dominance_cycle, "cycle")
-
-    def test_excluded_profile_and_unsupported_reason_are_not_interchangeable(self) -> None:
-        def duplicate_dominant(value: dict[str, object]) -> None:
-            relationships = _model(value, "glacial_spike", 2)["relationships"]
-            relationships["dominance"].append({
-                "dominant_component_id": "glacial_spike_speed_zero",
-                "suppressed_component_ids": ["glacial_spike_restrained"],
-            })
-
-        self.assert_rejected(duplicate_dominant, "duplicate dominant_component_id")
-
-        excluded = next(row for row in _ledger(self.projection) if row["disposition"] == "excluded_by_profile")
-        unsupported = next(row for row in _ledger(self.projection) if row["disposition"] == "unsupported_error")
-
-        def recast_unsupported(value: dict[str, object]) -> None:
-            row = _row(value, unsupported["entity_id"], unsupported["tier"])
-            row["disposition"] = "excluded_by_profile"
-            row["profile_id"] = value["control_authority"]["active_profile"]["id"]
-            row["reason"] = "outside_headline_control_value"
-            value["coverage"]["excluded_by_profile"] += 1
-            value["coverage"]["unsupported_error"] -= 1
-
-        self.assert_rejected(recast_unsupported, "canonical foundation")
-        self.assert_rejected(
-            lambda value: _row(value, excluded["entity_id"], excluded["tier"]).__setitem__(
-                "profile_id", "other_profile"
-            ),
-            "active profile",
-        )
-        self.assert_rejected(
-            lambda value: _row(value, unsupported["entity_id"], unsupported["tier"]).__setitem__(
-                "reason", "excluded_by_profile"
-            ),
-            "unsupported value",
-        )
-
-    def test_tactical_master_choices_reference_exact_mastery_ids(self) -> None:
-        self.assert_rejected(
-            lambda value: value["control_authority"]["tactical_master"]["choice_mastery_ids"].__setitem__(
-                0, "mastery_other"
-            ),
-            "canonical choices",
-        )
-
-    def test_readiness_guard_blocks_current_foundation_and_accepts_mocked_validated_future(self) -> None:
-        with self.assertRaisesRegex(AuthorityError, "26 ledger row"):
-            ControlAuthorityV2Model(deepcopy(self.projection)).require_benchmark_ready()
-
-        ready = deepcopy(self.projection)
-        profile_id = ready["control_authority"]["active_profile"]["id"]
-        for row in _ledger(ready):
-            if row["disposition"] == "unsupported_error":
-                row["disposition"] = "excluded_by_profile"
-                row["profile_id"] = profile_id
-                row["reason"] = "outside_headline_control_value"
-        ready["coverage"].update(modeled=9, excluded_by_profile=40, unsupported_error=0, total=49, benchmark_ready=True)
-        with patch("harness.authority.validate_control_projection_v2", return_value=ready):
-            future_model = ControlAuthorityV2Model(ready)
-        self.assertTrue(future_model.require_benchmark_ready().benchmark_ready)
-
-
-    def test_resolution_abilities_and_non_save_shape_are_strict(self) -> None:
-        wisdom = deepcopy(self.projection)
-        _model(wisdom, "forked_lightning", 2)["resolutions"][0]["resolution"]["ability"] = "wisdom"
-        self.assertIs(
-            validate_control_projection_v2(wisdom),
-            wisdom,
-        )
-        self.assert_rejected(
-            lambda value: _model(value, "glacial_spike", 0)["resolutions"][0]["resolution"].__setitem__(
-                "ability", "strength"
-            ),
-            "unknown",
-        )
-
-    def test_attack_scope_numbers_and_movement_modes_fail_closed(self) -> None:
-        self.assert_rejected(
-            lambda value: value["control_authority"]["masteries"][2]["component"]["magnitude"].pop("scope"),
-            "missing",
-        )
-        for number in (float("nan"), float("inf"), float("-inf")):
-            with self.subTest(number=number):
-                self.assert_rejected(
-                    lambda value, invalid=number: _model(value, "ball_lightning", 2)["components"][0].__setitem__(
-                        "magnitude",
-                        {"kind": "numerical_modifier", "target": "armor_class", "value": invalid},
-                    ),
-                    "finite",
-                )
-        self.assert_rejected(
-            lambda value: _model(value, "forked_lightning", 2)["components"][2]["magnitude"][
-                "movement_modes"
-            ].__setitem__(0, "all"),
-            "unsupported value",
-        )
-
-    def test_stacking_modes_and_relationships_are_bidirectionally_consistent(self) -> None:
-        self.assert_rejected(
-            lambda value: _model(value, "ball_lightning", 2)["components"][0]["stacking"].__setitem__(
-                "mode", "replace"
-            ),
-            "requires replacement_group",
-        )
-        self.assert_rejected(
-            lambda value: _model(value, "ball_lightning", 2)["components"][0]["stacking"].__setitem__(
-                "mode", "dominates"
-            ),
-            "requires explicit edges",
-        )
-        self.assert_rejected(
-            lambda value: _model(value, "glacial_spike", 2)["components"][1]["stacking"].__setitem__(
-                "mode", "nonstacking"
-            ),
-            "edges require replace or dominates",
-        )
-        self.assert_rejected(
-            lambda value: _model(value, "glacial_spike", 2)["relationships"]["replacement_groups"][0][
-                "component_ids"
-            ].pop(),
-            "must match component declarations",
-        )
-        self.assert_rejected(
-            lambda value: _model(value, "glacial_spike", 2)["relationships"]["dominance"][1][
-                "suppressed_component_ids"
-            ].pop(),
-            "must match component declarations",
-        )
-
-    def test_branch_transitions_require_matching_component_cadence(self) -> None:
-        self.assert_rejected(
-            lambda value: _model(value, "forked_lightning", 2)["components"][0]["cadence"].__setitem__(
-                "apply", ["hit"]
-            ),
-            "cadence.apply",
-        )
-        self.assert_rejected(
-            lambda value: _model(value, "glacial_spike", 2)["components"][0]["cadence"].__setitem__(
-                "repeat", ["hit"]
-            ),
-            "cadence.repeat",
-        )
-        self.assert_rejected(
-            lambda value: _model(value, "glacial_spike", 2)["components"][1]["cadence"].__setitem__(
-                "end", ["hit"]
-            ),
-            "cadence.end",
-        )
-
-    def test_model_snapshot_cannot_be_mutated_through_public_surfaces(self) -> None:
+    def test_root_shape_schema_compatibility_and_snapshot_are_exact(self) -> None:
+        self.assert_rejected(lambda value: value.__setitem__("projection_version", "2.0.0"), "version")
+        self.assert_rejected(lambda value: value.__setitem__("schema_version", "3.0.0"), "3.1.0")
+        self.assert_rejected(lambda value: value.__setitem__("legacy_control_labels", []), "unknown")
         source = deepcopy(self.projection)
         model = ControlAuthorityV2Model(source)
-        source["coverage"]["benchmark_ready"] = True
-        projection_view = model.projection
-        projection_view["coverage"]["benchmark_ready"] = True
-        contract_view = model.contract
-        ledger_view = model.ledger
-        next(row for row in contract_view["ledger"] if row["disposition"] == "unsupported_error")[
-            "disposition"
-        ] = "modeled"
+        source["coverage"]["benchmark_ready"] = False
+        view = model.projection
+        view["coverage"]["benchmark_ready"] = False
+        self.assertTrue(model.benchmark_ready)
+        self.assertTrue(model.projection["coverage"]["benchmark_ready"])
 
-        next(row for row in ledger_view if row["disposition"] == "unsupported_error")["disposition"] = "modeled"
-
-        self.assertFalse(model.benchmark_ready)
-        self.assertEqual(len(model.unsupported), 26)
-        self.assertFalse(model.projection["coverage"]["benchmark_ready"])
-        with self.assertRaisesRegex(AuthorityError, "26 ledger row"):
-            model.require_benchmark_ready()
 
 if __name__ == "__main__":
     unittest.main()

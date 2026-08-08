@@ -47,7 +47,7 @@ class AuthorityProjectionTests(unittest.TestCase):
     def test_real_root_damage_authority_and_complete_stable_id_inventory(self)->None:
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
         self.assertEqual(self.model.rules_version,"14.2.0")
-        self.assertEqual(self.model.projection["schema_version"],"3.0.0")
+        self.assertEqual(self.model.projection["schema_version"],"3.1.0")
         self.assertEqual(self.model.projection["projection_version"],authority_module.DAMAGE_PROJECTION_VERSION)
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":1,"action_surge_allows_additional_standalone_psionic_action":False})
         feature_ids=list(self.model.features)
