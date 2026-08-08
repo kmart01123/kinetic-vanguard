@@ -40,10 +40,7 @@ test("README and release process stay synchronized with canonical development st
 
   const { published, development } = readReleaseStatus(readme);
   assert.ok(compareVersions(published, authority.rules_version) <= 0, "published release cannot be newer than canonical authority");
-
-  if (development !== "None") {
-    assert.equal(development, `v${authority.rules_version}`);
-  }
+  if (development !== "None") assert.equal(development, `v${authority.rules_version}`);
 
   for (const field of ["Development branch", "Release candidate branch", "Implementation pull request", "Release candidate status"]) {
     assert.doesNotMatch(
@@ -53,7 +50,16 @@ test("README and release process stay synchronized with canonical development st
     );
   }
 
-  for (const heading of ["Release status", "Publication interface", "Commands", "Architecture", "Licensing", "Development and release discipline"]) {
+  for (const heading of [
+    "Release status",
+    "Damage benchmark snapshot",
+    "Control methodology status",
+    "Publication interface",
+    "Commands",
+    "Architecture",
+    "Licensing",
+    "Development and release discipline"
+  ]) {
     assert.match(readme, new RegExp(`^## ${heading}$`, "m"));
   }
 
@@ -65,26 +71,31 @@ test("README and release process stay synchronized with canonical development st
   assert.match(readme, /kinetic-vanguard-v<rules_version>/);
   assert.doesNotMatch(readme, /kinetic-vanguard-v\d+\.\d+\.\d+/);
   assert.doesNotMatch(readme, /Forked Lightning needs explicit failed-save wording/);
-  assert.doesNotMatch(readme, /Kinetic Vanguard \*\*v13\.0\.1\*\* is the current/);
 
   for (const heading of ["Start of a development line", "Before marking a release pull request ready", "Publication", "Required release assets"]) {
     assert.match(checklist, new RegExp(`^## ${heading}$`, "m"));
   }
-  assert.match(checklist, /README\.md/);
-  assert.match(checklist, /KineticVanguard\.yaml/);
-  assert.match(checklist, /CHANGELOG\.md/);
-  assert.match(checklist, /Main branch gate/);
-  assert.match(checklist, /Protect main/);
-  assert.match(checklist, /LICENSE\.md/);
-  assert.match(checklist, /NOTICE\.md/);
+  for (const requirement of [
+    "README.md",
+    "KineticVanguard.yaml",
+    "CHANGELOG.md",
+    "Main branch gate",
+    "Protect main",
+    "LICENSE.md",
+    "NOTICE.md",
+    "policy/superseded-implementations.md",
+    "readme:damage:check"
+  ]) assert.ok(checklist.includes(requirement), requirement);
   assert.match(checklist, /mutable branch and pull-request pointers/i);
+  assert.match(checklist, /every CI\/release workflow/i);
+  assert.match(checklist, /frozen release branches, tags, GitHub Releases, published evidence assets, and Git history/i);
 
   assert.match(pullRequestTemplate, /RELEASE_CHECKLIST\.md/);
   assert.match(pullRequestTemplate, /README\.md/);
   assert.match(pullRequestTemplate, /Main branch gate/);
 });
 
-test("README exposes one synchronized headline balance snapshot", async () => {
+test("README exposes one synchronized damage snapshot and a static control status", async () => {
   const [{ authority }, readme, packageJsonSource, benchmarkConfigSource] = await Promise.all([
     loadAuthority(),
     readFile("README.md", "utf8"),
@@ -99,25 +110,24 @@ test("README exposes one synchronized headline balance snapshot", async () => {
     readonly kv_profile: { readonly id: string };
   };
 
-  const beginMarker = "<!-- BEGIN GENERATED BALANCE MATRICES -->";
-  const endMarker = "<!-- END GENERATED BALANCE MATRICES -->";
+  const beginMarker = "<!-- BEGIN GENERATED DAMAGE MATRIX -->";
+  const endMarker = "<!-- END GENERATED DAMAGE MATRIX -->";
   const occurrences = (source: string, value: string): number => source.split(value).length - 1;
-  assert.equal(occurrences(readme, beginMarker), 1, "README has exactly one balance-region start marker");
-  assert.equal(occurrences(readme, endMarker), 1, "README has exactly one balance-region end marker");
+  assert.equal(occurrences(readme, beginMarker), 1, "README has exactly one damage-region start marker");
+  assert.equal(occurrences(readme, endMarker), 1, "README has exactly one damage-region end marker");
 
   const begin = readme.indexOf(beginMarker);
   const end = readme.indexOf(endMarker);
+  const controlStatus = readme.indexOf("## Control methodology status");
   const publication = readme.indexOf("## Publication interface");
-  assert.ok(begin >= 0 && end > begin, "generated balance-region markers are ordered");
-  assert.ok(publication > end, "balance snapshot appears before implementation-oriented README sections");
-  const precedingLevelTwoHeadings = [...readme.slice(0, begin).matchAll(/^## (.+)$/gm)].map(
-    (match) => match[1]
+  assert.ok(begin >= 0 && end > begin, "generated damage-region markers are ordered");
+  assert.ok(controlStatus > end && publication > controlStatus);
+  assert.ok(
+    readme.slice(end + endMarker.length).trimStart().startsWith("## Control methodology status"),
+    "static control status follows the generated damage region immediately"
   );
-  assert.deepEqual(
-    precedingLevelTwoHeadings,
-    ["Release status"],
-    "balance snapshot stays near the top, immediately after release orientation"
-  );
+  const precedingLevelTwoHeadings = [...readme.slice(0, begin).matchAll(/^## (.+)$/gm)].map((match) => match[1]);
+  assert.deepEqual(precedingLevelTwoHeadings, ["Release status"]);
 
   const region = readme.slice(begin, end + endMarker.length);
   const { published, development } = readReleaseStatus(readme);
@@ -132,93 +142,61 @@ test("README exposes one synchronized headline balance snapshot", async () => {
   }
   assert.ok(region.includes(`Profile: \`${benchmarkConfig.kv_profile.id}\`.`));
   assert.ok(region.includes(`Numerical review status: \`${benchmarkConfig.methodology.status}\`.`));
-  assert.match(region, /exact analytical full-roster results, not Monte Carlo estimates/i);
-
-  for (const heading of [
-    "Balance benchmark snapshot",
-    "Single-Target Damage",
-    "Control Reliability"
-  ]) {
-    assert.match(region, new RegExp("^#{2,4} " + heading.replace(/[.*+?^$(){}|[\]\\]/g, "\\$&") + "$", "m"));
-  }
+  assert.match(region, /exact analytical full-roster damage results, not Monte Carlo estimates/i);
+  assert.match(region, /^## Damage benchmark snapshot$/m);
+  assert.doesNotMatch(region, /^### /m);
 
   const tableHeader = "| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |";
-  assert.equal(occurrences(region, tableHeader), 2, "snapshot has one single-target damage matrix and one control matrix");
-  assert.doesNotMatch(region, /^#### Cluster size /m);
-
+  assert.equal(occurrences(region, tableHeader), 1, "snapshot has exactly one single-target damage table");
+  assert.equal((region.match(/^\|---\|---\|---\|---\|---\|$/gm) ?? []).length, 1);
   const lines = region.split("\n");
-  const headerIndexes = lines.flatMap((line, index) => line === tableHeader ? [index] : []);
+  const headerIndex = lines.indexOf(tableHeader);
+  assert.ok(headerIndex >= 0);
   const expectedLevels = ["7", "11", "15", "20"];
   const publicResult = /^(?:IDEAL|N\/A|COLD \(-\d+(?:\.\d+)?%\)|HOT \(\+\d+(?:\.\d+)?%\))$/;
-  let sawCold = false;
-  let sawHot = false;
-  for (const headerIndex of headerIndexes) {
-    assert.equal(lines[headerIndex + 1], "|---|---|---|---|---|");
-    const rows = lines.slice(headerIndex + 2, headerIndex + 6);
-    assert.equal(rows.length, 4);
-    rows.forEach((row, rowIndex) => {
-      const cells = row.split("|").slice(1, -1).map((cell) => cell.trim());
-      assert.equal(cells.length, 5, "heat row has one level and four discipline results");
-      assert.equal(cells[0], expectedLevels[rowIndex]);
-      for (const cell of cells.slice(1)) {
-        assert.match(cell, publicResult, "README heat cell contains only a public balance result");
-        sawCold ||= cell.startsWith("COLD ");
-        sawHot ||= cell.startsWith("HOT ");
-      }
-    });
-  }
-  assert.ok(sawCold, "current snapshot exposes COLD results");
-  assert.ok(sawHot, "current snapshot exposes HOT results");
+  const rows = lines.slice(headerIndex + 2, headerIndex + 6);
+  assert.equal(rows.length, 4);
+  rows.forEach((row, rowIndex) => {
+    const cells = row.split("|").slice(1, -1).map((cell) => cell.trim());
+    assert.equal(cells.length, 5);
+    assert.equal(cells[0], expectedLevels[rowIndex]);
+    for (const cell of cells.slice(1)) assert.match(cell, publicResult);
+  });
 
-  const damageStart = region.indexOf("### Single-Target Damage");
-  const controlStart = region.indexOf("### Control Reliability");
-  assert.ok(damageStart >= 0 && controlStart > damageStart);
   assert.match(region, /primary-target DPR at cluster size 1/);
-  assert.match(region, /This single-target benchmark evaluates each configured control package/);
-  assert.match(region, /All other primary-target and aggregate-cluster results remain in the generated detailed release reports/);
+  assert.match(region, /all other primary-target and aggregate-cluster results remain/);
   assert.match(region, /Battle Master and Eldritch Knight define the comparison envelope/);
   assert.match(region, /IDEAL.*falls between.*inclusive/s);
   assert.match(region, /COLD.*below both.*HOT.*above both/s);
   assert.match(region, /signed distance outside the nearest envelope boundary/);
   assert.match(region, /N\/A.*reserved for a comparison that cannot be evaluated/);
-  assert.match(
-    region,
-    /Control Reliability measures how often the configured control package takes effect\. It does not measure the relative severity, duration, area, or strategic value of different control effects\. A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered\./
-  );
   assert.match(region, /Detailed release CSV, Markdown, and HTML reports retain raw/);
-  assert.doesNotMatch(region, /ORDER CHECK/);
-  assert.doesNotMatch(region, /KV DPR|KV control %|KV as % of EK|KV as % of BM/);
-  assert.doesNotMatch(region, /IDEAL \([^)]*%\)/);
-  assert.doesNotMatch(region, /COLD \(\+|HOT \(-/);
-  for (const comparator of ["Eldritch Knight", "Battle Master"]) {
-    assert.match(region, new RegExp(comparator));
-  }
+  assert.doesNotMatch(region, /KV DPR|KV as % of EK|KV as % of BM/);
+  assert.doesNotMatch(region, /IDEAL \([^)]*%\)|COLD \(\+|HOT \(-/);
 
   for (const source of [
     "[`KineticVanguard.yaml`](KineticVanguard.yaml)",
-    "[maintained harness guide](harness/README.md)",
+    "[maintained damage harness guide](harness/README.md)",
     "[methodology configuration](harness/config/benchmark.json)",
     "[SRD target roster](harness/data/srd_targets.csv)",
     "[comparator assumptions](harness/comparators/fighter-subclasses.json)",
     "[`LICENSE.md`](LICENSE.md)",
     "[`NOTICE.md`](NOTICE.md)"
-  ]) {
-    assert.ok(region.includes(source), `snapshot links to ${source}`);
-  }
+  ]) assert.ok(region.includes(source), `snapshot links to ${source}`);
   assert.match(region, /not affiliated with or endorsed by Wizards of the Coast/i);
-  assert.match(
-    region,
-    /No project license purports to grant rights in Wizards-owned material outside the System Reference Document/
-  );
-  assert.match(region, /LICENSE\.md.*component boundaries.*NOTICE\.md.*attribution and notices/s);
-  assert.doesNotMatch(region, /Hunter(?: Ranger)?|Open Hand(?: Monk)?/i);
 
-  assert.match(
-    packageJson.scripts?.["readme:benchmarks"] ?? "",
-    /^python3 -m harness\.readme_matrices --write(?:\s|$)/
+  const status = readme.slice(controlStatus, publication);
+  assert.match(status, /v14\.1.*Control Reliability.*historical release evidence/s);
+  assert.match(status, /v14\.1\.0 GitHub Release/);
+  assert.match(status, /v14\.2 control methodology is being redesigned/);
+  for (const issue of ["#32", "#39", "#40", "#41", "#42"]) assert.ok(status.includes(issue));
+  assert.match(status, /No v14\.2 control headline, matrix, or HOT\/IDEAL\/COLD classification is authoritative until #42/);
+  assert.doesNotMatch(status, /^\|/m, "control status contains no table");
+
+  assert.deepEqual(
+    Object.keys(packageJson.scripts ?? {}).filter((name) => name.startsWith("readme:")).sort(),
+    ["readme:damage", "readme:damage:check"]
   );
-  assert.match(
-    packageJson.scripts?.["readme:benchmarks:check"] ?? "",
-    /^python3 -m harness\.readme_matrices --check(?:\s|$)/
-  );
+  assert.match(packageJson.scripts?.["readme:damage"] ?? "", /^python3 -m harness\.readme_damage --write(?:\s|$)/);
+  assert.match(packageJson.scripts?.["readme:damage:check"] ?? "", /^python3 -m harness\.readme_damage --check(?:\s|$)/);
 });

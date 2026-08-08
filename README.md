@@ -7,29 +7,27 @@ Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighte
 ## Release status
 
 - Current published release: **v14.1.0**
-- Current development line: **None**
+- Current development line: **v14.2.0**
 - Canonical rules authority: `KineticVanguard.yaml`
 
 Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v14.1.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.1.0).
 
 Version 14.0.0 introduced the deterministic offline Calculator, advanced the authority schema to 2.0.0 for semantic rule and example structure, made Barrier require Concentration at Tier 0 and Tier 1, aligned Explosion/Implosion Tier 1 geometry, and made the canonical rules version the publication’s sole product version. Detailed changes belong in `CHANGELOG.md` and the generated publication rather than being duplicated here.
 
-Version 14.1.0 restores maintained damage and control benchmark harness source. The harnesses use the same validated canonical mechanics as the Calculator where their needs overlap, retain Battle Master and Eldritch Knight as the primary comparators, and produce versioned CSV, Markdown, and self-contained HTML matrices. Benchmark tooling remains developer-only and is not part of the player-facing Calculator.
+Version 14.1.0 restored damage and Control Reliability benchmark evidence. Those frozen results remain reproducible from the release, tag, release branch, evidence assets, and Git history.
 
-<!-- BEGIN GENERATED BALANCE MATRICES -->
-## Balance benchmark snapshot
+Version 14.2.0 development retires the superseded Control Reliability implementation from current `main`. The maintained damage benchmark now has an explicit damage-authority boundary; Control Authority v2 remains separate infrastructure for the redesign work and does not publish a current control result.
 
-**Published snapshot** — canonical rules **v14.1.0**.
+<!-- BEGIN GENERATED DAMAGE MATRIX -->
+## Damage benchmark snapshot
 
-Profile: `official_default_25_percent_hp`. Numerical review status: `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`. These are exact analytical full-roster results, not Monte Carlo estimates.
+**Unreleased development snapshot** — canonical rules **v14.2.0**; current published release **v14.1.0**.
 
-Battle Master and Eldritch Knight define the comparison envelope for each benchmark result. `IDEAL` means Kinetic Vanguard falls between the two comparator results, inclusive. `COLD` is below both; `HOT` is above both. The percentage on COLD and HOT cells shows the signed distance outside the nearest envelope boundary. `N/A` is reserved for a comparison that cannot be evaluated.
+Profile: `official_default_25_percent_hp`. Numerical review status: `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`. These are exact analytical full-roster damage results, not Monte Carlo estimates.
 
-README cells intentionally contain only the public balance result: `IDEAL`, `COLD (-X%)`, `HOT (+X%)`, or `N/A`. Detailed release CSV, Markdown, and HTML reports retain raw Kinetic Vanguard and comparator aggregates, ordinary KV/comparator ratios, dynamic lower and upper boundaries, and the comparator identity supplying each boundary.
+Battle Master and Eldritch Knight define the comparison envelope. `IDEAL` means Kinetic Vanguard falls between the two damage results, inclusive. `COLD` is below both; `HOT` is above both. The percentage on COLD and HOT cells is the signed distance outside the nearest envelope boundary. `N/A` is reserved for a comparison that cannot be evaluated.
 
-The front-door damage view is the single-target benchmark: primary-target DPR at cluster size 1. All other primary-target and aggregate-cluster results remain in the generated detailed release reports and are not collapsed into this table.
-
-### Single-Target Damage
+This single-target view is primary-target DPR at cluster size 1. README cells contain only the public damage result. Detailed release CSV, Markdown, and HTML reports retain raw aggregates, ratios, boundaries, classifications, and provenance; all other primary-target and aggregate-cluster results remain in those reports.
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
@@ -38,25 +36,16 @@ The front-door damage view is the single-target benchmark: primary-target DPR at
 | 15 | IDEAL | IDEAL | IDEAL | IDEAL |
 | 20 | COLD (-40.35%) | IDEAL | COLD (-9.30%) | COLD (-14.31%) |
 
-### Control Reliability
-
-This single-target benchmark evaluates each configured control package against one roster target at a time before taking the equal-weight roster mean.
-
-Configured headline metric: **roster-adjusted whole-package control stick %**.
-
-Control Reliability measures how often the configured control package takes effect. It does not measure the relative severity, duration, area, or strategic value of different control effects. A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.
-
-| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
-|---|---|---|---|---|
-| 7 | HOT (+65.70%) | COLD (-100.00%) | HOT (+44.19%) | HOT (+65.70%) |
-| 11 | HOT (+70.93%) | COLD (-100.00%) | HOT (+57.39%) | HOT (+70.93%) |
-| 15 | HOT (+44.97%) | HOT (+44.97%) | HOT (+72.25%) | HOT (+56.46%) |
-| 20 | HOT (+117.66%) | HOT (+76.85%) | HOT (+117.66%) | HOT (+76.85%) |
-
-This snapshot is a summary, not the full evidence set. Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the [maintained harness guide](harness/README.md), [methodology configuration](harness/config/benchmark.json), [SRD target roster](harness/data/srd_targets.csv), and [comparator assumptions](harness/comparators/fighter-subclasses.json) for the complete methodology, provenance, regeneration commands, and report paths.
+Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the [maintained damage harness guide](harness/README.md), [methodology configuration](harness/config/benchmark.json), [SRD target roster](harness/data/srd_targets.csv), and [comparator assumptions](harness/comparators/fighter-subclasses.json).
 
 Battle Master and Eldritch Knight are referenced solely as unofficial third-party comparative benchmarks. The Kinetic Vanguard project is not affiliated with or endorsed by Wizards of the Coast. No project license purports to grant rights in Wizards-owned material outside the System Reference Document. See [`LICENSE.md`](LICENSE.md) for component boundaries and [`NOTICE.md`](NOTICE.md) for attribution and notices.
-<!-- END GENERATED BALANCE MATRICES -->
+<!-- END GENERATED DAMAGE MATRIX -->
+
+## Control methodology status
+
+The v14.1 **Control Reliability** benchmark is historical release evidence, not maintained current-development methodology. Its reproducible outputs remain permanently available with the [v14.1.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.1.0), frozen release branch and tag, evidence assets, and Git history.
+
+The v14.2 control methodology is being redesigned under [#32](https://github.com/kmart01123/kinetic-vanguard/issues/32) and issues #39–#42: [#39](https://github.com/kmart01123/kinetic-vanguard/issues/39), [#40](https://github.com/kmart01123/kinetic-vanguard/issues/40), [#41](https://github.com/kmart01123/kinetic-vanguard/issues/41), and [#42](https://github.com/kmart01123/kinetic-vanguard/issues/42). No v14.2 control headline, matrix, or HOT/IDEAL/COLD classification is authoritative until #42 promotes the replacement methodology.
 
 ## Publication interface
 
@@ -89,10 +78,10 @@ npm run test:determinism
 npm run test:layout
 npm run harness:validate
 npm run test:harness
-npm run readme:benchmarks:check
+npm run readme:damage:check
 ```
 
-Optional full-roster commands are `npm run harness:damage -- --output-dir harness/results/damage` and `npm run harness:control -- --output-dir harness/results/control`. Generated results are ignored. See `harness/README.md` for methodology, provenance, matrix interpretation, and current numerical-review status.
+The optional full-roster command is `npm run harness:damage -- --output-dir harness/results/damage`. Generated results are ignored. See `harness/README.md` for methodology, provenance, damage-matrix interpretation, and current numerical-review status.
 `npm run build` writes the development publication to `artifacts/KineticVanguard.prototype.html`. It always carries a visible and accessibility-exposed `NON-RELEASE PROTOTYPE` identity.
 
 
@@ -117,7 +106,9 @@ The top-level onboarding authority is canonical and validated but remains outsid
 
 The completed one-time Markdown migration has been retired. Contributors edit `KineticVanguard.yaml` directly; there is no Markdown synchronization step.
 
-The maintained Python harnesses consume a deterministic runtime projection emitted by the existing TypeScript YAML loader and semantic validator. Kinetic Vanguard mechanics remain exclusively in YAML; project-authored methodology remains in `harness/config/`; minimal BM/EK third-party comparator parameters remain isolated in `harness/comparators/`; and pinned SRD roster data remains in `harness/data/`.
+The maintained Python damage harness consumes `DamageHarnessProjection`, emitted by the TypeScript YAML loader and semantic validator through `createDamageHarnessProjection`, and loads it through Python's `DamageAuthorityModel`. Kinetic Vanguard mechanics remain exclusively in YAML; project-authored damage methodology remains in `harness/config/`; minimal BM/EK damage comparator parameters remain isolated in `harness/comparators/`; and pinned SRD roster data remains in `harness/data/`.
+
+Control Authority v2 is a separate, fail-closed structured authority contract with shared TypeScript/Python parity coverage. It is preserved for the redesign sequence, but it is not part of the damage projection and does not evaluate or publish a v14.2 control result.
 
 ## Licensing
 

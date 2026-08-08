@@ -1,4 +1,4 @@
-# Synchronize the README balance snapshot from fresh authoritative harness matrices.
+"""Synchronize the README damage snapshot from a fresh authoritative matrix."""
 
 from __future__ import annotations
 
@@ -12,14 +12,13 @@ import tempfile
 from pathlib import Path
 from typing import Sequence
 
-from .authority import AuthorityModel, DEFAULT_AUTHORITY, PROJECT_ROOT
-from .comparison_report import (
+from .authority import DamageAuthorityModel, DEFAULT_AUTHORITY, PROJECT_ROOT
+from .damage_report import (
     COMPARATOR_NOTICE,
     NOTICE_COLUMNS,
     VALUE_COLUMNS,
-    matrix_row,
+    damage_matrix_row,
 )
-from .control_harness import run as run_control
 from .damage_harness import run as run_damage
 from .model import (
     DEFAULT_COMPARATORS,
@@ -29,8 +28,8 @@ from .model import (
     load_config,
 )
 
-BEGIN_MARKER = "<!-- BEGIN GENERATED BALANCE MATRICES -->"
-END_MARKER = "<!-- END GENERATED BALANCE MATRICES -->"
+BEGIN_MARKER = "<!-- BEGIN GENERATED DAMAGE MATRIX -->"
+END_MARKER = "<!-- END GENERATED DAMAGE MATRIX -->"
 README_PATH = PROJECT_ROOT / "README.md"
 BUILD_INPUTS_PATH = PROJECT_ROOT / "build" / "inputs.json"
 DAMAGE_SCOPES = ("primary-target DPR", "aggregate cluster DPR")
@@ -143,22 +142,24 @@ def read_matrix_rows(path: Path) -> list[MatrixRow]:
     return rows
 
 
-def _require_fields(rows: Sequence[MatrixRow], fields: Sequence[str], kind: str) -> None:
+def _require_fields(rows: Sequence[MatrixRow], fields: Sequence[str]) -> None:
     expected = set(fields)
     for index, row in enumerate(rows):
         missing = [field for field in fields if field not in row]
         unexpected = [field for field in row if field not in expected]
         if missing or unexpected:
             raise MatrixSyncError(
-                f"{kind} row {index} has schema differences; "
+                f"Damage row {index} has schema differences; "
                 f"missing={missing}, unexpected={unexpected}"
             )
 
 
-def _uniform(rows: Sequence[MatrixRow], field: str, kind: str) -> str:
+def _uniform(rows: Sequence[MatrixRow], field: str) -> str:
     values = {row[field] for row in rows}
     if len(values) != 1:
-        raise MatrixSyncError(f"{kind} matrix has inconsistent {field}: {sorted(values)}")
+        raise MatrixSyncError(
+            f"Damage matrix has inconsistent {field}: {sorted(values)}"
+        )
     return next(iter(values))
 
 
@@ -171,9 +172,9 @@ def _key_difference(actual: set[tuple[str, ...]], expected: set[tuple[str, ...]]
 
 
 def validate_authoritative_rows(
-    damage_rows: Sequence[MatrixRow], control_rows: Sequence[MatrixRow]
+    damage_rows: Sequence[MatrixRow],
 ) -> tuple[str, str, str, tuple[int, ...], tuple[str, ...]]:
-    model = AuthorityModel.load(DEFAULT_AUTHORITY)
+    model = DamageAuthorityModel.load(DEFAULT_AUTHORITY)
     config = load_config()
     levels = tuple(int(value) for value in config["methodology"]["levels"])
     clusters = tuple(int(value) for value in config["methodology"]["cluster_sizes"])
@@ -197,20 +198,6 @@ def validate_authoritative_rows(
             *PROVENANCE_FIELDS,
             *NOTICE_COLUMNS,
         ),
-        "damage",
-    )
-    _require_fields(
-        control_rows,
-        (
-            "Level",
-            "Discipline",
-            "Metric",
-            "Profile",
-            *RESULT_FIELDS,
-            *PROVENANCE_FIELDS,
-            *NOTICE_COLUMNS,
-        ),
-        "control",
     )
 
     expected_damage = {
@@ -224,74 +211,53 @@ def validate_authoritative_rows(
         (row["Level"], row["Discipline"], row["Cluster Size"], row["Damage Scope"])
         for row in damage_rows
     }
-    _key_difference(actual_damage, expected_damage, "damage")
+    _key_difference(actual_damage, expected_damage, "Damage")
     if len(damage_rows) != len(expected_damage):
         raise MatrixSyncError("Damage matrix contains duplicate row identities")
 
-    expected_control = {
-        (str(level), discipline) for level in levels for discipline in disciplines
-    }
-    actual_control = {(row["Level"], row["Discipline"]) for row in control_rows}
-    _key_difference(actual_control, expected_control, "control")
-    if len(control_rows) != len(expected_control):
-        raise MatrixSyncError("Control matrix contains duplicate row identities")
-
-    expected_common = {
+    expected = {
         "Provenance Rules Version": model.rules_version,
         "Provenance Authority Sha256": model.authority_sha256,
         "Provenance Roster Sha256": file_sha256(DEFAULT_ROSTER),
         "Provenance Config Sha256": file_sha256(DEFAULT_CONFIG),
         "Provenance Comparator Config Sha256": file_sha256(DEFAULT_COMPARATORS),
+        "Provenance Trials": str(config["methodology"]["damage_default_trials"]),
+        "Provenance Seed": str(config["methodology"]["damage_seed"]),
         "Provenance Evaluator": "exact_analytical_enumeration",
         "Provenance Trial Seed Role": "historical_compatibility_metadata",
+        "Provenance Aggregation": (
+            "equal-weight roster means; percentages from displayed aggregates"
+        ),
         "Provenance Status": status,
         "Profile": profile,
     }
+    for index, row in enumerate(damage_rows):
+        for field, value in expected.items():
+            if row[field] != value:
+                raise MatrixSyncError(
+                    f"Damage row {index} has {field}={row[field]!r}; expected {value!r}"
+                )
+        for field, value in NOTICE_COLUMNS.items():
+            if row[field] != value:
+                raise MatrixSyncError(f"Damage row {index} changed notice field {field}")
+        recomputed = damage_matrix_row(
+            {},
+            float(row["KV"]),
+            float(row["Eldritch Knight"]),
+            float(row["Battle Master"]),
+        )
+        for field in RESULT_FIELDS:
+            if row[field] != recomputed[field]:
+                raise MatrixSyncError(
+                    f"Damage row {index} has stale {field}: "
+                    f"{row[field]} != {recomputed[field]}"
+                )
 
-    for kind, rows in (("damage", damage_rows), ("control", control_rows)):
-        expected = {
-            **expected_common,
-            "Provenance Trials": str(config["methodology"][f"{kind}_default_trials"]),
-            "Provenance Seed": str(config["methodology"][f"{kind}_seed"]),
-            "Provenance Aggregation": (
-                "equal-weight roster means; percentages from displayed aggregates"
-                if kind == "damage"
-                else str(config["control_matrix"]["aggregation"])
-            ),
-        }
-        for index, row in enumerate(rows):
-            for field, value in expected.items():
-                if row[field] != value:
-                    raise MatrixSyncError(
-                        f"{kind} row {index} has {field}={row[field]!r}; expected {value!r}"
-                    )
-            for field, value in NOTICE_COLUMNS.items():
-                if row[field] != value:
-                    raise MatrixSyncError(f"{kind} row {index} changed notice field {field}")
-            recomputed = matrix_row(
-                {},
-                float(row["KV"]),
-                float(row["Eldritch Knight"]),
-                float(row["Battle Master"]),
-                kind,
-            )
-            for field in RESULT_FIELDS:
-                if row[field] != recomputed[field]:
-                    raise MatrixSyncError(
-                        f"{kind} row {index} has stale {field}: {row[field]} != {recomputed[field]}"
-                    )
-
-    metric = str(config["control_matrix"]["metric"])
-    if _uniform(control_rows, "Metric", "control") != metric:
-        raise MatrixSyncError("Control matrix metric differs from benchmark configuration")
-    if _uniform(damage_rows, "Provenance Rules Version", "damage") != model.rules_version:
+    if _uniform(damage_rows, "Provenance Rules Version") != model.rules_version:
         raise MatrixSyncError("Damage matrix rules version differs from canonical authority")
-    if _uniform(control_rows, "Provenance Rules Version", "control") != model.rules_version:
-        raise MatrixSyncError("Control matrix rules version differs from canonical authority")
-
-    serialized = "\n".join(",".join(row.values()) for row in (*damage_rows, *control_rows))
+    serialized = "\n".join(",".join(row.values()) for row in damage_rows)
     if re.search(r"hunter.?ranger|open.?hand.?monk", serialized, re.IGNORECASE):
-        raise MatrixSyncError("A retired comparator entered the headline matrices")
+        raise MatrixSyncError("A retired comparator entered the headline damage matrix")
 
     return model.rules_version, status, profile, clusters, disciplines
 
@@ -327,7 +293,7 @@ def _public_result(row: MatrixRow) -> str:
         return band
     expected_sign = {"COLD": "-", "HOT": "+"}.get(band)
     if expected_sign is None:
-        raise MatrixSyncError(f"Unsupported public balance result: {band}")
+        raise MatrixSyncError(f"Unsupported public damage result: {band}")
     if not delta.startswith(expected_sign):
         raise MatrixSyncError(f"{band} result has incorrectly signed Boundary Delta %")
     return f"{band} ({delta}%)"
@@ -383,13 +349,6 @@ def render_single_target_damage(
     return _heat_table(rows, disciplines)
 
 
-def render_control_table(
-    control_rows: Sequence[MatrixRow],
-    disciplines: Sequence[str] = README_DISCIPLINES,
-) -> str:
-    return _heat_table(control_rows, disciplines)
-
-
 def release_state_line(readme: str, rules_version: str) -> str:
     published_lines = re.findall(r"^- Current published release:.*$", readme, re.MULTILINE)
     development_lines = re.findall(r"^- Current development line:.*$", readme, re.MULTILINE)
@@ -430,10 +389,9 @@ def release_state_line(readme: str, rules_version: str) -> str:
     )
 
 
-def render_balance_region(
+def render_damage_region(
     readme: str,
     damage_rows: Sequence[MatrixRow],
-    control_rows: Sequence[MatrixRow],
     rules_version: str,
     status: str,
     profile: str,
@@ -441,72 +399,45 @@ def render_balance_region(
     disciplines: Sequence[str] = README_DISCIPLINES,
 ) -> str:
     release_line = release_state_line(readme, rules_version)
-    metric = _uniform(control_rows, "Metric", "control")
     if 1 not in clusters:
         raise MatrixSyncError("Single-target README snapshot requires cluster size 1")
     lines = [
         BEGIN_MARKER,
-        "## Balance benchmark snapshot",
+        "## Damage benchmark snapshot",
         "",
         release_line,
         "",
         (
             f"Profile: `{profile}`. Numerical review status: `{status}`. "
-            "These are exact analytical full-roster results, not Monte Carlo estimates."
+            "These are exact analytical full-roster damage results, not Monte Carlo "
+            "estimates."
         ),
         "",
         (
-            "Battle Master and Eldritch Knight define the comparison envelope for each "
-            "benchmark result. `IDEAL` means Kinetic Vanguard falls between the two "
-            "comparator results, inclusive. `COLD` is below both; `HOT` is above both. "
-            "The percentage on COLD and HOT cells shows the signed distance outside the nearest "
-            "envelope boundary. `N/A` is reserved for a comparison that cannot be evaluated."
+            "Battle Master and Eldritch Knight define the comparison envelope. `IDEAL` "
+            "means Kinetic Vanguard falls between the two damage results, inclusive. "
+            "`COLD` is below both; `HOT` is above both. The percentage on COLD and HOT "
+            "cells is the signed distance outside the nearest envelope boundary. `N/A` "
+            "is reserved for a comparison that cannot be evaluated."
         ),
         "",
         (
-            "README cells intentionally contain only the public balance result: `IDEAL`, "
-            "`COLD (-X%)`, `HOT (+X%)`, or `N/A`. Detailed release CSV, Markdown, "
-            "and HTML reports retain raw Kinetic Vanguard and comparator aggregates, ordinary "
-            "KV/comparator ratios, dynamic lower and upper boundaries, and the comparator "
-            "identity supplying each boundary."
+            "This single-target view is primary-target DPR at cluster size 1. README "
+            "cells contain only the public damage result. Detailed release CSV, Markdown, "
+            "and HTML reports retain raw aggregates, ratios, boundaries, classifications, "
+            "and provenance; all other primary-target and aggregate-cluster results remain "
+            "in those reports."
         ),
-        "",
-        (
-            "The front-door damage view is the single-target benchmark: primary-target DPR "
-            "at cluster size 1. All other primary-target and aggregate-cluster results remain "
-            "in the generated detailed release reports and are not collapsed into this table."
-        ),
-        "",
-        "### Single-Target Damage",
         "",
         render_single_target_damage(damage_rows, disciplines),
         "",
-        "### Control Reliability",
-        "",
         (
-            "This single-target benchmark evaluates each configured control package against "
-            "one roster target at a time before taking the equal-weight roster mean."
-        ),
-        "",
-        f"Configured headline metric: **{metric}**.",
-        "",
-        (
-            "Control Reliability measures how often the configured control package takes effect. "
-            "It does not measure the relative severity, duration, area, or strategic value of "
-            "different control effects. A HOT result is a balance-review signal, not an automatic "
-            "finding that the feature is overpowered."
-        ),
-        "",
-        render_control_table(control_rows, disciplines),
-        "",
-        (
-            "This snapshot is a summary, not the full evidence set. Kinetic Vanguard mechanics "
-            "come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the "
-            "[maintained harness guide](harness/README.md), "
+            "Kinetic Vanguard mechanics come from "
+            "[`KineticVanguard.yaml`](KineticVanguard.yaml). See the "
+            "[maintained damage harness guide](harness/README.md), "
             "[methodology configuration](harness/config/benchmark.json), "
             "[SRD target roster](harness/data/srd_targets.csv), and "
-            "[comparator assumptions](harness/comparators/fighter-subclasses.json) for the "
-            "complete methodology, provenance, regeneration commands, and report paths."
+            "[comparator assumptions](harness/comparators/fighter-subclasses.json)."
         ),
         "",
         (
@@ -521,11 +452,13 @@ def render_balance_region(
 
 def generated_region_span(readme: str) -> tuple[int, int]:
     if readme.count(BEGIN_MARKER) != 1 or readme.count(END_MARKER) != 1:
-        raise MatrixSyncError("README must contain exactly one generated balance-matrix marker pair")
+        raise MatrixSyncError(
+            "README must contain exactly one generated damage-matrix marker pair"
+        )
     start = readme.index(BEGIN_MARKER)
     end_start = readme.find(END_MARKER, start + len(BEGIN_MARKER))
     if end_start < 0:
-        raise MatrixSyncError("README balance-matrix markers are reversed")
+        raise MatrixSyncError("README damage-matrix markers are reversed")
     return start, end_start + len(END_MARKER)
 
 
@@ -534,11 +467,11 @@ def replace_generated_region(readme: str, region: str) -> str:
     return readme[:start] + region + readme[end:]
 
 
-def generate_authoritative_rows(workers: int) -> tuple[list[MatrixRow], list[MatrixRow]]:
+def generate_authoritative_rows(workers: int) -> list[MatrixRow]:
     config = load_config()
     levels = {int(value) for value in config["methodology"]["levels"]}
     methodology = config["methodology"]
-    with tempfile.TemporaryDirectory(prefix="kv-readme-matrices-") as directory:
+    with tempfile.TemporaryDirectory(prefix="kv-readme-damage-") as directory:
         root = Path(directory)
         damage = run_damage(
             DEFAULT_AUTHORITY,
@@ -551,25 +484,12 @@ def generate_authoritative_rows(workers: int) -> tuple[list[MatrixRow], list[Mat
             True,
             workers,
         )
-        control = run_control(
-            DEFAULT_AUTHORITY,
-            root / "control",
-            levels,
-            None,
-            int(methodology["control_default_trials"]),
-            int(methodology["control_seed"]),
-            False,
-            True,
-        )
-        return (
-            read_matrix_rows(damage["paths"]["csv"]),
-            read_matrix_rows(control["paths"]["csv"]),
-        )
+        return read_matrix_rows(damage["paths"]["csv"])
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Synchronize README balance matrices with the exact analytical harness"
+        description="Synchronize the README damage matrix with the analytical harness"
     )
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
@@ -582,14 +502,13 @@ def main() -> None:
     input_fingerprints = synchronization_input_fingerprints()
     readme = README_PATH.read_text(encoding="utf-8")
     generated_region_span(readme)
-    damage_rows, control_rows = generate_authoritative_rows(args.workers)
+    damage_rows = generate_authoritative_rows(args.workers)
     rules_version, status, profile, clusters, disciplines = validate_authoritative_rows(
-        damage_rows, control_rows
+        damage_rows
     )
-    region = render_balance_region(
+    region = render_damage_region(
         readme,
         damage_rows,
-        control_rows,
         rules_version,
         status,
         profile,
@@ -604,16 +523,16 @@ def main() -> None:
     if args.check:
         if synchronized != readme:
             raise SystemExit(
-                "README balance benchmark snapshot is stale; run npm run readme:benchmarks"
+                "README damage benchmark snapshot is stale; run npm run readme:damage"
             )
-        print(f"README balance benchmark snapshot is synchronized for v{rules_version}")
+        print(f"README damage benchmark snapshot is synchronized for v{rules_version}")
         return
 
     if synchronized != readme:
         atomic_replace_text(README_PATH, readme, synchronized)
-        print(f"Updated README balance benchmark snapshot for v{rules_version}")
+        print(f"Updated README damage benchmark snapshot for v{rules_version}")
     else:
-        print(f"README balance benchmark snapshot was already current for v{rules_version}")
+        print(f"README damage benchmark snapshot was already current for v{rules_version}")
 
 
 if __name__ == "__main__":

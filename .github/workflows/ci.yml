@@ -70,10 +70,10 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Validate harness authority projection
+      - name: Validate damage authority and Control Authority v2 projections
         run: npm run harness:validate
 
-      - name: Test harnesses
+      - name: Test maintained damage and Control Authority v2 contracts
         run: npm run test:harness
 
       - name: Build prototype
