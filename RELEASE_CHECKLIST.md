@@ -2,6 +2,16 @@
 
 Use this checklist for every development line and release. The README is a maintained public entry point: its release and orientation prose is reviewed deliberately, while its delimited balance-matrix region is regenerated from the exact analytical harness. Keep mutable branch and pull-request pointers in GitHub rather than copying them into README status, so merged or superseded work cannot leave stale public metadata behind.
 
+## Branch and release-reference hygiene
+
+- `main` is permanent.
+- Frozen `release/*` branches are permanent and immutable. Never delete or rewrite them.
+- Annotated release tags and GitHub Releases are permanent. Never delete or repoint them as part of branch cleanup.
+- Temporary development branches are deleted after their pull requests merge. GitHub's automatic head-branch deletion setting is the normal cleanup mechanism.
+- A branch associated with open or otherwise unmerged work must not be deleted.
+- The weekly branch-hygiene audit flags non-release branches that have no open pull request and whose head commit is older than 14 days. The audit reports candidates but never deletes them; verify each candidate before manual cleanup.
+- Treat branch hygiene as normal post-merge and post-release housekeeping.
+
 ## Start of a development line
 
 - [ ] Branch from the current `main` after the previous release and publication work is complete.
@@ -51,6 +61,7 @@ Use this checklist for every development line and release. The README is a maint
 ## Publication
 
 - [ ] Squash-merge the verified release pull request into `main`.
+- [ ] Confirm the merged temporary development branch was deleted, while preserving `main`, every frozen `release/*` branch, release tags, GitHub Releases, and all heads associated with open or unmerged work.
 - [ ] Record the exact merged release commit.
 - [ ] Create and freeze `release/X.Y.Z` at that exact commit.
 - [ ] Add an idempotent publication workflow that verifies the frozen commit.
