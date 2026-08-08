@@ -21,9 +21,8 @@
     "harness:validate": "python3 -m harness.damage_harness --output-dir /tmp/kv-harness-validation --validate-only && python3 -m harness.authority --projection-version 2.0.0",
     "test:harness": "python3 -m unittest discover -s harness/tests -p 'test_*.py'",
     "harness:damage": "python3 -m harness.damage_harness",
-    "harness:control": "python3 -m harness.control_harness",
-    "readme:benchmarks": "python3 -m harness.readme_matrices --write --workers 4",
-    "readme:benchmarks:check": "python3 -m harness.readme_matrices --check --workers 4"
+    "readme:damage": "python3 -m harness.readme_damage --write --workers 4",
+    "readme:damage:check": "python3 -m harness.readme_damage --check --workers 4"
   },
   "dependencies": {
     "ajv": "8.20.0",

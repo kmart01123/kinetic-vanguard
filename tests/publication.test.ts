@@ -1,6 +1,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { readFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { JSDOM } from "jsdom";
 import { executeBuild } from "../src/build.js";
 import { loadAuthority } from "../src/load.js";
@@ -12,16 +14,16 @@ const hasAlternateAddition=(value:string)=>/\bplus\b/iu.test(value)||[...value].
 const assertAsciiTableAddition=(values:string[],source:string)=>{for(const value of values)assert.equal(hasAlternateAddition(value),false,`${source} table cell uses a non-ASCII addition operator: ${value}`);};
 
 test("prototype is self-contained, offline, and unmistakably non-release",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  assert.match(html,/NON-RELEASE PROTOTYPE/);assert.match(html,/"release_status":"prototype"/);assert.match(html,/<div class="versions"><span>Rules version: 14\.1\.0<\/span><\/div>/);
+  const [{authority},result]=await Promise.all([loadAuthority(),executeBuild("prototype")]);const html=await readFile(result.htmlPath,"utf8");
+  assert.match(html,/NON-RELEASE PROTOTYPE/);assert.match(html,/"release_status":"prototype"/);assert.ok(html.includes(`<div class="versions"><span>Rules version: ${authority.rules_version}</span></div>`));
   assert.doesNotMatch(html,/<(?:script|link|img)[^>]+(?:src|href)=["']https?:/i);assert.doesNotMatch(html,/(?:fetch|XMLHttpRequest|localStorage|sessionStorage|indexedDB|serviceWorker)/);
   assert.doesNotMatch(html,/<input[^>]+type=["'](?:text|search|number)["']/i);assert.doesNotMatch(html,/<textarea|contenteditable|aria-autocomplete/i);
   assert.doesNotMatch(html,/Application version|application_version|0\.1\.0/);
   const provenanceSource=html.match(/<script type="application\/json" id="publication-provenance">([^<]+)<\/script>/)?.[1];assert.ok(provenanceSource);
   const provenance=JSON.parse(provenanceSource);
   assert.deepEqual(Object.keys(provenance).sort(),["authority_sha256","release_status","rules_version","schema_version"]);
-  assert.equal(provenance.rules_version,"14.1.0");
-  assert.equal(result.manifest.build_identity.rules_version,"14.1.0");assert.equal("application_version" in result.manifest.build_identity,false);
+  assert.equal(provenance.rules_version,authority.rules_version);
+  assert.equal(result.manifest.build_identity.rules_version,authority.rules_version);assert.equal("application_version" in result.manifest.build_identity,false);
 });
 
 test("rendered rules use Tn shorthand headings and preserve cumulative tier order",async()=>{
@@ -312,7 +314,21 @@ test("paragraph text beginning with Example is not classified heuristically",asy
 });
 
 
-test("release build fails closed before emitting deployable output",async()=>{await assert.rejects(()=>executeBuild("release"),/Build blocked/);});
+test("release build without explicit authorization fails closed before emitting release artifacts",async()=>{
+  const temporary=await mkdtemp(join(tmpdir(),"kv-unauthorized-release-"));
+  const outputRoot=join(temporary,"artifacts");
+  const previousApproval=process.env.KV_RELEASE_APPROVED;
+  try{
+    delete process.env.KV_RELEASE_APPROVED;
+    await assert.rejects(()=>executeBuild("release",outputRoot),/release\.approval_required/);
+    for(const artifact of ["KineticVanguard.html","build-manifest.json"]){
+      await assert.rejects(access(join(outputRoot,artifact)),(error:any)=>error?.code==="ENOENT");
+    }
+  }finally{
+    if(previousApproval===undefined)delete process.env.KV_RELEASE_APPROVED;else process.env.KV_RELEASE_APPROVED=previousApproval;
+    await rm(temporary,{recursive:true,force:true});
+  }
+});
 
 test("committed Name selection opens exactly once, preserves history state, and remains synchronized",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");

@@ -39,7 +39,7 @@ The pre-change tree contained 74 tracked files. This table covers every maintain
 | Comparator configuration | `harness/comparators/fighter-subclasses.json` | Project-authored structure, benchmark selection, and independently authored analytical/policy expression are BSD-3-Clause. Individual parameters retain SRD or third-party status as applicable; Battle Master/Eldritch Knight identifiers and underlying non-SRD material are not licensed by the project. |
 | SRD roster and provenance | `harness/data/srd_targets.csv`, SRD components in `harness/provenance/*` | SRD-derived data remain CC BY 4.0 with exact attribution and modification marking. Project-authored selection/technical structure is BSD-3-Clause where copyright applies. |
 | Generated publications | `KineticVanguard.html` / prototype output | Mixed: BSD presentation/runtime, CC BY-NC-SA original expression, and CC BY SRD components. The HTML embeds scoped notices; current release/deployable paths retain all four legal files. |
-| Generated benchmark reports | damage/control CSV, Markdown, and HTML | Mixed technical/report structure, original explanation, SRD target data, and third-party comparator identifiers. Every format now carries structured legal notices. |
+| Generated damage benchmark reports | damage CSV, Markdown, and HTML | Mixed technical/report structure, original explanation, SRD target data, and third-party comparator identifiers. Every format carries structured legal notices. |
 | Manifests and ledgers | build manifest, integrity/coverage ledgers, harness provenance | Project-authored technical structure is BSD-3-Clause; embedded source data and text retain their component boundary. Legal assets are declared and hashed build inputs. |
 | Package/tool metadata | `package.json`, `package-lock.json` | The private root package points to `LICENSE.md`. All 85 locked packages retain their own metadata: 73 MIT, 4 Apache-2.0, 2 BSD-2-Clause, 2 BSD-3-Clause, 3 ISC, and 1 MIT-0. No dependency source is vendored or bundled into the browser runtime. |
 | Historical release workflows | `.github/workflows/publish-v13.*.yml`, `publish-v14.0.0.yml` | Frozen snapshots remain historical records. v13.2.0 and later bundles carry the four legal assets; earlier frozen releases are documented but not silently rewritten. |
@@ -73,7 +73,7 @@ No content license was changed.
 
 The official PDF's prescribed SRD attribution remains verbatim in `NOTICE.md`, canonical YAML metadata, generated publication footers, and harness reports. The separate supplied Section 5 disclaimer reference and a specific modification marker are now retained with it.
 
-The recorded official PDF SHA-256 is `8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87`, matching `harness/provenance/legacy-import.json`. The maintained 28-row roster identifies SRD 5.2.1, source page, and official PDF URL for every row. Its preserved historical roster SHA-256 is `dfbda8f8e51d85b898d406a1b7dff63a40899bdf460fe5bc25d73c61d1d1ca5a`.
+The recorded official PDF SHA-256 is `8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87`, matching `harness/provenance/damage-review.json`. The maintained 28-row roster identifies SRD 5.2.1, source page, and official PDF URL for every row. Its preserved historical roster SHA-256 is `dfbda8f8e51d85b898d406a1b7dff63a40899bdf460fe5bc25d73c61d1d1ca5a`.
 
 The project CC BY-NC-SA notice expressly does not restrict or relicense SRD-derived components.
 
@@ -82,7 +82,7 @@ The project CC BY-NC-SA notice expressly does not restrict or relicense SRD-deri
 The comparator audit found no reason to remove or replace the comparators:
 
 - comparator mechanics remain absent from `KineticVanguard.yaml`;
-- configuration retains only the numerical parameters, narrow scenario identifiers, and independently authored analytical-policy fields used by the benchmark; it contains no copied descriptive subclass, maneuver, spell, sourcebook, flavor, or character-building prose;
+- configuration retains only the numerical parameters and independently authored analytical-policy fields used by the damage benchmark; it contains no copied descriptive subclass, maneuver, spell, sourcebook, flavor, or character-building prose;
 - project-authored code and structure are separated from underlying game material;
 - the names are described only as unofficial reference identifiers; and
 - repository and generated-report notices deny affiliation, endorsement, and any project grant of rights in non-SRD Wizards-owned material.
@@ -97,7 +97,7 @@ Confirmed corrections:
 - the current release build manifest hashes all four legal assets;
 - current promotion verifies those hashes and produces a five-file deployable bundle instead of silently dropping the legal files;
 - CI/GitHub release bundles continue to ship the same legal assets;
-- every harness detail, audit, and matrix CSV embeds structured notice columns; and
+- every damage detail and matrix CSV embeds structured notice columns; and
 - matrix Markdown and HTML include a visible licensing-and-notices section.
 
 Historical release assets and frozen branches were intentionally not rewritten. Future outputs receive the corrected boundary.

@@ -1,5 +1,18 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Narrowed the maintained benchmark architecture to an explicit damage authority, projection, configuration, comparator, report, README generator, and command boundary.
+- Replaced the generated two-matrix README snapshot with one damage heat table and a static control-methodology status that points v14.1 reproduction to frozen release evidence and identifies the v14.2 redesign sequence.
+- Preserved Control Authority v2 as a separate fail-closed structured contract with TypeScript/Python parity coverage; it does not publish a v14.2 control result.
+- Codified the standing policy for retiring superseded implementations from current development while preserving released history through frozen branches, tags, Releases, evidence assets, and Git history.
+
+### Removed
+
+- Retired the legacy Control Reliability evaluator, scenario/configuration data, report and selection-audit pipeline, README regeneration path, package commands, current-version publication workflow, and output-parity/golden-result burden from maintained `main`.
+
 ## 14.1.0 — 2026-08-07
 
 ### Added

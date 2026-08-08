@@ -44,33 +44,5 @@
         "true_strike_use_count": "exactly_configured_per_attack_action"
       }
     }
-  },
-  "control": {
-    "battle_master": {
-      "minimum_level": 7,
-      "attack_ability_modifier": 5,
-      "magic_weapon_bonus_by_level": {"7": 1, "11": 2, "15": 2, "20": 3},
-      "save_dc_base": 8,
-      "save_ability_modifier": 5,
-      "magic_resistance_applies": false,
-      "scenarios": [
-        {"id": "menacing_attack", "save": "wisdom", "hit_gated": true, "conditions": ["frightened"]},
-        {"id": "pushing_attack", "save": "strength", "hit_gated": true, "outcomes": ["forced_movement"], "maximum_size": "large"},
-        {"id": "trip_attack", "save": "strength", "hit_gated": true, "conditions": ["prone"], "maximum_size": "large"},
-        {"id": "goading_attack", "save": "wisdom", "hit_gated": true, "outcomes": ["attack_disadvantage"]}
-      ]
-    },
-    "eldritch_knight": {
-      "minimum_level": 7,
-      "attack_ability_modifier": 5,
-      "magic_weapon_bonus_by_level": {"7": 1, "11": 2, "15": 2, "20": 3},
-      "save_dc_base": 8,
-      "save_ability_modifier_by_level": {"7": 3, "11": 3, "15": 5, "20": 5},
-      "magic_resistance_applies": true,
-      "scenarios": [
-        {"id": "blindness_deafness", "minimum_level": 7, "save": "constitution", "conditions": ["blinded"]},
-        {"id": "blindness_after_eldritch_strike", "minimum_level": 11, "save": "constitution", "conditions": ["blinded"], "primer_hit_disadvantage": true}
-      ]
-    }
   }
 }
