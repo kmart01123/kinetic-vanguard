@@ -217,6 +217,77 @@ class TimelineScheduleTests(unittest.TestCase):
         self.assertTrue(save.window_id)
         self.assertEqual(save.reaction_interval_id, "r1:target:target:reaction_interval")
 
+    def test_target_movement_response_precedes_active_and_attack_windows(self) -> None:
+        target_events = {
+            "target": {
+                1: [
+                    {"kind": "save_opportunity", "phase": "start"},
+                    {"kind": "entry", "phase": "before_movement"},
+                    {"kind": "exit", "phase": "after_movement"},
+                    {"kind": "damage_context", "phase": "after_attacks"},
+                    {"kind": "instantaneous_resolution", "phase": "end"},
+                ]
+            }
+        }
+        expected_kinds = [
+            "target_turn_start",
+            "reaction_window",
+            "save_opportunity",
+            "entry",
+            "target_movement_opportunity",
+            "exit",
+            "target_active_turn_opportunity",
+            "target_attack_opportunity",
+            "target_attack_opportunity",
+            "damage_context",
+            "instantaneous_resolution",
+            "target_turn_end",
+        ]
+        for convention in ("fighter_first_v1", "target_before_fighter_v1"):
+            with self.subTest(convention=convention):
+                schedule = build_schedule(
+                    convention,
+                    ["target"],
+                    target_events_by_round=target_events,
+                    target_attack_counts={"target": [2, 0, 0]},
+                )
+                first_turn_kinds = [
+                    event.kind
+                    for event in schedule.events
+                    if event.turn_id == "r1:target:target:turn"
+                ]
+                self.assertEqual(first_turn_kinds, expected_kinds)
+                turn_start = schedule.event("r1:target:target:turn:start")
+                reaction = schedule.event("r1:target:target:reaction_window")
+                movement = schedule.event("r1:target:target:turn:movement")
+                active_turn = schedule.event("r1:target:target:turn:active_turn")
+                first_attack = schedule.event("r1:target:target:turn:attack:001")
+                self.assertEqual(reaction.sequence, turn_start.sequence + 1)
+                self.assertLess(movement.sequence, active_turn.sequence)
+                self.assertLess(active_turn.sequence, first_attack.sequence)
+                self.assertEqual(
+                    sum(
+                        event.kind == "target_movement_opportunity"
+                        for event in schedule.events
+                        if event.turn_id == movement.turn_id
+                    ),
+                    1,
+                )
+
+        for retired_phase in ("before_active_turn", "before_attacks"):
+            with self.subTest(retired_phase=retired_phase):
+                with self.assertRaisesRegex(TimelineError, "phase is unsupported"):
+                    build_schedule(
+                        "fighter_first_v1",
+                        ["target"],
+                        target_events_by_round={
+                            "target": {
+                                1: [{"kind": "activation", "phase": retired_phase}]
+                            }
+                        },
+                        target_attack_counts={"target": [1, 0, 0]},
+                    )
+
     def test_duplicate_scripted_window_ids_are_rejected(self) -> None:
         with self.assertRaisesRegex(TimelineError, "duplicate window IDs"):
             build_schedule(
@@ -260,6 +331,21 @@ class TimelineScheduleTests(unittest.TestCase):
         )
         for target_id in ("alpha", "beta"):
             self.assertEqual(target_trace(left, target_id), target_trace(right, target_id))
+            for schedule in (left, right):
+                for round_number in range(1, 4):
+                    movement = schedule.event(
+                        f"r{round_number}:target:{target_id}:turn:movement"
+                    )
+                    active_turn = schedule.event(
+                        f"r{round_number}:target:{target_id}:turn:active_turn"
+                    )
+                    self.assertLess(movement.sequence, active_turn.sequence)
+                    for event in schedule.events:
+                        if (
+                            event.turn_id == movement.turn_id
+                            and event.kind == "target_attack_opportunity"
+                        ):
+                            self.assertLess(movement.sequence, event.sequence)
             self.assertEqual(
                 [
                     interval.to_dict()
@@ -434,6 +520,11 @@ class TimelineScheduleTests(unittest.TestCase):
             target_first.event(activation).sequence,
             target_first.event(active_turn).sequence,
         )
+        for schedule in (fighter_first, target_first):
+            movement = schedule.event("r1:target:target:turn:movement")
+            attack = schedule.event("r1:target:target:turn:attack:001")
+            self.assertLess(movement.sequence, schedule.event(active_turn).sequence)
+            self.assertLess(movement.sequence, attack.sequence)
 
     def test_frozen_ground_triggering_turn_expiry_is_exact(self) -> None:
         controller_entry = build_schedule(
@@ -664,16 +755,181 @@ class ProneAndAreaTests(unittest.TestCase):
             target_id="target",
             membership=True,
             effect_active=True,
-            routes=[route("ground_exit", distance=12)],
+            routes=[route("ground_exit", distance=20)],
             effective_speeds_ft={"walk": 30},
             prone=True,
         )
-        self.assertTrue(result["exited"])
+        self.assertFalse(result["exited"])
         self.assertEqual(
             result["selected_route"]["prone_response"]["standing_cost_ft"],
             15,
         )
-        self.assertEqual(result["selected_route"]["progress_ft"], 12)
+        self.assertEqual(
+            result["selected_route"]["prone_response"]["remaining_movement_ft"],
+            15,
+        )
+        self.assertEqual(result["selected_route"]["progress_ft"], 15)
+        self.assertEqual(result["selected_route"]["remaining_distance_ft"], 5)
+
+    def test_prone_stands_even_when_no_exit_route_is_usable(self) -> None:
+        result = area_response(
+            "shortest_route_v1",
+            target_id="target",
+            membership=True,
+            effect_active=True,
+            routes=[route(
+                "incompatible_exit",
+                mode="fly",
+                distance=20,
+                compatible=False,
+                environment="airborne",
+            )],
+            effective_speeds_ft={"walk": 30, "fly": 0},
+            prone=True,
+        )
+        self.assertEqual(result["reason"], "movement_unavailable")
+        self.assertIsNone(result["selected_route"])
+        self.assertFalse(result["prone_after"])
+        self.assertEqual(
+            result["prone_response"],
+            {
+                "target_id": "target",
+                "was_prone": True,
+                "stood": True,
+                "standing_cost_ft": 15,
+                "remaining_movement_ft": 15,
+                "prone_after": False,
+                "reason": "first_legal_movement_opportunity",
+            },
+        )
+        self.assertEqual(
+            result["events"],
+            [{
+                "kind": "stand",
+                "owner": "target",
+                "turn_anchor": "during_turn",
+                "movement_mode": "walk",
+                "standing_cost_ft": 15,
+                "remaining_movement_ft": 15,
+            }],
+        )
+
+    def test_positive_speed_stand_clears_prone_before_first_attack(self) -> None:
+        for convention in ("fighter_first_v1", "target_before_fighter_v1"):
+            with self.subTest(convention=convention):
+                schedule = build_schedule(
+                    convention,
+                    ["target"],
+                    target_attack_counts={"target": [1, 0, 0]},
+                )
+                movement = schedule.event("r1:target:target:turn:movement")
+                attack = schedule.event("r1:target:target:turn:attack:001")
+                response = prone_movement_response(
+                    target_id="target",
+                    prone=True,
+                    current_speed_ft=30,
+                )
+                self.assertLess(movement.sequence, attack.sequence)
+                self.assertTrue(response["stood"])
+                self.assertFalse(response["prone_after"])
+
+    def test_frozen_ground_exit_is_available_before_later_turn_windows(self) -> None:
+        speeds = {"walk": 30}
+        response = area_response(
+            "shortest_route_v1",
+            target_id="target",
+            membership=True,
+            effect_active=True,
+            routes=[route("frozen_exit", distance=15, multiplier=2)],
+            effective_speeds_ft=speeds,
+            while_in_area_component_ids=["frozen_ground_difficult_terrain"],
+        )
+        self.assertTrue(response["exited"])
+        self.assertEqual(response["ended_component_ids"], [
+            "frozen_ground_difficult_terrain"
+        ])
+        self.assertEqual(speeds, {"walk": 30})
+        for convention in ("fighter_first_v1", "target_before_fighter_v1"):
+            schedule = build_schedule(
+                convention,
+                ["target"],
+                target_attack_counts={"target": [1, 0, 0]},
+            )
+            movement = schedule.event("r1:target:target:turn:movement")
+            active_turn = schedule.event("r1:target:target:turn:active_turn")
+            attack = schedule.event("r1:target:target:turn:attack:001")
+            self.assertLess(movement.sequence, active_turn.sequence)
+            self.assertLess(movement.sequence, attack.sequence)
+
+    def test_ball_lightning_exit_ends_only_while_in_area_components_pre_attack(self) -> None:
+        schedule = build_schedule(
+            "fighter_first_v1",
+            ["target"],
+            target_attack_counts={"target": [1, 0, 0]},
+        )
+        response = area_response(
+            "shortest_route_v1",
+            target_id="target",
+            membership=True,
+            effect_active=True,
+            routes=[route("ball_lightning_exit", distance=10)],
+            effective_speeds_ft={"walk": 30},
+            while_in_area_component_ids=[
+                "ball_lightning_attack_disadvantage",
+                "ball_lightning_reaction_denial",
+            ],
+            independent_component_ids=["independently_timed_component"],
+        )
+        movement = schedule.event("r1:target:target:turn:movement")
+        active_turn = schedule.event("r1:target:target:turn:active_turn")
+        attack = schedule.event("r1:target:target:turn:attack:001")
+        self.assertTrue(response["exited"])
+        self.assertLess(movement.sequence, active_turn.sequence)
+        self.assertLess(movement.sequence, attack.sequence)
+        self.assertEqual(response["ended_component_ids"], [
+            "ball_lightning_attack_disadvantage",
+            "ball_lightning_reaction_denial",
+        ])
+        self.assertEqual(
+            response["retained_component_ids"],
+            ["independently_timed_component"],
+        )
+
+    def test_speed_zero_preserves_prone_and_area_exposure_through_attacks(self) -> None:
+        schedule = build_schedule(
+            "fighter_first_v1",
+            ["target"],
+            target_attack_counts={"target": [2, 0, 0]},
+        )
+        response = area_response(
+            "shortest_route_v1",
+            target_id="target",
+            membership=True,
+            effect_active=True,
+            routes=[route("blocked_exit", distance=5)],
+            effective_speeds_ft={"walk": 30},
+            speed_zero=True,
+            prone=True,
+            while_in_area_component_ids=["area_exposure"],
+        )
+        movement = schedule.event("r1:target:target:turn:movement")
+        attacks = [
+            event
+            for event in schedule.events
+            if event.turn_id == movement.turn_id
+            and event.kind == "target_attack_opportunity"
+        ]
+        self.assertEqual(response["reason"], "movement_unavailable")
+        self.assertTrue(response["membership_after"])
+        self.assertTrue(response["prone_after"])
+        self.assertEqual(len(attacks), 2)
+        self.assertTrue(all(movement.sequence < event.sequence for event in attacks))
+        self.assertFalse(any(
+            event.kind == "target_movement_opportunity"
+            and event.sequence > attacks[-1].sequence
+            and event.turn_id == movement.turn_id
+            for event in schedule.events
+        ))
 
     def test_frozen_ground_cost_reduces_progress_without_mutating_speed(self) -> None:
         speeds = effective_movement_speeds({"walk": 30})
@@ -768,6 +1024,27 @@ class ProneAndAreaTests(unittest.TestCase):
         self.assertEqual(selected["mode"], "fly")
         self.assertEqual(selected["environment"], "airborne")
         self.assertTrue(result["exited"])
+
+    def test_movement_mode_denial_blocks_only_the_affected_route(self) -> None:
+        result = area_response(
+            "shortest_route_v1",
+            target_id="target",
+            membership=True,
+            effect_active=True,
+            routes=[
+                route("walk_exit", distance=5),
+                route(
+                    "fly_exit",
+                    mode="fly",
+                    distance=10,
+                    environment="airborne",
+                ),
+            ],
+            effective_speeds_ft={"walk": 30, "fly": 30},
+            denied_modes=["walk"],
+        )
+        self.assertTrue(result["exited"])
+        self.assertEqual(result["selected_route"]["route_id"], "fly_exit")
 
     def test_speed_zero_and_fixed_occupancy_preserve_membership(self) -> None:
         blocked = area_response(

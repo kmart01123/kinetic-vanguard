@@ -17,10 +17,12 @@
       ],
       "target_turn_events": [
         "target_turn_start",
-        "repeat_saves_and_start_turn_triggers",
+        "target_start_scripted_events",
+        "start_turn_area_gates_and_repeat_saves",
+        "target_movement_standing_area_response_opportunity",
         "target_active_turn_opportunity",
         "target_attack_opportunities_in_supplied_order",
-        "target_movement_standing_area_response_opportunity",
+        "remaining_target_scripted_events_in_supplied_legal_order",
         "target_turn_end"
       ],
       "reaction_windows": [
@@ -40,10 +42,12 @@
       ],
       "target_turn_events": [
         "target_turn_start",
-        "repeat_saves_and_start_turn_triggers",
+        "target_start_scripted_events",
+        "start_turn_area_gates_and_repeat_saves",
+        "target_movement_standing_area_response_opportunity",
         "target_active_turn_opportunity",
         "target_attack_opportunities_in_supplied_order",
-        "target_movement_standing_area_response_opportunity",
+        "remaining_target_scripted_events_in_supplied_legal_order",
         "target_turn_end"
       ],
       "reaction_windows": [

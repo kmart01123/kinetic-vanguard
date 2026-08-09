@@ -5,7 +5,7 @@
 ### Added
 
 - Added a pinned, provenance-checked SRD 5.2.1 consequence catalog for Blinded, Charmed, Frightened, Incapacitated, Prone, Restrained, and Stunned, plus separate versioned control-engine methodology configuration.
-- Added the shared weight-free Python control consequence, reliability, overlap, state, and timeline engine; its compact validation and 67-case hand-calculated fixture commands cover both initiative schedules, both area-response conventions, and all three displacement functions without producing a Control Value scalar, classification, or optimization.
+- Added the shared weight-free Python control consequence, reliability, overlap, state, and timeline engine; its compact validation and 72-case hand-calculated fixture commands cover both initiative schedules, both area-response conventions, and all three displacement functions without producing a Control Value scalar, classification, or optimization.
 
 ### Changed
 
@@ -13,6 +13,7 @@
 - Replaced the generated two-matrix README snapshot with one damage heat table and a static control-methodology status that points v14.1 reproduction to frozen release evidence and identifies the v14.2 redesign sequence.
 - Completed Control Authority v2.1 with 35 modeled rows, 14 maintained profile exclusions, zero unsupported rows, typed event/save/choice/movement/area/persistent-state semantics, and shared TypeScript/Python parity coverage; it remains separate from damage and does not publish a v14.2 control result.
 - Added a fail-closed 28-row SRD control-target supplement for official movement modes, hover, and relevant nonvisual senses while preserving the maintained damage roster byte-for-byte.
+- Corrected both control-engine initiative schedules so the single self-minimizing movement, standing, area-response, and displacement-epoch opportunity precedes active-turn and attack windows, and made engine-owned chronological sessions with canonical scenario identity and issued reliability/state records the only supported final-result path.
 - Codified the standing policy for retiring superseded implementations from current development while preserving released history through frozen branches, tags, Releases, evidence assets, and Git history.
 
 ### Removed

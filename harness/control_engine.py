@@ -10,9 +10,10 @@ layers into one deterministic JSON result.
 from __future__ import annotations
 
 import argparse
+import hashlib
 import json
 import math
-from dataclasses import dataclass, fields, is_dataclass, replace
+from dataclasses import dataclass, field, fields, is_dataclass, replace
 from fractions import Fraction
 from pathlib import Path
 from types import MappingProxyType
@@ -36,6 +37,7 @@ from harness.control_graph import (
     CompiledComponent,
     CompiledEffect,
     ControlGraphError,
+    D20ProbabilityKernel,
     ProbabilityContext,
     ProbabilityKernel,
     ReliabilityEvent,
@@ -44,6 +46,8 @@ from harness.control_graph import (
     SelectorContext,
     evaluate_reliability,
     load_compiled_control_authority,
+    reliability_result_issuance_token,
+    validate_reliability_result,
     validate_selector_membership,
 )
 from harness.control_state import (
@@ -68,6 +72,7 @@ from harness.control_timeline import (
     TIMELINE_ENGINE_VERSION,
     ConcentrationTracker,
     DisplacementEpochs,
+    ReactionInterval,
     TimelineError,
     TimelineEvent,
     TimelineSchedule,
@@ -93,15 +98,48 @@ _EXPECTED_FIXTURE_CATEGORIES = MappingProxyType(
         "catalog_and_senses": 8,
         "partial_reliability": 7,
         "overlap_and_dominance": 9,
-        "prone": 6,
-        "timing_and_initiative": 7,
+        "prone": 8,
+        "timing_and_initiative": 8,
         "repeat_saves": 5,
         "concentration": 6,
-        "areas": 8,
+        "areas": 10,
         "displacement": 7,
         "weight_and_scope_boundary": 4,
     }
 )
+_SESSION_TIMELINE_EVENT_KINDS = frozenset({
+    "activation",
+    "concentration_end",
+    "controller_attack_opportunity",
+    "controller_turn_end",
+    "controller_turn_start",
+    "damage_context",
+    "declaration",
+    "entry",
+    "exit",
+    "hit",
+    "instantaneous_resolution",
+    "reaction_window",
+    "round_end",
+    "round_start",
+    "save_opportunity",
+    "target_active_turn_opportunity",
+    "target_attack_opportunity",
+    "target_movement_opportunity",
+    "target_turn_end",
+    "target_turn_start",
+})
+_SESSION_STRUCTURAL_EVENT_KINDS = frozenset({
+    "controller_turn_end",
+    "controller_turn_start",
+    "round_end",
+    "round_start",
+    "target_active_turn_opportunity",
+    "target_attack_opportunity",
+    "target_movement_opportunity",
+    "target_turn_end",
+    "target_turn_start",
+})
 _FORBIDDEN_RESULT_KEYS = frozenset(
     {
         "weights",
@@ -125,6 +163,8 @@ _FORBIDDEN_RESULT_KEYS = frozenset(
         "sensitive",
     }
 )
+_RESULT_CONSTRUCTION_TOKEN = object()
+_RESULT_CONSTRUCTION_DEPTH = 0
 
 
 class ControlEngineError(ValueError):
@@ -207,6 +247,83 @@ def _json_safe(value: Any) -> Any:
     )
 
 
+def _canonical_json(value: Any) -> str:
+    return json.dumps(
+        _json_safe(value),
+        sort_keys=True,
+        separators=(",", ":"),
+        allow_nan=False,
+    )
+
+
+def _sha256_record(value: Any) -> str:
+    return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
+
+
+def _require_string_mapping_keys(value: Any, path: str) -> None:
+    """Reject lossy JSON key coercion in scenario identity inputs."""
+
+    if isinstance(value, Mapping):
+        for key, item in value.items():
+            if (
+                not isinstance(key, str)
+                or not key
+                or key.strip() != key
+            ):
+                raise ControlEngineError(
+                    f"{path} contains an invalid JSON object key: {key!r}"
+                )
+            _require_string_mapping_keys(item, f"{path}.{key}")
+    elif isinstance(value, Sequence) and not isinstance(value, (str, bytes)):
+        for index, item in enumerate(value):
+            _require_string_mapping_keys(item, f"{path}[{index}]")
+
+
+def _strict_json_copy(value: Any, path: str) -> Any:
+    """Validate caller-owned scenario data without any lossy coercion."""
+
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float):
+        if not math.isfinite(value):
+            raise ControlEngineError(f"{path} contains a non-finite number")
+        return value
+    if isinstance(value, list):
+        return [
+            _strict_json_copy(item, f"{path}[{index}]")
+            for index, item in enumerate(value)
+        ]
+    if isinstance(value, Mapping):
+        result: dict[str, Any] = {}
+        for key, item in value.items():
+            if (
+                not isinstance(key, str)
+                or not key
+                or key.strip() != key
+            ):
+                raise ControlEngineError(
+                    f"{path} contains an invalid JSON object key: {key!r}"
+                )
+            result[key] = _strict_json_copy(item, f"{path}.{key}")
+        return result
+    raise ControlEngineError(
+        f"{path} must contain only strict JSON values; got "
+        f"{type(value).__name__}"
+    )
+
+
+def _deep_freeze(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return MappingProxyType({
+            key: _deep_freeze(item) for key, item in value.items()
+        })
+    if isinstance(value, (tuple, list)):
+        return tuple(_deep_freeze(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return frozenset(_deep_freeze(item) for item in value)
+    return value
+
+
 def _assert_weight_free(value: Any, path: str = "result") -> None:
     if isinstance(value, Mapping):
         forbidden = sorted(
@@ -228,6 +345,7 @@ def _assert_weight_free(value: Any, path: str = "result") -> None:
 @dataclass(frozen=True)
 class VersionProvenance:
     engine_version: str
+    engine_implementation_digest: str
     authority_projection_version: str
     authority_projection_digest: str
     target_supplement_digest: str
@@ -302,6 +420,72 @@ class DisplacementRequest:
         }
 
 
+@dataclass(frozen=True)
+class _IssuedControlRecord:
+    """Opaque proof that one record was emitted by one execution session.
+
+    The public representation deliberately omits the issuer token.  The token
+    and object identity are checked again by ``ControlExecutionSession.result``;
+    copying the serialized mapping therefore cannot manufacture provenance.
+    """
+
+    scenario_digest: str
+    event_id: str
+    event_sequence: int
+    operation_sequence: int
+    target_id: str | None
+    record_kind: str
+    pre_event_state_json: str
+    pre_operation_state_json: str
+    post_operation_state_json: str
+    payload_json: str
+    payload_sha256: str
+    record_sha256: str
+    _issuer: object = field(repr=False, compare=False)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "scenario_digest": self.scenario_digest,
+            "event_id": self.event_id,
+            "event_sequence": self.event_sequence,
+            "operation_sequence": self.operation_sequence,
+            "target_id": self.target_id,
+            "record_kind": self.record_kind,
+            "pre_event_state": json.loads(self.pre_event_state_json),
+            "pre_operation_state": json.loads(self.pre_operation_state_json),
+            "post_operation_state": json.loads(self.post_operation_state_json),
+            "payload": json.loads(self.payload_json),
+            "payload_sha256": self.payload_sha256,
+            "record_sha256": self.record_sha256,
+        }
+
+
+@dataclass(frozen=True)
+class _SessionEventReference:
+    event_id: str
+    event_sequence: int
+    scenario_digest: str
+    _issuer: object = field(repr=False, compare=False)
+
+
+@dataclass(frozen=True)
+class _ClosedEventSnapshot:
+    scenario_digest: str
+    event_id: str
+    event_sequence: int
+    pre_event_state_json: str
+    post_event_state_json: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "scenario_digest": self.scenario_digest,
+            "event_id": self.event_id,
+            "event_sequence": self.event_sequence,
+            "pre_event_state": json.loads(self.pre_event_state_json),
+            "post_event_state": json.loads(self.post_event_state_json),
+        }
+
+
 
 @dataclass(frozen=True)
 class _ConcentrationAuthorityContext:
@@ -350,8 +534,22 @@ class ControlEngineResult:
     displacement_epoch_records: tuple[Mapping[str, Any], ...]
     final_normalized_state: Mapping[str, Any]
     explored_state_count: int
+    scenario_digest: str = ""
+    scenario_record: Mapping[str, Any] = field(default_factory=dict)
+    execution_records: tuple[Mapping[str, Any], ...] = ()
+    event_snapshots: tuple[Mapping[str, Any], ...] = ()
+    _construction_token: object | None = field(
+        default=None,
+        init=False,
+        repr=False,
+        compare=False,
+    )
 
     def __post_init__(self) -> None:
+        if _RESULT_CONSTRUCTION_DEPTH <= 0:
+            raise ControlEngineError(
+                "ControlEngineResult values are issued only by an execution session"
+            )
         if not self.compiled_program_id:
             raise ControlEngineError("compiled_program_id must be non-empty")
         if not self.target_ids or len(self.target_ids) != len(set(self.target_ids)):
@@ -368,8 +566,25 @@ class ControlEngineResult:
             raise ControlEngineError(
                 "explored_state_count must be a positive integer"
             )
+        if self.scenario_digest and (
+            len(self.scenario_digest) != 64
+            or any(character not in "0123456789abcdef" for character in self.scenario_digest)
+        ):
+            raise ControlEngineError("scenario_digest must be a lowercase SHA-256 digest")
+        for result_field in fields(self):
+            value = getattr(self, result_field.name)
+            if isinstance(value, (Mapping, tuple, list, set, frozenset)):
+                object.__setattr__(
+                    self,
+                    result_field.name,
+                    _deep_freeze(value),
+                )
 
     def to_dict(self) -> dict[str, Any]:
+        if self._construction_token is not _RESULT_CONSTRUCTION_TOKEN:
+            raise ControlEngineError(
+                "ControlEngineResult value is not engine/session-issued"
+            )
         result = {
             "version_provenance": self.version_provenance.to_dict(),
             "scenario_convention": self.scenario_convention.to_dict(),
@@ -393,10 +608,41 @@ class ControlEngineResult:
             "displacement_epoch_records": self.displacement_epoch_records,
             "final_normalized_state": self.final_normalized_state,
             "explored_state_count": self.explored_state_count,
+            "scenario_digest": self.scenario_digest or None,
+            "scenario_record": self.scenario_record or None,
+            "execution_records": self.execution_records,
+            "event_snapshots": self.event_snapshots,
         }
         safe = _json_safe(result)
         _assert_weight_free(safe)
         return safe
+
+
+def _construct_control_engine_result(**values: Any) -> ControlEngineResult:
+    global _RESULT_CONSTRUCTION_DEPTH
+    _RESULT_CONSTRUCTION_DEPTH += 1
+    try:
+        result = ControlEngineResult(**values)
+    finally:
+        _RESULT_CONSTRUCTION_DEPTH -= 1
+    object.__setattr__(result, "_construction_token", _RESULT_CONSTRUCTION_TOKEN)
+    return result
+
+
+def _replace_control_engine_result(
+    result: ControlEngineResult,
+    **changes: Any,
+) -> ControlEngineResult:
+    if result._construction_token is not _RESULT_CONSTRUCTION_TOKEN:
+        raise ControlEngineError("Cannot replace an unattested engine result")
+    global _RESULT_CONSTRUCTION_DEPTH
+    _RESULT_CONSTRUCTION_DEPTH += 1
+    try:
+        issued = replace(result, **changes)
+    finally:
+        _RESULT_CONSTRUCTION_DEPTH -= 1
+    object.__setattr__(issued, "_construction_token", _RESULT_CONSTRUCTION_TOKEN)
+    return issued
 
 
 def reliability_result_to_dict(result: ReliabilityResult) -> dict[str, Any]:
@@ -406,6 +652,11 @@ def reliability_result_to_dict(result: ReliabilityResult) -> dict[str, Any]:
         raise TypeError("result must be ReliabilityResult")
     return {
         "effect_id": result.effect_id,
+        "scenario_digest": result.scenario_digest,
+        "scenario": (
+            result.scenario.canonical_record()
+            if result.scenario is not None else None
+        ),
         "target_ids": list(result.target_ids),
         "gate_probabilities": [
             {
@@ -509,6 +760,7 @@ class ControlEngine:
             ConcentrationTracker,
             _ConcentrationAuthorityContext,
         ] = {}
+        self._execution_tokens: set[object] = set()
         self.target_supplement_digest = target_supplement_digest
 
     @classmethod
@@ -545,11 +797,23 @@ class ControlEngine:
     def program_for(self, entity_id: str, tier: int) -> CompiledEffect:
         return self.authority.program_for(entity_id, tier)
 
-    def new_state(self) -> ControlState:
+    def _new_state(self) -> ControlState:
         return ControlState()
 
-    def new_displacement_epochs(self) -> DisplacementEpochs:
+    def new_state(self) -> ControlState:
+        raise ControlEngineError(
+            "Independent mutable state is not a supported facade; use "
+            "ControlEngine.execution_session()"
+        )
+
+    def _new_displacement_epochs(self) -> DisplacementEpochs:
         return DisplacementEpochs()
+
+    def new_displacement_epochs(self) -> DisplacementEpochs:
+        raise ControlEngineError(
+            "Independent displacement epochs are not a supported facade; use "
+            "ControlEngine.execution_session()"
+        )
 
     def candidate_component_ids(
         self,
@@ -733,7 +997,46 @@ class ControlEngine:
             f"edge in invocation {invocation_id!r}"
         )
 
-    def apply_resolved_branch(
+    @staticmethod
+    def _unsupported_independent_operation(name: str) -> None:
+        raise ControlEngineError(
+            f"{name} is session-owned; use ControlEngine.execution_session()"
+        )
+
+    def apply_resolved_branch(self, *args: Any, **kwargs: Any) -> None:
+        self._unsupported_independent_operation("apply_resolved_branch")
+
+    def resolve_displacement(self, *args: Any, **kwargs: Any) -> None:
+        self._unsupported_independent_operation("resolve_displacement")
+
+    def resolve_self_movement_epoch(self, *args: Any, **kwargs: Any) -> None:
+        self._unsupported_independent_operation("resolve_self_movement_epoch")
+
+    def resolve_prone_movement(self, *args: Any, **kwargs: Any) -> None:
+        self._unsupported_independent_operation("resolve_prone_movement")
+
+    def resolve_compiled_area_entry(self, *args: Any, **kwargs: Any) -> None:
+        self._unsupported_independent_operation("resolve_compiled_area_entry")
+
+    def resolve_area_response(self, *args: Any, **kwargs: Any) -> None:
+        self._unsupported_independent_operation("resolve_area_response")
+
+    def start_concentration(self, *args: Any, **kwargs: Any) -> None:
+        self._unsupported_independent_operation("start_concentration")
+
+    def check_concentration(self, *args: Any, **kwargs: Any) -> None:
+        self._unsupported_independent_operation("check_concentration")
+
+    def end_concentration(self, *args: Any, **kwargs: Any) -> None:
+        self._unsupported_independent_operation("end_concentration")
+
+    def reconcile_concentration_duration(self, *args: Any, **kwargs: Any) -> None:
+        self._unsupported_independent_operation("reconcile_concentration_duration")
+
+    def normalize_scheduled_window(self, *args: Any, **kwargs: Any) -> None:
+        self._unsupported_independent_operation("normalize_scheduled_window")
+
+    def _apply_resolved_branch(
         self,
         *,
         state: ControlState,
@@ -749,6 +1052,8 @@ class ControlEngine:
         selector_context: SelectorContext,
         choices: Mapping[str, str] | None = None,
         condition_immunities: Iterable[str] = (),
+        _active_guard_snapshot: Sequence[Mapping[str, Any]] | None = None,
+        _allow_reachable_same_event: bool = False,
     ) -> dict[str, Any]:
         """Apply one observed, reachable branch for one selected target.
 
@@ -796,17 +1101,20 @@ class ControlEngine:
             raise ControlEngineError(
                 f"Unable to validate event {event!r} for gate {gate.gate_id!r}: {error}"
             ) from error
-        if not event_matches:
+        if not event_matches and not _allow_reachable_same_event:
             raise ControlEngineError(
                 f"Schedule event {event!r} does not match gate {gate.gate_id!r} "
                 "trigger/owner/target semantics"
             )
         target_required = gate.trigger.kind in {"save", "hit", "damage_context"}
         if (
+            not _allow_reachable_same_event
+            and (
             (target_required and schedule_event.target_id != target)
             or (
                 schedule_event.target_id is not None
                 and schedule_event.target_id != target
+            )
             )
         ):
             raise ControlEngineError(
@@ -899,6 +1207,34 @@ class ControlEngine:
                 in program.relationships.dominance
             ],
         }
+        required_active_component_ids = gate.requires_active_component_ids
+        if _active_guard_snapshot is not None:
+            pre_guard_ids = {
+                str(item.get("component_id"))
+                for item in _active_guard_snapshot
+                if item.get("effect_id") == program.effect_id
+                and item.get("target_id") == target
+            }
+            missing_guards = sorted(
+                set(required_active_component_ids) - pre_guard_ids
+            )
+            if missing_guards:
+                before = state.snapshot(target)
+                transition = {
+                    "event_id": event,
+                    "operation": "guard_suppressed",
+                    "target_id": target,
+                    "effect_id": program.effect_id,
+                    "branch_id": branch.branch_id,
+                    "missing_active_component_ids": missing_guards,
+                    "active_components_before": before,
+                    "active_components_after": before,
+                    "guard_snapshot": "session_pre_event",
+                }
+                state.audit_ledger.append(transition)
+                return transition
+            required_active_component_ids = ()
+
         transition = state.apply_branch(
             effect_id=program.effect_id,
             branch=branch_definition,
@@ -910,7 +1246,7 @@ class ControlEngine:
             source_actor_id=source_actor,
             event_id=event,
             invocation_id=invocation,
-            required_active_component_ids=gate.requires_active_component_ids,
+            required_active_component_ids=required_active_component_ids,
             expiry_event_ids=expiry_event_ids,
             condition_immunities=condition_immunities,
             relationships=relationships,
@@ -1075,7 +1411,7 @@ class ControlEngine:
             derived_vector_feet=derived,
         )
 
-    def resolve_displacement(
+    def _resolve_displacement(
         self,
         *,
         component: CompiledComponent,
@@ -1217,7 +1553,7 @@ class ControlEngine:
 
 
 
-    def resolve_self_movement_epoch(
+    def _resolve_self_movement_epoch(
         self,
         *,
         epochs: DisplacementEpochs,
@@ -1463,7 +1799,7 @@ class ControlEngine:
             "route_multipliers": multiplier_records,
         }
 
-    def resolve_prone_movement(
+    def _resolve_prone_movement(
         self,
         *,
         state: ControlState,
@@ -1546,7 +1882,7 @@ class ControlEngine:
         state.audit_ledger.append({"operation": "prone_movement_response", **record})
         return record
 
-    def resolve_compiled_area_entry(
+    def _resolve_compiled_area_entry(
         self,
         *,
         effect: CompiledEffect | str,
@@ -1641,7 +1977,7 @@ class ControlEngine:
             ),
         }
 
-    def resolve_area_response(
+    def _resolve_area_response(
         self,
         *,
         state: ControlState,
@@ -1793,8 +2129,11 @@ class ControlEngine:
         })
         independent_ids = sorted({
             component.component_id
-            for component in active
-            if component.component_id not in while_in_area_ids
+            for component in state.active_components(target)
+            if not (
+                component.effect_id == program.effect_id
+                and component.component_id in while_in_area_ids
+            )
         })
         movement_authority: dict[str, Any] | None = None
         resolved_routes = routes
@@ -1884,7 +2223,7 @@ class ControlEngine:
             )
         prone_response = (
             response.get("selected_route") or {}
-        ).get("prone_response")
+        ).get("prone_response") or response.get("prone_response")
         if isinstance(prone_response, Mapping) and prone_response.get("stood"):
             state.end_condition(
                 target,
@@ -2451,7 +2790,7 @@ class ControlEngine:
         }
         gate_transitions: list[dict[str, Any]] = []
         for gate_id, target_id, outcome in plans:
-            transition = self.apply_resolved_branch(
+            transition = self._apply_resolved_branch(
                 state=state,
                 effect=context.program,
                 gate_id=gate_id,
@@ -2550,7 +2889,7 @@ class ControlEngine:
         state.audit_ledger.append(dict(audit))
         return dict(returned)
 
-    def start_concentration(
+    def _start_concentration(
         self,
         *,
         state: ControlState,
@@ -2678,7 +3017,7 @@ class ControlEngine:
             lifecycle,
         )
 
-    def check_concentration(
+    def _check_concentration(
         self,
         *,
         state: ControlState,
@@ -2821,7 +3160,7 @@ class ControlEngine:
             lifecycle,
         )
 
-    def end_concentration(
+    def _end_concentration(
         self,
         *,
         state: ControlState,
@@ -2885,7 +3224,7 @@ class ControlEngine:
         )
         del self._concentration_contexts[tracker]
         return result
-    def reconcile_concentration_duration(
+    def _reconcile_concentration_duration(
         self,
         *,
         state: ControlState,
@@ -2955,7 +3294,7 @@ class ControlEngine:
                 "Concentration duration reconciliation missed the exact "
                 "compiled boundary"
             )
-        return self.end_concentration(
+        return self._end_concentration(
             state=state,
             tracker=tracker,
             effect=context.program,
@@ -2998,6 +3337,7 @@ class ControlEngine:
             ) from error
         return VersionProvenance(
             ENGINE_VERSION,
+            file_sha256(Path(__file__)),
             self.authority.projection_version,
             self.authority.authority_sha256,
             self.target_supplement_digest,
@@ -3048,7 +3388,57 @@ class ControlEngine:
             rounds=self.config.horizon_rounds,
         )
 
-    def normalize_scheduled_window(
+    def execution_session(
+        self,
+        effect: CompiledEffect | str,
+        *,
+        targets: Sequence[ReliabilityTarget],
+        selector_membership: Mapping[str, Sequence[str]],
+        selector_context: SelectorContext,
+        schedule: TimelineSchedule,
+        target_mechanics: Mapping[str, Mapping[str, Any]],
+        area_response_convention: str,
+        displacement_function_id: str,
+        kernel: ProbabilityKernel | None = None,
+        probability_context: ProbabilityContext = ProbabilityContext(),
+        choices: Mapping[str, str] | None = None,
+        reliability_events: Sequence[ReliabilityEvent] = (),
+        candidate_component_ids: Iterable[str] | None = None,
+        include_initial: bool = True,
+        source_actor_id: str = "controller",
+        invocation_id: str = "control_invocation",
+        operation_inputs_by_event: (
+            Mapping[str, Mapping[str, Any]] | None
+        ) = None,
+        concentration_save_bonus: int | None = None,
+    ) -> "ControlExecutionSession":
+        """Create the sole supported mutable execution and result boundary."""
+
+        session = ControlExecutionSession(
+            self,
+            effect=effect,
+            targets=targets,
+            selector_membership=selector_membership,
+            selector_context=selector_context,
+            schedule=schedule,
+            target_mechanics=target_mechanics,
+            area_response_convention=area_response_convention,
+            displacement_function_id=displacement_function_id,
+            kernel=kernel,
+            probability_context=probability_context,
+            choices=choices,
+            reliability_events=reliability_events,
+            candidate_component_ids=candidate_component_ids,
+            include_initial=include_initial,
+            source_actor_id=source_actor_id,
+            invocation_id=invocation_id,
+            operation_inputs_by_event=operation_inputs_by_event,
+            concentration_save_bonus=concentration_save_bonus,
+        )
+        self._execution_tokens.add(session._issuer)
+        return session
+
+    def _normalize_scheduled_window(
         self,
         *,
         state: ControlState,
@@ -3233,7 +3623,10 @@ class ControlEngine:
             include_initial=include_initial,
         )
 
-    def assemble_result(
+    def assemble_result(self, *args: Any, **kwargs: Any) -> None:
+        self._unsupported_independent_operation("assemble_result")
+
+    def _assemble_result_legacy(
         self,
         *,
         effect: CompiledEffect | str,
@@ -3577,6 +3970,8 @@ class ControlEngine:
                     optional_fields = {"prone_after"}
                 elif reason == "movement_unavailable":
                     optional_fields = {"blocked_routes", "prone_after"}
+                    if "prone_response" in row:
+                        optional_fields.add("prone_response")
                 require_exact_keys(row, base_fields | optional_fields, label)
                 if (
                     reason not in {
@@ -3689,6 +4084,29 @@ class ControlEngine:
                     bool,
                 ):
                     raise ControlEngineError(f"{label}.prone_after is invalid")
+                if "prone_response" in row:
+                    prone_response = row["prone_response"]
+                    if not isinstance(prone_response, Mapping):
+                        raise ControlEngineError(
+                            f"{label}.prone_response is invalid"
+                        )
+                    require_exact_keys(
+                        prone_response,
+                        {
+                            "target_id",
+                            "was_prone",
+                            "stood",
+                            "standing_cost_ft",
+                            "remaining_movement_ft",
+                            "prone_after",
+                            "reason",
+                        },
+                        f"{label}.prone_response",
+                    )
+                    validate_prone_payload(
+                        prone_response,
+                        f"{label}.prone_response",
+                    )
                 if "blocked_routes" in row:
                     validate_identifier_list(
                         row["blocked_routes"],
@@ -5141,7 +5559,7 @@ class ControlEngine:
                 json.dumps(row, sort_keys=True),
             )
         )
-        return ControlEngineResult(
+        return _construct_control_engine_result(
             version_provenance=self.version_provenance(
                 initiative_convention=schedule.convention,
                 area_response_convention=area_response_convention,
@@ -5187,10 +5605,2968 @@ class ControlEngine:
         )
 
 
+_MISSING = object()
+_SESSION_RECORD_KINDS = frozenset({
+    "area_entry",
+    "area_response",
+    "branch_transition",
+    "component_expiry",
+    "concentration_check",
+    "concentration_check_pending_end",
+    "concentration_duration_reconciliation",
+    "concentration_end",
+    "concentration_start",
+    "displacement",
+    "displacement_epoch_boundary",
+    "normalization",
+    "prone_movement_response",
+})
+
+
+class ControlExecutionSession:
+    """One immutable scenario and one monotonic chronological execution.
+
+    Mutable control state is intentionally not exposed.  Callers advance the
+    schedule, execute legal operations at the current event, close that event,
+    and finally ask the session to issue a result.  Every returned operation
+    record is opaque and is accepted only by the session that created it.
+    """
+
+    def __init__(
+        self,
+        engine: ControlEngine,
+        *,
+        effect: CompiledEffect | str,
+        targets: Sequence[ReliabilityTarget],
+        selector_membership: Mapping[str, Sequence[str]],
+        selector_context: SelectorContext,
+        schedule: TimelineSchedule,
+        target_mechanics: Mapping[str, Mapping[str, Any]],
+        area_response_convention: str,
+        displacement_function_id: str,
+        kernel: ProbabilityKernel | None,
+        probability_context: ProbabilityContext,
+        choices: Mapping[str, str] | None,
+        reliability_events: Sequence[ReliabilityEvent],
+        candidate_component_ids: Iterable[str] | None,
+        include_initial: bool,
+        source_actor_id: str,
+        invocation_id: str,
+        operation_inputs_by_event: Mapping[str, Mapping[str, Any]] | None,
+        concentration_save_bonus: int | None,
+    ) -> None:
+        if not isinstance(engine, ControlEngine):
+            raise TypeError("engine must be ControlEngine")
+        if not isinstance(schedule, TimelineSchedule):
+            raise TypeError("schedule must be TimelineSchedule")
+        if not isinstance(selector_context, SelectorContext):
+            raise TypeError("selector_context must be SelectorContext")
+        if not isinstance(probability_context, ProbabilityContext):
+            raise TypeError("probability_context must be ProbabilityContext")
+        if not isinstance(include_initial, bool):
+            raise ControlEngineError("include_initial must be boolean")
+        if (
+            schedule.convention not in engine.config.initiative_schedules
+            or isinstance(schedule.rounds, bool)
+            or not isinstance(schedule.rounds, int)
+            or schedule.rounds != engine.config.horizon_rounds
+            or not schedule.target_ids
+            or len(schedule.target_ids) != len(set(schedule.target_ids))
+            or any(
+                not isinstance(target_id, str)
+                or not target_id
+                or target_id.strip() != target_id
+                for target_id in schedule.target_ids
+            )
+            or not schedule.events
+            or any(
+                not isinstance(event, TimelineEvent)
+                for event in schedule.events
+            )
+            or tuple(event.sequence for event in schedule.events)
+            != tuple(range(len(schedule.events)))
+        ):
+            raise ControlEngineError(
+                "Timeline schedule shape, convention, horizon, or sequence is invalid"
+            )
+        event_ids = tuple(event.event_id for event in schedule.events)
+        window_ids = tuple(
+            event.window_id for event in schedule.events
+            if event.window_id is not None
+        )
+        if (
+            len(event_ids) != len(set(event_ids))
+            or len(window_ids) != len(set(window_ids))
+            or any(
+                isinstance(event.sequence, bool)
+                or not isinstance(event.sequence, int)
+                or isinstance(event.round, bool)
+                or not isinstance(event.round, int)
+                or event.round < 1
+                or event.round > schedule.rounds
+                or event.kind not in _SESSION_TIMELINE_EVENT_KINDS
+                or not isinstance(event.payload, Mapping)
+                or (
+                    event.kind in {
+                        "controller_attack_opportunity",
+                        "reaction_window",
+                        "save_opportunity",
+                    }
+                    and event.window_id is None
+                )
+                or (
+                    event.kind == "reaction_window"
+                    and event.payload.get("availability_interval") is True
+                    and not (
+                        event.turn_owner == "target"
+                        and event.target_id is not None
+                        and event.event_id
+                        == (
+                            f"r{event.round}:target:{event.target_id}:"
+                            "reaction_window"
+                        )
+                    )
+                )
+                or not isinstance(event.event_id, str)
+                or not event.event_id
+                or event.event_id.strip() != event.event_id
+                or any(
+                    value is not None
+                    and (
+                        not isinstance(value, str)
+                        or not value
+                        or value.strip() != value
+                    )
+                    for value in (
+                        event.turn_id,
+                        event.turn_owner,
+                        event.actor_id,
+                        event.target_id,
+                        event.window_id,
+                        event.reaction_interval_id,
+                    )
+                )
+                or (
+                    event.target_id is not None
+                    and event.target_id not in schedule.target_ids
+                )
+                for event in schedule.events
+            )
+        ):
+            raise ControlEngineError(
+                "Timeline schedule event identities or ownership are invalid"
+            )
+        for event in schedule.events:
+            if event.kind in {"round_start", "round_end"}:
+                suffix = "start" if event.kind == "round_start" else "end"
+                expected_payload = (
+                    {"previous_round": event.round - 1 or None}
+                    if event.kind == "round_start"
+                    else {
+                        "next_round": (
+                            event.round + 1
+                            if event.round < schedule.rounds
+                            else None
+                        )
+                    }
+                )
+                if (
+                    event.event_id != f"r{event.round}:round:{suffix}"
+                    or event.turn_id is not None
+                    or event.turn_owner is not None
+                    or event.actor_id is not None
+                    or event.target_id is not None
+                    or event.window_id is not None
+                    or event.reaction_interval_id is not None
+                    or dict(event.payload) != expected_payload
+                ):
+                    raise ControlEngineError(
+                        "Timeline round boundary identity is invalid"
+                    )
+            elif event.kind in {
+                "controller_turn_start",
+                "controller_turn_end",
+            }:
+                suffix = (
+                    "start"
+                    if event.kind == "controller_turn_start"
+                    else "end"
+                )
+                expected_turn_id = f"r{event.round}:controller:turn"
+                if (
+                    event.event_id != f"{expected_turn_id}:{suffix}"
+                    or event.turn_id != expected_turn_id
+                    or event.turn_owner != "controller"
+                    or event.actor_id != "controller"
+                    or event.target_id is not None
+                    or event.window_id is not None
+                    or event.reaction_interval_id is not None
+                    or dict(event.payload)
+                ):
+                    raise ControlEngineError(
+                        "Timeline controller boundary identity is invalid"
+                    )
+            elif event.kind in {
+                "target_turn_start",
+                "target_movement_opportunity",
+                "target_active_turn_opportunity",
+                "target_attack_opportunity",
+                "target_turn_end",
+            }:
+                target_id = event.target_id
+                if target_id is None:
+                    raise ControlEngineError(
+                        "Timeline target structural event is missing target identity"
+                    )
+                expected_turn_id = (
+                    f"r{event.round}:target:{target_id}:turn"
+                )
+                expected_reaction_id = (
+                    f"r{event.round}:target:{target_id}:reaction_interval"
+                )
+                expected_event_id: str
+                expected_window_id: str | None
+                expected_payload: dict[str, Any]
+                if event.kind == "target_turn_start":
+                    expected_event_id = f"{expected_turn_id}:start"
+                    expected_window_id = None
+                    expected_payload = {}
+                elif event.kind == "target_movement_opportunity":
+                    expected_event_id = f"{expected_turn_id}:movement"
+                    expected_window_id = f"{expected_event_id}:window"
+                    expected_payload = {}
+                elif event.kind == "target_active_turn_opportunity":
+                    expected_event_id = f"{expected_turn_id}:active_turn"
+                    expected_window_id = f"{expected_event_id}:window"
+                    expected_payload = {}
+                elif event.kind == "target_turn_end":
+                    expected_event_id = f"{expected_turn_id}:end"
+                    expected_window_id = None
+                    expected_payload = {}
+                else:
+                    attack_index = event.payload.get("attack_index")
+                    if (
+                        isinstance(attack_index, bool)
+                        or not isinstance(attack_index, int)
+                        or attack_index < 1
+                    ):
+                        raise ControlEngineError(
+                            "Timeline target attack index is invalid"
+                        )
+                    expected_event_id = (
+                        f"{expected_turn_id}:attack:{attack_index:03d}"
+                    )
+                    expected_window_id = f"{expected_event_id}:window"
+                    expected_payload = {"attack_index": attack_index}
+                if (
+                    event.event_id != expected_event_id
+                    or event.turn_id != expected_turn_id
+                    or event.turn_owner != "target"
+                    or event.actor_id != target_id
+                    or event.window_id != expected_window_id
+                    or event.reaction_interval_id != expected_reaction_id
+                    or dict(event.payload) != expected_payload
+                ):
+                    raise ControlEngineError(
+                        "Timeline target structural event identity is invalid"
+                    )
+        if any(
+            not isinstance(interval, ReactionInterval)
+            for interval in schedule.reaction_intervals
+        ):
+            raise ControlEngineError(
+                "Timeline schedule reaction intervals must be typed"
+            )
+        for round_number in range(1, schedule.rounds + 1):
+            round_starts = [
+                event for event in schedule.events
+                if event.round == round_number and event.kind == "round_start"
+            ]
+            round_ends = [
+                event for event in schedule.events
+                if event.round == round_number and event.kind == "round_end"
+            ]
+            controller_starts = [
+                event for event in schedule.events
+                if event.round == round_number
+                and event.kind == "controller_turn_start"
+            ]
+            controller_ends = [
+                event for event in schedule.events
+                if event.round == round_number
+                and event.kind == "controller_turn_end"
+            ]
+            if (
+                len(round_starts) != 1
+                or len(round_ends) != 1
+                or len(controller_starts) != 1
+                or len(controller_ends) != 1
+            ):
+                raise ControlEngineError(
+                    "Timeline schedule must contain one round and controller turn block"
+                )
+            round_start = round_starts[0]
+            round_end = round_ends[0]
+            controller_start = controller_starts[0]
+            controller_end = controller_ends[0]
+            expected_round_start_sequence = (
+                0
+                if round_number == 1
+                else next(
+                    event.sequence
+                    for event in schedule.events
+                    if event.round == round_number - 1
+                    and event.kind == "round_end"
+                ) + 1
+            )
+            round_sequences = tuple(
+                event.sequence
+                for event in schedule.events
+                if event.round == round_number
+            )
+            if (
+                not (
+                    round_start.sequence
+                    < controller_start.sequence
+                    < controller_end.sequence
+                    < round_end.sequence
+                )
+                or round_start.sequence != expected_round_start_sequence
+                or round_sequences != tuple(range(
+                    round_start.sequence,
+                    round_end.sequence + 1,
+                ))
+                or (
+                    round_number == schedule.rounds
+                    and round_end.sequence != len(schedule.events) - 1
+                )
+                or controller_start.turn_id != controller_end.turn_id
+                or controller_start.turn_owner != "controller"
+                or controller_end.turn_owner != "controller"
+                or controller_start.actor_id != "controller"
+                or controller_end.actor_id != "controller"
+            ):
+                raise ControlEngineError(
+                    "Timeline controller turn order is invalid"
+                )
+            controller_block = schedule.events[
+                controller_start.sequence:controller_end.sequence + 1
+            ]
+            if any(
+                event.round != round_number
+                or event.turn_id != controller_start.turn_id
+                or event.turn_owner != "controller"
+                or event.actor_id != "controller"
+                or (
+                    event.kind in _SESSION_STRUCTURAL_EVENT_KINDS
+                    and event.kind not in {
+                        "controller_turn_start",
+                        "controller_turn_end",
+                    }
+                )
+                or (
+                    event.kind == "reaction_window"
+                    and event.reaction_interval_id is None
+                )
+                or (
+                    event.kind != "reaction_window"
+                    and event.reaction_interval_id is not None
+                )
+                for event in controller_block
+            ):
+                raise ControlEngineError(
+                    "Timeline controller turn contains a foreign-owned event"
+                )
+            prior_target_end = round_start.sequence
+            target_boundaries: dict[str, tuple[TimelineEvent, TimelineEvent]] = {}
+            for target_id in schedule.target_ids:
+                target_events = [
+                    event for event in schedule.events
+                    if event.round == round_number
+                    and event.target_id == target_id
+                ]
+                starts = [
+                    event for event in target_events
+                    if event.kind == "target_turn_start"
+                ]
+                movements = [
+                    event for event in target_events
+                    if event.kind == "target_movement_opportunity"
+                ]
+                active_turns = [
+                    event for event in target_events
+                    if event.kind == "target_active_turn_opportunity"
+                ]
+                attacks = [
+                    event for event in target_events
+                    if event.kind == "target_attack_opportunity"
+                ]
+                ends = [
+                    event for event in target_events
+                    if event.kind == "target_turn_end"
+                ]
+                if not all(
+                    len(rows) == 1
+                    for rows in (starts, movements, active_turns, ends)
+                ):
+                    raise ControlEngineError(
+                        "Timeline schedule must contain one complete target turn "
+                        "per target and round"
+                    )
+                start, movement, active_turn, end = (
+                    starts[0],
+                    movements[0],
+                    active_turns[0],
+                    ends[0],
+                )
+                target_boundaries[target_id] = (start, end)
+                target_block = schedule.events[
+                    start.sequence:end.sequence + 1
+                ]
+                reaction_openings = [
+                    event for event in target_block
+                    if event.kind == "reaction_window"
+                    and event.payload.get("availability_interval") is True
+                ]
+                target_intervals = [
+                    interval for interval in schedule.reaction_intervals
+                    if interval.target_id == target_id
+                    and interval.round == round_number
+                    and not interval.horizon_entry_partial
+                ]
+                expected_interval_end_id = (
+                    next(
+                        event.event_id
+                        for event in schedule.events
+                        if event.kind == "target_turn_start"
+                        and event.target_id == target_id
+                        and event.round == round_number + 1
+                    )
+                    if round_number < schedule.rounds
+                    else round_end.event_id
+                )
+                if not (
+                    round_start.sequence < start.sequence
+                    < movement.sequence < active_turn.sequence < end.sequence
+                    < round_end.sequence
+                    and all(
+                        active_turn.sequence < attack.sequence < end.sequence
+                        for attack in attacks
+                    )
+                    and (
+                        not attacks or max(
+                            attack.sequence for attack in attacks
+                        ) < end.sequence
+                    )
+                    and start.sequence > prior_target_end
+                    and len(reaction_openings) == 1
+                    and len(target_intervals) == 1
+                    and reaction_openings[0].sequence == start.sequence + 1
+                    and reaction_openings[0].event_id
+                    == f"r{round_number}:target:{target_id}:reaction_window"
+                    and reaction_openings[0].window_id
+                    == reaction_openings[0].event_id
+                    and dict(reaction_openings[0].payload)
+                    == {"availability_interval": True}
+                    and start.reaction_interval_id
+                    == target_intervals[0].interval_id
+                    and target_intervals[0].start_event_id == start.event_id
+                    and target_intervals[0].end_before_event_id
+                    == expected_interval_end_id
+                    and target_intervals[0].window_id
+                    == reaction_openings[0].window_id
+                    and target_intervals[0].initially_available is True
+                    and [
+                        attack.payload.get("attack_index")
+                        for attack in sorted(attacks, key=lambda row: row.sequence)
+                    ] == list(range(1, len(attacks) + 1))
+                    and [
+                        attack.sequence
+                        for attack in sorted(attacks, key=lambda row: row.sequence)
+                    ] == list(range(
+                        active_turn.sequence + 1,
+                        active_turn.sequence + 1 + len(attacks),
+                    ))
+                    and all(
+                        event.turn_id == start.turn_id
+                        and event.turn_owner == "target"
+                        and event.actor_id == target_id
+                        and event.target_id == target_id
+                        and event.reaction_interval_id
+                        == start.reaction_interval_id
+                        for event in (
+                            start,
+                            reaction_openings[0],
+                            movement,
+                            active_turn,
+                            *attacks,
+                            end,
+                        )
+                    )
+                    and all(
+                        event.round == round_number
+                        and event.turn_id == start.turn_id
+                        and event.turn_owner == "target"
+                        and event.actor_id == target_id
+                        and event.target_id == target_id
+                        and event.reaction_interval_id
+                        == start.reaction_interval_id
+                        for event in target_block
+                    )
+                ):
+                    raise ControlEngineError(
+                        "Timeline target turn must order movement before active "
+                        "turn and attacks"
+                    )
+                prior_target_end = end.sequence
+                if schedule.convention == "fighter_first_v1" and not (
+                    controller_end.sequence < start.sequence
+                ):
+                    raise ControlEngineError(
+                        "fighter_first_v1 schedule order is invalid"
+                    )
+                if schedule.convention == "target_before_fighter_v1" and not (
+                    end.sequence < controller_start.sequence
+                ):
+                    raise ControlEngineError(
+                        "target_before_fighter_v1 schedule order is invalid"
+                    )
+            ordered_blocks = (
+                [(controller_start, controller_end)]
+                + [
+                    target_boundaries[target_id]
+                    for target_id in schedule.target_ids
+                ]
+                if schedule.convention == "fighter_first_v1"
+                else [
+                    target_boundaries[target_id]
+                    for target_id in schedule.target_ids
+                ] + [(controller_start, controller_end)]
+            )
+            expected_block_start = round_start.sequence + 1
+            for block_start, block_end in ordered_blocks:
+                if block_start.sequence != expected_block_start:
+                    raise ControlEngineError(
+                        "Timeline turn blocks must be ordered and noninterleaved"
+                    )
+                expected_block_start = block_end.sequence + 1
+            if round_end.sequence != expected_block_start:
+                raise ControlEngineError(
+                    "Timeline round contains an event outside its owning turn"
+                )
+        interval_ids = tuple(
+            interval.interval_id for interval in schedule.reaction_intervals
+        )
+        intervals_by_id = {
+            interval.interval_id: interval
+            for interval in schedule.reaction_intervals
+        }
+        events_by_id = {event.event_id: event for event in schedule.events}
+        if (
+            len(interval_ids) != len(set(interval_ids))
+            or any(
+                not isinstance(interval.interval_id, str)
+                or not interval.interval_id
+                or interval.interval_id.strip() != interval.interval_id
+                or (
+                    interval.window_id is not None
+                    and (
+                        not isinstance(interval.window_id, str)
+                        or not interval.window_id
+                        or interval.window_id.strip() != interval.window_id
+                    )
+                )
+                or not isinstance(interval.target_id, str)
+                or not interval.target_id
+                or interval.target_id.strip() != interval.target_id
+                or isinstance(interval.round, bool)
+                or not isinstance(interval.round, int)
+                or not isinstance(interval.start_event_id, str)
+                or not interval.start_event_id
+                or interval.start_event_id.strip() != interval.start_event_id
+                or not isinstance(interval.end_before_event_id, str)
+                or not interval.end_before_event_id
+                or interval.end_before_event_id.strip()
+                != interval.end_before_event_id
+                or (
+                    interval.initially_available is not None
+                    and not isinstance(interval.initially_available, bool)
+                )
+                or not isinstance(interval.horizon_entry_partial, bool)
+                or interval.target_id not in schedule.target_ids
+                or interval.round < 1
+                or interval.round > schedule.rounds
+                or interval.start_event_id not in events_by_id
+                or interval.end_before_event_id not in events_by_id
+                or events_by_id[interval.start_event_id].sequence
+                >= events_by_id[interval.end_before_event_id].sequence
+                for interval in schedule.reaction_intervals
+            )
+            or any(
+                event.reaction_interval_id is not None
+                and (
+                    event.reaction_interval_id not in intervals_by_id
+                    or (
+                        event.target_id is not None
+                        and intervals_by_id[event.reaction_interval_id].target_id
+                        != event.target_id
+                    )
+                    or (
+                        event.reaction_interval_id in intervals_by_id
+                        and not (
+                            events_by_id[
+                                intervals_by_id[
+                                    event.reaction_interval_id
+                                ].start_event_id
+                            ].sequence
+                            <= event.sequence
+                            < events_by_id[
+                                intervals_by_id[
+                                    event.reaction_interval_id
+                                ].end_before_event_id
+                            ].sequence
+                        )
+                    )
+                    or (
+                        event.kind == "reaction_window"
+                        and event.reaction_interval_id in intervals_by_id
+                        and intervals_by_id[
+                            event.reaction_interval_id
+                        ].initially_available is None
+                    )
+                )
+                for event in schedule.events
+            )
+        ):
+            raise ControlEngineError(
+                "Timeline schedule reaction ownership is invalid"
+            )
+        horizon_intervals = [
+            interval for interval in schedule.reaction_intervals
+            if interval.horizon_entry_partial
+        ]
+        first_round_start = next(
+            event for event in schedule.events
+            if event.kind == "round_start" and event.round == 1
+        )
+        if (
+            len(horizon_intervals) != len(schedule.target_ids)
+            or {interval.target_id for interval in horizon_intervals}
+            != set(schedule.target_ids)
+            or any(
+                interval.round != 1
+                or interval.window_id is not None
+                or (
+                    interval.initially_available is not None
+                    and not isinstance(interval.initially_available, bool)
+                )
+                or interval.start_event_id != first_round_start.event_id
+                or interval.end_before_event_id
+                != next(
+                    event.event_id
+                    for event in schedule.events
+                    if event.kind == "target_turn_start"
+                    and event.round == 1
+                    and event.target_id == interval.target_id
+                )
+                for interval in horizon_intervals
+            )
+            or (
+                any(
+                    interval.initially_available is None
+                    for interval in horizon_intervals
+                )
+                and any(
+                    isinstance(interval.initially_available, bool)
+                    for interval in horizon_intervals
+                )
+            )
+        ):
+            raise ControlEngineError(
+                "Timeline schedule horizon reaction ownership is invalid"
+            )
+        schedule_record = _strict_json_copy(
+            schedule.to_dict(),
+            "timeline_schedule",
+        )
+
+        program = engine._canonical_effect(effect)
+        target_rows = tuple(targets)
+        if any(not isinstance(target, ReliabilityTarget) for target in target_rows):
+            raise TypeError("targets must contain ReliabilityTarget values")
+        target_ids = tuple(target.target_id for target in target_rows)
+        if len(target_ids) != len(set(target_ids)):
+            raise ControlEngineError("targets must contain unique target IDs")
+        if set(target_ids) != set(schedule.target_ids):
+            raise ControlEngineError(
+                "Reliability targets and schedule targets must contain the same identities"
+            )
+        targets_by_id = {target.target_id: target for target in target_rows}
+
+        membership = engine._validated_selector_membership(
+            program,
+            selector_membership,
+            schedule,
+            selector_context,
+        )
+        bindings = dict(program.bind_choices(choices))
+        engine.version_provenance(
+            initiative_convention=schedule.convention,
+            area_response_convention=area_response_convention,
+            displacement_function_id=displacement_function_id,
+        )
+
+        if not isinstance(target_mechanics, Mapping):
+            raise ControlEngineError("target_mechanics must be an object")
+        _require_string_mapping_keys(target_mechanics, "target_mechanics")
+        if set(target_mechanics) != set(schedule.target_ids):
+            raise ControlEngineError(
+                "target_mechanics must cover every schedule target exactly once"
+            )
+        safe_target_mechanics: dict[str, dict[str, Any]] = {}
+        for target_id in schedule.target_ids:
+            value = target_mechanics[target_id]
+            if not isinstance(value, Mapping):
+                raise ControlEngineError(
+                    f"target_mechanics.{target_id} must be an object"
+                )
+            safe = _strict_json_copy(value, f"target_mechanics.{target_id}")
+            if not isinstance(safe, dict):  # pragma: no cover - mapping conversion
+                raise ControlEngineError(
+                    f"target_mechanics.{target_id} must be an object"
+                )
+            safe_target_mechanics[target_id] = safe
+            if (
+                area_response_convention == "shortest_route_v1"
+                and "area_routes" in safe
+            ):
+                try:
+                    area_response(
+                        area_response_convention,
+                        target_id=target_id,
+                        membership=True,
+                        effect_active=True,
+                        routes=safe["area_routes"],
+                        effective_speeds_ft=safe.get("base_speeds_ft"),
+                        prone="prone" in safe.get("initial_conditions", ()),
+                    )
+                except (TimelineError, TypeError, ValueError) as error:
+                    raise ControlEngineError(
+                        f"target_mechanics.{target_id}.area_routes are invalid: "
+                        f"{error}"
+                    ) from error
+
+        raw_operation_inputs = (
+            {} if operation_inputs_by_event is None else operation_inputs_by_event
+        )
+        if not isinstance(raw_operation_inputs, Mapping):
+            raise ControlEngineError("operation_inputs_by_event must be an object")
+        _require_string_mapping_keys(
+            raw_operation_inputs,
+            "operation_inputs_by_event",
+        )
+        known_event_ids = {event.event_id for event in schedule.events}
+        unknown_input_events = sorted(set(raw_operation_inputs) - known_event_ids)
+        if unknown_input_events:
+            raise ControlEngineError(
+                "operation_inputs_by_event references unknown schedule events: "
+                f"{unknown_input_events}"
+            )
+        safe_operation_inputs: dict[str, dict[str, Any]] = {}
+        for event_id, value in raw_operation_inputs.items():
+            if not isinstance(value, Mapping):
+                raise ControlEngineError(
+                    f"operation_inputs_by_event.{event_id} must be an object"
+                )
+            safe_value = _strict_json_copy(
+                value,
+                f"operation_inputs_by_event.{event_id}",
+            )
+            if not isinstance(safe_value, dict):  # pragma: no cover
+                raise ControlEngineError(
+                    f"operation_inputs_by_event.{event_id} must be an object"
+                )
+            safe_operation_inputs[event_id] = safe_value
+
+        if concentration_save_bonus is not None and (
+            isinstance(concentration_save_bonus, bool)
+            or not isinstance(concentration_save_bonus, int)
+        ):
+            raise ControlEngineError(
+                "concentration_save_bonus must be an integer or null"
+            )
+        concentration = program.concentration.to_dict()
+        concentration_required = concentration.get("kind") == "required"
+        concentration_start_event_id: str | None = None
+        if concentration_required:
+            if concentration.get("startup") != "on_activation":
+                raise ControlEngineError(
+                    f"Effect {program.effect_id!r} has unsupported concentration startup"
+                )
+            if concentration_save_bonus is None:
+                raise ControlEngineError(
+                    f"Effect {program.effect_id!r} requires a bound "
+                    "concentration_save_bonus"
+                )
+            activation_events = tuple(
+                event for event in schedule.events if event.kind == "activation"
+            )
+            if len(activation_events) != 1:
+                raise ControlEngineError(
+                    f"Effect {program.effect_id!r} requires exactly one typed "
+                    "activation event for concentration startup"
+                )
+            concentration_start_event_id = activation_events[0].event_id
+            for event_id, inputs in safe_operation_inputs.items():
+                declared = inputs.get("required_operations", ())
+                if (
+                    isinstance(declared, Sequence)
+                    and not isinstance(declared, (str, bytes))
+                    and "concentration_start" in declared
+                    and event_id != concentration_start_event_id
+                ):
+                    raise ControlEngineError(
+                        "concentration_start must be bound to the typed activation event"
+                    )
+        elif concentration_save_bonus is not None:
+            raise ControlEngineError(
+                f"Effect {program.effect_id!r} does not accept concentration inputs"
+            )
+        source_actor = _identifier(source_actor_id, "source_actor_id")
+        invocation = _identifier(invocation_id, "invocation_id")
+        initial_conditions_by_target: dict[str, tuple[str, ...]] = {}
+        initial_state_rows: list[dict[str, Any]] = []
+        for target_id in schedule.target_ids:
+            initial_conditions = safe_target_mechanics[target_id].get(
+                "initial_conditions",
+                [],
+            )
+            if not isinstance(initial_conditions, list) or any(
+                not isinstance(condition, str) or not condition
+                for condition in initial_conditions
+            ):
+                raise ControlEngineError(
+                    f"target_mechanics.{target_id}.initial_conditions must be "
+                    "an array of condition IDs"
+                )
+            if len(initial_conditions) != len(set(initial_conditions)):
+                raise ControlEngineError(
+                    f"target_mechanics.{target_id}.initial_conditions must be unique"
+                )
+            for condition in initial_conditions:
+                if condition not in engine.catalog.conditions:
+                    raise ControlEngineError(
+                        f"Unknown initial condition {condition!r} for {target_id!r}"
+                    )
+                if condition in targets_by_id[target_id].condition_immunities:
+                    raise ControlEngineError(
+                        f"Target {target_id!r} cannot start with immune condition "
+                        f"{condition!r}"
+                    )
+                initial_state_rows.append({
+                    "instance_id": (
+                        f"{invocation}:target_condition:{target_id}:"
+                        f"initial_{condition}"
+                    ),
+                    "effect_id": "target_condition",
+                    "component_id": f"initial_{condition}",
+                    "target_id": target_id,
+                    "magnitude": {
+                        "kind": "condition",
+                        "condition": condition,
+                    },
+                    "duration": {"kind": "until_condition_response"},
+                    "stacking": {
+                        "key": f"target_condition:{condition}",
+                        "mode": "nonstacking",
+                        "refresh": "none",
+                    },
+                    "source_actor_id": target_id,
+                    "applied_event_id": "session_initial_state",
+                    "expiry_event_id": None,
+                    "remaining_tokens": None,
+                })
+            initial_conditions_by_target[target_id] = tuple(initial_conditions)
+        initial_state_rows.sort(key=lambda row: (
+            row["target_id"],
+            row["effect_id"],
+            row["component_id"],
+            row["instance_id"],
+        ))
+        chosen_kernel = D20ProbabilityKernel() if kernel is None else kernel
+        if getattr(getattr(chosen_kernel, "identity", None), "test_only", False):
+            raise ControlEngineError(
+                "Public execution sessions reject test-only probability kernels"
+            )
+        mechanical_candidates = engine.candidate_component_ids(program)
+        candidates = (
+            mechanical_candidates
+            if candidate_component_ids is None
+            else tuple(candidate_component_ids)
+        )
+        reliability = engine.reliability(
+            program,
+            targets=target_rows,
+            selector_membership=membership,
+            selector_context=selector_context,
+            kernel=chosen_kernel,
+            context=probability_context,
+            choices=bindings,
+            events=reliability_events,
+            candidate_component_ids=candidates,
+            include_initial=include_initial,
+        )
+        if reliability.scenario is None or reliability.scenario_digest is None:
+            raise ControlEngineError(
+                "Engine reliability did not produce canonical scenario provenance"
+            )
+        reliability_token = reliability_result_issuance_token(reliability)
+        try:
+            validate_reliability_result(
+                program,
+                reliability,
+                expected_scenario_digest=reliability.scenario_digest,
+                expected_issuance_token=reliability_token,
+            )
+        except (ControlGraphError, TypeError) as error:
+            raise ControlEngineError(
+                f"Reliability provenance is invalid: {error}"
+            ) from error
+
+        explicit_reliability_bindings: dict[str, str] = {}
+        known_reliability_event_ids = set(reliability.scenario.event_ids)
+        for schedule_event_id, inputs in safe_operation_inputs.items():
+            bound_ids = inputs.get("reliability_event_ids", ())
+            if not isinstance(bound_ids, Sequence) or isinstance(
+                bound_ids,
+                (str, bytes),
+            ):
+                raise ControlEngineError(
+                    f"operation_inputs_by_event.{schedule_event_id}."
+                    "reliability_event_ids must be an array"
+                )
+            for reliability_event_id in bound_ids:
+                event_name = _identifier(
+                    reliability_event_id,
+                    f"operation_inputs_by_event.{schedule_event_id}."
+                    "reliability_event_ids item",
+                )
+                if event_name not in known_reliability_event_ids:
+                    raise ControlEngineError(
+                        f"Unknown reliability event binding: {event_name!r}"
+                    )
+                if event_name in explicit_reliability_bindings:
+                    raise ControlEngineError(
+                        f"Reliability event {event_name!r} is bound more than once"
+                    )
+                explicit_reliability_bindings[event_name] = schedule_event_id
+
+        gate_rows_by_reliability_event: dict[str, list[Any]] = {}
+        for gate_row in reliability.gate_probabilities:
+            if gate_row.probability > 0:
+                gate_rows_by_reliability_event.setdefault(
+                    gate_row.event_id,
+                    [],
+                ).append(gate_row)
+        reliability_timeline_bindings: dict[str, str] = {}
+        reliability_events_by_id = {
+            event.event_id: event for event in reliability.scenario.event_script
+        }
+        for reliability_event_id, gate_rows in gate_rows_by_reliability_event.items():
+            reliability_event = reliability_events_by_id[reliability_event_id]
+            explicit_event_id = explicit_reliability_bindings.get(
+                reliability_event_id
+            )
+            candidates_for_event: list[str] = []
+            for schedule_event in schedule.events:
+                if (
+                    explicit_event_id is not None
+                    and schedule_event.event_id != explicit_event_id
+                ):
+                    continue
+                for gate_row in gate_rows:
+                    gate = program.gate(gate_row.gate_id)
+                    scoped_targets = gate_row.target_ids or (None,)
+                    try:
+                        matches = any(
+                            typed_event_matches(
+                                schedule_event,
+                                reliability_event.trigger.data.to_dict(),
+                                target_id=target_id,
+                                triggering_turn_id=schedule_event.turn_id,
+                            )
+                            and (
+                                target_id is None
+                                or schedule_event.target_id in {None, target_id}
+                            )
+                            for target_id in scoped_targets
+                        )
+                    except (TimelineError, TypeError, ValueError):
+                        matches = False
+                    if matches and gate.trigger.kind == reliability_event.trigger.kind:
+                        candidates_for_event.append(schedule_event.event_id)
+                        break
+            candidates_for_event = list(dict.fromkeys(candidates_for_event))
+            if len(candidates_for_event) != 1:
+                raise ControlEngineError(
+                    f"Reliability event {reliability_event_id!r} must bind "
+                    "exactly one compatible timeline event; "
+                    f"matches={candidates_for_event!r}"
+                )
+            reliability_timeline_bindings[reliability_event_id] = (
+                candidates_for_event[0]
+            )
+        if concentration_start_event_id is not None:
+            start_sequence = schedule.event(
+                concentration_start_event_id
+            ).sequence
+            premature_events = sorted(
+                reliability_event_id
+                for reliability_event_id, schedule_event_id
+                in reliability_timeline_bindings.items()
+                if schedule.event(schedule_event_id).sequence < start_sequence
+            )
+            if premature_events:
+                raise ControlEngineError(
+                    "Concentration gate events cannot precede the bound startup: "
+                    f"{premature_events}"
+                )
+
+        required_operation_plan: dict[str, list[str]] = {}
+        for reliability_event_id, gate_rows in gate_rows_by_reliability_event.items():
+            schedule_event_id = reliability_timeline_bindings[
+                reliability_event_id
+            ]
+            for gate_row in gate_rows:
+                if gate_row.gate_id not in program.root_gate_ids:
+                    continue
+                if gate_row.target_ids:
+                    for target_id in gate_row.target_ids:
+                        required_operation_plan.setdefault(
+                            schedule_event_id,
+                            [],
+                        ).append(f"branch:{gate_row.gate_id}:{target_id}")
+                else:
+                    gate = program.gate(gate_row.gate_id)
+                    selected_targets = sorted({
+                        target_id
+                        for selector_id in gate.selector_ids
+                        for target_id in membership[selector_id]
+                    })
+                    for target_id in selected_targets:
+                        required_operation_plan.setdefault(
+                            schedule_event_id,
+                            [],
+                        ).append(f"branch:{gate_row.gate_id}:{target_id}")
+        for event_id, inputs in safe_operation_inputs.items():
+            declared = inputs.get("required_operations", ())
+            if (
+                not isinstance(declared, Sequence)
+                or isinstance(declared, (str, bytes))
+            ):
+                raise ControlEngineError(
+                    f"operation_inputs_by_event.{event_id}.required_operations "
+                    "must be an array"
+                )
+            for index, operation in enumerate(declared):
+                required_operation_plan.setdefault(event_id, []).append(
+                    _identifier(
+                        operation,
+                        f"operation_inputs_by_event.{event_id}."
+                        f"required_operations[{index}]",
+                    )
+                )
+            normalization_targets = inputs.get("normalization_target_ids", ())
+            if (
+                not isinstance(normalization_targets, Sequence)
+                or isinstance(normalization_targets, (str, bytes))
+            ):
+                raise ControlEngineError(
+                    f"operation_inputs_by_event.{event_id}."
+                    "normalization_target_ids must be an array"
+                )
+            for target_id in normalization_targets:
+                if target_id not in targets_by_id:
+                    raise ControlEngineError(
+                        f"Required normalization references unknown target {target_id!r}"
+                    )
+                required_operation_plan.setdefault(event_id, []).append(
+                    f"normalization:{target_id}"
+                )
+        if concentration_start_event_id is not None:
+            required_operation_plan.setdefault(
+                concentration_start_event_id,
+                [],
+            ).append("concentration_start")
+        canonical_required_plan = {
+            event_id: list(dict.fromkeys(operations))
+            for event_id, operations in sorted(required_operation_plan.items())
+        }
+
+        provenance = engine.version_provenance(
+            initiative_convention=schedule.convention,
+            area_response_convention=area_response_convention,
+            displacement_function_id=displacement_function_id,
+        )
+        scenario_record = {
+            "session_contract": "control_execution_session_v1",
+            "compiled_program": {
+                "effect_id": program.effect_id,
+                "entity_id": program.entity_id,
+                "tier": program.tier,
+                "authority_sha256": program.authority_sha256,
+            },
+            "versions": provenance.to_dict(),
+            "target_ids": list(schedule.target_ids),
+            "target_mechanics": safe_target_mechanics,
+            "initial_state": initial_state_rows,
+            "selector_membership": {
+                selector_id: list(membership[selector_id])
+                for selector_id in sorted(membership)
+            },
+            "selector_context": selector_context.to_dict(),
+            "choice_bindings": bindings,
+            "probability_context": probability_context.canonical_record(),
+            "probability_kernel": (
+                reliability.scenario.kernel_identity.canonical_record()
+            ),
+            "candidate_component_ids": list(
+                reliability.scenario.candidate_component_ids
+            ),
+            "ordered_reliability_events": [
+                event.canonical_record() for event in reliability.scenario.event_script
+            ],
+            "include_initial": include_initial,
+            "reliability_scenario_digest": reliability.scenario_digest,
+            "reliability_scenario": reliability.scenario.canonical_record(),
+            "timeline_schedule": schedule_record,
+            "initiative_convention": schedule.convention,
+            "area_response_convention": area_response_convention,
+            "displacement_function_id": displacement_function_id,
+            "source_actor_id": source_actor,
+            "invocation_id": invocation,
+            "operation_inputs_by_event": safe_operation_inputs,
+            "required_operation_plan": canonical_required_plan,
+            "reliability_timeline_bindings": reliability_timeline_bindings,
+            "concentration_save_bonus": concentration_save_bonus,
+            "concentration_lifecycle": {
+                "required": concentration_required,
+                "start_event_id": concentration_start_event_id,
+                "startup": concentration.get("startup"),
+            },
+        }
+        scenario_json = _canonical_json(scenario_record)
+
+        self._engine = engine
+        self._program = program
+        self._targets = target_rows
+        self._targets_by_id = targets_by_id
+        self._membership = membership
+        self._selector_context = selector_context
+        self._schedule = schedule
+        self._schedule_json = _canonical_json(schedule_record)
+        self._target_mechanics_json = _canonical_json(safe_target_mechanics)
+        self._operation_inputs_json = _canonical_json(safe_operation_inputs)
+        self._required_operation_plan_json = _canonical_json(
+            canonical_required_plan
+        )
+        self._reliability_timeline_bindings_json = _canonical_json(
+            reliability_timeline_bindings
+        )
+        self._area_response_convention = area_response_convention
+        self._displacement_function_id = displacement_function_id
+        self._choices = MappingProxyType(bindings)
+        self._source_actor_id = source_actor
+        self._invocation_id = invocation
+        self._concentration_required = concentration_required
+        self._concentration_start_event_id = concentration_start_event_id
+        self._reliability = reliability
+        self._reliability_token = reliability_token
+        self._reliability_digest = reliability.scenario_digest
+        self._scenario_json = scenario_json
+        self._scenario_digest = hashlib.sha256(
+            scenario_json.encode("utf-8")
+        ).hexdigest()
+        self._issuer = object()
+        self._state = ControlState()
+        for target_id in self._schedule.target_ids:
+            for condition in initial_conditions_by_target[target_id]:
+                self._state.apply_component(
+                    effect_id="target_condition",
+                    component={
+                        "component_id": f"initial_{condition}",
+                        "magnitude": {
+                            "kind": "condition",
+                            "condition": condition,
+                        },
+                        "duration": {"kind": "until_condition_response"},
+                        "stacking": {
+                            "key": f"target_condition:{condition}",
+                            "mode": "nonstacking",
+                            "refresh": "none",
+                        },
+                    },
+                    target_id=target_id,
+                    source_actor_id=target_id,
+                    event_id="session_initial_state",
+                    invocation_id=self._invocation_id,
+                )
+        self._initial_state_json = _canonical_json(self._state.snapshot())
+        if self._initial_state_json != _canonical_json(initial_state_rows):
+            raise ControlEngineError(
+                "Scenario-bound initial condition state is not canonical"
+            )
+        self._state.audit_ledger.clear()
+        self._epochs = DisplacementEpochs()
+        self._concentration_tracker = (
+            ConcentrationTracker(save_bonus=concentration_save_bonus)
+            if concentration_save_bonus is not None
+            else None
+        )
+        self._cursor = -1
+        self._current_event: TimelineEvent | None = None
+        self._current_pre_state_json: str | None = None
+        self._operation_sequence = 0
+        self._issued_records: list[_IssuedControlRecord] = []
+        self._issued_record_attestations: list[str] = []
+        self._event_snapshots: list[_ClosedEventSnapshot] = []
+        self._normalization_results: list[NormalizationResult] = []
+        self._event_state_transitions: list[dict[str, Any]] = []
+        self._repeat_save_records: list[dict[str, Any]] = []
+        self._area_records: list[dict[str, Any]] = []
+        self._prone_records: list[dict[str, Any]] = []
+        self._concentration_records: list[dict[str, Any]] = []
+        self._displacement_records: list[dict[str, Any]] = []
+        self._pending_displacements: set[tuple[str, str]] = set()
+        self._displaced_targets: set[str] = set()
+        self._movement_response_required = False
+        self._movement_response_consumed = False
+        self._current_required_operations: set[str] = set()
+        self._future_required_operations: dict[str, set[str]] = {}
+        self._pending_concentration_end: dict[str, Any] | None = None
+        self._shared_gate_outcomes: dict[tuple[str, str], str] = {}
+        self._same_event_gate_overrides: set[tuple[str, str]] = set()
+        self._cached_result: ControlEngineResult | None = None
+
+    @property
+    def scenario_digest(self) -> str:
+        return self._scenario_digest
+
+    @property
+    def scenario_record(self) -> Mapping[str, Any]:
+        return MappingProxyType(json.loads(self._scenario_json))
+
+    @property
+    def schedule(self) -> TimelineSchedule:
+        return self._schedule
+
+    @property
+    def current_event(self) -> TimelineEvent | None:
+        return self._current_event
+
+    @property
+    def cursor(self) -> int:
+        return self._cursor
+
+    def state_snapshot(self, target_id: str | None = None) -> tuple[Mapping[str, Any], ...]:
+        if target_id is not None and target_id not in self._targets_by_id:
+            raise ControlEngineError(f"Unknown session target: {target_id!r}")
+        return tuple(
+            MappingProxyType(row)
+            for row in json.loads(_canonical_json(self._state.snapshot(target_id)))
+        )
+
+    def issued_records(self) -> tuple[_IssuedControlRecord, ...]:
+        return tuple(self._issued_records)
+
+    def event_reference(self, event_id: str) -> _SessionEventReference:
+        try:
+            event = self._schedule.event(_identifier(event_id, "event_id"))
+        except TimelineError as error:
+            raise ControlEngineError(f"Unknown session event ID: {event_id!r}") from error
+        return _SessionEventReference(
+            event_id=event.event_id,
+            event_sequence=event.sequence,
+            scenario_digest=self._scenario_digest,
+            _issuer=self._issuer,
+        )
+
+    def _target_mechanics(self, target_id: str) -> dict[str, Any]:
+        return json.loads(self._target_mechanics_json)[target_id]
+
+    def _operation_inputs(self, event_id: str) -> dict[str, Any]:
+        return json.loads(self._operation_inputs_json).get(event_id, {})
+
+    def _bound_input(
+        self,
+        name: str,
+        *,
+        target_id: str | None = None,
+        default: Any = _MISSING,
+    ) -> Any:
+        if self._current_event is None:
+            raise ControlEngineError("No schedule event is currently open")
+        event_inputs = self._operation_inputs(self._current_event.event_id)
+        if name in event_inputs:
+            return event_inputs[name]
+        if target_id is not None:
+            mechanics = self._target_mechanics(target_id)
+            per_event_name = f"{name}_by_event"
+            per_event = mechanics.get(per_event_name)
+            if isinstance(per_event, Mapping) and self._current_event.event_id in per_event:
+                return per_event[self._current_event.event_id]
+            if name in mechanics:
+                return mechanics[name]
+        if default is not _MISSING:
+            return default
+        raise ControlEngineError(
+            f"Scenario does not bind {name!r} for event "
+            f"{self._current_event.event_id!r}"
+        )
+
+    def _require_current(
+        self,
+        *,
+        target_id: str | None = None,
+        kinds: Iterable[str] | None = None,
+    ) -> TimelineEvent:
+        self._validate_scenario_identity()
+        event = self._current_event
+        if event is None:
+            raise ControlEngineError(
+                "Operation requires an explicitly advanced, open schedule event"
+            )
+        if target_id is not None:
+            target = _identifier(target_id, "target_id")
+            if target not in self._targets_by_id:
+                raise ControlEngineError(f"Unknown session target: {target!r}")
+            if event.target_id is not None and event.target_id != target:
+                raise ControlEngineError(
+                    f"Current event targets {event.target_id!r}, not {target!r}"
+                )
+        if kinds is not None and event.kind not in set(kinds):
+            raise ControlEngineError(
+                f"Current event {event.event_id!r} has kind {event.kind!r}, "
+                f"expected one of {sorted(set(kinds))!r}"
+            )
+        return event
+
+    def _issue(
+        self,
+        *,
+        record_kind: str,
+        payload: Any,
+        pre_operation_state_json: str,
+        target_id: str | None = None,
+    ) -> _IssuedControlRecord:
+        event = self._require_current(target_id=target_id)
+        if self._current_pre_state_json is None:  # pragma: no cover - invariant
+            raise ControlEngineError("Current event has no pre-event snapshot")
+        payload_json = _canonical_json(payload)
+        normalized_kind = _identifier(record_kind, "record_kind")
+        if normalized_kind not in _SESSION_RECORD_KINDS:
+            raise ControlEngineError(
+                f"Unsupported session record kind: {normalized_kind!r}"
+            )
+        self._operation_sequence += 1
+        post_operation_state_json = _canonical_json(self._state.snapshot())
+        record_identity = {
+            "scenario_digest": self._scenario_digest,
+            "event_id": event.event_id,
+            "event_sequence": event.sequence,
+            "operation_sequence": self._operation_sequence,
+            "target_id": target_id,
+            "record_kind": normalized_kind,
+            "pre_event_state": json.loads(self._current_pre_state_json),
+            "pre_operation_state": json.loads(pre_operation_state_json),
+            "post_operation_state": json.loads(post_operation_state_json),
+            "payload": json.loads(payload_json),
+        }
+        record = _IssuedControlRecord(
+            scenario_digest=self._scenario_digest,
+            event_id=event.event_id,
+            event_sequence=event.sequence,
+            operation_sequence=self._operation_sequence,
+            target_id=target_id,
+            record_kind=normalized_kind,
+            pre_event_state_json=self._current_pre_state_json,
+            pre_operation_state_json=pre_operation_state_json,
+            post_operation_state_json=post_operation_state_json,
+            payload_json=payload_json,
+            payload_sha256=hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
+            record_sha256=_sha256_record(record_identity),
+            _issuer=self._issuer,
+        )
+        self._issued_records.append(record)
+        self._issued_record_attestations.append(record.record_sha256)
+        self._cached_result = None
+        return record
+
+    def _active_area_component_ids(self, target_id: str) -> tuple[str, ...]:
+        bindings = self._engine._compiled_area_bindings(self._program)
+        return tuple(sorted({
+            component.component_id
+            for component in self._state.active_components(target_id)
+            if component.effect_id == self._program.effect_id
+            and component.component_id in bindings
+        }))
+
+    def _plan_reachable_gate(
+        self,
+        *,
+        gate_id: str,
+        target_id: str,
+        after_sequence: int,
+    ) -> tuple[TimelineEvent, str, bool]:
+        gate = self._program.gate(gate_id)
+        bindings = json.loads(self._reliability_timeline_bindings_json)
+        matching_events: list[TimelineEvent] = []
+        for gate_row in self._reliability.gate_probabilities:
+            if (
+                gate_row.gate_id != gate.gate_id
+                or gate_row.probability <= 0
+                or (
+                    gate_row.target_ids
+                    and target_id not in gate_row.target_ids
+                )
+                or gate_row.event_id not in bindings
+            ):
+                continue
+            candidate = self._schedule.event(bindings[gate_row.event_id])
+            if candidate.sequence < after_sequence:
+                continue
+            same_event_continuation = (
+                self._current_event is not None
+                and candidate.event_id == self._current_event.event_id
+                and gate.trigger.kind
+                in {"save", "damage_context", "instantaneous_resolution"}
+            )
+            try:
+                matches = same_event_continuation or typed_event_matches(
+                    candidate,
+                    gate.trigger.data.to_dict(),
+                    target_id=target_id,
+                    triggering_turn_id=candidate.turn_id,
+                )
+            except (TimelineError, TypeError, ValueError):
+                matches = False
+            if matches and candidate.target_id in {None, target_id}:
+                matching_events.append(candidate)
+        matching_events.sort(key=lambda row: row.sequence)
+        matching_events = list({
+            row.event_id: row for row in matching_events
+        }.values())
+        if not matching_events:
+            raise ControlEngineError(
+                f"Reachable gate {gate_id!r} for target {target_id!r} has no "
+                "remaining bound reliability/timeline event"
+            )
+        selected = matching_events[0]
+        label = (
+            f"concentration_end:{gate_id}:{target_id}"
+            if gate.trigger.kind == "concentration_end"
+            else f"branch:{gate_id}:{target_id}"
+        )
+        same_event = bool(
+            self._current_event is not None
+            and selected.event_id == self._current_event.event_id
+        )
+        allow_trigger_override = bool(
+            same_event
+            and gate.trigger.kind
+            in {"save", "damage_context", "instantaneous_resolution"}
+        )
+        return selected, label, allow_trigger_override
+
+    def _commit_reachable_gate(
+        self,
+        plan: tuple[TimelineEvent, str, bool],
+        *,
+        gate_id: str,
+        target_id: str,
+    ) -> None:
+        selected, label, allow_trigger_override = plan
+        if (
+            self._current_event is not None
+            and selected.event_id == self._current_event.event_id
+        ):
+            self._current_required_operations.add(label)
+            if allow_trigger_override:
+                self._same_event_gate_overrides.add((gate_id, target_id))
+        else:
+            self._future_required_operations.setdefault(
+                selected.event_id,
+                set(),
+            ).add(label)
+
+    def _next_gate_targets(
+        self,
+        gate: Any,
+        next_gate: Any,
+        target_id: str,
+    ) -> tuple[str, ...]:
+        """Mirror graph evaluator selector-overlap target propagation exactly."""
+
+        selected: list[str] = []
+        source_selectors = set(gate.selector_ids)
+        for selector_id in next_gate.selector_ids:
+            for scheduled_target in self._membership[selector_id]:
+                if (
+                    selector_id in source_selectors
+                    and scheduled_target != target_id
+                ):
+                    continue
+                if scheduled_target not in selected:
+                    selected.append(scheduled_target)
+        return tuple(sorted(selected))
+
+    def advance(
+        self,
+        event_id: str | _SessionEventReference,
+    ) -> TimelineEvent:
+        """Advance exactly one schedule position; skipping is never implicit."""
+
+        self._validate_scenario_identity()
+        if isinstance(event_id, _SessionEventReference):
+            if (
+                event_id._issuer is not self._issuer
+                or event_id.scenario_digest != self._scenario_digest
+            ):
+                raise ControlEngineError(
+                    "Schedule event reference belongs to another execution session"
+                )
+            event_name = event_id.event_id
+        else:
+            event_name = _identifier(event_id, "event_id")
+        try:
+            event = self._schedule.event(event_name)
+        except TimelineError as error:
+            raise ControlEngineError(f"Unknown session event ID: {event_name!r}") from error
+        if (
+            isinstance(event_id, _SessionEventReference)
+            and event.sequence != event_id.event_sequence
+        ):
+            raise ControlEngineError("Schedule event reference is stale or malformed")
+        if self._current_event is not None:
+            raise ControlEngineError(
+                f"Event {self._current_event.event_id!r} must be explicitly closed "
+                "before advancing"
+            )
+        if event.sequence <= self._cursor:
+            raise ControlEngineError(
+                f"Cannot move the session cursor backward to event {event_name!r}"
+            )
+        expected_sequence = self._cursor + 1
+        if event.sequence != expected_sequence:
+            expected = self._schedule.events[expected_sequence]
+            raise ControlEngineError(
+                f"Cannot skip future event {expected.event_id!r}; advance it first"
+            )
+
+        self._current_event = event
+        self._current_pre_state_json = _canonical_json(self._state.snapshot())
+        self._current_required_operations = set(
+            json.loads(self._required_operation_plan_json).get(event.event_id, ())
+        )
+        self._current_required_operations.update(
+            self._future_required_operations.pop(event.event_id, set())
+        )
+        pre_event_rows = json.loads(self._current_pre_state_json)
+        for operation in tuple(self._current_required_operations):
+            if not operation.startswith(("branch:", "concentration_end:")):
+                continue
+            parts = operation.split(":", 2)
+            gate = self._program.gate(parts[1])
+            target_id = parts[2] if len(parts) == 3 else event.target_id
+            if target_id is None or not gate.requires_active_component_ids:
+                continue
+            active_ids = {
+                row["component_id"]
+                for row in pre_event_rows
+                if row.get("target_id") == target_id
+                and row.get("effect_id") == self._program.effect_id
+            }
+            if set(gate.requires_active_component_ids) - active_ids:
+                self._current_required_operations.discard(operation)
+        self._movement_response_consumed = False
+        self._movement_response_required = False
+        if event.kind == "target_movement_opportunity" and event.target_id is not None:
+            target = event.target_id
+            prone = any(
+                component.magnitude.get("kind") == "condition"
+                and component.magnitude.get("condition") == "prone"
+                for component in self._state.active_components(target)
+            )
+            self._movement_response_required = bool(
+                prone
+                or self._active_area_component_ids(target)
+                or target in self._displaced_targets
+            )
+        if (
+            self._pending_concentration_end is not None
+            and self._pending_concentration_end["event_id"] == event.event_id
+        ):
+            self._pending_concentration_end["current"] = True
+        if (
+            event.kind == "concentration_end"
+            and self._concentration_tracker is not None
+            and self._concentration_tracker.active_effect_id
+            == self._program.effect_id
+        ):
+            self._current_required_operations.add("concentration_end")
+        return event
+
+    def advance_to(self, event_id: str) -> TimelineEvent:
+        """Advance through inert events, stopping if an operation is required."""
+
+        target = self._schedule.event(_identifier(event_id, "event_id"))
+        while self._cursor < target.sequence:
+            next_event = self._schedule.events[self._cursor + 1]
+            self.advance(next_event.event_id)
+            if next_event.sequence == target.sequence:
+                return next_event
+            self.close_event()
+        raise ControlEngineError(
+            f"Event {event_id!r} is not later than the current cursor"
+        )
+
+    def close_event(self) -> _ClosedEventSnapshot:
+        event = self._require_current()
+        # Expiry is an engine-owned end-of-event operation, never a caller task.
+        self._current_required_operations.discard("component_expiry")
+        unresolved: list[str] = []
+        unresolved.extend(sorted(self._current_required_operations))
+        if self._pending_displacements:
+            unresolved.append("instantaneous displacement")
+        if self._movement_response_required and not self._movement_response_consumed:
+            unresolved.append("target movement response")
+        if (
+            self._pending_concentration_end is not None
+            and self._pending_concentration_end.get("current")
+        ):
+            unresolved.append("concentration end")
+        if unresolved:
+            raise ControlEngineError(
+                f"Event {event.event_id!r} has unresolved required operations: "
+                f"{', '.join(unresolved)}"
+            )
+        if self._current_pre_state_json is None:  # pragma: no cover
+            raise ControlEngineError("Current event has no pre-event snapshot")
+        pre_expiry = _canonical_json(self._state.snapshot())
+        expired = self._state.expire(event.event_id)
+        if expired:
+            self._issue(
+                record_kind="component_expiry",
+                target_id=event.target_id,
+                pre_operation_state_json=pre_expiry,
+                payload={
+                    "kind": "component_expiry",
+                    "event_id": event.event_id,
+                    "expired_instance_ids": [item.instance_id for item in expired],
+                    "expired_component_ids": sorted({
+                        item.component_id for item in expired
+                    }),
+                },
+            )
+        self._current_required_operations.discard("component_expiry")
+        snapshot = _ClosedEventSnapshot(
+            scenario_digest=self._scenario_digest,
+            event_id=event.event_id,
+            event_sequence=event.sequence,
+            pre_event_state_json=self._current_pre_state_json,
+            post_event_state_json=_canonical_json(self._state.snapshot()),
+        )
+        self._event_snapshots.append(snapshot)
+        self._cursor = event.sequence
+        self._current_event = None
+        self._current_pre_state_json = None
+        self._current_required_operations = set()
+        self._cached_result = None
+        return snapshot
+
+    def complete(self) -> None:
+        """Consume all remaining inert events without inventing operations."""
+
+        if self._current_event is not None:
+            self.close_event()
+        while self._cursor + 1 < len(self._schedule.events):
+            event = self._schedule.events[self._cursor + 1]
+            self.advance(event.event_id)
+            self.close_event()
+
+    def apply_branch(
+        self,
+        *,
+        gate_id: str,
+        outcome: str,
+        target_id: str,
+    ) -> _IssuedControlRecord:
+        event = self._require_current(target_id=target_id)
+        gate = self._program.gate(_identifier(gate_id, "gate_id"))
+        if gate.trigger.kind == "concentration_end":
+            raise ControlEngineError(
+                "Concentration-end gates are owned by end_concentration()"
+            )
+        observed_outcome = _identifier(outcome, "outcome")
+        pre_event_rows = json.loads(self._current_pre_state_json or "[]")
+        active_guard_ids = {
+            row["component_id"]
+            for row in pre_event_rows
+            if row.get("target_id") == target_id
+            and row.get("effect_id") == self._program.effect_id
+        }
+        missing_guards = sorted(
+            set(gate.requires_active_component_ids) - active_guard_ids
+        )
+        if missing_guards:
+            raise ControlEngineError(
+                f"Gate {gate.gate_id!r} source component was absent from the "
+                f"pre-event state: {missing_guards}"
+            )
+        if self._concentration_required and (
+            self._concentration_tracker is None
+            or self._concentration_tracker.active_effect_id
+            != self._program.effect_id
+        ):
+            raise ControlEngineError(
+                "Concentration startup must execute before concentration-program "
+                "branches"
+            )
+        exact_requirement = f"branch:{gate.gate_id}:{target_id}"
+        shared_requirement = f"branch:{gate.gate_id}"
+        if not ({exact_requirement, shared_requirement} & self._current_required_operations):
+            raise ControlEngineError(
+                f"Gate {gate.gate_id!r}/{target_id!r} is not a required "
+                "operation at the current event"
+            )
+        branch = gate.branch_for_outcome(observed_outcome)
+        reliability_bindings = json.loads(
+            self._reliability_timeline_bindings_json
+        )
+        possible_observation = any(
+            row.gate_id == gate.gate_id
+            and row.branch_id == branch.branch_id
+            and row.outcome == observed_outcome
+            and row.probability > 0
+            and reliability_bindings.get(row.event_id) == event.event_id
+            and (not row.target_ids or target_id in row.target_ids)
+            for row in self._reliability.branch_probabilities
+        )
+        if not possible_observation:
+            raise ControlEngineError(
+                f"Observed branch {branch.branch_id!r} has zero or absent "
+                "probability in the bound reliability event"
+            )
+        shared_key = (event.event_id, gate.gate_id)
+        if gate.gate_scope == "shared":
+            prior_outcome = self._shared_gate_outcomes.get(shared_key)
+            if prior_outcome is not None and prior_outcome != observed_outcome:
+                raise ControlEngineError(
+                    f"Shared gate {gate.gate_id!r} already resolved as "
+                    f"{prior_outcome!r} at this event"
+                )
+        next_gate_plans: list[
+            tuple[str, str, tuple[TimelineEvent, str, bool]]
+        ] = []
+        for next_gate_id in branch.next_gate_ids:
+            next_gate = self._program.gate(next_gate_id)
+            next_targets = self._next_gate_targets(gate, next_gate, target_id)
+            if not next_targets:
+                continue
+            for next_target in next_targets:
+                next_gate_plans.append((
+                    next_gate.gate_id,
+                    next_target,
+                    self._plan_reachable_gate(
+                        gate_id=next_gate.gate_id,
+                        target_id=next_target,
+                        after_sequence=event.sequence,
+                    ),
+                ))
+        pre = _canonical_json(self._state.snapshot())
+        transition = self._engine._apply_resolved_branch(
+            state=self._state,
+            effect=self._program,
+            gate_id=gate_id,
+            outcome=outcome,
+            target_id=target_id,
+            source_actor_id=self._source_actor_id,
+            event_id=event.event_id,
+            invocation_id=self._invocation_id,
+            schedule=self._schedule,
+            selector_membership=self._membership,
+            selector_context=self._selector_context,
+            choices=self._choices,
+            condition_immunities=self._targets_by_id[target_id].condition_immunities,
+            _active_guard_snapshot=json.loads(
+                self._current_pre_state_json or "[]"
+            ),
+            _allow_reachable_same_event=(
+                gate.gate_id,
+                target_id,
+            ) in self._same_event_gate_overrides,
+        )
+        self._same_event_gate_overrides.discard((gate.gate_id, target_id))
+        if gate.gate_scope == "shared":
+            self._shared_gate_outcomes[shared_key] = observed_outcome
+        if tuple(transition.get("next_gate_ids", ())) != branch.next_gate_ids:
+            raise ControlEngineError(
+                "Resolved branch next-gate plan diverged from compiled authority"
+            )
+        for planned_gate_id, planned_target, plan in next_gate_plans:
+            self._commit_reachable_gate(
+                plan,
+                gate_id=planned_gate_id,
+                target_id=planned_target,
+            )
+        self._current_required_operations.discard(
+            f"branch:{_identifier(gate_id, 'gate_id')}"
+        )
+        self._current_required_operations.discard(
+            f"branch:{_identifier(gate_id, 'gate_id')}:{target_id}"
+        )
+        self._current_required_operations.discard("branch")
+        for request in transition.get("pending_displacement_requests", ()):
+            self._pending_displacements.add(
+                (str(request["target_id"]), str(request["source_component_id"]))
+            )
+        record = self._issue(
+            record_kind="branch_transition",
+            payload=transition,
+            pre_operation_state_json=pre,
+            target_id=target_id,
+        )
+        self._event_state_transitions.append(transition)
+        return record
+
+    def normalize(
+        self,
+        *,
+        target_id: str,
+    ) -> _IssuedControlRecord:
+        event = self._require_current(target_id=target_id)
+        context = self._bound_input(
+            "normalization_context",
+            target_id=target_id,
+            default={},
+        )
+        if not isinstance(context, Mapping):
+            raise ControlEngineError("normalization_context must be an object")
+        pre = _canonical_json(self._state.snapshot())
+        pre_event_rows = json.loads(self._current_pre_state_json or "[]")
+        active_sources = {
+            f"{row['effect_id']}:{row['component_id']}"
+            for row in pre_event_rows
+            if row.get("target_id") == target_id
+        }
+        current_sources = {
+            f"{component.effect_id}:{component.component_id}"
+            for component in self._state.active_components(target_id)
+        }
+        later_sources = sorted(current_sources - active_sources)
+        if later_sources:
+            raise ControlEngineError(
+                "Cannot normalize an earlier event pre-state after a later "
+                f"same-event component application: {later_sources}"
+            )
+        result = self._engine._normalize_scheduled_window(
+            state=self._state,
+            schedule=self._schedule,
+            target_id=target_id,
+            event_id=event.event_id,
+            context=context,
+        )
+        for contribution in result.contributions:
+            invalid_sources = [
+                source_id
+                for source_id in contribution.source_component_ids
+                if source_id not in active_sources
+                and not source_id.startswith(f"target_sense:{target_id}:")
+            ]
+            if invalid_sources:
+                raise ControlEngineError(
+                    "Normalization source was not active in the event pre-state: "
+                    f"{invalid_sources}"
+                )
+        self._normalization_results.append(result)
+        self._current_required_operations.discard(f"normalization:{target_id}")
+        self._current_required_operations.discard("normalization")
+        return self._issue(
+            record_kind="normalization",
+            payload=result,
+            pre_operation_state_json=pre,
+            target_id=target_id,
+        )
+
+    def resolve_displacement(
+        self,
+        *,
+        target_id: str,
+        component_id: str,
+    ) -> _IssuedControlRecord:
+        event = self._require_current(target_id=target_id)
+        component = self._program.component(_identifier(component_id, "component_id"))
+        identity = (target_id, component.component_id)
+        if identity not in self._pending_displacements:
+            raise ControlEngineError(
+                "Displacement must resolve a pending request issued at the current event"
+            )
+        vectors = self._bound_input(
+            "displacement_vectors",
+            target_id=target_id,
+            default={},
+        )
+        vector = None
+        if isinstance(vectors, Mapping) and component.component_id in vectors:
+            vector = vectors[component.component_id]
+        pre = _canonical_json(self._state.snapshot())
+        resolution = self._engine._resolve_displacement(
+            component=component,
+            target_id=target_id,
+            event_id=event.event_id,
+            epochs=self._epochs,
+            displacement_function_id=self._displacement_function_id,
+            vector_feet=vector,
+        )
+        self._pending_displacements.remove(identity)
+        self._current_required_operations.discard("displacement")
+        self._displaced_targets.add(target_id)
+        self._displacement_records.append(resolution)
+        return self._issue(
+            record_kind="displacement",
+            payload=resolution,
+            pre_operation_state_json=pre,
+            target_id=target_id,
+        )
+
+    def resolve_area_entry(self, *, target_id: str) -> _IssuedControlRecord:
+        event = self._require_current(target_id=target_id, kinds={"entry"})
+        pre = _canonical_json(self._state.snapshot())
+        result = self._engine._resolve_compiled_area_entry(
+            effect=self._program,
+            target_ids=self._schedule.target_ids,
+            selector_membership=self._membership,
+            selector_context=self._selector_context,
+            target_id=target_id,
+            turn_id=_identifier(
+                self._bound_input("turn_id", target_id=target_id),
+                "turn_id",
+            ),
+            was_member=self._bound_input("was_member", target_id=target_id),
+            is_member=self._bound_input("is_member", target_id=target_id),
+            caused_by_area_movement=self._bound_input(
+                "caused_by_area_movement", target_id=target_id
+            ),
+            prior_trigger_turn_ids=self._bound_input(
+                "prior_trigger_turn_ids", target_id=target_id, default=()
+            ),
+            area_id=self._bound_input("area_id", target_id=target_id, default=None),
+        )
+        self._current_required_operations.discard("area_entry")
+        return self._issue(
+            record_kind="area_entry",
+            payload=result,
+            pre_operation_state_json=pre,
+            target_id=target_id,
+        )
+
+    def resolve_movement_response(
+        self,
+        *,
+        target_id: str,
+    ) -> tuple[_IssuedControlRecord, ...]:
+        event = self._require_current(
+            target_id=target_id,
+            kinds={"target_movement_opportunity"},
+        )
+        if self._movement_response_consumed:
+            raise ControlEngineError(
+                "The current event's movement budget was already consumed"
+            )
+        target = _identifier(target_id, "target_id")
+        base_speeds = self._bound_input(
+            "base_speeds_ft",
+            target_id=target,
+            default={},
+        )
+        movement_mode = self._bound_input(
+            "movement_mode",
+            target_id=target,
+            default="walk",
+        )
+        mixed_order = self._bound_input(
+            "mixed_speed_operation_order",
+            target_id=target,
+            default=None,
+        )
+        epoch_movement_mode = movement_mode
+        epoch_legal = True
+        epoch_movement_authority: dict[str, Any] | None = None
+        if target in self._displaced_targets:
+            if not base_speeds:
+                raise ControlEngineError(
+                    "Displacement epoch response requires bound base_speeds_ft"
+                )
+            epoch_movement_authority = self._engine._movement_state_authority(
+                state=self._state,
+                target_id=target,
+                base_speeds_ft=base_speeds,
+                mixed_speed_operation_order=mixed_order,
+            )
+        area_component_ids = self._active_area_component_ids(target)
+        prone = any(
+            component.magnitude.get("kind") == "condition"
+            and component.magnitude.get("condition") == "prone"
+            for component in self._state.active_components(target)
+        )
+        issued: list[_IssuedControlRecord] = []
+
+        if area_component_ids and self._area_response_convention == "shortest_route_v1":
+            area_membership = self._bound_input(
+                "area_membership",
+                target_id=target,
+            )
+            if area_membership is not True:
+                raise ControlEngineError(
+                    "Active area-bound components require bound membership true"
+                )
+            area_effect_active = self._bound_input(
+                "area_effect_active", target_id=target, default=True
+            )
+            if area_effect_active is not True:
+                raise ControlEngineError(
+                    "Movement response cannot retain active area components for "
+                    "an effect already marked ended"
+                )
+            routes = self._bound_input("area_routes", target_id=target)
+            pre = _canonical_json(self._state.snapshot())
+            area = self._engine._resolve_area_response(
+                state=self._state,
+                schedule=self._schedule,
+                effect=self._program,
+                target_ids=self._schedule.target_ids,
+                selector_membership=self._membership,
+                selector_context=self._selector_context,
+                target_id=target,
+                event_id=event.event_id,
+                area_response_convention=self._area_response_convention,
+                membership=area_membership,
+                effect_active=area_effect_active,
+                routes=routes,
+                base_speeds_ft=base_speeds,
+                mixed_speed_operation_order=mixed_order,
+            )
+            self._area_records.append(area)
+            area_authority = area.get("movement_authority")
+            if isinstance(area_authority, Mapping):
+                epoch_movement_authority = {
+                    key: area_authority[key]
+                    for key in (
+                        "source",
+                        "base_speeds_ft",
+                        "effective_speeds_ft",
+                        "speed_zero_modes",
+                        "denied_modes",
+                        "mixed_speed_operation_order",
+                        "source_component_ids",
+                    )
+                }
+            selected_route = area.get("selected_route")
+            if isinstance(selected_route, Mapping):
+                epoch_movement_mode = str(selected_route["mode"])
+            issued.append(self._issue(
+                record_kind="area_response",
+                payload=area,
+                pre_operation_state_json=pre,
+                target_id=target,
+            ))
+        else:
+            if prone:
+                if not base_speeds:
+                    raise ControlEngineError(
+                        "Prone movement response requires bound base_speeds_ft"
+                    )
+                pre = _canonical_json(self._state.snapshot())
+                prone_record = self._engine._resolve_prone_movement(
+                    state=self._state,
+                    schedule=self._schedule,
+                    target_id=target,
+                    event_id=event.event_id,
+                    base_speeds_ft=base_speeds,
+                    movement_mode=movement_mode,
+                    mixed_speed_operation_order=mixed_order,
+                )
+                self._prone_records.append(prone_record)
+                issued.append(self._issue(
+                    record_kind="prone_movement_response",
+                    payload=prone_record,
+                    pre_operation_state_json=pre,
+                    target_id=target,
+                ))
+            if area_component_ids:
+                area_membership = self._bound_input(
+                    "area_membership",
+                    target_id=target,
+                )
+                if area_membership is not True:
+                    raise ControlEngineError(
+                        "Active area-bound components require bound membership true"
+                    )
+                area_effect_active = self._bound_input(
+                    "area_effect_active", target_id=target, default=True
+                )
+                if area_effect_active is not True:
+                    raise ControlEngineError(
+                        "Movement response cannot retain active area components "
+                        "for an effect already marked ended"
+                    )
+                pre = _canonical_json(self._state.snapshot())
+                area = self._engine._resolve_area_response(
+                    state=self._state,
+                    schedule=self._schedule,
+                    effect=self._program,
+                    target_ids=self._schedule.target_ids,
+                    selector_membership=self._membership,
+                    selector_context=self._selector_context,
+                    target_id=target,
+                    event_id=event.event_id,
+                    area_response_convention=self._area_response_convention,
+                    membership=area_membership,
+                    effect_active=area_effect_active,
+                )
+                self._area_records.append(area)
+                issued.append(self._issue(
+                    record_kind="area_response",
+                    payload=area,
+                    pre_operation_state_json=pre,
+                    target_id=target,
+                ))
+
+        if target in self._displaced_targets:
+            if epoch_movement_authority is None:  # pragma: no cover - invariant
+                raise ControlEngineError("Missing bound displacement movement authority")
+            effective_speeds = epoch_movement_authority["effective_speeds_ft"]
+            denied_modes = set(epoch_movement_authority["denied_modes"])
+            if not effective_speeds:
+                epoch_legal = False
+                raise ControlEngineError(
+                    "Displacement response has no bound movement mode"
+                )
+            legal_positive_modes = tuple(
+                mode
+                for mode, speed in effective_speeds.items()
+                if mode not in denied_modes and speed > 0
+            )
+            legal_zero_modes = tuple(
+                mode
+                for mode, speed in effective_speeds.items()
+                if mode not in denied_modes and speed == 0
+            )
+            if (
+                epoch_movement_mode not in effective_speeds
+                or (
+                    epoch_movement_mode in denied_modes
+                    and legal_positive_modes
+                )
+                or (
+                    effective_speeds[epoch_movement_mode] == 0
+                    and legal_positive_modes
+                )
+            ):
+                epoch_movement_mode = (
+                    legal_positive_modes[0]
+                    if legal_positive_modes
+                    else legal_zero_modes[0]
+                    if legal_zero_modes
+                    else next(iter(effective_speeds))
+                )
+            epoch_legal = bool(legal_positive_modes or legal_zero_modes)
+            movement_denied = epoch_movement_mode in denied_modes
+            speed_zero = (
+                effective_speeds[epoch_movement_mode] == 0
+                and not movement_denied
+            )
+            pre = _canonical_json(self._state.snapshot())
+            epoch_record = self._epochs.self_movement_opportunity(
+                target_id=target,
+                legal=epoch_legal,
+                speed_zero=speed_zero,
+                movement_denied=movement_denied,
+            )
+            epoch = {
+                "record": {
+                    **epoch_record,
+                    "event_id": event.event_id,
+                    "source": "typed_self_movement_opportunity",
+                    "movement_mode": epoch_movement_mode,
+                    "movement_authority": epoch_movement_authority,
+                },
+            }
+            self._displacement_records.append(epoch)
+            issued.append(self._issue(
+                record_kind="displacement_epoch_boundary",
+                payload=epoch,
+                pre_operation_state_json=pre,
+                target_id=target,
+            ))
+            if epoch.get("record", {}).get("reset") is True:
+                self._displaced_targets.remove(target)
+
+        self._movement_response_consumed = True
+        self._movement_response_required = False
+        self._current_required_operations.discard("movement_response")
+        return tuple(issued)
+
+    def start_concentration(self) -> _IssuedControlRecord:
+        event = self._require_current()
+        if (
+            not self._concentration_required
+            or event.event_id != self._concentration_start_event_id
+            or "concentration_start" not in self._current_required_operations
+        ):
+            raise ControlEngineError(
+                "Concentration startup is not required at the current event"
+            )
+        tracker = self._concentration_tracker
+        if tracker is None:
+            raise ControlEngineError(
+                "The scenario does not bind a concentration save bonus"
+            )
+        if tracker.active_effect_id is not None:
+            raise ControlEngineError(
+                "End the prior concentration at its own event before replacement"
+            )
+        pre = _canonical_json(self._state.snapshot())
+        lifecycle = self._engine._start_concentration(
+            state=self._state,
+            tracker=tracker,
+            effect=self._program,
+            event_id=event.event_id,
+            schedule=self._schedule,
+            selector_membership=self._membership,
+            selector_context=self._selector_context,
+            invocation_id=self._invocation_id,
+            source_actor_id=self._source_actor_id,
+            startup_blood_tax=self._bound_input(
+                "startup_blood_tax", default=0
+            ),
+            choices=self._choices,
+        )
+        self._concentration_records.append(lifecycle)
+        self._current_required_operations.discard("concentration_start")
+        return self._issue(
+            record_kind="concentration_start",
+            payload=lifecycle,
+            pre_operation_state_json=pre,
+        )
+
+    def check_concentration(self) -> _IssuedControlRecord:
+        event = self._require_current(kinds={"damage_context"})
+        tracker = self._concentration_tracker
+        if tracker is None:
+            raise ControlEngineError(
+                "The scenario does not bind a concentration save bonus"
+            )
+        if self._pending_concentration_end is not None:
+            raise ControlEngineError("A concentration end is already pending")
+        amount = self._bound_input("concentration_amount")
+        source = self._bound_input("concentration_source")
+        outcome = self._bound_input("concentration_outcome")
+        success_probability = self._bound_input(
+            "concentration_success_probability", default=None
+        )
+        roll_kernel = self._bound_input(
+            "concentration_roll_kernel", default=None
+        )
+        pre = _canonical_json(self._state.snapshot())
+        if outcome == "success":
+            lifecycle = self._engine._check_concentration(
+                state=self._state,
+                tracker=tracker,
+                effect=self._program,
+                schedule=self._schedule,
+                selector_membership=self._membership,
+                selector_context=self._selector_context,
+                invocation_id=self._invocation_id,
+                source_actor_id=self._source_actor_id,
+                amount=amount,
+                source=source,
+                event_id=event.event_id,
+                outcome=outcome,
+                success_probability=success_probability,
+                roll_kernel=roll_kernel,
+                choices=self._choices,
+            )
+            self._concentration_records.append(lifecycle)
+            self._current_required_operations.discard("concentration_check")
+            return self._issue(
+                record_kind="concentration_check",
+                payload=lifecycle,
+                pre_operation_state_json=pre,
+            )
+        if outcome != "failure":
+            raise ControlEngineError("concentration_outcome must be success or failure")
+        end_event_id = _identifier(
+            self._bound_input("concentration_end_event_id"),
+            "concentration_end_event_id",
+        )
+        end_event = self._schedule.event(end_event_id)
+        if end_event.sequence != event.sequence + 1 or end_event.kind != "concentration_end":
+            raise ControlEngineError(
+                "A failed concentration check must bind the immediate typed end event"
+            )
+        context = self._engine._active_concentration_context(
+            tracker=tracker,
+            effect=self._program,
+            schedule=self._schedule,
+            selector_membership=self._membership,
+            selector_context=self._selector_context,
+            invocation_id=self._invocation_id,
+            source_actor_id=self._source_actor_id,
+            choices=self._choices,
+        )
+        plans = self._engine._concentration_end_plan(
+            state=self._state,
+            context=context,
+            event_id=end_event_id,
+            reason="failed_concentration_save",
+        )
+        first_record_index = len(tracker.records)
+        check_record = tracker.check(
+            amount=amount,
+            source=source,
+            event_id=event.event_id,
+            outcome="failure",
+            success_probability=success_probability,
+            roll_kernel=roll_kernel,
+        )
+        generated = tracker.records[first_record_index:]
+        if len(generated) != 2 or generated[1].get("kind") != "concentration_end":
+            raise ControlEngineError(
+                "Tracker did not emit the failed concentration lifecycle"
+            )
+        generated[1]["event_id"] = end_event_id
+        self._pending_concentration_end = {
+            "event_id": end_event_id,
+            "context": context,
+            "plans": plans,
+            "check_record": check_record,
+            "tracker_records": [dict(_json_safe(row)) for row in generated],
+            "current": False,
+        }
+        self._current_required_operations.discard("concentration_check")
+        return self._issue(
+            record_kind="concentration_check_pending_end",
+            payload={
+                "kind": "concentration_check_pending_end",
+                "check_record": check_record,
+                "end_event_id": end_event_id,
+            },
+            pre_operation_state_json=pre,
+        )
+
+    def end_concentration(self) -> _IssuedControlRecord:
+        event = self._require_current()
+        tracker = self._concentration_tracker
+        if tracker is None:
+            raise ControlEngineError(
+                "The scenario does not bind a concentration save bonus"
+            )
+        pre = _canonical_json(self._state.snapshot())
+        required_gate_labels = {
+            operation
+            for operation in self._current_required_operations
+            if operation.startswith("concentration_end:")
+        }
+        pending = self._pending_concentration_end
+        if pending is not None:
+            planned_end_transitions = tuple(pending["plans"])
+        else:
+            context = self._engine._active_concentration_context(
+                tracker=tracker,
+                effect=self._program,
+                schedule=self._schedule,
+                selector_membership=self._membership,
+                selector_context=self._selector_context,
+                invocation_id=self._invocation_id,
+                source_actor_id=self._source_actor_id,
+                choices=self._choices,
+            )
+            planned_end_transitions = self._engine._concentration_end_plan(
+                state=self._state,
+                context=context,
+                event_id=event.event_id,
+                reason=self._bound_input("concentration_end_reason"),
+            )
+        planned_gate_labels = {
+            f"concentration_end:{gate_id}:{target_id}"
+            for gate_id, target_id, _outcome in planned_end_transitions
+        }
+        if required_gate_labels != planned_gate_labels:
+            raise ControlEngineError(
+                "Concentration lifecycle gate plan does not match the bound "
+                f"reliability path: required={sorted(required_gate_labels)}, "
+                f"planned={sorted(planned_gate_labels)}"
+            )
+        if pending is not None:
+            if pending["event_id"] != event.event_id:
+                raise ControlEngineError(
+                    "Pending concentration end belongs to a different event"
+                )
+            transition = self._engine._apply_concentration_end_record(
+                state=self._state,
+                record=pending["tracker_records"][1],
+                context=pending["context"],
+                plans=pending["plans"],
+            )
+            self._engine._concentration_contexts.pop(tracker, None)
+            lifecycle = {
+                "kind": "concentration_check_lifecycle",
+                "check_record": pending["check_record"],
+                "tracker_records": pending["tracker_records"],
+                "applied_end_transitions": [transition],
+                "active_effect_id": None,
+                "active_components_after": self._state.snapshot(),
+            }
+            lifecycle = self._engine._audited_lifecycle_result(
+                self._state,
+                "concentration_check_lifecycle",
+                lifecycle,
+            )
+            self._pending_concentration_end = None
+        else:
+            lifecycle = self._engine._end_concentration(
+                state=self._state,
+                tracker=tracker,
+                effect=self._program,
+                schedule=self._schedule,
+                selector_membership=self._membership,
+                selector_context=self._selector_context,
+                invocation_id=self._invocation_id,
+                source_actor_id=self._source_actor_id,
+                reason=self._bound_input("concentration_end_reason"),
+                event_id=event.event_id,
+                choices=self._choices,
+            )
+        end_transitions: list[Mapping[str, Any]] = [
+            transition
+            for transition in lifecycle.get(
+                "concentration_end_gate_transitions",
+                (),
+            )
+            if isinstance(transition, Mapping)
+        ]
+        for wrapper in lifecycle.get("applied_end_transitions", ()):
+            if not isinstance(wrapper, Mapping):
+                continue
+            end_transitions.extend(
+                transition
+                for transition in wrapper.get(
+                    "concentration_end_gate_transitions",
+                    (),
+                )
+                if isinstance(transition, Mapping)
+            )
+        applied_gate_labels = {
+            "concentration_end:"
+            f"{transition['gate_id']}:{transition['target_id']}"
+            for transition in end_transitions
+            if transition.get("operation") == "branch_transition"
+        }
+        missing_gate_labels = sorted(required_gate_labels - applied_gate_labels)
+        if missing_gate_labels:
+            raise ControlEngineError(
+                "Concentration lifecycle did not execute its required compiled "
+                f"end gates: {missing_gate_labels}"
+            )
+        self._concentration_records.append(lifecycle)
+        self._current_required_operations.discard("concentration_end")
+        self._current_required_operations.difference_update(required_gate_labels)
+        return self._issue(
+            record_kind="concentration_end",
+            payload=lifecycle,
+            pre_operation_state_json=pre,
+        )
+
+    def reconcile_concentration_duration(self) -> _IssuedControlRecord:
+        event = self._require_current()
+        tracker = self._concentration_tracker
+        if tracker is None:
+            raise ControlEngineError(
+                "The scenario does not bind a concentration save bonus"
+            )
+        pre = _canonical_json(self._state.snapshot())
+        lifecycle = self._engine._reconcile_concentration_duration(
+            state=self._state,
+            tracker=tracker,
+            effect=self._program,
+            schedule=self._schedule,
+            selector_membership=self._membership,
+            selector_context=self._selector_context,
+            invocation_id=self._invocation_id,
+            source_actor_id=self._source_actor_id,
+            event_id=event.event_id,
+            choices=self._choices,
+        )
+        self._concentration_records.append(lifecycle)
+        self._current_required_operations.discard(
+            "concentration_duration_reconciliation"
+        )
+        return self._issue(
+            record_kind="concentration_duration_reconciliation",
+            payload=lifecycle,
+            pre_operation_state_json=pre,
+        )
+
+    def _validate_issued_records(
+        self,
+        records: Sequence[_IssuedControlRecord],
+    ) -> None:
+        if len(records) != len(self._issued_records):
+            raise ControlEngineError(
+                "Final result must consume the complete session-issued record stream"
+            )
+        known_events = {event.event_id: event for event in self._schedule.events}
+        closed_snapshots = {
+            snapshot.event_id: snapshot for snapshot in self._event_snapshots
+        }
+        prior_post_by_event: dict[str, str] = {}
+        prior_operation = 0
+        prior_event_sequence = -1
+        for index, record in enumerate(records):
+            if not isinstance(record, _IssuedControlRecord):
+                raise ControlEngineError("Final records must be typed session records")
+            if record is not self._issued_records[index]:
+                raise ControlEngineError(
+                    "Final records contain a foreign, stale, or fabricated record"
+                )
+            if record._issuer is not self._issuer:
+                raise ControlEngineError("Final record belongs to another execution")
+            if record.scenario_digest != self._scenario_digest:
+                raise ControlEngineError("Final record scenario digest is stale")
+            event = known_events.get(record.event_id)
+            if event is None or event.sequence != record.event_sequence:
+                raise ControlEngineError("Final record references an unknown event")
+            if event.sequence < prior_event_sequence:
+                raise ControlEngineError(
+                    "Final record stream moved backward through the schedule"
+                )
+            prior_event_sequence = event.sequence
+            if (
+                record.operation_sequence != index + 1
+                or record.operation_sequence <= prior_operation
+            ):
+                raise ControlEngineError(
+                    "Final record order is not the exact executed chronological order"
+                )
+            prior_operation = record.operation_sequence
+            canonical_payload = _canonical_json(json.loads(record.payload_json))
+            if canonical_payload != record.payload_json or hashlib.sha256(
+                record.payload_json.encode("utf-8")
+            ).hexdigest() != record.payload_sha256:
+                raise ControlEngineError("Final record payload is stale or malformed")
+            if record.record_kind not in _SESSION_RECORD_KINDS:
+                raise ControlEngineError("Final record kind is fabricated")
+            for snapshot_json in (
+                record.pre_event_state_json,
+                record.pre_operation_state_json,
+                record.post_operation_state_json,
+            ):
+                if _canonical_json(json.loads(snapshot_json)) != snapshot_json:
+                    raise ControlEngineError(
+                        "Final record state snapshot is stale or malformed"
+                    )
+            record_identity = {
+                "scenario_digest": record.scenario_digest,
+                "event_id": record.event_id,
+                "event_sequence": record.event_sequence,
+                "operation_sequence": record.operation_sequence,
+                "target_id": record.target_id,
+                "record_kind": record.record_kind,
+                "pre_event_state": json.loads(record.pre_event_state_json),
+                "pre_operation_state": json.loads(record.pre_operation_state_json),
+                "post_operation_state": json.loads(record.post_operation_state_json),
+                "payload": json.loads(record.payload_json),
+            }
+            if _sha256_record(record_identity) != record.record_sha256:
+                raise ControlEngineError(
+                    "Final record envelope is stale or malformed"
+                )
+            if record.target_id is not None and record.target_id not in self._targets_by_id:
+                raise ControlEngineError("Final record references an unknown target")
+            snapshot = closed_snapshots.get(record.event_id)
+            if (
+                snapshot is None
+                or record.pre_event_state_json != snapshot.pre_event_state_json
+            ):
+                raise ControlEngineError(
+                    "Final record pre-event state does not match its closed event"
+                )
+            expected_pre_operation = prior_post_by_event.get(
+                record.event_id,
+                snapshot.pre_event_state_json,
+            )
+            if record.pre_operation_state_json != expected_pre_operation:
+                raise ControlEngineError(
+                    "Same-event operation state chain is stale or out of order"
+                )
+            prior_post_by_event[record.event_id] = record.post_operation_state_json
+
+            payload = json.loads(record.payload_json)
+            if (
+                "target_id" in payload
+                and payload["target_id"] != record.target_id
+            ):
+                raise ControlEngineError(
+                    "Final record envelope target does not match its payload"
+                )
+            if (
+                "event_id" in payload
+                and payload["event_id"] != record.event_id
+            ):
+                raise ControlEngineError(
+                    "Final record envelope event does not match its payload"
+                )
+            if record.record_kind == "branch_transition":
+                if payload.get("operation") != "branch_transition":
+                    raise ControlEngineError(
+                        "Final branch record kind does not match its payload"
+                    )
+                gate_id = payload.get("gate_id")
+                branch_id = payload.get("branch_id")
+                try:
+                    gate = self._program.gate(str(gate_id))
+                except Exception as error:
+                    raise ControlEngineError(
+                        "Final branch record references an unknown gate"
+                    ) from error
+                if branch_id not in {branch.branch_id for branch in gate.branches}:
+                    raise ControlEngineError(
+                        "Final branch record has a fabricated branch-to-gate relationship"
+                    )
+                if gate.requires_active_component_ids:
+                    active_ids = {
+                        row["component_id"]
+                        for row in json.loads(record.pre_event_state_json)
+                        if row.get("target_id") == record.target_id
+                        and row.get("effect_id") == self._program.effect_id
+                    }
+                    missing = sorted(
+                        set(gate.requires_active_component_ids) - active_ids
+                    )
+                    if missing:
+                        raise ControlEngineError(
+                            "Final branch source component was absent from the "
+                            f"pre-event state: {missing}"
+                        )
+            if record.record_kind == "normalization":
+                allowed_windows = {
+                    value
+                    for value in (
+                        record.event_id,
+                        known_events[record.event_id].window_id,
+                        known_events[record.event_id].reaction_interval_id,
+                    )
+                    if value is not None
+                }
+                pre_sources = {
+                    f"{row['effect_id']}:{row['component_id']}"
+                    for row in json.loads(record.pre_event_state_json)
+                    if row.get("target_id") == record.target_id
+                }
+                for contribution in payload.get("contributions", ()):
+                    if contribution.get("event_or_window_id") not in allowed_windows:
+                        raise ControlEngineError(
+                            "Primitive contribution references a fictional window ID"
+                        )
+                    for source_id in contribution.get("source_component_ids", ()):
+                        if (
+                            source_id not in pre_sources
+                            and not source_id.startswith(
+                                f"target_sense:{record.target_id}:"
+                            )
+                        ):
+                            raise ControlEngineError(
+                                "Primitive contribution source was not active in the pre-state"
+                            )
+            if record.record_sha256 != self._issued_record_attestations[index]:
+                raise ControlEngineError(
+                    "Final record differs from its engine-owned issuance attestation"
+                )
+        for event_id, post_state_json in prior_post_by_event.items():
+            if post_state_json != closed_snapshots[event_id].post_event_state_json:
+                raise ControlEngineError(
+                    "Final operation post-state does not match its closed event"
+                )
+
+    def _validate_internal_ledgers(self) -> None:
+        payloads_by_kind: dict[str, list[Any]] = {}
+        for record in self._issued_records:
+            payloads_by_kind.setdefault(record.record_kind, []).append(
+                json.loads(record.payload_json)
+            )
+
+        comparisons = (
+            (
+                "branch transitions",
+                self._event_state_transitions,
+                payloads_by_kind.get("branch_transition", ()),
+            ),
+            (
+                "normalization results",
+                self._normalization_results,
+                payloads_by_kind.get("normalization", ()),
+            ),
+            (
+                "area responses",
+                self._area_records,
+                payloads_by_kind.get("area_response", ()),
+            ),
+            (
+                "Prone responses",
+                self._prone_records,
+                payloads_by_kind.get("prone_movement_response", ()),
+            ),
+            (
+                "concentration lifecycle",
+                self._concentration_records,
+                tuple(
+                    json.loads(record.payload_json)
+                    for record in self._issued_records
+                    if record.record_kind in {
+                        "concentration_start",
+                        "concentration_check",
+                        "concentration_end",
+                        "concentration_duration_reconciliation",
+                    }
+                ),
+            ),
+            (
+                "displacement lifecycle",
+                self._displacement_records,
+                tuple(
+                    json.loads(record.payload_json)
+                    for record in self._issued_records
+                    if record.record_kind in {
+                        "displacement",
+                        "displacement_epoch_boundary",
+                    }
+                ),
+            ),
+        )
+        for label, internal_rows, issued_rows in comparisons:
+            if _canonical_json(internal_rows) != _canonical_json(issued_rows):
+                raise ControlEngineError(
+                    f"Internal {label} do not match the issued record stream"
+                )
+        if self._repeat_save_records:
+            raise ControlEngineError(
+                "Session repeat-save rows must be represented by branch records"
+            )
+
+    def _validate_event_snapshots(self) -> None:
+        if len(self._event_snapshots) != len(self._schedule.events):
+            raise ControlEngineError(
+                "The session must consume and close the complete timeline before result()"
+            )
+        previous_post = self._initial_state_json
+        for event, snapshot in zip(
+            self._schedule.events,
+            self._event_snapshots,
+            strict=True,
+        ):
+            if (
+                snapshot.scenario_digest != self._scenario_digest
+                or snapshot.event_id != event.event_id
+                or snapshot.event_sequence != event.sequence
+                or snapshot.pre_event_state_json != previous_post
+            ):
+                raise ControlEngineError(
+                    "Event snapshots are foreign, stale, or non-chronological"
+                )
+            previous_post = snapshot.post_event_state_json
+        if previous_post != _canonical_json(self._state.snapshot()):
+            raise ControlEngineError("Final state does not match the closed event stream")
+
+    def _validate_reliability(self, value: ReliabilityResult) -> None:
+        try:
+            validate_reliability_result(
+                self._program,
+                value,
+                expected_scenario_digest=self._reliability_digest,
+                expected_issuance_token=self._reliability_token,
+            )
+        except (ControlGraphError, TypeError) as error:
+            raise ControlEngineError(
+                f"Reliability result is foreign, stale, or malformed: {error}"
+            ) from error
+
+    def _validate_concentration_lifecycle(self) -> None:
+        tracker = self._concentration_tracker
+        start_records = tuple(
+            record
+            for record in self._issued_records
+            if record.record_kind == "concentration_start"
+        )
+        if not self._concentration_required:
+            if tracker is not None or start_records:
+                raise ControlEngineError(
+                    "Non-concentration scenario contains a concentration lifecycle"
+                )
+            return
+        if tracker is None:
+            raise ControlEngineError(
+                "Concentration scenario has no bound lifecycle tracker"
+            )
+        if (
+            len(start_records) != 1
+            or start_records[0].event_id != self._concentration_start_event_id
+        ):
+            raise ControlEngineError(
+                "Concentration scenario must execute exactly one attested startup"
+            )
+        active_concentration_components = tuple(
+            component
+            for target_id in self._schedule.target_ids
+            for component in self._state.active_components(target_id)
+            if component.effect_id == self._program.effect_id
+            and self._program.component(component.component_id).duration.get("kind")
+            == "concentration"
+        )
+        if active_concentration_components and (
+            tracker.active_effect_id != self._program.effect_id
+        ):
+            raise ControlEngineError(
+                "Active concentration-duration state has no matching lifecycle"
+            )
+        if tracker.active_effect_id not in {None, self._program.effect_id}:
+            raise ControlEngineError(
+                "Concentration tracker contains a foreign active effect"
+            )
+        if tracker.active_effect_id == self._program.effect_id:
+            try:
+                self._engine._active_concentration_context(
+                    tracker=tracker,
+                    effect=self._program,
+                    schedule=self._schedule,
+                    selector_membership=self._membership,
+                    selector_context=self._selector_context,
+                    invocation_id=self._invocation_id,
+                    source_actor_id=self._source_actor_id,
+                    choices=self._choices,
+                )
+            except ControlEngineError as error:
+                raise ControlEngineError(
+                    "Active concentration lifecycle has stale authority context"
+                ) from error
+
+    def _validate_scenario_identity(self) -> None:
+        if hashlib.sha256(self._scenario_json.encode("utf-8")).hexdigest() != (
+            self._scenario_digest
+        ):
+            raise ControlEngineError("Session scenario digest is stale or malformed")
+        scenario = json.loads(self._scenario_json)
+        current_versions = self._engine.version_provenance(
+            initiative_convention=self._schedule.convention,
+            area_response_convention=self._area_response_convention,
+            displacement_function_id=self._displacement_function_id,
+        ).to_dict()
+        if (
+            _canonical_json(scenario.get("target_mechanics"))
+            != self._target_mechanics_json
+            or _canonical_json(scenario.get("initial_state"))
+            != self._initial_state_json
+            or _canonical_json(scenario.get("operation_inputs_by_event"))
+            != self._operation_inputs_json
+            or _canonical_json(scenario.get("required_operation_plan"))
+            != self._required_operation_plan_json
+            or _canonical_json(scenario.get("reliability_timeline_bindings"))
+            != self._reliability_timeline_bindings_json
+            or scenario.get("reliability_scenario_digest")
+            != self._reliability_digest
+            or _canonical_json(scenario.get("timeline_schedule"))
+            != self._schedule_json
+            or _canonical_json(_strict_json_copy(
+                self._schedule.to_dict(),
+                "timeline_schedule",
+            )) != self._schedule_json
+            or scenario.get("compiled_program", {}).get("effect_id")
+            != self._program.effect_id
+            or scenario.get("concentration_lifecycle")
+            != {
+                "required": self._concentration_required,
+                "start_event_id": self._concentration_start_event_id,
+                "startup": self._program.concentration.get("startup"),
+            }
+            or scenario.get("concentration_save_bonus")
+            != (
+                self._concentration_tracker.save_bonus
+                if self._concentration_tracker is not None else None
+            )
+            or scenario.get("versions") != current_versions
+            or self._engine.program(self._program.effect_id) != self._program
+        ):
+            raise ControlEngineError(
+                "Session runtime bindings no longer match its canonical scenario"
+            )
+
+    def _assemble_for_test(
+        self,
+        *,
+        records: Sequence[_IssuedControlRecord] | None = None,
+        reliability: ReliabilityResult | None = None,
+    ) -> ControlEngineResult:
+        """Private integrity seam used by negative tests; never a facade API."""
+
+        if self._current_event is not None:
+            raise ControlEngineError("The current event must be closed before result()")
+        self._validate_scenario_identity()
+        self._validate_event_snapshots()
+        selected_records = tuple(
+            self._issued_records if records is None else records
+        )
+        self._validate_issued_records(selected_records)
+        self._validate_internal_ledgers()
+        selected_reliability = self._reliability if reliability is None else reliability
+        self._validate_reliability(selected_reliability)
+        self._validate_concentration_lifecycle()
+        base = self._engine._assemble_result_legacy(
+            effect=self._program,
+            reliability=selected_reliability,
+            schedule=self._schedule,
+            area_response_convention=self._area_response_convention,
+            displacement_function_id=self._displacement_function_id,
+            state=self._state,
+            normalization_results=self._normalization_results,
+            event_state_transitions=self._event_state_transitions,
+            repeat_save_records=self._repeat_save_records,
+            area_records=self._area_records,
+            prone_records=self._prone_records,
+            concentration_records=self._concentration_records,
+            displacement_records=self._displacement_records,
+        )
+        return _replace_control_engine_result(
+            base,
+            scenario_digest=self._scenario_digest,
+            scenario_record=json.loads(self._scenario_json),
+            execution_records=tuple(record.to_dict() for record in selected_records),
+            event_snapshots=tuple(
+                snapshot.to_dict() for snapshot in self._event_snapshots
+            ),
+        )
+
+    def result(self) -> ControlEngineResult:
+        """Issue the deterministic final result after complete closed execution."""
+
+        if self._cached_result is None:
+            self._cached_result = self._assemble_for_test()
+        return self._cached_result
+
+
 def validate_fixture_corpus(
     path: str | Path = DEFAULT_FIXTURE_CORPUS,
 ) -> dict[str, Any]:
-    """Validate the compact 67-case reviewed fixture contract and variants."""
+    """Validate the compact 72-case reviewed fixture contract and variants."""
 
     fixture_path = Path(path)
     try:
@@ -5216,9 +8592,9 @@ def validate_fixture_corpus(
             f"Fixture corpus engine_version must be {ENGINE_VERSION}"
         )
     cases = data["cases"]
-    if not isinstance(cases, list) or len(cases) != 67:
+    if not isinstance(cases, list) or len(cases) != 72:
         raise ControlEngineError(
-            "Fixture corpus must contain exactly 67 reviewed cases"
+            "Fixture corpus must contain exactly 72 reviewed cases"
         )
     expected_keys = {
         "id",
@@ -5241,7 +8617,7 @@ def validate_fixture_corpus(
             )
         if case["id"] != index or isinstance(case["id"], bool):
             raise ControlEngineError(
-                "Fixture case IDs must be exact sequential integers 1 through 67"
+                "Fixture case IDs must be exact sequential integers 1 through 72"
             )
         category = case["category"]
         if category not in counts:
@@ -5380,6 +8756,55 @@ def validate_engine(
         raise ControlEngineError(
             f"Compiled authority contains unsupported magnitudes: {sorted(unknown)}"
         )
+    smoke_program = engine.program("absolute_zero_t0_control")
+    smoke_schedule = engine.schedule(
+        "fighter_first_v1",
+        ["validation_target"],
+        controller_events_by_round={
+            1: [{"kind": "save_opportunity", "target_id": "validation_target"}],
+        },
+        target_attack_counts={"validation_target": 0},
+    )
+    smoke_session = engine.execution_session(
+        smoke_program,
+        targets=(
+            ReliabilityTarget(
+                "validation_target",
+                15,
+                {"constitution": 2},
+            ),
+        ),
+        selector_membership={
+            smoke_program.selectors[0].selector_id: ("validation_target",),
+        },
+        selector_context=SelectorContext(),
+        schedule=smoke_schedule,
+        target_mechanics={"validation_target": {}},
+        area_response_convention="fixed_occupancy_v1",
+        displacement_function_id="sqrt_5ft_v1",
+        probability_context=ProbabilityContext(save_dc=15),
+    )
+    smoke_gate_event = next(
+        event
+        for event in smoke_schedule.events
+        if event.kind == "save_opportunity"
+    )
+    smoke_session.advance_to(smoke_gate_event.event_id)
+    smoke_session.apply_branch(
+        gate_id="absolute_zero_t0_save",
+        outcome="save_success",
+        target_id="validation_target",
+    )
+    smoke_session.close_event()
+    smoke_session.complete()
+    smoke_result = smoke_session.result()
+    if (
+        smoke_result.scenario_digest != smoke_session.scenario_digest
+        or len(smoke_result.event_snapshots) != len(smoke_schedule.events)
+    ):
+        raise ControlEngineError(
+            "Execution-session smoke result did not preserve scenario chronology"
+        )
     fixtures = validate_fixture_corpus(fixture_path)
     return {
         "status": "ok",
@@ -5451,6 +8876,7 @@ __all__ = [
     "ControlEngine",
     "ControlEngineError",
     "ControlEngineResult",
+    "ControlExecutionSession",
     "DisplacementRequest",
     "ENGINE_VERSION",
     "ScenarioConvention",

@@ -22,9 +22,11 @@ from harness.control_engine import (
     ControlEngine,
     ControlEngineError,
     ENGINE_VERSION,
+    _replace_control_engine_result,
 )
 from harness.control_graph import (
     ProbabilityContext,
+    ProbabilityKernelIdentity,
     ReliabilityEvent,
     ReliabilityResult,
     ReliabilityTarget,
@@ -52,11 +54,11 @@ CATEGORY_COUNTS = {
     "catalog_and_senses": 8,
     "partial_reliability": 7,
     "overlap_and_dominance": 9,
-    "prone": 6,
-    "timing_and_initiative": 7,
+    "prone": 8,
+    "timing_and_initiative": 8,
     "repeat_saves": 5,
     "concentration": 6,
-    "areas": 8,
+    "areas": 10,
     "displacement": 7,
     "weight_and_scope_boundary": 4,
 }
@@ -128,6 +130,11 @@ EXPECTED_INVARIANTS = (
     "Engine result contains no combined Control Value.",
     "Engine result contains no HOT/IDEAL/COLD/SENSITIVE field.",
     "Engine performs no action, tier, target, resource, or comparator optimization.",
+    "Both initiative conventions put the first movement response after start processing and before active and attack windows.",
+    "Standing and route progress share one pre-attack movement budget.",
+    "Frozen Ground can be exited on the immediate legal movement response without changing Speed.",
+    "Ball Lightning while-in-area consequences end on the immediate legal exit response.",
+    "Speed 0 preserves Prone and area exposure at the pre-attack movement response.",
 )
 
 
@@ -174,6 +181,13 @@ def component_definition(row: Mapping[str, Any]) -> dict[str, Any]:
 
 
 class FixtureKernel:
+    identity = ProbabilityKernelIdentity.create(
+        "test-only.control-engine-fixture",
+        "1.0.0",
+        {"fixture": "caller-supplied exact outcome table"},
+        test_only=True,
+    )
+
     def __init__(self, outcomes: Mapping[str, Mapping[str, Any]]) -> None:
         self.outcomes = {
             gate_id: {
@@ -209,13 +223,13 @@ class ControlEngineFixtureTests(unittest.TestCase):
         self.assertEqual(set(self.fixture), {"format_version", "engine_version", "cases"})
         self.assertEqual(self.fixture["format_version"], 1)
         self.assertEqual(self.fixture["engine_version"], ENGINE_VERSION)
-        self.assertEqual(len(self.cases), 67)
-        self.assertEqual([case["id"] for case in self.cases], list(range(1, 68)))
+        self.assertEqual(len(self.cases), 72)
+        self.assertEqual([case["id"] for case in self.cases], list(range(1, 73)))
         self.assertEqual(
             tuple(case["invariant"] for case in self.cases),
             EXPECTED_INVARIANTS,
         )
-        self.assertEqual(len(set(EXPECTED_INVARIANTS)), 67)
+        self.assertEqual(len(set(EXPECTED_INVARIANTS)), 72)
         self.assertTrue(all(set(case) == CASE_KEYS for case in self.cases))
         self.assertTrue(all(isinstance(case["input"], dict) for case in self.cases))
         self.assertTrue(all(isinstance(case["expected"], dict) for case in self.cases))
@@ -252,6 +266,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
             "prone_context": self.run_prone_context,
             "timeline_expiry": self.run_timeline_expiry,
             "schedule_order": self.run_schedule_order,
+            "schedule_target_turn_order": self.run_schedule_target_turn_order,
             "schedule_permutation": self.run_schedule_permutation,
             "levitation_repeat": self.run_levitation_repeat,
             "repeat_survival": self.run_repeat_survival,
@@ -692,6 +707,57 @@ class ControlEngineFixtureTests(unittest.TestCase):
             )
         self.assertEqual(actual, case["expected"]["covered_target_window_count"])
 
+    def run_schedule_target_turn_order(self, case: Mapping[str, Any]) -> None:
+        inputs = case["input"]
+        expected = case["expected"]
+        for convention in inputs["conventions"]:
+            schedule = build_schedule(
+                convention,
+                ["target"],
+                target_events_by_round=inputs["target_events_by_round"],
+                target_attack_counts=inputs["attack_counts"],
+            )
+            first_turn = [
+                event
+                for event in schedule.events
+                if event.turn_id == "r1:target:target:turn"
+            ]
+            self.assertEqual(
+                [event.kind for event in first_turn],
+                expected["first_turn_kinds"],
+            )
+            if expected["reaction_opens_at_turn_start"]:
+                self.assertEqual(first_turn[0].kind, "target_turn_start")
+                self.assertEqual(first_turn[1].kind, "reaction_window")
+                self.assertEqual(
+                    first_turn[0].reaction_interval_id,
+                    first_turn[1].reaction_interval_id,
+                )
+            self.assertEqual(
+                sum(
+                    event.kind == "target_movement_opportunity"
+                    for event in first_turn
+                ),
+                expected["movement_opportunities_per_turn"],
+            )
+            movement_index = next(
+                index
+                for index, event in enumerate(first_turn)
+                if event.kind == "target_movement_opportunity"
+            )
+            active_index = next(
+                index
+                for index, event in enumerate(first_turn)
+                if event.kind == "target_active_turn_opportunity"
+            )
+            attack_indices = [
+                index
+                for index, event in enumerate(first_turn)
+                if event.kind == "target_attack_opportunity"
+            ]
+            self.assertLess(movement_index, active_index)
+            self.assertTrue(all(movement_index < index for index in attack_indices))
+
     def run_schedule_permutation(self, case: Mapping[str, Any]) -> None:
         schedules = [
             build_schedule(
@@ -894,10 +960,10 @@ class ControlEngineFixtureTests(unittest.TestCase):
             },
             controller_proficiency_bonus=6,
         )
-        state = self.engine.new_state()
+        state = self.engine._new_state()
         invocation_id = f"fixture:{case['id']}:invocation"
         for target_id in target_ids:
-            self.engine.apply_resolved_branch(
+            self.engine._apply_resolved_branch(
                 state=state,
                 effect=program,
                 gate_id=f"mass_levitation_t{compiled_effect['tier']}_initial_saves",
@@ -911,7 +977,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
                 selector_context=selector_context,
             )
         tracker = ConcentrationTracker(save_bonus=inputs["save_bonus"])
-        start = self.engine.start_concentration(
+        start = self.engine._start_concentration(
             state=state,
             tracker=tracker,
             effect=program,
@@ -932,7 +998,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
                 selector.selector_id: list(target_ids)
                 for selector in replacement_program.selectors
             }
-            replacement = self.engine.start_concentration(
+            replacement = self.engine._start_concentration(
                 state=state,
                 tracker=tracker,
                 effect=replacement_program,
@@ -970,7 +1036,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
                 allow_nan=False,
             )
             return
-        ended = self.engine.end_concentration(
+        ended = self.engine._end_concentration(
             state=state,
             tracker=tracker,
             effect=program,
@@ -1055,14 +1121,14 @@ class ControlEngineFixtureTests(unittest.TestCase):
             target_size_by_id={target_id: "medium"},
             controller_proficiency_bonus=6,
         )
-        state = self.engine.new_state()
+        state = self.engine._new_state()
         invocation_id = f"fixture:{case['id']}:invocation"
 
         def apply_branch(
             specification: Mapping[str, Any],
             event_id: str,
         ) -> dict[str, Any]:
-            return self.engine.apply_resolved_branch(
+            return self.engine._apply_resolved_branch(
                 state=state,
                 effect=program,
                 gate_id=specification["gate_id"],
@@ -1131,7 +1197,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
                 for event in schedule.events
                 if event.kind == "exit" and event.target_id == target_id
             )
-            result = self.engine.resolve_area_response(
+            result = self.engine._resolve_area_response(
                 **common,
                 event_id=exit_event.event_id,
                 post_movement_membership=params["post_movement_membership"],
@@ -1152,7 +1218,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
             if event.kind == "target_movement_opportunity"
             and event.target_id == target_id
         ]
-        blocked = self.engine.resolve_area_response(
+        blocked = self.engine._resolve_area_response(
             **common,
             event_id=movement_events[0].event_id,
             routes=params["routes"],
@@ -1163,7 +1229,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
             component.component_id
             for component in state.active_components(target_id)
         )
-        next_movement = self.engine.resolve_area_response(
+        next_movement = self.engine._resolve_area_response(
             **common,
             event_id=movement_events[1].event_id,
             routes=params["routes"],
@@ -1213,7 +1279,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
                 compiled_effect["tier"],
             )
             target_id = params["target_id"]
-            state = self.engine.new_state()
+            state = self.engine._new_state()
             active_components = program.components
             if compiled_branch is not None:
                 branch = program.gate(
@@ -1259,7 +1325,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
                 event for event in schedule.events
                 if event.kind == response_event_kind
             )
-            result = self.engine.resolve_area_response(
+            result = self.engine._resolve_area_response(
                 state=state,
                 schedule=schedule,
                 effect=program,
@@ -1335,15 +1401,15 @@ class ControlEngineFixtureTests(unittest.TestCase):
                 "was_member": inputs["was_member"],
                 "is_member": inputs["is_member"],
             }
-            ignored = self.engine.resolve_compiled_area_entry(
+            ignored = self.engine._resolve_compiled_area_entry(
                 **common,
                 caused_by_area_movement=True,
             )
-            accepted = self.engine.resolve_compiled_area_entry(
+            accepted = self.engine._resolve_compiled_area_entry(
                 **common,
                 caused_by_area_movement=False,
             )
-            duplicate = self.engine.resolve_compiled_area_entry(
+            duplicate = self.engine._resolve_compiled_area_entry(
                 **common,
                 caused_by_area_movement=False,
                 prior_trigger_turn_ids=accepted["triggered_turn_ids"],
@@ -1456,13 +1522,13 @@ class ControlEngineFixtureTests(unittest.TestCase):
             (target_id,),
             target_attack_counts={target_id: [0, 0, 0]},
         )
-        result = self.engine.assemble_result(
+        result = self.engine._assemble_result_legacy(
             effect=program,
             reliability=reliability,
             schedule=schedule,
             area_response_convention="fixed_occupancy_v1",
             displacement_function_id="sqrt_5ft_v1",
-            state=self.engine.new_state(),
+            state=self.engine._new_state(),
         )
         serialized = result.to_dict()
         expected = case["expected"]
@@ -1482,9 +1548,11 @@ class ControlEngineFixtureTests(unittest.TestCase):
             return set()
 
         present = nested_keys(serialized)
+        with self.assertRaisesRegex(ControlEngineError, "issued only"):
+            replace(result, explored_state_count=result.explored_state_count)
         for forbidden in expected["forbidden_fields"]:
             self.assertNotIn(forbidden.casefold(), present)
-            tainted = replace(
+            tainted = _replace_control_engine_result(
                 result,
                 final_normalized_state={
                     target_id: {"nested": {forbidden: 1}}

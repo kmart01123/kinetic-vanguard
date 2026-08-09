@@ -2039,6 +2039,222 @@
           "optimized_comparator"
         ]
       }
+    },
+    {
+      "id": 68,
+      "category": "timing_and_initiative",
+      "invariant": "Both initiative conventions put the first movement response after start processing and before active and attack windows.",
+      "operation": "schedule_target_turn_order",
+      "input": {
+        "conventions": [
+          "fighter_first_v1",
+          "target_before_fighter_v1"
+        ],
+        "target_events_by_round": {
+          "target": {
+            "1": [
+              {
+                "kind": "save_opportunity",
+                "phase": "start"
+              },
+              {
+                "kind": "entry",
+                "phase": "before_movement"
+              },
+              {
+                "kind": "exit",
+                "phase": "after_movement"
+              }
+            ]
+          }
+        },
+        "attack_counts": {
+          "target": [
+            2,
+            0,
+            0
+          ]
+        }
+      },
+      "expected": {
+        "first_turn_kinds": [
+          "target_turn_start",
+          "reaction_window",
+          "save_opportunity",
+          "entry",
+          "target_movement_opportunity",
+          "exit",
+          "target_active_turn_opportunity",
+          "target_attack_opportunity",
+          "target_attack_opportunity",
+          "target_turn_end"
+        ],
+        "reaction_opens_at_turn_start": true,
+        "movement_opportunities_per_turn": 1
+      }
+    },
+    {
+      "id": 69,
+      "category": "prone",
+      "invariant": "Standing and route progress share one pre-attack movement budget.",
+      "operation": "area_response",
+      "input": {
+        "convention": "shortest_route_v1",
+        "target_id": "target",
+        "membership": true,
+        "effect_active": true,
+        "routes": [
+          {
+            "route_id": "ground_exit",
+            "mode": "walk",
+            "distance_to_exit_ft": 20,
+            "compatible": true,
+            "movement_cost_multiplier": 1,
+            "environment": "grounded"
+          }
+        ],
+        "effective_speeds_ft": {
+          "walk": 30
+        },
+        "prone": true
+      },
+      "expected": {
+        "paths": {
+          "selected_route.prone_response.stood": true,
+          "selected_route.prone_response.prone_after": false,
+          "selected_route.prone_response.standing_cost_ft": 15,
+          "selected_route.prone_response.remaining_movement_ft": 15,
+          "selected_route.progress_ft": 15,
+          "selected_route.remaining_distance_ft": 5,
+          "exited": false
+        }
+      }
+    },
+    {
+      "id": 70,
+      "category": "areas",
+      "invariant": "Frozen Ground can be exited on the immediate legal movement response without changing Speed.",
+      "operation": "area_response",
+      "input": {
+        "convention": "shortest_route_v1",
+        "target_id": "target",
+        "membership": true,
+        "effect_active": true,
+        "routes": [
+          {
+            "route_id": "frozen_exit",
+            "mode": "walk",
+            "distance_to_exit_ft": 15,
+            "compatible": true,
+            "movement_cost_multiplier": 2,
+            "environment": "grounded"
+          }
+        ],
+        "effective_speeds_ft": {
+          "walk": 30
+        },
+        "while_in_area_component_ids": [
+          "frozen_ground_difficult_terrain"
+        ],
+        "independent_component_ids": [
+          "independently_timed_component"
+        ]
+      },
+      "expected": {
+        "paths": {
+          "selected_route.progress_ft": 15,
+          "membership_after": false,
+          "exited": true
+        },
+        "ended_component_ids": [
+          "frozen_ground_difficult_terrain"
+        ],
+        "retained_component_ids": [
+          "independently_timed_component"
+        ],
+        "effective_speeds_unchanged": {
+          "walk": 30
+        }
+      }
+    },
+    {
+      "id": 71,
+      "category": "areas",
+      "invariant": "Ball Lightning while-in-area consequences end on the immediate legal exit response.",
+      "operation": "area_response",
+      "input": {
+        "convention": "shortest_route_v1",
+        "target_id": "target",
+        "membership": true,
+        "effect_active": true,
+        "routes": [
+          {
+            "route_id": "ball_lightning_exit",
+            "mode": "walk",
+            "distance_to_exit_ft": 10,
+            "compatible": true,
+            "movement_cost_multiplier": 1,
+            "environment": "grounded"
+          }
+        ],
+        "effective_speeds_ft": {
+          "walk": 30
+        },
+        "while_in_area_component_ids": [
+          "ball_lightning_attack_disadvantage",
+          "ball_lightning_reaction_denial"
+        ]
+      },
+      "expected": {
+        "paths": {
+          "membership_after": false,
+          "exited": true
+        },
+        "ended_component_ids": [
+          "ball_lightning_attack_disadvantage",
+          "ball_lightning_reaction_denial"
+        ]
+      }
+    },
+    {
+      "id": 72,
+      "category": "prone",
+      "invariant": "Speed 0 preserves Prone and area exposure at the pre-attack movement response.",
+      "operation": "area_response",
+      "input": {
+        "convention": "shortest_route_v1",
+        "target_id": "target",
+        "membership": true,
+        "effect_active": true,
+        "routes": [
+          {
+            "route_id": "blocked_exit",
+            "mode": "walk",
+            "distance_to_exit_ft": 5,
+            "compatible": true,
+            "movement_cost_multiplier": 1,
+            "environment": "grounded"
+          }
+        ],
+        "effective_speeds_ft": {
+          "walk": 30
+        },
+        "speed_zero": true,
+        "prone": true,
+        "while_in_area_component_ids": [
+          "area_exposure"
+        ]
+      },
+      "expected": {
+        "paths": {
+          "membership_after": true,
+          "exited": false,
+          "selected_route": null,
+          "reason": "movement_unavailable",
+          "prone_after": true
+        },
+        "ended_component_ids": []
+      }
     }
   ]
 }

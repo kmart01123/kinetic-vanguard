@@ -32,8 +32,7 @@ _SCRIPTED_EVENT_KINDS = {
     "concentration_end", "instantaneous_resolution",
 }
 _TARGET_PHASES = (
-    "start", "before_active_turn", "before_attacks", "after_attacks",
-    "before_movement", "after_movement", "end",
+    "start", "before_movement", "after_movement", "after_attacks", "end",
 )
 
 
@@ -369,16 +368,18 @@ def build_schedule(
                     continue
                 scripted(row, f"target_events_by_round.{target_id}.{round_number}[{index}]", round_number, turn_id, "target", target_id, target_id, index, reaction_id)
 
+        # Target-start scripts and pre-movement gates/repeat saves resolve before
+        # the one legal movement/standing/area response.  Its immediate exit or
+        # state-transition hooks resolve before the active and attack windows.
+        # After-attack and end hooks form the remaining caller-scripted block.
         phase("start")
-        phase("before_active_turn")
-        append(event_id=turn_id + ":active_turn", round_number=round_number, kind="target_active_turn_opportunity", turn_id=turn_id, turn_owner="target", actor_id=target_id, target_id=target_id, window_id=turn_id + ":active_turn:window", reaction_interval_id=reaction_id)
-        phase("before_attacks")
-        for attack_index in range(1, attacks[target_id][round_number] + 1):
-            append(event_id=f"{turn_id}:attack:{attack_index:03d}", round_number=round_number, kind="target_attack_opportunity", turn_id=turn_id, turn_owner="target", actor_id=target_id, target_id=target_id, window_id=f"{turn_id}:attack:{attack_index:03d}:window", reaction_interval_id=reaction_id, payload={"attack_index": attack_index})
-        phase("after_attacks")
         phase("before_movement")
         append(event_id=turn_id + ":movement", round_number=round_number, kind="target_movement_opportunity", turn_id=turn_id, turn_owner="target", actor_id=target_id, target_id=target_id, window_id=turn_id + ":movement:window", reaction_interval_id=reaction_id)
         phase("after_movement")
+        append(event_id=turn_id + ":active_turn", round_number=round_number, kind="target_active_turn_opportunity", turn_id=turn_id, turn_owner="target", actor_id=target_id, target_id=target_id, window_id=turn_id + ":active_turn:window", reaction_interval_id=reaction_id)
+        for attack_index in range(1, attacks[target_id][round_number] + 1):
+            append(event_id=f"{turn_id}:attack:{attack_index:03d}", round_number=round_number, kind="target_attack_opportunity", turn_id=turn_id, turn_owner="target", actor_id=target_id, target_id=target_id, window_id=f"{turn_id}:attack:{attack_index:03d}:window", reaction_interval_id=reaction_id, payload={"attack_index": attack_index})
+        phase("after_attacks")
         phase("end")
         append(event_id=turn_id + ":end", round_number=round_number, kind="target_turn_end", turn_id=turn_id, turn_owner="target", actor_id=target_id, target_id=target_id, reaction_interval_id=reaction_id)
 
@@ -719,6 +720,18 @@ def area_response(
             raise TimelineError(f"Missing effective speed for route mode {row['mode']!r}")
 
     candidates: list[tuple[int, Fraction, str, dict[str, Any], dict[str, Any]]] = []
+    standing_options: list[tuple[int, str, dict[str, Any]]] = []
+    for mode, speed in sorted(speeds.items()):
+        response = prone_movement_response(
+            target_id=target_id,
+            prone=prone,
+            current_speed_ft=0 if speed_zero or mode in denied else speed,
+            movement_denied=mode in denied,
+        )
+        if response["stood"]:
+            standing_options.append(
+                (-response["remaining_movement_ft"], mode, response)
+            )
     blocked_reasons: list[str] = []
     for row in parsed:
         speed = 0 if speed_zero or row["mode"] in denied else speeds[row["mode"]]
@@ -739,7 +752,39 @@ def area_response(
         turns = 1 if remaining == 0 else 1 + (math.ceil(remaining / future_full_progress) if future_full_progress else 10**9)
         candidates.append((turns, remaining, row["route_id"], row, response))
     if not candidates:
-        return {"convention": convention, "target_id": target_id, "membership_before": True, "membership_after": True, "exited": False, "selected_route": None, "ended_component_ids": [], "retained_component_ids": independent_ids, "events": [], "reason": "movement_unavailable", "blocked_routes": sorted(blocked_reasons), "prone_after": prone}
+        stand = min(standing_options) if standing_options else None
+        stand_mode = stand[1] if stand is not None else None
+        prone_response = stand[2] if stand is not None else None
+        events = []
+        if prone_response is not None:
+            events.append({
+                "kind": "stand",
+                "owner": "target",
+                "turn_anchor": "during_turn",
+                "movement_mode": stand_mode,
+                "standing_cost_ft": prone_response["standing_cost_ft"],
+                "remaining_movement_ft": prone_response["remaining_movement_ft"],
+            })
+        result = {
+            "convention": convention,
+            "target_id": target_id,
+            "membership_before": True,
+            "membership_after": True,
+            "exited": False,
+            "selected_route": None,
+            "ended_component_ids": [],
+            "retained_component_ids": independent_ids,
+            "events": events,
+            "reason": "movement_unavailable",
+            "blocked_routes": sorted(blocked_reasons),
+            "prone_after": (
+                prone_response["prone_after"]
+                if prone_response is not None else prone
+            ),
+        }
+        if prone_response is not None:
+            result["prone_response"] = prone_response
+        return result
     _, remaining, _, selected, prone_response = min(candidates, key=lambda item: (item[0], item[1], item[2]))
     distance = selected["distance"]
     progress = distance - remaining

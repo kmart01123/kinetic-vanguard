@@ -16,6 +16,8 @@ initiative, target membership, choices, or battlefield state.
 from __future__ import annotations
 
 import json
+import math
+from hashlib import sha256
 from collections import defaultdict
 from collections.abc import Iterable, Iterator, Mapping, Sequence
 from dataclasses import dataclass, field, replace
@@ -95,6 +97,47 @@ def _frozen_map(value: Mapping[str, Any]) -> FrozenMap:
     frozen = _deep_freeze(value)
     if not isinstance(frozen, FrozenMap):  # pragma: no cover - defensive
         raise ControlGraphError("Expected an authority object")
+    return frozen
+
+
+def _freeze_json_value(value: Any, *, path: str) -> Any:
+    """Freeze a strict JSON value without silently coercing provenance keys."""
+
+    if isinstance(value, Mapping):
+        entries: list[tuple[str, Any]] = []
+        invalid_keys = [
+            key for key in value
+            if not isinstance(key, str) or not key
+        ]
+        if invalid_keys:
+            raise ControlGraphError(f"{path} keys must be nonempty strings")
+        for key in sorted(value):
+            entries.append(
+                (
+                    key,
+                    _freeze_json_value(value[key], path=f"{path}.{key}"),
+                )
+            )
+        return FrozenMap(tuple(entries))
+    if isinstance(value, (list, tuple)):
+        return tuple(
+            _freeze_json_value(item, path=f"{path}[{index}]")
+            for index, item in enumerate(value)
+        )
+    if value is None or isinstance(value, (str, bool, int)):
+        return value
+    if isinstance(value, float) and math.isfinite(value):
+        return value
+    raise ControlGraphError(
+        f"{path} must contain only deterministic JSON-safe values; "
+        f"got {type(value).__name__}"
+    )
+
+
+def _frozen_json_map(value: Mapping[str, Any], *, path: str) -> FrozenMap:
+    frozen = _freeze_json_value(value, path=path)
+    if not isinstance(frozen, FrozenMap):  # pragma: no cover - root is typed
+        raise ControlGraphError(f"{path} must be a JSON object")
     return frozen
 
 
@@ -311,6 +354,7 @@ class CompiledEffect:
     entity_id: str
     tier: int
     effect_id: str
+    authority_sha256: str
     inheritance: FrozenMap
     policy: FrozenMap
     choices: tuple[CompiledChoice, ...]
@@ -559,6 +603,7 @@ def _compile_effect(
     tier: int,
     value: Mapping[str, Any],
     canonical_input: Mapping[str, Any],
+    authority_sha256: str,
 ) -> CompiledEffect:
     namespace = str(value["effect_id"])
     choices = tuple(_compile_choice(namespace, item) for item in value["choices"])
@@ -578,6 +623,7 @@ def _compile_effect(
         entity_id=entity_id,
         tier=tier,
         effect_id=namespace,
+        authority_sha256=authority_sha256,
         inheritance=_frozen_map(value["inheritance"]),
         policy=_frozen_map(value["policy"]),
         choices=choices,
@@ -611,7 +657,13 @@ def compile_control_authority(authority: ControlAuthorityV2Model) -> CompiledAut
         row["entity_id"]: row for row in projection["canonical_inputs"]["entities"]
     }
     programs = tuple(
-        _compile_effect(row["entity_id"], row["tier"], row["model"], canonical_by_id[row["entity_id"]])
+        _compile_effect(
+            row["entity_id"],
+            row["tier"],
+            row["model"],
+            canonical_by_id[row["entity_id"]],
+            projection["authority_sha256"],
+        )
         for row in contract["ledger"]
         if row["disposition"] == "modeled"
     )
@@ -737,15 +789,63 @@ class ReliabilityTarget:
         magic_resistance: bool = False,
         legendary_resistance: int = 0,
     ) -> None:
-        if not isinstance(target_id, str) or not target_id:
-            raise ControlGraphError("target_id must be a nonempty string")
+        if (
+            not isinstance(target_id, str)
+            or not target_id
+            or target_id.strip() != target_id
+        ):
+            raise ControlGraphError("target_id must be a nonempty trimmed string")
         if isinstance(armor_class, bool) or not isinstance(armor_class, int):
             raise ControlGraphError("armor_class must be an integer")
+        if not isinstance(saves, Mapping):
+            raise ControlGraphError("saves must be a mapping of ability names to integer bonuses")
+        invalid_abilities = [
+            ability
+            for ability in saves
+            if (
+                not isinstance(ability, str)
+                or not ability
+                or ability.strip() != ability
+            )
+        ]
+        if invalid_abilities:
+            raise ControlGraphError(
+                "Save ability names must be nonempty trimmed strings"
+            )
         normalized_saves: list[tuple[str, int]] = []
         for ability, bonus in sorted(saves.items()):
             if isinstance(bonus, bool) or not isinstance(bonus, int):
                 raise ControlGraphError(f"Save bonus for {ability!r} must be an integer")
-            normalized_saves.append((str(ability), bonus))
+            normalized_saves.append((ability.lower(), bonus))
+        normalized_abilities = [ability for ability, _bonus in normalized_saves]
+        if len(normalized_abilities) != len(set(normalized_abilities)):
+            raise ControlGraphError("saves contains duplicate normalized ability names")
+        if isinstance(condition_immunities, (str, bytes)):
+            raise ControlGraphError(
+                "condition_immunities must be an iterable of condition names"
+            )
+        try:
+            supplied_immunities = tuple(condition_immunities)
+        except TypeError as error:
+            raise ControlGraphError(
+                "condition_immunities must be an iterable of condition names"
+            ) from error
+        if any(
+            not isinstance(condition, str)
+            or not condition
+            or condition.strip() != condition
+            for condition in supplied_immunities
+        ):
+            raise ControlGraphError(
+                "Condition immunity names must be nonempty trimmed strings"
+            )
+        normalized_immunities = tuple(
+            condition.lower() for condition in supplied_immunities
+        )
+        if len(normalized_immunities) != len(set(normalized_immunities)):
+            raise ControlGraphError(
+                "condition_immunities contains duplicate normalized condition names"
+            )
         if isinstance(legendary_resistance, bool) or not isinstance(legendary_resistance, int) or legendary_resistance < 0:
             raise ControlGraphError("legendary_resistance must be a nonnegative integer")
         if not isinstance(magic_resistance, bool):
@@ -753,7 +853,7 @@ class ReliabilityTarget:
         object.__setattr__(self, "target_id", target_id)
         object.__setattr__(self, "armor_class", armor_class)
         object.__setattr__(self, "saves", tuple(normalized_saves))
-        object.__setattr__(self, "condition_immunities", frozenset(str(item).lower() for item in condition_immunities))
+        object.__setattr__(self, "condition_immunities", frozenset(normalized_immunities))
         object.__setattr__(self, "magic_resistance", magic_resistance)
         object.__setattr__(self, "legendary_resistance", legendary_resistance)
 
@@ -761,11 +861,11 @@ class ReliabilityTarget:
     def from_target(cls, target_id: str, target: Any) -> "ReliabilityTarget":
         return cls(
             target_id,
-            int(target.ac),
+            target.ac,
             target.saves,
             condition_immunities=target.condition_immunities,
             magic_resistance=target.magic_resistance,
-            legendary_resistance=int(target.legendary_resistance),
+            legendary_resistance=target.legendary_resistance,
         )
 
     def save_bonus(self, ability: str) -> int:
@@ -773,6 +873,16 @@ class ReliabilityTarget:
             if candidate == ability:
                 return bonus
         raise ControlGraphError(f"Target {self.target_id!r} has no {ability!r} save bonus")
+
+    def canonical_record(self) -> dict[str, Any]:
+        return {
+            "target_id": self.target_id,
+            "armor_class": self.armor_class,
+            "saves": {ability: bonus for ability, bonus in self.saves},
+            "condition_immunities": sorted(self.condition_immunities),
+            "magic_resistance": self.magic_resistance,
+            "legendary_resistance": self.legendary_resistance,
+        }
 
 
 _SELECTOR_SIZE_ORDER = (
@@ -1133,13 +1243,133 @@ class ProbabilityContext:
     save_disadvantage_sources: int = 0
 
     def __post_init__(self) -> None:
+        for field_name in ("attack_bonus", "save_dc"):
+            value = getattr(self, field_name)
+            if value is not None and (
+                isinstance(value, bool) or not isinstance(value, int)
+            ):
+                raise ControlGraphError(f"{field_name} must be an integer or null")
+        if self.discipline_signature is not None and (
+            not isinstance(self.discipline_signature, str)
+            or not self.discipline_signature
+            or self.discipline_signature.strip() != self.discipline_signature
+        ):
+            raise ControlGraphError(
+                "discipline_signature must be a nonempty trimmed string or null"
+            )
         if not isinstance(self.magical, bool):
             raise ControlGraphError("magical must be boolean")
+        for field_name in (
+            "attack_advantage_sources",
+            "attack_disadvantage_sources",
+            "save_advantage_sources",
+            "save_disadvantage_sources",
+        ):
+            value = getattr(self, field_name)
+            if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+                raise ControlGraphError(
+                    f"{field_name} must be a nonnegative integer"
+                )
+
+    def canonical_record(self) -> dict[str, Any]:
+        return {
+            "attack_bonus": self.attack_bonus,
+            "save_dc": self.save_dc,
+            "discipline_signature": self.discipline_signature,
+            "magical": self.magical,
+            "attack_advantage_sources": self.attack_advantage_sources,
+            "attack_disadvantage_sources": self.attack_disadvantage_sources,
+            "save_advantage_sources": self.save_advantage_sources,
+            "save_disadvantage_sources": self.save_disadvantage_sources,
+        }
+
+
+@dataclass(frozen=True, init=False)
+class ProbabilityKernelIdentity:
+    """Stable, immutable provenance for one exact probability kernel."""
+
+    kernel_id: str
+    version: str
+    provenance: FrozenMap
+    test_only: bool
+
+    def __init__(
+        self,
+        kernel_id: str,
+        version: str,
+        provenance: Mapping[str, Any],
+        *,
+        test_only: bool = False,
+    ) -> None:
+        if (
+            not isinstance(kernel_id, str)
+            or not kernel_id
+            or kernel_id.strip() != kernel_id
+        ):
+            raise ControlGraphError("kernel_id must be a nonempty trimmed string")
+        if (
+            not isinstance(version, str)
+            or not version
+            or version.strip() != version
+        ):
+            raise ControlGraphError("kernel version must be a nonempty trimmed string")
+        if not isinstance(test_only, bool):
+            raise ControlGraphError("kernel test_only marker must be boolean")
+        if not isinstance(provenance, Mapping) or not provenance:
+            raise ControlGraphError("kernel provenance must be a nonempty JSON object")
+        frozen = _frozen_json_map(provenance, path="kernel provenance")
+        if not test_only:
+            algorithm = frozen.get("algorithm")
+            if (
+                not isinstance(algorithm, str)
+                or not algorithm
+                or algorithm.strip() != algorithm
+            ):
+                raise ControlGraphError(
+                    "non-test kernel provenance algorithm must be a nonempty "
+                    "trimmed string"
+                )
+            parameters = frozen.get("parameters")
+            if not isinstance(parameters, FrozenMap) or not parameters:
+                raise ControlGraphError(
+                    "non-test kernel provenance parameters must be a nonempty "
+                    "deterministic JSON object"
+                )
+        object.__setattr__(self, "kernel_id", kernel_id)
+        object.__setattr__(self, "version", version)
+        object.__setattr__(self, "provenance", frozen)
+        object.__setattr__(self, "test_only", test_only)
+
+    @classmethod
+    def create(
+        cls,
+        kernel_id: str,
+        version: str,
+        provenance: Mapping[str, Any],
+        *,
+        test_only: bool = False,
+    ) -> "ProbabilityKernelIdentity":
+        return cls(
+            kernel_id,
+            version,
+            provenance,
+            test_only=test_only,
+        )
+
+    def canonical_record(self) -> dict[str, Any]:
+        return {
+            "kernel_id": self.kernel_id,
+            "version": self.version,
+            "test_only": self.test_only,
+            "provenance": self.provenance.to_dict(),
+        }
 
 
 @runtime_checkable
 class ProbabilityKernel(Protocol):
     """Caller boundary for exact gate-outcome probabilities."""
+
+    identity: ProbabilityKernelIdentity
 
     def outcome_probabilities(
         self,
@@ -1152,6 +1382,29 @@ class ProbabilityKernel(Protocol):
 @dataclass(frozen=True)
 class D20ProbabilityKernel:
     """Exact ordinary d20 kernel; it never spends Legendary Resistance."""
+
+    identity: ProbabilityKernelIdentity = field(
+        default=ProbabilityKernelIdentity.create(
+            "openai.kinetic_vanguard.d20",
+            "1.0.0",
+            {
+                "algorithm": "exact_uniform_d20_enumeration",
+                "parameters": {
+                    "die_faces": 20,
+                    "attack_natural_1": "automatic_miss",
+                    "attack_natural_20": "automatic_hit",
+                    "attack_comparison": "roll_plus_bonus_greater_than_or_equal_to_ac",
+                    "save_comparison": "roll_plus_bonus_greater_than_or_equal_to_dc",
+                    "advantage": "maximum_of_two_independent_d20",
+                    "disadvantage": "minimum_of_two_independent_d20",
+                    "opposed_sources": "all_advantage_and_disadvantage_cancel_to_normal",
+                    "magic_resistance": "save_advantage_only_when_context_is_magical",
+                    "legendary_resistance": "metadata_only_never_spent",
+                },
+            },
+        ),
+        init=False,
+    )
 
     def outcome_probabilities(
         self,
@@ -1215,6 +1468,22 @@ class ReliabilityEvent:
     expire_component_ids: tuple[str, ...] = ()
 
     def __post_init__(self) -> None:
+        if (
+            not isinstance(self.event_id, str)
+            or not self.event_id
+            or self.event_id.strip() != self.event_id
+        ):
+            raise ControlGraphError("ReliabilityEvent event_id must be a nonempty trimmed string")
+        if not isinstance(self.trigger, CompiledEvent):
+            raise ControlGraphError("ReliabilityEvent trigger must be CompiledEvent")
+        if self.window_id is not None and (
+            not isinstance(self.window_id, str)
+            or not self.window_id
+            or self.window_id.strip() != self.window_id
+        ):
+            raise ControlGraphError(
+                "ReliabilityEvent window_id must be a nonempty trimmed string or null"
+            )
         for field_name, values in (
             ("target_ids", self.target_ids),
             ("gate_ids", self.gate_ids),
@@ -1224,6 +1493,16 @@ class ReliabilityEvent:
                 raise ControlGraphError(
                     f"ReliabilityEvent {self.event_id!r} contains duplicate "
                     f"{field_name}"
+                )
+            if any(
+                not isinstance(value, str)
+                or not value
+                or value.strip() != value
+                for value in values
+            ):
+                raise ControlGraphError(
+                    f"ReliabilityEvent {self.event_id!r} {field_name} must "
+                    "contain nonempty trimmed strings"
                 )
 
     @classmethod
@@ -1245,6 +1524,242 @@ class ReliabilityEvent:
             window_id=window_id,
             expire_component_ids=tuple(expire_component_ids),
         )
+
+    def canonical_record(self) -> dict[str, Any]:
+        return {
+            "event_id": self.event_id,
+            "trigger": self.trigger.data.to_dict(),
+            "target_ids": list(self.target_ids),
+            "gate_ids": list(self.gate_ids),
+            "window_id": self.window_id,
+            "expire_component_ids": list(self.expire_component_ids),
+        }
+
+
+@dataclass(frozen=True, init=False)
+class ReliabilityScenario:
+    """Canonical immutable identity for one reliability evaluation."""
+
+    effect_id: str
+    entity_id: str
+    tier: int
+    authority_sha256: str
+    targets: tuple[ReliabilityTarget, ...]
+    selector_membership: tuple[tuple[str, tuple[str, ...]], ...]
+    selector_context: SelectorContext
+    choice_bindings: ChoiceBindings
+    probability_context: ProbabilityContext
+    kernel_identity: ProbabilityKernelIdentity
+    candidate_component_ids: tuple[str, ...]
+    event_script: tuple[ReliabilityEvent, ...]
+    initial_event_count: int
+    include_initial: bool
+    scenario_digest: str
+
+    def __init__(
+        self,
+        *,
+        effect_id: str,
+        entity_id: str,
+        tier: int,
+        authority_sha256: str,
+        targets: tuple[ReliabilityTarget, ...],
+        selector_membership: tuple[tuple[str, tuple[str, ...]], ...],
+        selector_context: SelectorContext,
+        choice_bindings: ChoiceBindings,
+        probability_context: ProbabilityContext,
+        kernel_identity: ProbabilityKernelIdentity,
+        candidate_component_ids: tuple[str, ...],
+        event_script: tuple[ReliabilityEvent, ...],
+        initial_event_count: int,
+        include_initial: bool,
+    ) -> None:
+        if not isinstance(include_initial, bool):
+            raise ControlGraphError("include_initial must be boolean")
+        if (
+            not isinstance(initial_event_count, int)
+            or isinstance(initial_event_count, bool)
+            or initial_event_count < 0
+            or initial_event_count > len(event_script)
+        ):
+            raise ControlGraphError("initial_event_count is invalid")
+        if (
+            not isinstance(authority_sha256, str)
+            or len(authority_sha256) != 64
+            or any(character not in "0123456789abcdef" for character in authority_sha256)
+        ):
+            raise ControlGraphError("authority_sha256 must be a lowercase SHA-256 digest")
+        event_ids = [event.event_id for event in event_script]
+        if len(event_ids) != len(set(event_ids)):
+            raise ControlGraphError("Duplicate reliability event ID in scenario")
+        window_ids = [event.window_id or event.event_id for event in event_script]
+        if not initial_event_count:
+            window_ids.insert(0, "initial")
+        if len(window_ids) != len(set(window_ids)):
+            raise ControlGraphError("Reliability scenario contains duplicate window IDs")
+
+        values = {
+            "effect_id": effect_id,
+            "entity_id": entity_id,
+            "tier": tier,
+            "authority_sha256": authority_sha256,
+            "targets": targets,
+            "selector_membership": selector_membership,
+            "selector_context": selector_context,
+            "choice_bindings": choice_bindings,
+            "probability_context": probability_context,
+            "kernel_identity": kernel_identity,
+            "candidate_component_ids": candidate_component_ids,
+            "event_script": event_script,
+            "initial_event_count": initial_event_count,
+            "include_initial": include_initial,
+        }
+        for field_name, value in values.items():
+            object.__setattr__(self, field_name, value)
+        digest = sha256(
+            _canonical(self.canonical_record()).encode("utf-8")
+        ).hexdigest()
+        object.__setattr__(self, "scenario_digest", digest)
+
+    @classmethod
+    def create(
+        cls,
+        effect: CompiledEffect,
+        *,
+        targets: Sequence[ReliabilityTarget],
+        selector_membership: Mapping[str, Sequence[str]],
+        selector_context: SelectorContext,
+        choices: Mapping[str, str] | None,
+        probability_context: ProbabilityContext,
+        kernel: ProbabilityKernel,
+        events: Sequence[ReliabilityEvent],
+        candidate_component_ids: Iterable[str],
+        include_initial: bool,
+    ) -> "ReliabilityScenario":
+        if not isinstance(effect, CompiledEffect):
+            raise TypeError("ReliabilityScenario.create requires CompiledEffect")
+        if not isinstance(selector_context, SelectorContext):
+            raise TypeError("selector_context must be SelectorContext")
+        if not isinstance(probability_context, ProbabilityContext):
+            raise TypeError("probability_context must be ProbabilityContext")
+        if not isinstance(include_initial, bool):
+            raise ControlGraphError("include_initial must be boolean")
+        supplied_targets = tuple(targets)
+        if any(not isinstance(target, ReliabilityTarget) for target in supplied_targets):
+            raise TypeError("targets must contain ReliabilityTarget values")
+        ordered_targets = tuple(
+            sorted(supplied_targets, key=lambda target: target.target_id)
+        )
+        target_ids = tuple(target.target_id for target in ordered_targets)
+        if len(target_ids) != len(set(target_ids)):
+            raise ControlGraphError("Reliability targets contain duplicate target IDs")
+        membership = validate_selector_membership(
+            effect,
+            target_ids=target_ids,
+            selector_membership=selector_membership,
+            selector_context=selector_context,
+        )
+        canonical_membership = tuple(
+            (selector_id, tuple(sorted(membership[selector_id])))
+            for selector_id in sorted(membership)
+        )
+        bindings = effect.bind_choices(choices)
+        if not isinstance(kernel, ProbabilityKernel):
+            raise ControlGraphError(
+                "kernel must provide identity provenance and implement ProbabilityKernel"
+            )
+        if not isinstance(kernel.identity, ProbabilityKernelIdentity):
+            raise ControlGraphError(
+                "kernel identity must be ProbabilityKernelIdentity"
+            )
+        if isinstance(events, (str, bytes)):
+            raise ControlGraphError("events must be an ordered sequence")
+        ordered_events = tuple(events)
+        if any(not isinstance(event, ReliabilityEvent) for event in ordered_events):
+            raise ControlGraphError("events must contain ReliabilityEvent values")
+        if isinstance(candidate_component_ids, (str, bytes)):
+            raise ControlGraphError(
+                "candidate_component_ids must be an iterable of component IDs"
+            )
+        supplied_candidates = tuple(candidate_component_ids)
+        if any(
+            not isinstance(component_id, str)
+            or not component_id
+            or component_id.strip() != component_id
+            for component_id in supplied_candidates
+        ):
+            raise ControlGraphError(
+                "candidate_component_ids must contain nonempty trimmed strings"
+            )
+        if len(supplied_candidates) != len(set(supplied_candidates)):
+            raise ControlGraphError("candidate_component_ids contains duplicates")
+        known_components = {
+            component.component_id for component in effect.components
+        }
+        unknown_candidates = sorted(set(supplied_candidates) - known_components)
+        if unknown_candidates:
+            raise ControlGraphError(
+                f"Unknown candidate component IDs: {unknown_candidates}"
+            )
+        initial_events = (
+            _implicit_initial_reliability_events(effect)
+            if include_initial
+            else ()
+        )
+        return cls(
+            effect_id=effect.effect_id,
+            entity_id=effect.entity_id,
+            tier=effect.tier,
+            authority_sha256=effect.authority_sha256,
+            targets=ordered_targets,
+            selector_membership=canonical_membership,
+            selector_context=selector_context,
+            choice_bindings=bindings,
+            probability_context=probability_context,
+            kernel_identity=kernel.identity,
+            candidate_component_ids=tuple(sorted(supplied_candidates)),
+            event_script=(*initial_events, *ordered_events),
+            initial_event_count=len(initial_events),
+            include_initial=include_initial,
+        )
+
+    @property
+    def target_ids(self) -> tuple[str, ...]:
+        return tuple(target.target_id for target in self.targets)
+
+    @property
+    def event_ids(self) -> tuple[str, ...]:
+        return tuple(event.event_id for event in self.event_script)
+
+    @property
+    def window_ids(self) -> tuple[str, ...]:
+        values = tuple(event.window_id or event.event_id for event in self.event_script)
+        return values if self.initial_event_count else ("initial", *values)
+
+    def canonical_record(self) -> dict[str, Any]:
+        return {
+            "program": {
+                "effect_id": self.effect_id,
+                "entity_id": self.entity_id,
+                "tier": self.tier,
+                "authority_sha256": self.authority_sha256,
+            },
+            "targets": [target.canonical_record() for target in self.targets],
+            "selector_membership": {
+                selector_id: list(target_ids)
+                for selector_id, target_ids in self.selector_membership
+            },
+            "selector_context": self.selector_context.to_dict(),
+            "choice_bindings": dict(self.choice_bindings),
+            "probability_context": self.probability_context.canonical_record(),
+            "probability_kernel": self.kernel_identity.canonical_record(),
+            "candidate_component_ids": list(self.candidate_component_ids),
+            "ordered_event_script": [
+                event.canonical_record() for event in self.event_script
+            ],
+            "initial_event_count": self.initial_event_count,
+            "include_initial": self.include_initial,
+        }
 
 
 @dataclass(frozen=True, order=True)
@@ -1308,6 +1823,9 @@ class ImmunitySuppression:
     probability: Fraction
 
 
+_RELIABILITY_RESULT_ISSUER = object()
+
+
 @dataclass(frozen=True)
 class ReliabilityResult:
     effect_id: str
@@ -1322,6 +1840,33 @@ class ReliabilityResult:
     any_candidate_by_target: tuple[tuple[str, Fraction], ...]
     any_component_by_target: tuple[tuple[str, Fraction], ...]
     final_world_count: int
+    scenario: ReliabilityScenario | None = None
+    scenario_digest: str | None = None
+    _issuer: object | None = field(
+        default=None,
+        init=False,
+        compare=False,
+        hash=False,
+        repr=False,
+    )
+    _issuance_token: object | None = field(
+        default=None,
+        init=False,
+        compare=False,
+        hash=False,
+        repr=False,
+    )
+
+    def __post_init__(self) -> None:
+        if self.scenario is None:
+            if self.scenario_digest is not None:
+                raise ControlGraphError(
+                    "ReliabilityResult scenario_digest requires a scenario"
+                )
+        elif self.scenario_digest != self.scenario.scenario_digest:
+            raise ControlGraphError(
+                "ReliabilityResult scenario digest does not match its canonical scenario"
+            )
 
     def component(self, component_id: str, target_id: str) -> ComponentReliability:
         matches = [
@@ -1334,9 +1879,48 @@ class ReliabilityResult:
             )
         return matches[0]
 
-
 _IMMEDIATE_CONTINUATION_KINDS = frozenset({"save", "damage_context", "instantaneous_resolution"})
 _FUTURE_ROOT_KINDS = frozenset({"turn", "entry", "exit", "concentration_end"})
+
+
+def _implicit_initial_reliability_events(
+    effect: CompiledEffect,
+) -> tuple[ReliabilityEvent, ...]:
+    events: list[ReliabilityEvent] = []
+    for gate_id in effect.root_gate_ids:
+        gate = effect.gate(gate_id)
+        if gate.role in {"repeat", "recurring"} or gate.trigger.kind in _FUTURE_ROOT_KINDS:
+            continue
+        events.append(
+            ReliabilityEvent(
+                event_id=f"initial:{gate_id}",
+                trigger=gate.trigger,
+                gate_ids=(gate_id,),
+                window_id=f"initial:{gate_id}",
+            )
+        )
+    return tuple(events)
+
+
+def reliability_result_issuance_token(result: ReliabilityResult) -> object:
+    """Return the opaque same-evaluation token for an engine-issued result."""
+
+    if not isinstance(result, ReliabilityResult):
+        raise TypeError("result must be ReliabilityResult")
+    if (
+        result._issuer is not _RELIABILITY_RESULT_ISSUER
+        or result._issuance_token is None
+    ):
+        raise ControlGraphError("Reliability result is not engine-issued")
+    return result._issuance_token
+
+
+def _issue_reliability_result(result: ReliabilityResult) -> ReliabilityResult:
+    """Module-private issuance boundary used only after closed-ledger validation."""
+
+    object.__setattr__(result, "_issuer", _RELIABILITY_RESULT_ISSUER)
+    object.__setattr__(result, "_issuance_token", object())
+    return result
 
 
 def _merge_worlds(rows: Iterable[tuple[_World, Fraction]]) -> dict[_World, Fraction]:
@@ -1363,6 +1947,434 @@ def _validate_distribution(gate: CompiledGate, value: Mapping[str, Fraction]) ->
     if sum(result.values(), Fraction()) != 1:
         raise ControlGraphError(f"Kernel probabilities for {gate.gate_id!r} must sum exactly to 1")
     return result
+
+
+def _require_exact_probability(value: Any, *, label: str) -> Fraction:
+    if not isinstance(value, Fraction):
+        raise ControlGraphError(f"{label} must be an exact fractions.Fraction")
+    if value < 0 or value > 1:
+        raise ControlGraphError(f"{label} must be between zero and one")
+    return value
+
+
+def _require_result_targets(
+    target_ids: Any,
+    *,
+    known_targets: frozenset[str],
+    label: str,
+) -> tuple[str, ...]:
+    if not isinstance(target_ids, tuple):
+        raise ControlGraphError(f"{label} target IDs must be an immutable tuple")
+    if len(target_ids) != len(set(target_ids)):
+        raise ControlGraphError(f"{label} contains duplicate target IDs")
+    if target_ids != tuple(sorted(target_ids)):
+        raise ControlGraphError(
+            f"{label} target IDs must use canonical scenario ordering"
+        )
+    unknown = sorted(set(target_ids) - known_targets)
+    if unknown:
+        raise ControlGraphError(f"{label} references unknown target IDs: {unknown}")
+    return target_ids
+
+
+def _compatible_gate_ids_by_event(
+    effect: CompiledEffect,
+    scenario: ReliabilityScenario,
+) -> Mapping[str, frozenset[str]]:
+    """Return structurally compatible gate IDs for each scripted event."""
+
+    result: dict[str, frozenset[str]] = {}
+    for event in scenario.event_script:
+        if event.gate_ids:
+            seeds: set[str] = set()
+            for gate_id in event.gate_ids:
+                gate = effect.gate(gate_id)
+                if gate.trigger.key != event.trigger.key:
+                    raise ControlGraphError(
+                        f"Reliability event {event.event_id!r} gate {gate_id!r} "
+                        "has an incompatible trigger"
+                    )
+                seeds.add(gate_id)
+        else:
+            # Future branch subscriptions and exogenous roots can both resolve
+            # at a matching trigger. Reachability mass is proven by the exact
+            # gate/branch distribution, while trigger compatibility is closed
+            # here.
+            seeds = {
+                gate.gate_id
+                for gate in effect.gates
+                if gate.trigger.key == event.trigger.key
+            }
+        compatible = set(seeds)
+        pending = list(seeds)
+        while pending:
+            gate = effect.gate(pending.pop())
+            for branch in gate.branches:
+                for next_gate_id in branch.next_gate_ids:
+                    next_gate = effect.gate(next_gate_id)
+                    if (
+                        next_gate.trigger.kind in _IMMEDIATE_CONTINUATION_KINDS
+                        and next_gate_id not in compatible
+                    ):
+                        compatible.add(next_gate_id)
+                        pending.append(next_gate_id)
+        result[event.event_id] = frozenset(compatible)
+    return MappingProxyType(result)
+
+
+def _validate_reliability_result_structure(
+    effect: CompiledEffect,
+    result: ReliabilityResult,
+    *,
+    expected_scenario_digest: str | None = None,
+) -> None:
+    """Module-private structural validator used before evaluator issuance."""
+
+    if not isinstance(effect, CompiledEffect):
+        raise TypeError("effect must be CompiledEffect")
+    if not isinstance(result, ReliabilityResult):
+        raise TypeError("result must be ReliabilityResult")
+    scenario = result.scenario
+    if scenario is None or result.scenario_digest is None:
+        raise ControlGraphError("Reliability result has no canonical scenario provenance")
+    canonical_digest = sha256(
+        _canonical(scenario.canonical_record()).encode("utf-8")
+    ).hexdigest()
+    if scenario.scenario_digest != canonical_digest:
+        raise ControlGraphError("Reliability scenario digest is stale or malformed")
+    if result.scenario_digest != scenario.scenario_digest:
+        raise ControlGraphError("Reliability result scenario digest mismatch")
+    if (
+        expected_scenario_digest is not None
+        and result.scenario_digest != expected_scenario_digest
+    ):
+        raise ControlGraphError(
+            "Reliability result belongs to a different canonical scenario"
+        )
+    if (
+        scenario.effect_id != effect.effect_id
+        or scenario.entity_id != effect.entity_id
+        or scenario.tier != effect.tier
+        or scenario.authority_sha256 != effect.authority_sha256
+        or result.effect_id != effect.effect_id
+    ):
+        raise ControlGraphError(
+            "Reliability result does not belong to the compiled program and authority"
+        )
+
+    target_ids = scenario.target_ids
+    if result.target_ids != target_ids:
+        raise ControlGraphError(
+            "Reliability result target IDs do not match its canonical scenario"
+        )
+    known_targets = frozenset(target_ids)
+    known_components = {
+        component.component_id: component for component in effect.components
+    }
+    known_events = frozenset(scenario.event_ids)
+    known_windows = frozenset(scenario.window_ids)
+    compatible_gates = _compatible_gate_ids_by_event(effect, scenario)
+
+    gate_rows: dict[tuple[str, str, tuple[str, ...]], Fraction] = {}
+    for row in result.gate_probabilities:
+        if row.event_id not in known_events:
+            raise ControlGraphError(
+                f"Gate probability references unknown event ID: {row.event_id!r}"
+            )
+        try:
+            effect.gate(row.gate_id)
+        except ControlGraphError as error:
+            raise ControlGraphError(
+                f"Gate probability references unknown gate ID: {row.gate_id!r}"
+            ) from error
+        if row.gate_id not in compatible_gates[row.event_id]:
+            raise ControlGraphError(
+                f"Gate {row.gate_id!r} is incompatible with reliability event "
+                f"{row.event_id!r}"
+            )
+        scope = _require_result_targets(
+            row.target_ids,
+            known_targets=known_targets,
+            label="Gate probability",
+        )
+        key = (row.event_id, row.gate_id, scope)
+        if key in gate_rows:
+            raise ControlGraphError(
+                f"Duplicate semantic gate probability row: {key!r}"
+            )
+        gate_rows[key] = _require_exact_probability(
+            row.probability,
+            label=f"Gate probability {row.event_id}/{row.gate_id}",
+        )
+
+    branch_groups: dict[
+        tuple[str, str, tuple[str, ...]],
+        Fraction,
+    ] = defaultdict(Fraction)
+    branch_keys: set[tuple[str, str, str, tuple[str, ...]]] = set()
+    for row in result.branch_probabilities:
+        if row.event_id not in known_events:
+            raise ControlGraphError(
+                f"Branch probability references unknown event ID: {row.event_id!r}"
+            )
+        try:
+            gate = effect.gate(row.gate_id)
+        except ControlGraphError as error:
+            raise ControlGraphError(
+                f"Branch probability references unknown gate ID: {row.gate_id!r}"
+            ) from error
+        if row.gate_id not in compatible_gates[row.event_id]:
+            raise ControlGraphError(
+                f"Gate {row.gate_id!r} is incompatible with reliability event "
+                f"{row.event_id!r}"
+            )
+        matching_branches = [
+            branch
+            for branch in gate.branches
+            if branch.branch_id == row.branch_id
+        ]
+        if len(matching_branches) != 1:
+            raise ControlGraphError(
+                f"Branch {row.branch_id!r} does not belong to gate {row.gate_id!r}"
+            )
+        if matching_branches[0].outcome != row.outcome:
+            raise ControlGraphError(
+                f"Branch {row.branch_id!r} outcome does not match its compiled gate"
+            )
+        scope = _require_result_targets(
+            row.target_ids,
+            known_targets=known_targets,
+            label="Branch probability",
+        )
+        semantic_key = (row.event_id, row.gate_id, row.branch_id, scope)
+        if semantic_key in branch_keys:
+            raise ControlGraphError(
+                f"Duplicate semantic branch probability row: {semantic_key!r}"
+            )
+        branch_keys.add(semantic_key)
+        probability = _require_exact_probability(
+            row.probability,
+            label=(
+                f"Branch probability {row.event_id}/{row.gate_id}/"
+                f"{row.branch_id}"
+            ),
+        )
+        branch_groups[(row.event_id, row.gate_id, scope)] += probability
+
+    if set(branch_groups) != set(gate_rows):
+        missing = sorted(set(gate_rows) - set(branch_groups))
+        unknown = sorted(set(branch_groups) - set(gate_rows))
+        raise ControlGraphError(
+            "Gate/branch probability groups do not match exactly; "
+            f"missing={missing}, unknown={unknown}"
+        )
+    for key, gate_probability in gate_rows.items():
+        if branch_groups[key] != gate_probability:
+            raise ControlGraphError(
+                f"Branch probabilities for {key!r} do not sum exactly to gate mass"
+            )
+
+    component_keys: set[tuple[str, str]] = set()
+    expected_component_keys = {
+        (component_id, target_id)
+        for component_id in known_components
+        for target_id in target_ids
+    }
+    for row in result.component_reliability:
+        component = known_components.get(row.component_id)
+        if component is None:
+            raise ControlGraphError(
+                f"Component reliability references unknown component ID: {row.component_id!r}"
+            )
+        if row.qualified_id != component.qualified_id:
+            raise ControlGraphError(
+                f"Component reliability has a mismatched qualified ID for {row.component_id!r}"
+            )
+        if row.target_id not in known_targets:
+            raise ControlGraphError(
+                f"Component reliability references unknown target ID: {row.target_id!r}"
+            )
+        semantic_key = (row.component_id, row.target_id)
+        if semantic_key in component_keys:
+            raise ControlGraphError(
+                f"Duplicate semantic component reliability row: {semantic_key!r}"
+            )
+        component_keys.add(semantic_key)
+        initially = _require_exact_probability(
+            row.initially_applied,
+            label=f"Initial component probability {semantic_key!r}",
+        )
+        ever = _require_exact_probability(
+            row.ever_applied,
+            label=f"Ever component probability {semantic_key!r}",
+        )
+        if initially > ever:
+            raise ControlGraphError(
+                f"Initial component probability exceeds ever-applied mass for {semantic_key!r}"
+            )
+        row_windows = tuple(window_id for window_id, _probability in row.active_by_window)
+        if len(row_windows) != len(set(row_windows)):
+            raise ControlGraphError(
+                f"Duplicate semantic component window row for {semantic_key!r}"
+            )
+        if row_windows != scenario.window_ids:
+            raise ControlGraphError(
+                f"Component reliability windows do not match the scenario for {semantic_key!r}"
+            )
+        for window_id, probability in row.active_by_window:
+            if window_id not in known_windows:  # pragma: no cover - tuple equality covers this
+                raise ControlGraphError(
+                    f"Component reliability references unknown window ID: {window_id!r}"
+                )
+            active = _require_exact_probability(
+                probability,
+                label=f"Active component probability {semantic_key!r}/{window_id}",
+            )
+            if active > ever:
+                raise ControlGraphError(
+                    f"Active component probability exceeds ever-applied mass for {semantic_key!r}"
+                )
+    if component_keys != expected_component_keys:
+        raise ControlGraphError(
+            "Component reliability rows do not cover every program component and target"
+        )
+
+    repeat_keys: set[tuple[str, str, str]] = set()
+    for row in result.repeat_survival:
+        if row.event_id not in known_events:
+            raise ControlGraphError(
+                f"Repeat survival references unknown event ID: {row.event_id!r}"
+            )
+        gate = effect.gate(row.gate_id)
+        if gate.role != "repeat":
+            raise ControlGraphError(
+                f"Repeat survival gate is not a repeat gate: {row.gate_id!r}"
+            )
+        if row.target_id not in known_targets:
+            raise ControlGraphError(
+                f"Repeat survival references unknown target ID: {row.target_id!r}"
+            )
+        key = (row.event_id, row.gate_id, row.target_id)
+        if key in repeat_keys:
+            raise ControlGraphError(f"Duplicate semantic repeat survival row: {key!r}")
+        repeat_keys.add(key)
+        _require_exact_probability(
+            row.probability,
+            label=f"Repeat survival probability {key!r}",
+        )
+
+    suppression_keys: set[tuple[str, str, str, str, str, str]] = set()
+    for row in result.immunity_suppressions:
+        if row.event_id not in known_events:
+            raise ControlGraphError(
+                f"Immunity suppression references unknown event ID: {row.event_id!r}"
+            )
+        gate = effect.gate(row.gate_id)
+        matching_branches = [
+            branch for branch in gate.branches if branch.branch_id == row.branch_id
+        ]
+        if len(matching_branches) != 1:
+            raise ControlGraphError(
+                f"Immunity suppression branch does not belong to gate {row.gate_id!r}"
+            )
+        if row.target_id not in known_targets:
+            raise ControlGraphError(
+                f"Immunity suppression references unknown target ID: {row.target_id!r}"
+            )
+        component = known_components.get(row.component_id)
+        if component is None:
+            raise ControlGraphError(
+                f"Immunity suppression references unknown component ID: {row.component_id!r}"
+            )
+        expected_condition = (
+            str(component.magnitude.data["condition"])
+            if component.magnitude.kind == "condition"
+            else None
+        )
+        if row.condition != expected_condition:
+            raise ControlGraphError(
+                f"Immunity suppression condition does not match component {row.component_id!r}"
+            )
+        key = (
+            row.event_id,
+            row.gate_id,
+            row.branch_id,
+            row.target_id,
+            row.component_id,
+            row.condition,
+        )
+        if key in suppression_keys:
+            raise ControlGraphError(
+                f"Duplicate semantic immunity suppression row: {key!r}"
+            )
+        suppression_keys.add(key)
+        _require_exact_probability(
+            row.probability,
+            label=f"Immunity suppression probability {key!r}",
+        )
+
+    any_candidate = _require_exact_probability(
+        result.any_candidate_probability,
+        label="Any-candidate probability",
+    )
+    any_component = _require_exact_probability(
+        result.any_component_probability,
+        label="Any-component probability",
+    )
+    if any_candidate > any_component:
+        raise ControlGraphError(
+            "Any-candidate probability exceeds any-component probability"
+        )
+    for label, rows in (
+        ("Any-candidate by-target", result.any_candidate_by_target),
+        ("Any-component by-target", result.any_component_by_target),
+    ):
+        row_targets = tuple(target_id for target_id, _probability in rows)
+        if row_targets != target_ids:
+            raise ControlGraphError(f"{label} rows do not match scenario targets")
+        for target_id, probability in rows:
+            _require_exact_probability(
+                probability,
+                label=f"{label} probability for {target_id!r}",
+            )
+    candidate_by_target = dict(result.any_candidate_by_target)
+    component_by_target = dict(result.any_component_by_target)
+    if any(
+        candidate_by_target[target_id] > component_by_target[target_id]
+        for target_id in target_ids
+    ):
+        raise ControlGraphError(
+            "A by-target candidate probability exceeds component probability"
+        )
+    if (
+        isinstance(result.final_world_count, bool)
+        or not isinstance(result.final_world_count, int)
+        or result.final_world_count <= 0
+    ):
+        raise ControlGraphError("final_world_count must be a positive integer")
+
+def validate_reliability_result(
+    effect: CompiledEffect,
+    result: ReliabilityResult,
+    *,
+    expected_scenario_digest: str | None = None,
+    expected_issuance_token: object | None = None,
+) -> None:
+    """Validate a closed reliability ledger and require engine issuance."""
+
+    _validate_reliability_result_structure(
+        effect,
+        result,
+        expected_scenario_digest=expected_scenario_digest,
+    )
+    token = reliability_result_issuance_token(result)
+    if (
+        expected_issuance_token is not None
+        and token is not expected_issuance_token
+    ):
+        raise ControlGraphError(
+            "Reliability result was issued by a different evaluation execution"
+        )
 
 
 class _Evaluator:
@@ -1782,60 +2794,70 @@ def evaluate_reliability(
 
     if not isinstance(effect, CompiledEffect):
         raise TypeError("evaluate_reliability requires CompiledEffect")
-    bindings = effect.bind_choices(choices)
-    known_components = {component.component_id for component in effect.components}
+    # Preserve choice failure precedence: incomplete semantic bindings are
+    # rejected before unrelated evaluation-output configuration.
+    effect.bind_choices(choices)
     if candidate_component_ids is None:
         raise ControlGraphError(
             "candidate_component_ids must be supplied explicitly"
         )
-    candidates = frozenset(candidate_component_ids)
-    unknown_candidates = sorted(candidates - known_components)
-    if unknown_candidates:
-        raise ControlGraphError(f"Unknown candidate component IDs: {unknown_candidates}")
-    ordered_targets = tuple(sorted(targets, key=lambda target: target.target_id))
+    chosen_kernel = D20ProbabilityKernel() if kernel is None else kernel
+    scenario = ReliabilityScenario.create(
+        effect,
+        targets=targets,
+        selector_membership=selector_membership,
+        selector_context=selector_context,
+        choices=choices,
+        probability_context=context,
+        kernel=chosen_kernel,
+        events=events,
+        candidate_component_ids=candidate_component_ids,
+        include_initial=include_initial,
+    )
+    candidates = frozenset(scenario.candidate_component_ids)
     evaluator = _Evaluator(
         effect,
-        ordered_targets,
-        selector_membership,
-        selector_context,
-        kernel or D20ProbabilityKernel(),
-        context,
-        bindings,
+        scenario.targets,
+        dict(scenario.selector_membership),
+        scenario.selector_context,
+        chosen_kernel,
+        scenario.probability_context,
+        scenario.choice_bindings,
         candidates,
     )
     worlds: dict[_World, Fraction] = {_World(): Fraction(1)}
-    if include_initial:
-        for gate_id in effect.root_gate_ids:
-            gate = effect.gate(gate_id)
-            if gate.role in {"repeat", "recurring"} or gate.trigger.kind in _FUTURE_ROOT_KINDS:
-                continue
-            worlds = evaluator.process_event(
-                worlds,
-                ReliabilityEvent(
-                    event_id=f"initial:{gate_id}",
-                    trigger=gate.trigger,
-                    gate_ids=(gate_id,),
-                    window_id=f"initial:{gate_id}",
-                ),
-                initial_phase=True,
-            )
+    for event in scenario.event_script[:scenario.initial_event_count]:
+        worlds = evaluator.process_event(
+            worlds,
+            event,
+            initial_phase=True,
+        )
     if not evaluator.snapshots:
         evaluator.snapshots.append(("initial", dict(worlds)))
-    for event in events:
+    for event in scenario.event_script[scenario.initial_event_count:]:
         worlds = evaluator.process_event(worlds, event, initial_phase=False)
     if sum(worlds.values(), Fraction()) != 1:
         raise ControlGraphError("Joint-world probabilities do not sum exactly to 1")
-    target_ids = tuple(target.target_id for target in ordered_targets)
+    target_ids = scenario.target_ids
     component_rows: list[ComponentReliability] = []
     for component in effect.components:
         for target_id in target_ids:
             identity = (target_id, component.component_id)
-            initially = sum(probability for world, probability in worlds.items() if identity in world.initial)
-            ever = sum(probability for world, probability in worlds.items() if identity in world.ever)
+            initially = sum(
+                (probability for world, probability in worlds.items() if identity in world.initial),
+                Fraction(),
+            )
+            ever = sum(
+                (probability for world, probability in worlds.items() if identity in world.ever),
+                Fraction(),
+            )
             active_by_window = tuple(
                 (
                     window_id,
-                    sum(probability for world, probability in snapshot.items() if identity in world.active),
+                    sum(
+                        (probability for world, probability in snapshot.items() if identity in world.active),
+                        Fraction(),
+                    ),
                 )
                 for window_id, snapshot in evaluator.snapshots
             )
@@ -1849,16 +2871,25 @@ def evaluate_reliability(
                     active_by_window,
                 )
             )
-    any_component = sum(probability for world, probability in worlds.items() if world.ever)
+    any_component = sum(
+        (probability for world, probability in worlds.items() if world.ever),
+        Fraction(),
+    )
     any_candidate = sum(
-        probability
-        for world, probability in worlds.items()
-        if any(component_id in candidates for _target_id, component_id in world.ever)
+        (
+            probability
+            for world, probability in worlds.items()
+            if any(component_id in candidates for _target_id, component_id in world.ever)
+        ),
+        Fraction(),
     )
     any_component_by_target = tuple(
         (
             target_id,
-            sum(probability for world, probability in worlds.items() if any(item[0] == target_id for item in world.ever)),
+            sum(
+                (probability for world, probability in worlds.items() if any(item[0] == target_id for item in world.ever)),
+                Fraction(),
+            ),
         )
         for target_id in target_ids
     )
@@ -1866,14 +2897,17 @@ def evaluate_reliability(
         (
             target_id,
             sum(
-                probability
-                for world, probability in worlds.items()
-                if any(item[0] == target_id and item[1] in candidates for item in world.ever)
+                (
+                    probability
+                    for world, probability in worlds.items()
+                    if any(item[0] == target_id and item[1] in candidates for item in world.ever)
+                ),
+                Fraction(),
             ),
         )
         for target_id in target_ids
     )
-    return ReliabilityResult(
+    result = ReliabilityResult(
         effect_id=effect.effect_id,
         target_ids=target_ids,
         component_reliability=tuple(component_rows),
@@ -1900,7 +2934,22 @@ def evaluate_reliability(
         any_candidate_by_target=any_candidate_by_target,
         any_component_by_target=any_component_by_target,
         final_world_count=len(worlds),
+        scenario=scenario,
+        scenario_digest=scenario.scenario_digest,
     )
+    _validate_reliability_result_structure(
+        effect,
+        result,
+        expected_scenario_digest=scenario.scenario_digest,
+    )
+    issued = _issue_reliability_result(result)
+    validate_reliability_result(
+        effect,
+        issued,
+        expected_scenario_digest=scenario.scenario_digest,
+        expected_issuance_token=reliability_result_issuance_token(issued),
+    )
+    return issued
 
 
 __all__ = [
@@ -1924,9 +2973,11 @@ __all__ = [
     "ImmunitySuppression",
     "ProbabilityContext",
     "ProbabilityKernel",
+    "ProbabilityKernelIdentity",
     "QualifiedId",
     "ReliabilityEvent",
     "ReliabilityResult",
+    "ReliabilityScenario",
     "ReliabilityTarget",
     "RepeatSurvival",
     "SelectorContext",
@@ -1937,5 +2988,7 @@ __all__ = [
     "evaluate_reliability",
     "load_compiled_control_authority",
     "resolve_roll_mode",
+    "reliability_result_issuance_token",
+    "validate_reliability_result",
     "validate_selector_membership",
 ]

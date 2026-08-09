@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import unittest
 from copy import deepcopy
 from dataclasses import FrozenInstanceError, replace
@@ -9,11 +10,15 @@ from types import MappingProxyType, SimpleNamespace
 from harness.authority import ControlAuthorityV2Model
 from harness.control_graph import (
     CONTROL_MAGNITUDE_KINDS,
+    _validate_reliability_result_structure,
     CompiledEvent,
     ControlGraphError,
     D20ProbabilityKernel,
     ProbabilityContext,
+    ProbabilityKernelIdentity,
     ReliabilityEvent,
+    ReliabilityResult,
+    ReliabilityScenario,
     ReliabilityTarget,
     SelectorContext,
     compile_control_authority,
@@ -21,7 +26,9 @@ from harness.control_graph import (
     d20_attack_hit_probability,
     d20_save_success_probability,
     evaluate_reliability,
+    reliability_result_issuance_token,
     resolve_roll_mode,
+    validate_reliability_result,
     validate_selector_membership,
 )
 
@@ -56,6 +63,13 @@ def component_windows(result: object, component_id: str, target_id: str) -> dict
 class AlwaysFailureKernel:
     """Exact scripted kernel used to expose graph topology, not d20 arithmetic."""
 
+    identity = ProbabilityKernelIdentity.create(
+        "test-only.always-failure",
+        "1.0.0",
+        {"fixture": "select the preferred failure-like outcome with unit mass"},
+        test_only=True,
+    )
+
     def outcome_probabilities(self, gate: object, _target: object, _context: object) -> dict[str, Fraction]:
         outcomes = {branch.outcome for branch in gate.branches}  # type: ignore[attr-defined]
         preferred = next(
@@ -68,6 +82,13 @@ class AlwaysFailureKernel:
 
 class HalfKernel:
     """Give each two-way gate a fair branch and deterministic gates mass one."""
+
+    identity = ProbabilityKernelIdentity.create(
+        "test-only.half",
+        "1.0.0",
+        {"fixture": "unit mass for one-way gates and equal mass for two-way gates"},
+        test_only=True,
+    )
 
     def outcome_probabilities(self, gate: object, _target: object, _context: object) -> dict[str, Fraction]:
         outcomes = [branch.outcome for branch in gate.branches]  # type: ignore[attr-defined]
@@ -90,6 +111,15 @@ class RecordingFailureKernel(AlwaysFailureKernel):
     ) -> dict[str, Fraction]:
         self.gate_ids.append(gate.gate_id)  # type: ignore[attr-defined]
         return super().outcome_probabilities(gate, target_value, context)
+
+
+class AlternateFailureKernel(AlwaysFailureKernel):
+    identity = ProbabilityKernelIdentity.create(
+        "test-only.alternate-failure",
+        "2.0.0",
+        {"fixture": "same exact outcomes under a deliberately different identity"},
+        test_only=True,
+    )
 
 
 def same_event_guard_effect(compiled):
@@ -388,6 +418,77 @@ class ExactProbabilityKernelTests(unittest.TestCase):
             self.kernel.outcome_probabilities(damage, None, ProbabilityContext()),
             {"damage_context": Fraction(1)},
         )
+
+    def test_reliability_target_rejects_coercion_untrimmed_names_and_duplicates(self) -> None:
+        valid_saves = {ability: 0 for ability in ABILITIES}
+        for target_id in ("", " target ", 7):
+            with self.subTest(target_id=target_id):
+                with self.assertRaisesRegex(ControlGraphError, "target_id"):
+                    ReliabilityTarget(target_id, 15, valid_saves)  # type: ignore[arg-type]
+        with self.assertRaisesRegex(ControlGraphError, "saves must be a mapping"):
+            ReliabilityTarget("target", 15, [("strength", 0)])  # type: ignore[arg-type]
+        for saves in (
+            {1: 0},
+            {" strength ": 0},
+            {"": 0},
+        ):
+            with self.subTest(saves=saves):
+                with self.assertRaisesRegex(ControlGraphError, "ability names"):
+                    ReliabilityTarget("target", 15, saves)  # type: ignore[arg-type]
+        with self.assertRaisesRegex(ControlGraphError, "duplicate normalized ability"):
+            ReliabilityTarget(
+                "target",
+                15,
+                {"Strength": 0, "strength": 1},
+            )
+        with self.assertRaisesRegex(ControlGraphError, "Save bonus"):
+            ReliabilityTarget("target", 15, {"strength": True})
+        for immunities in (
+            "restrained",
+            (1,),
+            (" restrained ",),
+            ("",),
+        ):
+            with self.subTest(immunities=immunities):
+                with self.assertRaisesRegex(
+                    ControlGraphError,
+                    "condition_immunities|Condition immunity",
+                ):
+                    ReliabilityTarget(
+                        "target",
+                        15,
+                        valid_saves,
+                        condition_immunities=immunities,  # type: ignore[arg-type]
+                    )
+        with self.assertRaisesRegex(ControlGraphError, "duplicate normalized condition"):
+            ReliabilityTarget(
+                "target",
+                15,
+                valid_saves,
+                condition_immunities=("Restrained", "restrained"),
+            )
+        with self.assertRaisesRegex(ControlGraphError, "armor_class"):
+            ReliabilityTarget.from_target(
+                "target",
+                SimpleNamespace(
+                    ac="15",
+                    saves=valid_saves,
+                    condition_immunities=(),
+                    magic_resistance=False,
+                    legendary_resistance=0,
+                ),
+            )
+        with self.assertRaisesRegex(ControlGraphError, "legendary_resistance"):
+            ReliabilityTarget.from_target(
+                "target",
+                SimpleNamespace(
+                    ac=15,
+                    saves=valid_saves,
+                    condition_immunities=(),
+                    magic_resistance=False,
+                    legendary_resistance="0",
+                ),
+            )
 
 
 class CorrelatedReliabilityTests(unittest.TestCase):
@@ -889,6 +990,591 @@ class CorrelatedReliabilityTests(unittest.TestCase):
             self.assertEqual(result.component("explosion_implosion_restrained", target_id).ever_applied, Fraction(1))
             self.assertEqual(result.component("explosion_implosion_outward_movement", target_id).ever_applied, Fraction(1))
             self.assertEqual(result.component("explosion_implosion_inward_movement", target_id).ever_applied, Fraction(0))
+
+
+class ReliabilityProvenanceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.compiled = compile_control_authority(
+            ControlAuthorityV2Model.load(require_benchmark_ready=True)
+        )
+        cls.effect = cls.compiled.program_for("snow_chains", 1)
+
+    def snow_result(
+        self,
+        *,
+        context: ProbabilityContext = ProbabilityContext(
+            attack_bonus=5,
+            save_dc=11,
+        ),
+        kernel: object | None = None,
+    ) -> ReliabilityResult:
+        return evaluate_reliability(
+            self.effect,
+            targets=[target("target")],
+            selector_membership={"snow_chains_target": ["target"]},
+            selector_context=SelectorContext(),
+            kernel=kernel,  # type: ignore[arg-type]
+            context=context,
+            candidate_component_ids=(
+                "snow_chains_speed_zero",
+                "snow_chains_restrained",
+                "snow_chains_reaction_denial",
+            ),
+        )
+
+    def frozen_result(self, members: tuple[str, ...]) -> ReliabilityResult:
+        effect = self.compiled.program_for("frozen_ground", 0)
+        return evaluate_reliability(
+            effect,
+            targets=[target("alpha"), target("beta")],
+            selector_membership={"frozen_ground_area_targets": list(members)},
+            selector_context=SelectorContext(),
+            context=ProbabilityContext(save_dc=11),
+            events=(
+                ReliabilityEvent.create(
+                    "target_turn",
+                    {"kind": "turn", "owner": "target", "turn_anchor": "start"},
+                    target_ids=("alpha", "beta"),
+                ),
+            ),
+            candidate_component_ids=("frozen_ground_speed_zero",),
+        )
+
+    def choice_result(self, option: str) -> ReliabilityResult:
+        effect = self.compiled.program_for("explosion_implosion", 0)
+        return evaluate_reliability(
+            effect,
+            targets=[target("primary")],
+            selector_membership={
+                "explosion_implosion_primary": ["primary"],
+                "explosion_implosion_secondary_targets": [],
+            },
+            selector_context=SelectorContext(),
+            kernel=AlwaysFailureKernel(),
+            choices={"explosion_implosion_mode": option},
+            candidate_component_ids=tuple(
+                component.component_id for component in effect.components
+            ),
+        )
+
+    def mass_result(self, event_ids: tuple[str, ...]) -> ReliabilityResult:
+        effect = self.compiled.program_for("mass_levitation", 0)
+        trigger = {"kind": "turn", "owner": "target", "turn_anchor": "start"}
+        return evaluate_reliability(
+            effect,
+            targets=[target("target")],
+            selector_membership={"mass_levitation_targets": ["target"]},
+            selector_context=SelectorContext(
+                controller_can_see_by_target={"target": True},
+                target_size_by_id={"target": "medium"},
+            ),
+            kernel=HalfKernel(),
+            events=tuple(
+                ReliabilityEvent.create(
+                    event_id,
+                    trigger,
+                    target_ids=("target",),
+                )
+                for event_id in event_ids
+            ),
+            candidate_component_ids=(
+                "mass_levitation_persistent_elevation",
+            ),
+        )
+
+    def test_maintained_d20_kernel_has_stable_auditable_identity(self) -> None:
+        identity = D20ProbabilityKernel().identity
+        self.assertEqual(
+            (identity.kernel_id, identity.version, identity.test_only),
+            ("openai.kinetic_vanguard.d20", "1.0.0", False),
+        )
+        self.assertEqual(
+            identity.provenance["algorithm"],
+            "exact_uniform_d20_enumeration",
+        )
+        self.assertEqual(identity.provenance["parameters"]["die_faces"], 20)
+        json.dumps(identity.canonical_record(), sort_keys=True)
+
+    def test_custom_kernel_requires_explicit_json_safe_provenance(self) -> None:
+        class OpaqueKernel:
+            def outcome_probabilities(
+                self,
+                gate: object,
+                _target: object,
+                _context: object,
+            ) -> dict[str, Fraction]:
+                return {
+                    branch.outcome: Fraction(index == 0)
+                    for index, branch in enumerate(gate.branches)  # type: ignore[attr-defined]
+                }
+
+        with self.assertRaisesRegex(ControlGraphError, "identity provenance"):
+            self.snow_result(kernel=OpaqueKernel())
+        with self.assertRaisesRegex(ControlGraphError, "algorithm must"):
+            ProbabilityKernelIdentity.create(
+                "custom.incomplete",
+                "1.0.0",
+                {"description": "not reproducible"},
+            )
+        for algorithm in (None, "", " untrimmed ", 3):
+            with self.subTest(algorithm=algorithm):
+                with self.assertRaisesRegex(ControlGraphError, "algorithm must"):
+                    ProbabilityKernelIdentity.create(
+                        "custom.invalid-algorithm",
+                        "1.0.0",
+                        {"algorithm": algorithm, "parameters": {"mode": "exact"}},
+                    )
+        for parameters in (None, {}, [], "scalar", 3):
+            with self.subTest(parameters=parameters):
+                with self.assertRaisesRegex(ControlGraphError, "parameters must"):
+                    ProbabilityKernelIdentity.create(
+                        "custom.invalid-parameters",
+                        "1.0.0",
+                        {"algorithm": "table", "parameters": parameters},
+                    )
+        with self.assertRaisesRegex(ControlGraphError, "JSON-safe"):
+            ProbabilityKernelIdentity.create(
+                "custom.non-json",
+                "1.0.0",
+                {"algorithm": "table", "parameters": {"mass": Fraction(1, 2)}},
+            )
+        with self.assertRaisesRegex(ControlGraphError, "keys"):
+            ProbabilityKernelIdentity.create(
+                "custom.non-string-key",
+                "1.0.0",
+                {"algorithm": "table", "parameters": {1: "invalid"}},
+            )
+
+    def test_scenario_is_canonical_immutable_and_deterministic(self) -> None:
+        first = self.snow_result()
+        second = self.snow_result()
+        self.assertIsInstance(first.scenario, ReliabilityScenario)
+        self.assertEqual(first.scenario, second.scenario)
+        self.assertEqual(first.scenario_digest, second.scenario_digest)
+        self.assertEqual(
+            first.scenario_digest,
+            first.scenario.scenario_digest,  # type: ignore[union-attr]
+        )
+        self.assertEqual(
+            json.dumps(first.scenario.canonical_record(), sort_keys=True),  # type: ignore[union-attr]
+            json.dumps(second.scenario.canonical_record(), sort_keys=True),  # type: ignore[union-attr]
+        )
+        with self.assertRaises(FrozenInstanceError):
+            first.scenario.effect_id = "changed"  # type: ignore[union-attr,misc]
+        self.assertIsNot(
+            reliability_result_issuance_token(first),
+            reliability_result_issuance_token(second),
+        )
+
+    def test_scenario_binds_exact_target_mechanics(self) -> None:
+        ordinary = self.snow_result()
+        resistant = evaluate_reliability(
+            self.effect,
+            targets=[
+                target(
+                    "target",
+                    armor_class=16,
+                    bonus=2,
+                    condition_immunities=("restrained",),
+                    magic_resistance=True,
+                    legendary_resistance=3,
+                )
+            ],
+            selector_membership={"snow_chains_target": ["target"]},
+            selector_context=SelectorContext(),
+            context=ProbabilityContext(attack_bonus=5, save_dc=11),
+            candidate_component_ids=(
+                "snow_chains_speed_zero",
+                "snow_chains_restrained",
+                "snow_chains_reaction_denial",
+            ),
+        )
+        self.assertNotEqual(ordinary.scenario_digest, resistant.scenario_digest)
+        target_record = resistant.scenario.canonical_record()["targets"][0]  # type: ignore[union-attr]
+        self.assertEqual(target_record["armor_class"], 16)
+        self.assertEqual(target_record["saves"]["strength"], 2)
+        self.assertEqual(target_record["condition_immunities"], ["restrained"])
+        self.assertTrue(target_record["magic_resistance"])
+        self.assertEqual(target_record["legendary_resistance"], 3)
+
+    def test_scenario_binds_selector_membership_and_context(self) -> None:
+        effect = self.compiled.program_for("frozen_ground", 0)
+        event = ReliabilityEvent.create(
+            "target_turn",
+            {"kind": "turn", "owner": "target", "turn_anchor": "start"},
+            target_ids=("alpha", "beta"),
+        )
+        common = {
+            "effect": effect,
+            "targets": [target("alpha"), target("beta")],
+            "context": ProbabilityContext(save_dc=11),
+            "events": (event,),
+            "candidate_component_ids": ("frozen_ground_speed_zero",),
+        }
+        both = evaluate_reliability(
+            selector_membership={"frozen_ground_area_targets": ["beta", "alpha"]},
+            selector_context=SelectorContext(),
+            **common,
+        )
+        reordered = evaluate_reliability(
+            selector_membership={"frozen_ground_area_targets": ["alpha", "beta"]},
+            selector_context=SelectorContext(),
+            **common,
+        )
+        alpha_only = evaluate_reliability(
+            selector_membership={"frozen_ground_area_targets": ["alpha"]},
+            selector_context=SelectorContext(),
+            **common,
+        )
+        contextual = evaluate_reliability(
+            selector_membership={"frozen_ground_area_targets": ["alpha", "beta"]},
+            selector_context=SelectorContext(
+                target_size_by_id={"alpha": "medium"},
+            ),
+            **common,
+        )
+        self.assertEqual(both.scenario_digest, reordered.scenario_digest)
+        self.assertNotEqual(both.scenario_digest, alpha_only.scenario_digest)
+        self.assertNotEqual(both.scenario_digest, contextual.scenario_digest)
+
+    def test_scenario_binds_choice_context_kernel_events_candidates_and_policy(self) -> None:
+        ordinary = self.snow_result()
+        changed_context = self.snow_result(
+            context=ProbabilityContext(attack_bonus=6, save_dc=11)
+        )
+        changed_kernel = self.snow_result(kernel=AlternateFailureKernel())
+        changed_candidates = evaluate_reliability(
+            self.effect,
+            targets=[target("target")],
+            selector_membership={"snow_chains_target": ["target"]},
+            selector_context=SelectorContext(),
+            context=ProbabilityContext(attack_bonus=5, save_dc=11),
+            candidate_component_ids=("snow_chains_speed_zero",),
+        )
+        no_initial = evaluate_reliability(
+            self.effect,
+            targets=[target("target")],
+            selector_membership={"snow_chains_target": ["target"]},
+            selector_context=SelectorContext(),
+            context=ProbabilityContext(attack_bonus=5, save_dc=11),
+            candidate_component_ids=(
+                "snow_chains_speed_zero",
+                "snow_chains_restrained",
+                "snow_chains_reaction_denial",
+            ),
+            include_initial=False,
+        )
+        self.assertEqual(
+            len(
+                {
+                    ordinary.scenario_digest,
+                    changed_context.scenario_digest,
+                    changed_kernel.scenario_digest,
+                    changed_candidates.scenario_digest,
+                    no_initial.scenario_digest,
+                }
+            ),
+            5,
+        )
+
+        choice_effect = self.compiled.program_for("explosion_implosion", 0)
+        choice_common = {
+            "effect": choice_effect,
+            "targets": [target("primary")],
+            "selector_membership": {
+                "explosion_implosion_primary": ["primary"],
+                "explosion_implosion_secondary_targets": [],
+            },
+            "selector_context": SelectorContext(),
+            "kernel": AlwaysFailureKernel(),
+            "candidate_component_ids": tuple(
+                component.component_id for component in choice_effect.components
+            ),
+        }
+        explosion = evaluate_reliability(
+            choices={"explosion_implosion_mode": "explosion"},
+            **choice_common,
+        )
+        implosion = evaluate_reliability(
+            choices={"explosion_implosion_mode": "implosion"},
+            **choice_common,
+        )
+        self.assertNotEqual(explosion.scenario_digest, implosion.scenario_digest)
+
+        event_effect = self.compiled.program_for("mass_levitation", 0)
+        event_common = {
+            "effect": event_effect,
+            "targets": [target("target")],
+            "selector_membership": {"mass_levitation_targets": ["target"]},
+            "selector_context": SelectorContext(
+                controller_can_see_by_target={"target": True},
+                target_size_by_id={"target": "medium"},
+            ),
+            "kernel": HalfKernel(),
+            "candidate_component_ids": (
+                "mass_levitation_persistent_elevation",
+            ),
+        }
+        one_event = evaluate_reliability(
+            events=(
+                ReliabilityEvent.create(
+                    "turn_one",
+                    {"kind": "turn", "owner": "target", "turn_anchor": "start"},
+                    target_ids=("target",),
+                ),
+            ),
+            **event_common,
+        )
+        two_events = evaluate_reliability(
+            events=(
+                ReliabilityEvent.create(
+                    "turn_one",
+                    {"kind": "turn", "owner": "target", "turn_anchor": "start"},
+                    target_ids=("target",),
+                ),
+                ReliabilityEvent.create(
+                    "turn_two",
+                    {"kind": "turn", "owner": "target", "turn_anchor": "start"},
+                    target_ids=("target",),
+                ),
+            ),
+            **event_common,
+        )
+        self.assertNotEqual(one_event.scenario_digest, two_events.scenario_digest)
+
+    def test_unattested_hand_copy_is_not_engine_provenance(self) -> None:
+        issued = self.snow_result()
+        forged = replace(issued)
+        with self.assertRaisesRegex(ControlGraphError, "not engine-issued"):
+            validate_reliability_result(self.effect, forged)
+        with self.assertRaisesRegex(ControlGraphError, "not engine-issued"):
+            reliability_result_issuance_token(forged)
+
+    def test_two_executions_of_same_scenario_have_distinct_attestation(self) -> None:
+        first = self.snow_result()
+        second = self.snow_result()
+        self.assertEqual(first.scenario_digest, second.scenario_digest)
+        with self.assertRaisesRegex(ControlGraphError, "different evaluation execution"):
+            validate_reliability_result(
+                self.effect,
+                first,
+                expected_scenario_digest=second.scenario_digest,
+                expected_issuance_token=reliability_result_issuance_token(second),
+            )
+
+    def test_result_from_different_probability_context_is_rejected(self) -> None:
+        first = self.snow_result()
+        changed = self.snow_result(
+            context=ProbabilityContext(attack_bonus=6, save_dc=11)
+        )
+        with self.assertRaisesRegex(ControlGraphError, "different canonical scenario"):
+            validate_reliability_result(
+                self.effect,
+                first,
+                expected_scenario_digest=changed.scenario_digest,
+            )
+
+    def test_result_from_different_selector_membership_is_rejected(self) -> None:
+        both = self.frozen_result(("alpha", "beta"))
+        alpha_only = self.frozen_result(("alpha",))
+        with self.assertRaisesRegex(ControlGraphError, "different canonical scenario"):
+            validate_reliability_result(
+                self.compiled.program_for("frozen_ground", 0),
+                both,
+                expected_scenario_digest=alpha_only.scenario_digest,
+            )
+
+    def test_result_from_different_choice_bindings_is_rejected(self) -> None:
+        explosion = self.choice_result("explosion")
+        implosion = self.choice_result("implosion")
+        with self.assertRaisesRegex(ControlGraphError, "different canonical scenario"):
+            validate_reliability_result(
+                self.compiled.program_for("explosion_implosion", 0),
+                explosion,
+                expected_scenario_digest=implosion.scenario_digest,
+            )
+
+    def test_result_from_different_kernel_identity_is_rejected(self) -> None:
+        maintained = self.snow_result()
+        alternate = self.snow_result(kernel=AlternateFailureKernel())
+        with self.assertRaisesRegex(ControlGraphError, "different canonical scenario"):
+            validate_reliability_result(
+                self.effect,
+                maintained,
+                expected_scenario_digest=alternate.scenario_digest,
+            )
+
+    def test_result_from_different_event_script_is_rejected(self) -> None:
+        one_event = self.mass_result(("turn_one",))
+        two_events = self.mass_result(("turn_one", "turn_two"))
+        with self.assertRaisesRegex(ControlGraphError, "different canonical scenario"):
+            validate_reliability_result(
+                self.compiled.program_for("mass_levitation", 0),
+                one_event,
+                expected_scenario_digest=two_events.scenario_digest,
+            )
+
+    def test_fabricated_gate_id_is_rejected(self) -> None:
+        result = self.snow_result()
+        gate_rows = (
+            replace(result.gate_probabilities[0], gate_id="fictional_gate"),
+            *result.gate_probabilities[1:],
+        )
+        with self.assertRaisesRegex(ControlGraphError, "unknown gate ID"):
+            _validate_reliability_result_structure(
+                self.effect,
+                replace(result, gate_probabilities=gate_rows),
+            )
+
+    def test_fabricated_branch_to_gate_relationship_is_rejected(self) -> None:
+        result = self.snow_result()
+        branch_rows = (
+            replace(
+                result.branch_probabilities[0],
+                branch_id="snow_chains_t1_save_failure",
+            ),
+            *result.branch_probabilities[1:],
+        )
+        with self.assertRaisesRegex(ControlGraphError, "does not belong to gate"):
+            _validate_reliability_result_structure(
+                self.effect,
+                replace(result, branch_probabilities=branch_rows),
+            )
+
+    def test_unknown_component_reliability_row_is_rejected(self) -> None:
+        result = self.snow_result()
+        component_rows = (
+            replace(
+                result.component_reliability[0],
+                component_id="fictional_component",
+            ),
+            *result.component_reliability[1:],
+        )
+        with self.assertRaisesRegex(ControlGraphError, "unknown component ID"):
+            _validate_reliability_result_structure(
+                self.effect,
+                replace(result, component_reliability=component_rows),
+            )
+
+    def test_unknown_event_and_window_ids_are_rejected(self) -> None:
+        result = self.snow_result()
+        bad_event_rows = (
+            replace(result.gate_probabilities[0], event_id="fictional_event"),
+            *result.gate_probabilities[1:],
+        )
+        with self.assertRaisesRegex(ControlGraphError, "unknown event ID"):
+            _validate_reliability_result_structure(
+                self.effect,
+                replace(result, gate_probabilities=bad_event_rows),
+            )
+        first_component = result.component_reliability[0]
+        bad_windows = (
+            ("fictional_window", first_component.active_by_window[0][1]),
+            *first_component.active_by_window[1:],
+        )
+        with self.assertRaisesRegex(ControlGraphError, "windows do not match"):
+            _validate_reliability_result_structure(
+                self.effect,
+                replace(
+                    result,
+                    component_reliability=(
+                        replace(first_component, active_by_window=bad_windows),
+                        *result.component_reliability[1:],
+                    ),
+                ),
+            )
+
+    def test_unknown_target_id_is_rejected(self) -> None:
+        result = self.snow_result()
+        component_rows = (
+            replace(result.component_reliability[0], target_id="fictional_target"),
+            *result.component_reliability[1:],
+        )
+        with self.assertRaisesRegex(ControlGraphError, "unknown target ID"):
+            _validate_reliability_result_structure(
+                self.effect,
+                replace(result, component_reliability=component_rows),
+            )
+
+    def test_malformed_and_out_of_range_probabilities_are_rejected(self) -> None:
+        result = self.snow_result()
+        for probability, message in (
+            (0.5, "exact fractions.Fraction"),
+            (Fraction(3, 2), "between zero and one"),
+        ):
+            with self.subTest(probability=probability):
+                rows = (
+                    replace(result.gate_probabilities[0], probability=probability),
+                    *result.gate_probabilities[1:],
+                )
+                with self.assertRaisesRegex(ControlGraphError, message):
+                    _validate_reliability_result_structure(
+                        self.effect,
+                        replace(result, gate_probabilities=rows),
+                    )
+
+    def test_inexact_branch_distribution_is_rejected(self) -> None:
+        result = self.snow_result()
+        rows = (
+            replace(result.branch_probabilities[0], probability=Fraction(1, 3)),
+            *result.branch_probabilities[1:],
+        )
+        with self.assertRaisesRegex(ControlGraphError, "do not sum exactly"):
+            _validate_reliability_result_structure(
+                self.effect,
+                replace(result, branch_probabilities=rows),
+            )
+
+    def test_duplicate_semantic_probability_rows_are_rejected(self) -> None:
+        result = self.snow_result()
+        with self.assertRaisesRegex(ControlGraphError, "Duplicate semantic gate"):
+            _validate_reliability_result_structure(
+                self.effect,
+                replace(
+                    result,
+                    gate_probabilities=(
+                        *result.gate_probabilities,
+                        result.gate_probabilities[0],
+                    ),
+                ),
+            )
+
+    def test_permuted_target_scope_cannot_bypass_duplicate_validation(self) -> None:
+        effect = self.compiled.program_for("frozen_ground", 0)
+        result = self.frozen_result(("alpha", "beta"))
+        shared = next(
+            row
+            for row in result.gate_probabilities
+            if row.target_ids == ("alpha", "beta")
+        )
+        permuted = replace(shared, target_ids=("beta", "alpha"))
+        with self.assertRaisesRegex(ControlGraphError, "canonical scenario ordering"):
+            _validate_reliability_result_structure(
+                effect,
+                replace(
+                    result,
+                    gate_probabilities=(*result.gate_probabilities, permuted),
+                ),
+            )
+
+    def test_existing_gate_cannot_be_reassigned_to_incompatible_event(self) -> None:
+        effect = self.compiled.program_for("frozen_ground", 0)
+        result = self.frozen_result(("alpha", "beta"))
+        activation = next(
+            row
+            for row in result.gate_probabilities
+            if row.gate_id == "frozen_ground_t0_activation"
+        )
+        changed = tuple(
+            replace(row, event_id="target_turn") if row is activation else row
+            for row in result.gate_probabilities
+        )
+        with self.assertRaisesRegex(ControlGraphError, "incompatible with reliability event"):
+            _validate_reliability_result_structure(
+                effect,
+                replace(result, gate_probabilities=changed),
+            )
 
 
 if __name__ == "__main__":

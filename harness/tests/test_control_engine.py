@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
+import hashlib
 import json
 import unittest
 from dataclasses import replace
 from fractions import Fraction
 from types import MappingProxyType
+from typing import Any, Mapping
 
 from harness.control_catalog import DIAGNOSTIC_FAMILIES, SenseQueryResult
 from harness.control_engine import (
@@ -20,8 +22,13 @@ from harness.control_engine import (
     validate_engine,
 )
 from harness.control_graph import (
+    D20ProbabilityKernel,
     ImmunitySuppression,
+    ProbabilityKernelIdentity,
+    ProbabilityContext,
+    ReliabilityEvent,
     ReliabilityResult,
+    ReliabilityTarget,
     SelectorContext,
     _frozen_map,
 )
@@ -127,6 +134,7 @@ class ControlEngineFacadeTests(unittest.TestCase):
         self.assertEqual(identity["timeline_engine_version"], "1.0.0")
         self.assertEqual(identity["engine_config_version"], "1.0.0")
         for key in (
+            "engine_implementation_digest",
             "authority_projection_digest",
             "target_supplement_digest",
             "consequence_catalog_digest",
@@ -158,8 +166,8 @@ class ControlEngineFacadeTests(unittest.TestCase):
             ["fixture_target"],
             target_attack_counts={"fixture_target": [1, 0, 2]},
         )
-        state = self.engine.new_state()
-        result = self.engine.assemble_result(
+        state = self.engine._new_state()
+        result = self.engine._assemble_result_legacy(
             effect=program,
             reliability=_reliability(program.effect_id),
             schedule=schedule,
@@ -193,19 +201,19 @@ class ControlEngineFacadeTests(unittest.TestCase):
             alternative_sight_missing_context=(),
             location_detection_missing_context=(),
         )
-        normalization = self.engine.new_state().normalize_for_window(
+        normalization = self.engine._new_state().normalize_for_window(
             target_id="fixture_target",
             window_id="fixture_location_window",
             window_kind="location_opportunity",
             context={"sense_resolution": resolution},
         )
-        result = self.engine.assemble_result(
+        result = self.engine._assemble_result_legacy(
             effect=program,
             reliability=_reliability(program.effect_id),
             schedule=schedule,
             area_response_convention="fixed_occupancy_v1",
             displacement_function_id="sqrt_5ft_v1",
-            state=self.engine.new_state(),
+            state=self.engine._new_state(),
             normalization_results=(normalization,),
         ).to_dict()
         [contribution] = result["primitive_contributions"][
@@ -229,7 +237,7 @@ class ControlEngineFacadeTests(unittest.TestCase):
         reaction_component = program.component(
             "snow_chains_reaction_denial"
         )
-        state = self.engine.new_state()
+        state = self.engine._new_state()
         _activate_component(state, program, reaction_component)
         unavailable_schedule = self.engine.schedule(
             "fighter_first_v1",
@@ -268,19 +276,19 @@ class ControlEngineFacadeTests(unittest.TestCase):
             and not event.reaction_interval_id.startswith("horizon:")
         )
 
-        unavailable = self.engine.normalize_scheduled_window(
+        unavailable = self.engine._normalize_scheduled_window(
             state=state,
             schedule=unavailable_schedule,
             target_id="target",
             event_id=pre_turn.event_id,
         )
-        marker = self.engine.normalize_scheduled_window(
+        marker = self.engine._normalize_scheduled_window(
             state=state,
             schedule=unavailable_schedule,
             target_id="target",
             event_id=reset_marker.event_id,
         )
-        available_after_reset = self.engine.normalize_scheduled_window(
+        available_after_reset = self.engine._normalize_scheduled_window(
             state=state,
             schedule=unavailable_schedule,
             target_id="target",
@@ -300,7 +308,7 @@ class ControlEngineFacadeTests(unittest.TestCase):
         )
         self.assertTrue(post_contribution.context["reaction_available"])
 
-        assembled = self.engine.assemble_result(
+        assembled = self.engine._assemble_result_legacy(
             effect=program,
             reliability=_reliability(program.effect_id, "target"),
             schedule=unavailable_schedule,
@@ -342,7 +350,7 @@ class ControlEngineFacadeTests(unittest.TestCase):
             if event.kind == "reaction_window"
             and event.reaction_interval_id.startswith("horizon:")
         )
-        initial = self.engine.normalize_scheduled_window(
+        initial = self.engine._normalize_scheduled_window(
             state=state,
             schedule=available_schedule,
             target_id="target",
@@ -356,7 +364,7 @@ class ControlEngineFacadeTests(unittest.TestCase):
             ControlEngineError,
             "derived from the schedule",
         ):
-            self.engine.normalize_scheduled_window(
+            self.engine._normalize_scheduled_window(
                 state=state,
                 schedule=unavailable_schedule,
                 target_id="target",
@@ -366,7 +374,7 @@ class ControlEngineFacadeTests(unittest.TestCase):
 
     def test_all_attacks_is_one_public_affected_turn_not_per_attack(self) -> None:
         program = self.engine.program("electron_burst_t2_control")
-        state = self.engine.new_state()
+        state = self.engine._new_state()
         _activate_component(
             state,
             program,
@@ -388,7 +396,7 @@ class ControlEngineFacadeTests(unittest.TestCase):
             and event.round == 1
         ]
         normalizations = [
-            self.engine.normalize_scheduled_window(
+            self.engine._normalize_scheduled_window(
                 state=state,
                 schedule=schedule,
                 target_id="target",
@@ -406,7 +414,7 @@ class ControlEngineFacadeTests(unittest.TestCase):
             ],
             [],
         )
-        assembled = self.engine.assemble_result(
+        assembled = self.engine._assemble_result_legacy(
             effect=program,
             reliability=_reliability(program.effect_id, "target"),
             schedule=schedule,
@@ -424,58 +432,27 @@ class ControlEngineFacadeTests(unittest.TestCase):
         self.assertEqual(rows[0]["event_or_window_id"], active_turn.window_id)
 
     def test_result_model_rejects_all_nested_weight_and_temperature_keys(self) -> None:
-        version = self.engine.version_provenance(
-            initiative_convention="fighter_first_v1",
+        program = self.engine.authority.programs[0]
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            target_attack_counts={"target": 0},
+        )
+        base = self.engine._assemble_result_legacy(
+            effect=program,
+            reliability=_reliability(program.effect_id, "target"),
+            schedule=schedule,
             area_response_convention="fixed_occupancy_v1",
             displacement_function_id="banded_10ft_v1",
+            state=self.engine._new_state(),
         )
-        base = ControlEngineResult(
-            version_provenance=version,
-            scenario_convention=ScenarioConvention(
-                3,
-                "fighter_first_v1",
-                "fixed_occupancy_v1",
-                "banded_10ft_v1",
-            ),
-            compiled_program_id="fixture",
-            target_ids=("target",),
-            gate_probabilities=(),
-            branch_probabilities=(),
-            component_reliability=(),
-            any_candidate_reliability={},
-            any_component_reliability={},
-            timeline={},
-            event_state_transitions=(),
-            audit_ledger=(),
-            primitive_contributions={family: () for family in DIAGNOSTIC_FAMILIES},
-            suppression_and_dominance_records=(),
-            refresh_and_replacement_records=(),
-            repeat_save_records=(),
-            area_membership_and_route_records=(),
-            prone_standing_records=(),
-            concentration_records=(),
-            displacement_epoch_records=(),
-            final_normalized_state={},
-            explored_state_count=1,
-        )
-        for forbidden_key in (
-            "control_value",
-            "WeIgHt",
-            "Primitive_Weight",
-            "HoT",
-            "IDEAL",
-            "cOlD",
-            "Sensitive",
-        ):
-            with self.subTest(forbidden_key=forbidden_key):
-                result = replace(
-                    base,
-                    final_normalized_state={
-                        "target": {"nested": {forbidden_key: 1}}
-                    },
-                )
-                with self.assertRaisesRegex(ControlEngineError, "forbidden"):
-                    result.to_dict()
+        with self.assertRaisesRegex(ControlEngineError, "issued only"):
+            replace(
+                base,
+                final_normalized_state={
+                    "target": {"nested": {"control_value": 1}}
+                },
+            )
 
     def test_result_uses_schedule_target_order_after_identity_set_validation(self) -> None:
         program = self.engine.authority.programs[0]
@@ -488,13 +465,13 @@ class ControlEngineFacadeTests(unittest.TestCase):
             program.effect_id,
             ("target_a", "target_z"),
         )
-        result = self.engine.assemble_result(
+        result = self.engine._assemble_result_legacy(
             effect=program,
             reliability=reliability,
             schedule=schedule,
             area_response_convention="fixed_occupancy_v1",
             displacement_function_id="sqrt_5ft_v1",
-            state=self.engine.new_state(),
+            state=self.engine._new_state(),
         ).to_dict()
         self.assertEqual(result["target_ids"], ["target_z", "target_a"])
         self.assertEqual(
@@ -505,7 +482,7 @@ class ControlEngineFacadeTests(unittest.TestCase):
             ["target_z", "target_a"],
         )
         with self.assertRaisesRegex(ControlEngineError, "same identities"):
-            self.engine.assemble_result(
+            self.engine._assemble_result_legacy(
                 effect=program,
                 reliability=_reliability_for_targets(
                     program.effect_id,
@@ -514,7 +491,7 @@ class ControlEngineFacadeTests(unittest.TestCase):
                 schedule=schedule,
                 area_response_convention="fixed_occupancy_v1",
                 displacement_function_id="sqrt_5ft_v1",
-                state=self.engine.new_state(),
+                state=self.engine._new_state(),
             )
 
     def test_result_preserves_reliability_immunity_suppression_with_reason(self) -> None:
@@ -538,13 +515,13 @@ class ControlEngineFacadeTests(unittest.TestCase):
             ("target",),
             immunity_suppressions=(suppression,),
         )
-        result = self.engine.assemble_result(
+        result = self.engine._assemble_result_legacy(
             effect=program,
             reliability=reliability,
             schedule=schedule,
             area_response_convention="fixed_occupancy_v1",
             displacement_function_id="sqrt_5ft_v1",
-            state=self.engine.new_state(),
+            state=self.engine._new_state(),
         ).to_dict()
         [record] = result["suppression_and_dominance_records"]
         self.assertEqual(
@@ -582,10 +559,2172 @@ class ControlEngineFacadeTests(unittest.TestCase):
         self.assertEqual(summary["compiled_masteries"], 3)
         self.assertEqual(summary["preserved_exclusions"], 14)
         self.assertEqual(summary["control_target_rows"], 28)
-        self.assertEqual(summary["fixture_cases"], 67)
+        self.assertEqual(summary["fixture_cases"], 72)
         self.assertEqual(len(summary["initiative_schedules"]), 2)
         self.assertEqual(len(summary["area_response_conventions"]), 2)
         self.assertEqual(len(summary["displacement_functions"]), 3)
+
+
+class ControlExecutionSessionTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.engine = ControlEngine.load()
+
+    def _absolute_zero_session(
+        self,
+        *,
+        target_id: str = "target",
+        save_inputs: Mapping[str, Any] | None = None,
+        normalize_movement: bool = False,
+        normalize_attack: bool = False,
+        target_mechanics: Mapping[str, Any] | None = None,
+        kernel: Any = None,
+    ):
+        program = self.engine.program("absolute_zero_t0_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            [target_id],
+            controller_events_by_round={
+                1: [{
+                    "kind": "save_opportunity",
+                    "target_id": target_id,
+                    "window_id": "initial_save_window",
+                }],
+            },
+            target_attack_counts={target_id: [1, 0, 0]},
+        )
+        save_event = next(
+            event for event in schedule.events
+            if event.kind == "save_opportunity"
+        )
+        operation_inputs: dict[str, dict[str, Any]] = {}
+        if save_inputs is not None:
+            operation_inputs[save_event.event_id] = dict(save_inputs)
+        if normalize_movement:
+            movement_event = next(
+                event for event in schedule.events
+                if event.kind == "target_movement_opportunity"
+            )
+            operation_inputs[movement_event.event_id] = {
+                "normalization_target_ids": [target_id],
+                "normalization_context": {
+                    "movement_mode": "walk",
+                    "movement_mode_speeds_ft": {"walk": 30},
+                },
+            }
+        if normalize_attack:
+            attack_event = next(
+                event for event in schedule.events
+                if event.kind == "target_attack_opportunity"
+            )
+            operation_inputs[attack_event.event_id] = {
+                "normalization_target_ids": [target_id],
+                "normalization_context": {},
+            }
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget(
+                target_id,
+                15,
+                {"constitution": 2},
+            ),),
+            selector_membership={
+                "absolute_zero_target": (target_id,),
+            },
+            selector_context=_selector_context_for("target"),
+            schedule=schedule,
+            target_mechanics={
+                target_id: dict(target_mechanics or {}),
+            },
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            kernel=kernel,
+            operation_inputs_by_event=operation_inputs or None,
+        )
+        return session, schedule, save_event
+
+    @staticmethod
+    def _finish_absolute_zero(session, save_event, *, outcome="save_success"):
+        session.advance_to(save_event.event_id)
+        record = session.apply_branch(
+            gate_id="absolute_zero_t0_save",
+            outcome=outcome,
+            target_id="target",
+        )
+        session.close_event()
+        session.complete()
+        return record
+
+    def _finish_absolute_zero_with_normalization(self, session, save_event):
+        session.advance_to(save_event.event_id)
+        session.apply_branch(
+            gate_id="absolute_zero_t0_save",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.close_event()
+        movement = next(
+            event for event in session.schedule.events
+            if event.kind == "target_movement_opportunity"
+        )
+        session.advance_to(movement.event_id)
+        normalization = session.normalize(target_id="target")
+        session.close_event()
+        session.complete()
+        return normalization
+
+    @staticmethod
+    def _rewrite_record_payload(record, payload: Mapping[str, Any]) -> None:
+        payload_json = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        identity = {
+            "scenario_digest": record.scenario_digest,
+            "event_id": record.event_id,
+            "event_sequence": record.event_sequence,
+            "operation_sequence": record.operation_sequence,
+            "target_id": record.target_id,
+            "record_kind": record.record_kind,
+            "pre_event_state": json.loads(record.pre_event_state_json),
+            "pre_operation_state": json.loads(record.pre_operation_state_json),
+            "post_operation_state": json.loads(record.post_operation_state_json),
+            "payload": json.loads(payload_json),
+        }
+        record_json = json.dumps(
+            identity,
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        object.__setattr__(record, "payload_json", payload_json)
+        object.__setattr__(
+            record,
+            "payload_sha256",
+            hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
+        )
+        object.__setattr__(
+            record,
+            "record_sha256",
+            hashlib.sha256(record_json.encode("utf-8")).hexdigest(),
+        )
+
+    def _frozen_ground_session(
+        self,
+        *,
+        initiative: str = "fighter_first_v1",
+        target_ids: tuple[str, ...] = ("target",),
+        initial_prone: bool = False,
+        initial_conditions: tuple[str, ...] = (),
+        base_speed: int = 30,
+        base_speeds: Mapping[str, int] | None = None,
+        route_mode: str = "walk",
+        route_distance: int = 5,
+        route_multiplier: int = 1,
+        route_compatible: bool = True,
+        include_start_turn_save: bool = False,
+        concentration_save_bonus: int | None = 2,
+    ):
+        program = self.engine.program("frozen_ground_t0_control")
+        schedule = self.engine.schedule(
+            initiative,
+            target_ids,
+            controller_events_by_round={1: [{"kind": "activation"}]},
+            target_attack_counts={target_id: [1, 0, 0] for target_id in target_ids},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        operation_inputs: dict[str, dict[str, Any]] = {}
+        reliability_events: tuple[ReliabilityEvent, ...] = ()
+        if include_start_turn_save:
+            if len(target_ids) != 1:
+                raise AssertionError("start-turn helper supports one target")
+            target_id = target_ids[0]
+            target_start = next(
+                event for event in schedule.events
+                if event.kind == "target_turn_start"
+                and event.round == 1
+                and event.target_id == target_id
+            )
+            gate = program.gate("frozen_ground_t0_start_turn_save")
+            reliability_event = ReliabilityEvent.create(
+                "frozen_ground_round_1_start_save",
+                gate.trigger,
+                target_ids=(target_id,),
+                gate_ids=(gate.gate_id,),
+                window_id=target_start.event_id,
+            )
+            reliability_events = (reliability_event,)
+            operation_inputs[target_start.event_id] = {
+                "reliability_event_ids": [reliability_event.event_id],
+            }
+        for target_id in target_ids:
+            active = next(
+                event for event in schedule.events
+                if event.kind == "target_active_turn_opportunity"
+                and event.round == 1
+                and event.target_id == target_id
+            )
+            attack = next(
+                event for event in schedule.events
+                if event.kind == "target_attack_opportunity"
+                and event.round == 1
+                and event.target_id == target_id
+            )
+            operation_inputs[active.event_id] = {
+                "normalization_target_ids": [target_id],
+            }
+            operation_inputs[attack.event_id] = {
+                "normalization_target_ids": [target_id],
+            }
+        mechanics = {
+            target_id: {
+                "initial_conditions": list(dict.fromkeys((
+                    *(("prone",) if initial_prone else ()),
+                    *initial_conditions,
+                ))),
+                "base_speeds_ft": dict(
+                    base_speeds
+                    if base_speeds is not None
+                    else {"walk": base_speed}
+                ),
+                "movement_mode": (
+                    "walk"
+                    if base_speeds is None or "walk" in base_speeds
+                    else next(iter(base_speeds))
+                ),
+                "area_membership": True,
+                "area_routes": [{
+                    "route_id": f"{target_id}_{route_mode}_exit",
+                    "mode": route_mode,
+                    "distance_to_exit_ft": route_distance,
+                    "compatible": route_compatible,
+                    "movement_cost_multiplier": route_multiplier,
+                    "environment": "grounded",
+                }],
+            }
+            for target_id in target_ids
+        }
+        session = self.engine.execution_session(
+            program,
+            targets=tuple(
+                ReliabilityTarget(
+                    target_id,
+                    15,
+                    {"constitution": 2, "dexterity": 2},
+                )
+                for target_id in target_ids
+            ),
+            selector_membership={
+                "frozen_ground_area_targets": target_ids,
+            },
+            selector_context=SelectorContext(),
+            schedule=schedule,
+            target_mechanics=mechanics,
+            area_response_convention="shortest_route_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            reliability_events=reliability_events,
+            operation_inputs_by_event=operation_inputs,
+            concentration_save_bonus=concentration_save_bonus,
+        )
+        return session, schedule, activation
+
+    def _mass_levitation_session(self, *, bind_future: bool):
+        program = self.engine.program("mass_levitation_t2_control")
+        controller_events: dict[int, list[dict[str, Any]]] = {
+            1: [
+                {"kind": "activation"},
+                {"kind": "save_opportunity", "target_id": "target"},
+            ],
+        }
+        if bind_future:
+            controller_events[2] = [{"kind": "concentration_end"}]
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round=controller_events,
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        save = next(
+            event for event in schedule.events
+            if event.kind == "save_opportunity"
+        )
+        reliability_events: list[ReliabilityEvent] = []
+        operation_inputs: dict[str, dict[str, Any]] = {}
+        events: dict[str, Any] = {
+            "activation": activation,
+            "save": save,
+        }
+        if bind_future:
+            target_start = next(
+                event for event in schedule.events
+                if event.kind == "target_turn_start" and event.round == 1
+            )
+            controller_start = next(
+                event for event in schedule.events
+                if event.kind == "controller_turn_start" and event.round == 2
+            )
+            end = next(
+                event for event in schedule.events
+                if event.kind == "concentration_end"
+            )
+            for label, gate_id, event in (
+                (
+                    "repeat",
+                    "mass_levitation_t2_repeat_saves",
+                    target_start,
+                ),
+                (
+                    "reposition",
+                    "mass_levitation_t2_controller_reposition",
+                    controller_start,
+                ),
+                (
+                    "end",
+                    "mass_levitation_t2_concentration_end",
+                    end,
+                ),
+            ):
+                gate = program.gate(gate_id)
+                reliability_event = ReliabilityEvent.create(
+                    f"mass_{label}_event",
+                    gate.trigger,
+                    target_ids=("target",),
+                    gate_ids=(gate.gate_id,),
+                    window_id=event.event_id,
+                )
+                reliability_events.append(reliability_event)
+                operation_inputs[event.event_id] = {
+                    "reliability_event_ids": [reliability_event.event_id],
+                }
+                events[label] = event
+            damage_gate = program.gate("mass_levitation_t2_damage_context")
+            damage_event = ReliabilityEvent.create(
+                "mass_damage_event",
+                damage_gate.trigger,
+                target_ids=("target",),
+                gate_ids=(damage_gate.gate_id,),
+                window_id="mass_damage_window",
+            )
+            reliability_events.insert(1, damage_event)
+            operation_inputs[target_start.event_id][
+                "reliability_event_ids"
+            ].append(damage_event.event_id)
+            events["damage"] = target_start
+            operation_inputs[controller_start.event_id][
+                "displacement_vectors"
+            ] = {"mass_levitation_reposition": [10, 0, 0]}
+            operation_inputs[end.event_id]["concentration_end_reason"] = (
+                "voluntary_end"
+            )
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget("target", 15, {"strength": 2}),),
+            selector_membership={"mass_levitation_targets": ("target",)},
+            selector_context=_selector_context_for("target"),
+            schedule=schedule,
+            target_mechanics={
+                "target": {
+                    "base_speeds_ft": {"walk": 30},
+                    "movement_mode": "walk",
+                },
+            },
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            reliability_events=tuple(reliability_events),
+            operation_inputs_by_event=operation_inputs,
+            concentration_save_bonus=2,
+        )
+        return session, schedule, events
+
+    def _completed_absolute_zero_session(self):
+        session, _schedule, save = self._absolute_zero_session()
+        self._finish_absolute_zero(session, save)
+        return session
+
+    def _explosion_implosion_session(self, option: str):
+        program = self.engine.program("explosion_implosion_t0_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["primary"],
+            controller_events_by_round={
+                1: [{"kind": "hit", "target_id": "primary"}],
+            },
+            target_attack_counts={"primary": [0, 0, 0]},
+        )
+        hit = next(event for event in schedule.events if event.kind == "hit")
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget(
+                "primary",
+                15,
+                {"strength": 2},
+            ),),
+            selector_membership={
+                "explosion_implosion_primary": ("primary",),
+                "explosion_implosion_secondary_targets": (),
+            },
+            selector_context=_selector_context_for("primary"),
+            schedule=schedule,
+            target_mechanics={"primary": {}},
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(
+                attack_bonus=5,
+                save_dc=15,
+            ),
+            choices={"explosion_implosion_mode": option},
+        )
+        session.advance_to(hit.event_id)
+        session.apply_branch(
+            gate_id="explosion_implosion_t0_attack",
+            outcome="attack_hit",
+            target_id="primary",
+        )
+        session.apply_branch(
+            gate_id="explosion_implosion_t0_primary_save",
+            outcome="save_success",
+            target_id="primary",
+        )
+        session.close_event()
+        session.complete()
+        session.result()
+        return session
+
+    def test_supported_session_is_deterministic_and_direct_facade_is_closed(self) -> None:
+        first, _schedule, first_save = self._absolute_zero_session()
+        second, _schedule_2, second_save = self._absolute_zero_session()
+        self.assertEqual(first.scenario_digest, second.scenario_digest)
+        self._finish_absolute_zero(first, first_save)
+        self._finish_absolute_zero(second, second_save)
+        first_result = first.result()
+        second_result = second.result()
+        self.assertEqual(
+            json.dumps(first_result.to_dict(), sort_keys=True),
+            json.dumps(second_result.to_dict(), sort_keys=True),
+        )
+        self.assertEqual(first_result.scenario_digest, first.scenario_digest)
+        self.assertEqual(
+            first_result.scenario_record["probability_kernel"]["kernel_id"],
+            "openai.kinetic_vanguard.d20",
+        )
+        with self.assertRaisesRegex(TypeError, "mappingproxy"):
+            first_result.scenario_record["fabricated"] = True
+        with self.assertRaisesRegex(ControlEngineError, "issued only"):
+            replace(first_result, explored_state_count=999)
+        for operation in (
+            self.engine.new_state,
+            self.engine.new_displacement_epochs,
+            self.engine.assemble_result,
+            self.engine.apply_resolved_branch,
+            self.engine.normalize_scheduled_window,
+        ):
+            with self.subTest(operation=operation.__name__):
+                with self.assertRaisesRegex(ControlEngineError, "session"):
+                    operation()
+
+    def test_scenario_inputs_reject_coercible_non_json_values(self) -> None:
+        class ToDictValue:
+            def to_dict(self):
+                return {"coerced": True}
+
+        invalid_values = (
+            ("tuple", ("walk",)),
+            ("set", {"walk"}),
+            ("fraction", Fraction(1, 2)),
+            ("to_dict", ToDictValue()),
+            ("nested_non_string_key", {"nested": {1: "walk"}}),
+        )
+        for label, value in invalid_values:
+            with self.subTest(label=label):
+                with self.assertRaisesRegex(
+                    ControlEngineError,
+                    "strict JSON|invalid JSON object key",
+                ):
+                    self._absolute_zero_session(
+                        target_mechanics={"invalid": value},
+                    )
+
+        valid, _schedule, _save = self._absolute_zero_session()
+        program = self.engine.program("absolute_zero_t0_control")
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "operation_inputs_by_event must be an object",
+        ):
+            self.engine.execution_session(
+                program,
+                targets=(ReliabilityTarget(
+                    "target",
+                    15,
+                    {"constitution": 2},
+                ),),
+                selector_membership={"absolute_zero_target": ("target",)},
+                selector_context=_selector_context_for("target"),
+                schedule=valid.schedule,
+                target_mechanics={"target": {}},
+                area_response_convention="fixed_occupancy_v1",
+                displacement_function_id="sqrt_5ft_v1",
+                probability_context=ProbabilityContext(save_dc=15),
+                operation_inputs_by_event=[],  # type: ignore[arg-type]
+            )
+        for label, payload in (
+            ("tuple", {"value": ("x",)}),
+            ("non_string_key", {1: "x"}),
+        ):
+            with self.subTest(schedule_payload=label):
+                bad_schedule = self.engine.schedule(
+                    "fighter_first_v1",
+                    ["target"],
+                    controller_events_by_round={
+                        1: [{
+                            "kind": "save_opportunity",
+                            "target_id": "target",
+                            "payload": payload,
+                        }],
+                    },
+                    target_attack_counts={"target": [0, 0, 0]},
+                )
+                with self.assertRaisesRegex(
+                    ControlEngineError,
+                    "strict JSON|invalid JSON object key",
+                ):
+                    self.engine.execution_session(
+                        program,
+                        targets=(ReliabilityTarget(
+                            "target",
+                            15,
+                            {"constitution": 2},
+                        ),),
+                        selector_membership={
+                            "absolute_zero_target": ("target",),
+                        },
+                        selector_context=_selector_context_for("target"),
+                        schedule=bad_schedule,
+                        target_mechanics={"target": {}},
+                        area_response_convention="fixed_occupancy_v1",
+                        displacement_function_id="sqrt_5ft_v1",
+                        probability_context=ProbabilityContext(save_dc=15),
+                    )
+        malformed_events = (
+            replace(valid.schedule.events[0], sequence=1),
+            *valid.schedule.events[1:],
+        )
+        malformed_schedule = replace(valid.schedule, events=malformed_events)
+        with self.assertRaisesRegex(ControlEngineError, "schedule shape"):
+            self.engine.execution_session(
+                program,
+                targets=(ReliabilityTarget(
+                    "target",
+                    15,
+                    {"constitution": 2},
+                ),),
+                selector_membership={"absolute_zero_target": ("target",)},
+                selector_context=_selector_context_for("target"),
+                schedule=malformed_schedule,
+                target_mechanics={"target": {}},
+                area_response_convention="fixed_occupancy_v1",
+                displacement_function_id="sqrt_5ft_v1",
+                probability_context=ProbabilityContext(save_dc=15),
+            )
+        unknown_kind_schedule = replace(
+            valid.schedule,
+            events=(
+                replace(valid.schedule.events[0], kind="fictional"),
+                *valid.schedule.events[1:],
+            ),
+        )
+        with self.assertRaisesRegex(ControlEngineError, "event identities"):
+            self.engine.execution_session(
+                program,
+                targets=(ReliabilityTarget(
+                    "target",
+                    15,
+                    {"constitution": 2},
+                ),),
+                selector_membership={"absolute_zero_target": ("target",)},
+                selector_context=_selector_context_for("target"),
+                schedule=unknown_kind_schedule,
+                target_mechanics={"target": {}},
+                area_response_convention="fixed_occupancy_v1",
+                displacement_function_id="sqrt_5ft_v1",
+                probability_context=ProbabilityContext(save_dc=15),
+            )
+        reordered = list(valid.schedule.events)
+        movement_index = next(
+            index for index, event in enumerate(reordered)
+            if event.kind == "target_movement_opportunity" and event.round == 1
+        )
+        attack_index = next(
+            index for index, event in enumerate(reordered)
+            if event.kind == "target_attack_opportunity" and event.round == 1
+        )
+        reordered[movement_index], reordered[attack_index] = (
+            reordered[attack_index],
+            reordered[movement_index],
+        )
+        reordered = [
+            replace(event, sequence=index)
+            for index, event in enumerate(reordered)
+        ]
+        attack_before_movement = replace(
+            valid.schedule,
+            events=tuple(reordered),
+        )
+        with self.assertRaisesRegex(ControlEngineError, "movement before"):
+            self.engine.execution_session(
+                program,
+                targets=(ReliabilityTarget(
+                    "target",
+                    15,
+                    {"constitution": 2},
+                ),),
+                selector_membership={"absolute_zero_target": ("target",)},
+                selector_context=_selector_context_for("target"),
+                schedule=attack_before_movement,
+                target_mechanics={"target": {}},
+                area_response_convention="fixed_occupancy_v1",
+                displacement_function_id="sqrt_5ft_v1",
+                probability_context=ProbabilityContext(save_dc=15),
+            )
+
+    def test_malformed_area_route_is_rejected_before_session_mutation(self) -> None:
+        with self.assertRaisesRegex(ControlEngineError, "area_routes are invalid"):
+            self._frozen_ground_session(
+                initial_prone=True,
+                route_compatible=1,  # type: ignore[arg-type]
+            )
+
+    def test_schedule_grammar_is_canonical_and_reaction_bound(self) -> None:
+        program = self.engine.program("absolute_zero_t0_control")
+
+        def construct(schedule):
+            return self.engine.execution_session(
+                program,
+                targets=(ReliabilityTarget(
+                    "target",
+                    15,
+                    {"constitution": 2},
+                ),),
+                selector_membership={"absolute_zero_target": ("target",)},
+                selector_context=_selector_context_for("target"),
+                schedule=schedule,
+                target_mechanics={"target": {}},
+                area_response_convention="fixed_occupancy_v1",
+                displacement_function_id="sqrt_5ft_v1",
+                probability_context=ProbabilityContext(save_dc=15),
+            )
+
+        def schedule_with(*, attacks=1, initial_reaction=False, target_rows=None):
+            return self.engine.schedule(
+                "fighter_first_v1",
+                ["target"],
+                controller_events_by_round={
+                    1: [{
+                        "kind": "save_opportunity",
+                        "target_id": "target",
+                        "window_id": "initial_save_window",
+                    }],
+                },
+                target_events_by_round=target_rows,
+                target_attack_counts={"target": [attacks, 0, 0]},
+                initial_reaction_availability={
+                    "target": initial_reaction,
+                },
+            )
+
+        def resequence(events):
+            return tuple(
+                replace(event, sequence=index)
+                for index, event in enumerate(events)
+            )
+
+        valid = schedule_with()
+        construct(valid)
+        horizon = next(
+            interval for interval in valid.reaction_intervals
+            if interval.horizon_entry_partial
+        )
+        self.assertIs(horizon.initially_available, False)
+
+        corruptions: dict[str, Any] = {}
+
+        zero_attack = schedule_with(attacks=0)
+        events = list(zero_attack.events)
+        active_index = next(
+            index for index, event in enumerate(events)
+            if event.kind == "target_active_turn_opportunity"
+            and event.round == 1
+        )
+        end_index = next(
+            index for index, event in enumerate(events)
+            if event.kind == "target_turn_end" and event.round == 1
+        )
+        events[active_index], events[end_index] = (
+            events[end_index],
+            events[active_index],
+        )
+        corruptions["zero_attack_end_before_active"] = replace(
+            zero_attack,
+            events=resequence(events),
+        )
+
+        movement_index = next(
+            index for index, event in enumerate(valid.events)
+            if event.kind == "target_movement_opportunity"
+            and event.round == 1
+        )
+        events = list(valid.events)
+        events[movement_index] = replace(
+            events[movement_index],
+            turn_id="r1:controller:turn",
+            turn_owner="controller",
+            actor_id="controller",
+        )
+        corruptions["foreign_owned_movement"] = replace(
+            valid,
+            events=tuple(events),
+        )
+
+        corruptions["missing_reaction_authority"] = replace(
+            valid,
+            events=tuple(
+                replace(event, reaction_interval_id=None)
+                for event in valid.events
+            ),
+            reaction_intervals=(),
+        )
+
+        events = list(valid.events)
+        round_end_index = next(
+            index for index, event in enumerate(events)
+            if event.kind == "round_end" and event.round == 1
+        )
+        round_end = events.pop(round_end_index)
+        target_start_index = next(
+            index for index, event in enumerate(events)
+            if event.kind == "target_turn_start" and event.round == 1
+        )
+        events.insert(target_start_index, round_end)
+        corruptions["round_end_before_target_turn"] = replace(
+            valid,
+            events=resequence(events),
+        )
+
+        active_index = next(
+            index for index, event in enumerate(valid.events)
+            if event.kind == "target_active_turn_opportunity"
+            and event.round == 1
+        )
+        events = list(valid.events)
+        events[active_index] = replace(
+            events[active_index],
+            window_id=123,  # type: ignore[arg-type]
+        )
+        corruptions["non_string_window"] = replace(
+            valid,
+            events=tuple(events),
+        )
+        events = list(valid.events)
+        events[active_index] = replace(
+            events[active_index],
+            round=True,  # type: ignore[arg-type]
+        )
+        corruptions["boolean_round"] = replace(
+            valid,
+            events=tuple(events),
+        )
+
+        events = list(valid.events)
+        save_index = next(
+            index for index, event in enumerate(events)
+            if event.kind == "save_opportunity"
+        )
+        save = events.pop(save_index)
+        attack_index = next(
+            index for index, event in enumerate(events)
+            if event.kind == "target_attack_opportunity"
+            and event.round == 1
+        )
+        events.insert(attack_index, save)
+        corruptions["controller_script_inside_target_turn"] = replace(
+            valid,
+            events=resequence(events),
+        )
+
+        scripted = schedule_with(
+            target_rows={
+                "target": {
+                    1: [{
+                        "kind": "damage_context",
+                        "phase": "after_attacks",
+                    }],
+                },
+            },
+        )
+        events = list(scripted.events)
+        scripted_index = next(
+            index for index, event in enumerate(events)
+            if event.kind == "damage_context"
+        )
+        scripted_event = events.pop(scripted_index)
+        attack_index = next(
+            index for index, event in enumerate(events)
+            if event.kind == "target_attack_opportunity"
+            and event.round == 1
+        )
+        events.insert(attack_index, scripted_event)
+        corruptions["script_between_active_and_attack"] = replace(
+            scripted,
+            events=resequence(events),
+        )
+
+        corruptions["missing_horizon_interval"] = replace(
+            valid,
+            reaction_intervals=tuple(
+                interval for interval in valid.reaction_intervals
+                if not interval.horizon_entry_partial
+            ),
+        )
+
+        events = list(valid.events)
+        controller_save_index = next(
+            index for index, event in enumerate(events)
+            if event.kind == "save_opportunity"
+        )
+        future_interval = next(
+            interval for interval in valid.reaction_intervals
+            if not interval.horizon_entry_partial and interval.round == 1
+        )
+        events[controller_save_index] = replace(
+            events[controller_save_index],
+            reaction_interval_id=future_interval.interval_id,
+        )
+        corruptions["future_reaction_interval"] = replace(
+            valid,
+            events=tuple(events),
+        )
+
+        events = list(valid.events)
+        events[controller_save_index] = replace(
+            events[controller_save_index],
+            window_id=None,
+        )
+        corruptions["save_without_window"] = replace(
+            valid,
+            events=tuple(events),
+        )
+        events = list(valid.events)
+        events[controller_save_index] = replace(
+            events[controller_save_index],
+            kind="reaction_window",
+            reaction_interval_id=horizon.interval_id,
+            payload={"availability_interval": True},
+        )
+        corruptions["script_claims_target_availability_opening"] = replace(
+            valid,
+            events=tuple(events),
+        )
+
+        opening_index = next(
+            index for index, event in enumerate(valid.events)
+            if event.kind == "reaction_window"
+            and event.payload.get("availability_interval") is True
+        )
+        normal_interval = next(
+            interval for interval in valid.reaction_intervals
+            if not interval.horizon_entry_partial and interval.round == 1
+        )
+        events = list(valid.events)
+        events[opening_index] = replace(
+            events[opening_index],
+            window_id=None,
+        )
+        corruptions["target_opening_without_window"] = replace(
+            valid,
+            events=tuple(events),
+            reaction_intervals=tuple(
+                replace(interval, window_id=None)
+                if interval is normal_interval else interval
+                for interval in valid.reaction_intervals
+            ),
+        )
+        events = list(valid.events)
+        events[opening_index] = replace(
+            events[opening_index],
+            payload={"availability_interval": True, "extra": 1},
+        )
+        corruptions["target_opening_extra_payload"] = replace(
+            valid,
+            events=tuple(events),
+        )
+
+        unknown_horizon = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{
+                    "kind": "save_opportunity",
+                    "target_id": "target",
+                }],
+            },
+            target_attack_counts={"target": [1, 0, 0]},
+        )
+        unknown_horizon_interval = next(
+            interval for interval in unknown_horizon.reaction_intervals
+            if interval.horizon_entry_partial
+        )
+        events = list(unknown_horizon.events)
+        save_index = next(
+            index for index, event in enumerate(events)
+            if event.kind == "save_opportunity"
+        )
+        events[save_index] = replace(
+            events[save_index],
+            kind="reaction_window",
+            reaction_interval_id=unknown_horizon_interval.interval_id,
+        )
+        corruptions["reaction_with_unknown_initial_availability"] = replace(
+            unknown_horizon,
+            events=tuple(events),
+        )
+
+        round_one = [event for event in valid.events if event.round == 1]
+        round_two = [event for event in valid.events if event.round == 2]
+        round_three = [event for event in valid.events if event.round == 3]
+        corruptions["globally_reordered_rounds"] = replace(
+            valid,
+            events=resequence([*round_two, *round_one, *round_three]),
+        )
+
+        for label, schedule in corruptions.items():
+            with self.subTest(label=label):
+                with self.assertRaises(ControlEngineError):
+                    construct(schedule)
+
+    def test_public_session_rejects_test_only_kernel_before_invocation(self) -> None:
+        class CountingTestKernel:
+            identity = ProbabilityKernelIdentity.create(
+                "tests.session.counting",
+                "1.0.0",
+                {"fixture": "must_not_run"},
+                test_only=True,
+            )
+
+            def __init__(self) -> None:
+                self.calls = 0
+
+            def outcome_probabilities(self, gate, target, context):
+                self.calls += 1
+                return {
+                    branch.outcome: Fraction(1, len(gate.branches))
+                    for branch in gate.branches
+                }
+
+        kernel = CountingTestKernel()
+        with self.assertRaisesRegex(ControlEngineError, "test-only"):
+            self._absolute_zero_session(kernel=kernel)
+        self.assertEqual(kernel.calls, 0)
+
+    def test_concentration_program_requires_bound_tracker_at_construction(self) -> None:
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "requires a bound concentration_save_bonus",
+        ):
+            self._frozen_ground_session(concentration_save_bonus=None)
+
+    def test_branch_preflight_failure_is_atomic_and_recoverable(self) -> None:
+        session, _schedule, events = self._mass_levitation_session(
+            bind_future=False,
+        )
+        session.advance_to(events["activation"].event_id)
+        session.start_concentration()
+        session.close_event()
+        session.advance_to(events["save"].event_id)
+        before_state = session.state_snapshot()
+        before_records = session.issued_records()
+        before_required = set(session._current_required_operations)
+        with self.assertRaisesRegex(ControlEngineError, "no remaining bound"):
+            session.apply_branch(
+                gate_id="mass_levitation_t2_initial_saves",
+                outcome="save_failure",
+                target_id="target",
+            )
+        self.assertEqual(session.state_snapshot(), before_state)
+        self.assertEqual(session.issued_records(), before_records)
+        self.assertEqual(session._current_required_operations, before_required)
+        session.apply_branch(
+            gate_id="mass_levitation_t2_initial_saves",
+            outcome="save_success",
+            target_id="target",
+        )
+        session.close_event()
+        session.complete()
+        session.result()
+
+    def test_mass_levitation_concentration_end_owns_compiled_end_gate(self) -> None:
+        session, schedule, events = self._mass_levitation_session(
+            bind_future=True,
+        )
+        session.advance_to(events["activation"].event_id)
+        session.start_concentration()
+        session.close_event()
+        session.advance_to(events["save"].event_id)
+        session.apply_branch(
+            gate_id="mass_levitation_t2_initial_saves",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.resolve_displacement(
+            target_id="target",
+            component_id="mass_levitation_initial_lift",
+        )
+        session.close_event()
+        session.advance_to(events["repeat"].event_id)
+        session.apply_branch(
+            gate_id="mass_levitation_t2_repeat_saves",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.apply_branch(
+            gate_id="mass_levitation_t2_damage_context",
+            outcome="damage_context",
+            target_id="target",
+        )
+        session.close_event()
+        first_movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity" and event.round == 1
+        )
+        session.advance_to(first_movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.advance_to(events["reposition"].event_id)
+        session.apply_branch(
+            gate_id="mass_levitation_t2_controller_reposition",
+            outcome="no_save",
+            target_id="target",
+        )
+        session.resolve_displacement(
+            target_id="target",
+            component_id="mass_levitation_reposition",
+        )
+        session.close_event()
+        session.advance_to(events["end"].event_id)
+        with self.assertRaisesRegex(ControlEngineError, "owned by end_concentration"):
+            session.apply_branch(
+                gate_id="mass_levitation_t2_concentration_end",
+                outcome="no_save",
+                target_id="target",
+            )
+        end_record = session.end_concentration()
+        end = end_record.to_dict()["payload"]
+        self.assertTrue(end["changed"])
+        self.assertIsNone(session._concentration_tracker.active_effect_id)
+        self.assertEqual(
+            [
+                row["gate_id"]
+                for row in end["concentration_end_gate_transitions"]
+            ],
+            ["mass_levitation_t2_concentration_end"],
+        )
+        session.close_event()
+        second_movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity" and event.round == 2
+        )
+        session.advance_to(second_movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        with self.assertRaisesRegex(ControlEngineError, "already consumed"):
+            session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.complete()
+        result = session.result().to_dict()
+        self.assertTrue(result["concentration_records"])
+        self.assertEqual(result["final_normalized_state"]["target"]["conditions"], [])
+
+    def test_cursor_rejects_unknown_future_open_earlier_and_foreign_events(self) -> None:
+        session, schedule, _save = self._absolute_zero_session()
+        foreign, _foreign_schedule, _foreign_save = self._absolute_zero_session()
+        with self.assertRaisesRegex(ControlEngineError, "Unknown"):
+            session.advance("fictional:event")
+        with self.assertRaisesRegex(ControlEngineError, "Cannot skip future"):
+            session.advance(schedule.events[1].event_id)
+        with self.assertRaisesRegex(ControlEngineError, "another execution"):
+            session.advance(foreign.event_reference(schedule.events[0].event_id))
+        session.advance(schedule.events[0].event_id)
+        with self.assertRaisesRegex(ControlEngineError, "explicitly closed"):
+            session.advance(schedule.events[1].event_id)
+        session.close_event()
+        session.advance(schedule.events[1].event_id)
+        session.close_event()
+        with self.assertRaisesRegex(ControlEngineError, "backward"):
+            session.advance(schedule.events[0].event_id)
+
+    def test_negative_01_branch_against_earlier_event_after_cursor_advanced(self) -> None:
+        session, _schedule, save_event = self._absolute_zero_session()
+        session.advance_to(save_event.event_id)
+        session.apply_branch(
+            gate_id="absolute_zero_t0_save",
+            outcome="save_success",
+            target_id="target",
+        )
+        session.close_event()
+        later_attack = next(
+            event for event in session.schedule.events
+            if event.kind == "target_attack_opportunity"
+        )
+        session.advance_to(later_attack.event_id)
+        with self.assertRaisesRegex(ControlEngineError, "not a required operation"):
+            session.apply_branch(
+                gate_id="absolute_zero_t0_save",
+                outcome="save_failure",
+                target_id="target",
+            )
+
+    def test_negative_02_earlier_attack_cannot_be_reopened_after_later_apply(self) -> None:
+        program = self.engine.program("absolute_zero_t0_control")
+        schedule = self.engine.schedule(
+            "target_before_fighter_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{"kind": "save_opportunity", "target_id": "target"}],
+            },
+            target_attack_counts={"target": [1, 0, 0]},
+        )
+        attack = next(
+            event for event in schedule.events
+            if event.kind == "target_attack_opportunity"
+        )
+        save = next(
+            event for event in schedule.events
+            if event.kind == "save_opportunity"
+        )
+        self.assertLess(attack.sequence, save.sequence)
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget(
+                "target",
+                15,
+                {"constitution": 2},
+            ),),
+            selector_membership={"absolute_zero_target": ("target",)},
+            selector_context=SelectorContext(),
+            schedule=schedule,
+            target_mechanics={"target": {}},
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+        )
+        session.advance_to(attack.event_id)
+        session.close_event()
+        session.advance_to(save.event_id)
+        session.apply_branch(
+            gate_id="absolute_zero_t0_save",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.close_event()
+        with self.assertRaisesRegex(ControlEngineError, "backward"):
+            session.advance(attack.event_id)
+
+    def test_negative_03_unknown_event_id_is_rejected(self) -> None:
+        session, _schedule, _save = self._absolute_zero_session()
+        with self.assertRaisesRegex(ControlEngineError, "Unknown"):
+            session.advance("fictional:event")
+
+    def test_negative_04_valid_event_reference_from_other_session_is_rejected(self) -> None:
+        session, schedule, _save = self._absolute_zero_session()
+        foreign, _foreign_schedule, _foreign_save = self._absolute_zero_session()
+        reference = foreign.event_reference(schedule.events[0].event_id)
+        with self.assertRaisesRegex(ControlEngineError, "another execution"):
+            session.advance(reference)
+
+    def test_negative_05_gate_source_absent_from_pre_event_state_is_rejected(self) -> None:
+        program = self.engine.program("mass_levitation_t2_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [
+                    {"kind": "activation"},
+                    {"kind": "save_opportunity", "target_id": "target"},
+                ],
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        save = next(
+            event for event in schedule.events
+            if event.kind == "save_opportunity"
+        )
+        target_start = next(
+            event for event in schedule.events
+            if event.kind == "target_turn_start" and event.round == 1
+        )
+        repeat_gate = program.gate("mass_levitation_t2_repeat_saves")
+        repeat_event = ReliabilityEvent.create(
+            "repeat_without_source",
+            repeat_gate.trigger,
+            target_ids=("target",),
+            gate_ids=(repeat_gate.gate_id,),
+            window_id=target_start.event_id,
+        )
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget("target", 15, {"strength": 2}),),
+            selector_membership={"mass_levitation_targets": ("target",)},
+            selector_context=_selector_context_for("target"),
+            schedule=schedule,
+            target_mechanics={"target": {}},
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            reliability_events=(repeat_event,),
+            operation_inputs_by_event={
+                target_start.event_id: {
+                    "reliability_event_ids": [repeat_event.event_id],
+                },
+            },
+            concentration_save_bonus=2,
+        )
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        session.close_event()
+        session.advance_to(save.event_id)
+        session.apply_branch(
+            gate_id="mass_levitation_t2_initial_saves",
+            outcome="save_success",
+            target_id="target",
+        )
+        session.close_event()
+        session.advance_to(target_start.event_id)
+        with self.assertRaisesRegex(ControlEngineError, "absent from the pre-event"):
+            session.apply_branch(
+                gate_id=repeat_gate.gate_id,
+                outcome="save_failure",
+                target_id="target",
+            )
+
+    def test_required_branch_cannot_be_skipped_backdated_or_normalized_after_apply(self) -> None:
+        session, schedule, save_event = self._absolute_zero_session(
+            save_inputs={"normalization_target_ids": ["target"]},
+        )
+        session.advance_to(save_event.event_id)
+        with self.assertRaisesRegex(ControlEngineError, "unresolved required"):
+            session.close_event()
+        session.apply_branch(
+            gate_id="absolute_zero_t0_save",
+            outcome="save_failure",
+            target_id="target",
+        )
+        with self.assertRaisesRegex(ControlEngineError, "same-event component"):
+            session.normalize(target_id="target")
+        # The failed normalization remains unresolved, so this execution cannot
+        # be repaired by sorting or by silently closing the event.
+        with self.assertRaisesRegex(ControlEngineError, "normalization"):
+            session.close_event()
+
+        backdated, backdated_schedule, backdated_save = self._absolute_zero_session()
+        self._finish_absolute_zero(backdated, backdated_save)
+        with self.assertRaisesRegex(ControlEngineError, "explicitly advanced"):
+            backdated.apply_branch(
+                gate_id="absolute_zero_t0_save",
+                outcome="save_success",
+                target_id="target",
+            )
+        self.assertEqual(backdated.cursor, len(backdated_schedule.events) - 1)
+
+    def test_result_rejects_foreign_mixed_fabricated_and_stale_records(self) -> None:
+        first, _schedule, first_save = self._absolute_zero_session()
+        second, _schedule_2, second_save = self._absolute_zero_session()
+        first_record = self._finish_absolute_zero(first, first_save)
+        second_record = self._finish_absolute_zero(second, second_save)
+        with self.assertRaisesRegex(ControlEngineError, "foreign, stale, or fabricated"):
+            first._assemble_for_test(records=(second_record,))
+        with self.assertRaisesRegex(ControlEngineError, "complete session-issued"):
+            first._assemble_for_test(records=(
+                first_record,
+                second_record,
+            ))
+        with self.assertRaisesRegex(ControlEngineError, "foreign, stale, or fabricated"):
+            first._assemble_for_test(records=(
+                replace(first_record, record_kind="normalization"),
+            ))
+        with self.assertRaisesRegex(ControlEngineError, "complete session-issued"):
+            first._assemble_for_test(records=())
+        with self.assertRaisesRegex(ControlEngineError, "foreign, stale, or malformed"):
+            first._assemble_for_test(reliability=second._reliability)
+
+        tampered, _tampered_schedule, tampered_save = self._absolute_zero_session()
+        tampered_record = self._finish_absolute_zero(tampered, tampered_save)
+        object.__setattr__(tampered_record, "record_kind", "fictional")
+        with self.assertRaisesRegex(ControlEngineError, "kind is fabricated"):
+            tampered.result()
+
+        stale, _stale_schedule, stale_save = self._absolute_zero_session()
+        self._finish_absolute_zero(stale, stale_save)
+        stale._scenario_json = stale._scenario_json.replace(
+            "control_execution_session_v1",
+            "control_execution_session_stale",
+        )
+        with self.assertRaisesRegex(ControlEngineError, "scenario digest is stale"):
+            stale.result()
+
+    def test_issued_envelope_sequence_and_target_cannot_be_rewritten(self) -> None:
+        sequence_session, _schedule, sequence_save = self._absolute_zero_session()
+        sequence_record = self._finish_absolute_zero(
+            sequence_session,
+            sequence_save,
+        )
+        object.__setattr__(sequence_record, "operation_sequence", 99)
+        self._rewrite_record_payload(
+            sequence_record,
+            sequence_record.to_dict()["payload"],
+        )
+        with self.assertRaisesRegex(ControlEngineError, "exact executed"):
+            sequence_session.result()
+
+        target_session, _schedule_2, target_save = self._absolute_zero_session()
+        target_record = self._finish_absolute_zero(target_session, target_save)
+        object.__setattr__(target_record, "target_id", None)
+        self._rewrite_record_payload(
+            target_record,
+            target_record.to_dict()["payload"],
+        )
+        with self.assertRaisesRegex(ControlEngineError, "target does not match"):
+            target_session.result()
+
+    def test_benign_payload_rewrite_fails_engine_owned_issuance_attestation(self) -> None:
+        session, _schedule, save_event = self._absolute_zero_session(
+            normalize_movement=True,
+        )
+        normalization = self._finish_absolute_zero_with_normalization(
+            session,
+            save_event,
+        )
+        payload = normalization.to_dict()["payload"]
+        self.assertTrue(payload["contributions"])
+        payload["contributions"][0]["context"]["base_speed_feet"] = 31
+        self._rewrite_record_payload(normalization, payload)
+        with self.assertRaisesRegex(ControlEngineError, "issuance attestation"):
+            session.result()
+
+    def test_negative_06_exact_stream_position_cannot_mix_same_scenario_executions(self) -> None:
+        first, _first_schedule, first_save = self._absolute_zero_session(
+            normalize_movement=True,
+        )
+        second, _second_schedule, second_save = self._absolute_zero_session(
+            normalize_movement=True,
+        )
+        self._finish_absolute_zero_with_normalization(first, first_save)
+        self._finish_absolute_zero_with_normalization(second, second_save)
+        first_records = first.issued_records()
+        second_records = second.issued_records()
+        self.assertEqual(len(first_records), len(second_records))
+        self.assertGreaterEqual(len(first_records), 2)
+        mixed = list(first_records)
+        mixed[1] = second_records[1]
+        with self.assertRaisesRegex(ControlEngineError, "foreign, stale, or fabricated"):
+            first._assemble_for_test(records=tuple(mixed))
+
+    def test_negative_07_reliability_with_different_selector_membership_is_rejected(self) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            target_ids=("alpha", "beta"),
+        )
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        for target_id in ("alpha", "beta"):
+            session.apply_branch(
+                gate_id="frozen_ground_t0_activation",
+                outcome="no_save",
+                target_id=target_id,
+            )
+        session.close_event()
+        while session.cursor + 1 < len(schedule.events):
+            event = schedule.events[session.cursor + 1]
+            session.advance(event.event_id)
+            if (
+                event.kind == "target_movement_opportunity"
+                and event.round == 1
+            ):
+                session.resolve_movement_response(target_id=str(event.target_id))
+            elif (
+                event.kind in {
+                    "target_active_turn_opportunity",
+                    "target_attack_opportunity",
+                }
+                and event.round == 1
+            ):
+                session.normalize(target_id=str(event.target_id))
+            session.close_event()
+        alternate = self.engine.reliability(
+            session._program,
+            targets=session._targets,
+            selector_membership={
+                "frozen_ground_area_targets": ("alpha",),
+            },
+            selector_context=session._selector_context,
+            context=session._reliability.scenario.probability_context,
+        )
+        self.assertNotEqual(
+            alternate.scenario_digest,
+            session._reliability_digest,
+        )
+        with self.assertRaisesRegex(ControlEngineError, "foreign, stale, or malformed"):
+            session._assemble_for_test(reliability=alternate)
+
+    def test_negative_08_reliability_with_different_choice_bindings_is_rejected(self) -> None:
+        explosion = self._explosion_implosion_session("explosion")
+        implosion = self._explosion_implosion_session("implosion")
+        self.assertNotEqual(explosion.scenario_digest, implosion.scenario_digest)
+        with self.assertRaisesRegex(ControlEngineError, "foreign, stale, or malformed"):
+            explosion._assemble_for_test(reliability=implosion._reliability)
+
+    def test_negative_09_reliability_with_different_probability_context_is_rejected(self) -> None:
+        session = self._completed_absolute_zero_session()
+        alternate = self.engine.reliability(
+            session._program,
+            targets=session._targets,
+            selector_membership=session._membership,
+            selector_context=session._selector_context,
+            context=ProbabilityContext(save_dc=16),
+        )
+        self.assertNotEqual(
+            alternate.scenario_digest,
+            session._reliability_digest,
+        )
+        with self.assertRaisesRegex(ControlEngineError, "foreign, stale, or malformed"):
+            session._assemble_for_test(reliability=alternate)
+
+    def test_negative_10_reliability_with_different_kernel_identity_is_rejected(self) -> None:
+        class AlternateD20Kernel:
+            identity = ProbabilityKernelIdentity.create(
+                "tests.session.alternate_d20",
+                "1.0.0",
+                {
+                    "algorithm": "delegate_exact_uniform_d20",
+                    "parameters": {
+                        "delegate_kernel_id": "openai.kinetic_vanguard.d20",
+                    },
+                },
+            )
+
+            def outcome_probabilities(self, gate, target, context):
+                return D20ProbabilityKernel().outcome_probabilities(
+                    gate,
+                    target,
+                    context,
+                )
+
+        session = self._completed_absolute_zero_session()
+        alternate = self.engine.reliability(
+            session._program,
+            targets=session._targets,
+            selector_membership=session._membership,
+            selector_context=session._selector_context,
+            kernel=AlternateD20Kernel(),
+            context=session._reliability.scenario.probability_context,
+        )
+        self.assertNotEqual(
+            alternate.scenario_digest,
+            session._reliability_digest,
+        )
+        with self.assertRaisesRegex(ControlEngineError, "foreign, stale, or malformed"):
+            session._assemble_for_test(reliability=alternate)
+
+    def test_negative_11_reliability_with_different_event_script_is_rejected(self) -> None:
+        session = self._completed_absolute_zero_session()
+        gate = session._program.gate("absolute_zero_t0_save")
+        alternate_event = ReliabilityEvent.create(
+            "different_initial_save_event",
+            gate.trigger,
+            target_ids=("target",),
+            gate_ids=(gate.gate_id,),
+            window_id="different_initial_save_window",
+        )
+        alternate = self.engine.reliability(
+            session._program,
+            targets=session._targets,
+            selector_membership=session._membership,
+            selector_context=session._selector_context,
+            context=session._reliability.scenario.probability_context,
+            events=(alternate_event,),
+            include_initial=False,
+        )
+        self.assertNotEqual(
+            alternate.scenario_digest,
+            session._reliability_digest,
+        )
+        with self.assertRaisesRegex(ControlEngineError, "foreign, stale, or malformed"):
+            session._assemble_for_test(reliability=alternate)
+
+    def test_negative_12_fabricated_reliability_gate_id_is_rejected(self) -> None:
+        session = self._completed_absolute_zero_session()
+        reliability = session._reliability
+        fabricated = replace(
+            reliability,
+            gate_probabilities=(
+                replace(
+                    reliability.gate_probabilities[0],
+                    gate_id="fictional_gate",
+                ),
+                *reliability.gate_probabilities[1:],
+            ),
+        )
+        with self.assertRaisesRegex(ControlEngineError, "unknown gate ID"):
+            session._assemble_for_test(reliability=fabricated)
+
+    def test_negative_13_fabricated_branch_to_gate_relationship_is_rejected(self) -> None:
+        session = self._completed_absolute_zero_session()
+        reliability = session._reliability
+        fabricated = replace(
+            reliability,
+            branch_probabilities=(
+                replace(
+                    reliability.branch_probabilities[0],
+                    branch_id="fictional_other_gate_branch",
+                ),
+                *reliability.branch_probabilities[1:],
+            ),
+        )
+        with self.assertRaisesRegex(ControlEngineError, "does not belong to gate"):
+            session._assemble_for_test(reliability=fabricated)
+
+    def test_negative_14_unknown_component_reliability_row_is_rejected(self) -> None:
+        session = self._completed_absolute_zero_session()
+        reliability = session._reliability
+        fabricated = replace(
+            reliability,
+            component_reliability=(
+                replace(
+                    reliability.component_reliability[0],
+                    component_id="fictional_component",
+                ),
+                *reliability.component_reliability[1:],
+            ),
+        )
+        with self.assertRaisesRegex(ControlEngineError, "unknown component ID"):
+            session._assemble_for_test(reliability=fabricated)
+
+    def test_negative_15_primitive_contribution_fictional_window_is_rejected(self) -> None:
+        session, _schedule, save_event = self._absolute_zero_session(
+            normalize_movement=True,
+        )
+        normalization = self._finish_absolute_zero_with_normalization(
+            session,
+            save_event,
+        )
+        payload = normalization.to_dict()["payload"]
+        self.assertTrue(payload["contributions"])
+        payload["contributions"][0]["event_or_window_id"] = "fictional_window"
+        self._rewrite_record_payload(normalization, payload)
+        with self.assertRaisesRegex(ControlEngineError, "fictional window"):
+            session.result()
+
+    def test_negative_16_primitive_contribution_inactive_source_is_rejected(self) -> None:
+        session, _schedule, save_event = self._absolute_zero_session(
+            normalize_movement=True,
+        )
+        normalization = self._finish_absolute_zero_with_normalization(
+            session,
+            save_event,
+        )
+        payload = normalization.to_dict()["payload"]
+        self.assertTrue(payload["contributions"])
+        payload["contributions"][0]["source_component_ids"] = [
+            "absolute_zero_t0_control:fictional_component",
+        ]
+        self._rewrite_record_payload(normalization, payload)
+        with self.assertRaisesRegex(ControlEngineError, "not active in the pre-state"):
+            session.result()
+
+    def test_negative_17_malformed_or_out_of_range_probability_is_rejected(self) -> None:
+        for probability, message in (
+            (0.5, "exact fractions.Fraction"),
+            (Fraction(3, 2), "between zero and one"),
+        ):
+            with self.subTest(probability=probability):
+                session = self._completed_absolute_zero_session()
+                reliability = session._reliability
+                fabricated = replace(
+                    reliability,
+                    gate_probabilities=(
+                        replace(
+                            reliability.gate_probabilities[0],
+                            probability=probability,
+                        ),
+                        *reliability.gate_probabilities[1:],
+                    ),
+                )
+                with self.assertRaisesRegex(ControlEngineError, message):
+                    session._assemble_for_test(reliability=fabricated)
+
+    def test_negative_18_duplicate_semantic_probability_row_is_rejected(self) -> None:
+        session = self._completed_absolute_zero_session()
+        reliability = session._reliability
+        fabricated = replace(
+            reliability,
+            gate_probabilities=(
+                *reliability.gate_probabilities,
+                reliability.gate_probabilities[0],
+            ),
+        )
+        with self.assertRaisesRegex(ControlEngineError, "Duplicate semantic gate"):
+            session._assemble_for_test(reliability=fabricated)
+
+    def test_prone_stands_before_attack_and_outgoing_impairment_is_absent(self) -> None:
+        session, schedule, save_event = self._absolute_zero_session(
+            normalize_attack=True,
+            target_mechanics={
+                "initial_conditions": ["prone"],
+                "base_speeds_ft": {"walk": 30},
+                "movement_mode": "walk",
+            },
+        )
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity" and event.round == 1
+        )
+        attack = next(
+            event for event in schedule.events
+            if event.kind == "target_attack_opportunity" and event.round == 1
+        )
+        session.advance_to(save_event.event_id)
+        session.apply_branch(
+            gate_id="absolute_zero_t0_save",
+            outcome="save_success",
+            target_id="target",
+        )
+        session.close_event()
+        session.advance_to(movement.event_id)
+        [stand_record] = session.resolve_movement_response(target_id="target")
+        stand = stand_record.to_dict()["payload"]
+        self.assertTrue(stand["stood"])
+        self.assertEqual(stand["standing_cost_ft"], 15)
+        self.assertEqual(stand["remaining_movement_ft"], 15)
+        self.assertLess(movement.sequence, attack.sequence)
+        self.assertFalse(any(
+            row["magnitude"].get("condition") == "prone"
+            for row in session.state_snapshot("target")
+        ))
+        session.close_event()
+        session.advance_to(attack.event_id)
+        attack_record = session.normalize(target_id="target")
+        primitives = {
+            row["primitive_id"]
+            for row in attack_record.to_dict()["payload"]["contributions"]
+        }
+        self.assertNotIn("offensive_impairment_all_attacks", primitives)
+        session.close_event()
+        session.complete()
+        session.result()
+
+    def test_prone_standing_cost_precedes_frozen_ground_route_progress(self) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            initial_prone=True,
+            route_distance=10,
+            route_multiplier=2,
+        )
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity" and event.round == 1
+        )
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        session.apply_branch(
+            gate_id="frozen_ground_t0_activation",
+            outcome="no_save",
+            target_id="target",
+        )
+        session.close_event()
+        session.advance_to(movement.event_id)
+        [record] = session.resolve_movement_response(target_id="target")
+        response = record.to_dict()["payload"]
+        route = response["selected_route"]
+        self.assertTrue(route["prone_response"]["stood"])
+        self.assertEqual(route["prone_response"]["standing_cost_ft"], 15)
+        self.assertEqual(route["prone_response"]["remaining_movement_ft"], 15)
+        self.assertEqual(route["movement_cost_multiplier"], 2)
+        self.assertEqual(route["progress_ft"], 7.5)
+        self.assertEqual(route["remaining_distance_ft"], 2.5)
+        self.assertFalse(response["exited"])
+
+    def test_prone_stands_when_area_route_is_incompatible_and_independent_survives(self) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            initial_prone=True,
+            initial_conditions=("blinded",),
+            base_speeds={"walk": 30, "fly": 0},
+            route_mode="fly",
+            route_compatible=False,
+        )
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity" and event.round == 1
+        )
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        session.apply_branch(
+            gate_id="frozen_ground_t0_activation",
+            outcome="no_save",
+            target_id="target",
+        )
+        session.close_event()
+        session.advance_to(movement.event_id)
+        [area_record] = session.resolve_movement_response(target_id="target")
+        area = area_record.to_dict()["payload"]
+        stand = area["prone_response"]
+        self.assertTrue(stand["stood"])
+        self.assertEqual(stand["standing_cost_ft"], 15)
+        self.assertEqual(area["events"][0]["movement_mode"], "walk")
+        self.assertFalse(area["exited"])
+        self.assertEqual(area["reason"], "movement_unavailable")
+        self.assertIn("initial_blinded", area["retained_component_ids"])
+        active_ids = {
+            row["component_id"] for row in session.state_snapshot("target")
+        }
+        self.assertNotIn("initial_prone", active_ids)
+        self.assertIn("initial_blinded", active_ids)
+        self.assertIn("frozen_ground_difficult_terrain", active_ids)
+
+    def test_speed_zero_keeps_prone_and_frozen_area_through_attacks(self) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            initial_prone=True,
+            include_start_turn_save=True,
+        )
+        target_start = next(
+            event for event in schedule.events
+            if event.kind == "target_turn_start" and event.round == 1
+        )
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity" and event.round == 1
+        )
+        active = next(
+            event for event in schedule.events
+            if event.kind == "target_active_turn_opportunity" and event.round == 1
+        )
+        attack = next(
+            event for event in schedule.events
+            if event.kind == "target_attack_opportunity" and event.round == 1
+        )
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        session.apply_branch(
+            gate_id="frozen_ground_t0_activation",
+            outcome="no_save",
+            target_id="target",
+        )
+        session.close_event()
+        session.advance_to(target_start.event_id)
+        session.apply_branch(
+            gate_id="frozen_ground_t0_start_turn_save",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.close_event()
+        session.advance_to(movement.event_id)
+        [movement_record] = session.resolve_movement_response(target_id="target")
+        movement_payload = movement_record.to_dict()["payload"]
+        self.assertFalse(movement_payload["exited"])
+        self.assertTrue(movement_payload["prone_after"])
+        self.assertEqual(movement_payload["reason"], "movement_unavailable")
+        self.assertEqual(
+            movement_payload["movement_authority"]["effective_speeds_ft"],
+            {"walk": 0},
+        )
+        session.close_event()
+        session.advance_to(active.event_id)
+        active_record = session.normalize(target_id="target")
+        session.close_event()
+        session.advance_to(attack.event_id)
+        attack_record = session.normalize(target_id="target")
+        session.close_event()
+        active_ids = {
+            row["component_id"] for row in session.state_snapshot("target")
+        }
+        self.assertIn("initial_prone", active_ids)
+        self.assertIn("frozen_ground_difficult_terrain", active_ids)
+        self.assertIn("frozen_ground_speed_zero", active_ids)
+        active_primitives = {
+            row["primitive_id"]
+            for row in active_record.to_dict()["payload"]["contributions"]
+        }
+        attack_primitives = {
+            row["primitive_id"]
+            for row in attack_record.to_dict()["payload"]["contributions"]
+        }
+        self.assertIn("offensive_impairment_all_attacks", active_primitives)
+        self.assertNotIn("offensive_impairment_all_attacks", attack_primitives)
+
+    def test_ball_lightning_exits_pre_attack_at_real_initiative_round(self) -> None:
+        observed_rounds: dict[str, int] = {}
+        for initiative, expected_round in (
+            ("fighter_first_v1", 1),
+            ("target_before_fighter_v1", 2),
+        ):
+            with self.subTest(initiative=initiative):
+                program = self.engine.program("ball_lightning_t2_control")
+                schedule = self.engine.schedule(
+                    initiative,
+                    ["target"],
+                    controller_events_by_round={1: [{"kind": "activation"}]},
+                    target_attack_counts={"target": [1, 1, 0]},
+                )
+                activation = next(
+                    event for event in schedule.events
+                    if event.kind == "activation"
+                )
+                target_start = next(
+                    event for event in schedule.events
+                    if event.kind == "target_turn_start"
+                    and event.round == expected_round
+                )
+                movement = next(
+                    event for event in schedule.events
+                    if event.kind == "target_movement_opportunity"
+                    and event.round == expected_round
+                )
+                active = next(
+                    event for event in schedule.events
+                    if event.kind == "target_active_turn_opportunity"
+                    and event.round == expected_round
+                )
+                attack = next(
+                    event for event in schedule.events
+                    if event.kind == "target_attack_opportunity"
+                    and event.round == expected_round
+                )
+                gate = program.gate("ball_lightning_start_turn_save")
+                reliability_event = ReliabilityEvent.create(
+                    f"ball_start_{expected_round}",
+                    gate.trigger,
+                    target_ids=("target",),
+                    gate_ids=(gate.gate_id,),
+                    window_id=target_start.event_id,
+                )
+                session = self.engine.execution_session(
+                    program,
+                    targets=(ReliabilityTarget(
+                        "target",
+                        15,
+                        {"charisma": 2},
+                    ),),
+                    selector_membership={
+                        "ball_lightning_area_targets": ("target",),
+                    },
+                    selector_context=SelectorContext(),
+                    schedule=schedule,
+                    target_mechanics={
+                        "target": {
+                            "base_speeds_ft": {"walk": 30},
+                            "movement_mode": "walk",
+                            "area_membership": True,
+                            "area_routes": [{
+                                "route_id": "ball_exit",
+                                "mode": "walk",
+                                "distance_to_exit_ft": 5,
+                                "compatible": True,
+                                "movement_cost_multiplier": 1,
+                                "environment": "grounded",
+                            }],
+                        },
+                    },
+                    area_response_convention="shortest_route_v1",
+                    displacement_function_id="sqrt_5ft_v1",
+                    probability_context=ProbabilityContext(save_dc=15),
+                    reliability_events=(reliability_event,),
+                    operation_inputs_by_event={
+                        target_start.event_id: {
+                            "reliability_event_ids": [reliability_event.event_id],
+                        },
+                        active.event_id: {
+                            "normalization_target_ids": ["target"],
+                        },
+                        attack.event_id: {
+                            "normalization_target_ids": ["target"],
+                        },
+                    },
+                    concentration_save_bonus=2,
+                )
+                session.advance_to(activation.event_id)
+                session.start_concentration()
+                session.close_event()
+                session.advance_to(target_start.event_id)
+                session.apply_branch(
+                    gate_id=gate.gate_id,
+                    outcome="save_failure",
+                    target_id="target",
+                )
+                session.close_event()
+                session.advance_to(movement.event_id)
+                [area_record] = session.resolve_movement_response(
+                    target_id="target",
+                )
+                area = area_record.to_dict()["payload"]
+                self.assertTrue(area["exited"])
+                self.assertEqual(
+                    set(area["ended_component_ids"]),
+                    {
+                        "ball_lightning_attack_disadvantage",
+                        "ball_lightning_reaction_denial",
+                    },
+                )
+                session.close_event()
+                session.advance_to(active.event_id)
+                active_record = session.normalize(target_id="target")
+                session.close_event()
+                session.advance_to(attack.event_id)
+                attack_record = session.normalize(target_id="target")
+                session.close_event()
+                self.assertEqual(
+                    active_record.to_dict()["payload"]["contributions"],
+                    [],
+                )
+                self.assertEqual(
+                    attack_record.to_dict()["payload"]["contributions"],
+                    [],
+                )
+                self.assertLess(movement.sequence, active.sequence)
+                self.assertLess(active.sequence, attack.sequence)
+                session.complete()
+                session.result()
+                observed_rounds[initiative] = target_start.round
+        self.assertEqual(observed_rounds, {
+            "fighter_first_v1": 1,
+            "target_before_fighter_v1": 2,
+        })
+
+    def test_shared_frozen_activation_is_target_permutation_invariant(self) -> None:
+        final_by_order: dict[tuple[str, ...], dict[str, list[str]]] = {}
+        for target_ids in (("alpha", "beta"), ("beta", "alpha")):
+            with self.subTest(target_ids=target_ids):
+                session, schedule, activation = self._frozen_ground_session(
+                    target_ids=target_ids,
+                )
+                session.advance_to(activation.event_id)
+                session.start_concentration()
+                for target_id in sorted(target_ids):
+                    session.apply_branch(
+                        gate_id="frozen_ground_t0_activation",
+                        outcome="no_save",
+                        target_id=target_id,
+                    )
+                self.assertEqual(
+                    {
+                        target_id: {
+                            row["component_id"]
+                            for row in session.state_snapshot(target_id)
+                        }
+                        for target_id in target_ids
+                    },
+                    {
+                        target_id: {"frozen_ground_difficult_terrain"}
+                        for target_id in target_ids
+                    },
+                )
+                session.close_event()
+                while session.cursor + 1 < len(schedule.events):
+                    event = schedule.events[session.cursor + 1]
+                    session.advance(event.event_id)
+                    if (
+                        event.kind == "target_movement_opportunity"
+                        and event.round == 1
+                    ):
+                        session.resolve_movement_response(
+                            target_id=str(event.target_id),
+                        )
+                    elif (
+                        event.kind
+                        in {
+                            "target_active_turn_opportunity",
+                            "target_attack_opportunity",
+                        }
+                        and event.round == 1
+                    ):
+                        session.normalize(target_id=str(event.target_id))
+                    session.close_event()
+                result = session.result().to_dict()
+                final_by_order[target_ids] = {
+                    target_id: sorted(
+                        row["component_id"]
+                        for row in result["final_normalized_state"][target_id][
+                            "active_components"
+                        ]
+                    )
+                    for target_id in sorted(target_ids)
+                }
+        self.assertEqual(
+            final_by_order[("alpha", "beta")],
+            final_by_order[("beta", "alpha")],
+        )
+
+    def test_displacement_prone_and_epoch_share_one_movement_budget(self) -> None:
+        program = self.engine.program("telekinetic_slam_t0_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{"kind": "save_opportunity", "target_id": "target"}],
+            },
+            target_attack_counts={"target": [1, 0, 0]},
+        )
+        save = next(
+            event for event in schedule.events
+            if event.kind == "save_opportunity"
+        )
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity" and event.round == 1
+        )
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget("target", 15, {"strength": 2}),),
+            selector_membership={"telekinetic_slam_target": ("target",)},
+            selector_context=_selector_context_for("target"),
+            schedule=schedule,
+            target_mechanics={
+                "target": {
+                    "initial_conditions": ["prone"],
+                    "base_speeds_ft": {"walk": 30},
+                    "movement_mode": "walk",
+                },
+            },
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            operation_inputs_by_event={
+                save.event_id: {
+                    "displacement_vectors": {
+                        "telekinetic_slam_failed_save_movement": [10, 0, 0],
+                    },
+                },
+            },
+        )
+        session.advance_to(save.event_id)
+        session.apply_branch(
+            gate_id="telekinetic_slam_t0_save",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.resolve_displacement(
+            target_id="target",
+            component_id="telekinetic_slam_failed_save_movement",
+        )
+        session.close_event()
+        session.advance_to(movement.event_id)
+        prone_record, epoch_record = session.resolve_movement_response(
+            target_id="target",
+        )
+        self.assertTrue(prone_record.to_dict()["payload"]["stood"])
+        epoch = epoch_record.to_dict()["payload"]["record"]
+        self.assertTrue(epoch["reset"])
+        self.assertEqual(epoch["reason"], "legal_self_movement_response")
+        with self.assertRaisesRegex(ControlEngineError, "already consumed"):
+            session.resolve_movement_response(target_id="target")
+
+    def test_frozen_ground_exits_before_active_turn_and_attack_normalization(self) -> None:
+        program = self.engine.program("frozen_ground_t0_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{"kind": "activation", "target_id": "target"}],
+            },
+            target_attack_counts={"target": [1, 0, 0]},
+        )
+        activation = next(event for event in schedule.events if event.kind == "activation")
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity" and event.round == 1
+        )
+        active_turn = next(
+            event for event in schedule.events
+            if event.kind == "target_active_turn_opportunity" and event.round == 1
+        )
+        attack = next(
+            event for event in schedule.events
+            if event.kind == "target_attack_opportunity" and event.round == 1
+        )
+        operation_inputs = {
+            activation.event_id: {"required_operations": ["concentration_start"]},
+            active_turn.event_id: {"normalization_target_ids": ["target"]},
+            attack.event_id: {"normalization_target_ids": ["target"]},
+        }
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget(
+                "target",
+                15,
+                {"dexterity": 2},
+            ),),
+            selector_membership={"frozen_ground_area_targets": ("target",)},
+            selector_context=SelectorContext(),
+            schedule=schedule,
+            target_mechanics={
+                "target": {
+                    "base_speeds_ft": {"walk": 30},
+                    "movement_mode": "walk",
+                    "area_membership": True,
+                    "area_routes": [{
+                        "route_id": "walk_exit",
+                        "mode": "walk",
+                        "distance_to_exit_ft": 5,
+                        "compatible": True,
+                        "movement_cost_multiplier": 1,
+                        "environment": "grounded",
+                    }],
+                },
+            },
+            area_response_convention="shortest_route_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            operation_inputs_by_event=operation_inputs,
+            concentration_save_bonus=2,
+        )
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        session.apply_branch(
+            gate_id="frozen_ground_t0_activation",
+            outcome="no_save",
+            target_id="target",
+        )
+        session.close_event()
+        session.advance_to(movement.event_id)
+        [area_record] = session.resolve_movement_response(target_id="target")
+        area_payload = area_record.to_dict()["payload"]
+        self.assertTrue(area_payload["exited"])
+        self.assertEqual(
+            area_payload["ended_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        session.close_event()
+        session.advance_to(active_turn.event_id)
+        active_record = session.normalize(target_id="target")
+        session.close_event()
+        session.advance_to(attack.event_id)
+        attack_record = session.normalize(target_id="target")
+        session.close_event()
+        self.assertEqual(active_record.to_dict()["payload"]["contributions"], [])
+        self.assertEqual(attack_record.to_dict()["payload"]["contributions"], [])
+        self.assertLess(movement.sequence, active_turn.sequence)
+        self.assertLess(active_turn.sequence, attack.sequence)
+        session.complete()
+        result = session.result().to_dict()
+        self.assertEqual(
+            result["final_normalized_state"]["target"]["active_components"],
+            [],
+        )
 
 
 class ControlEngineIntegrationBridgeTests(unittest.TestCase):
@@ -612,8 +2751,8 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             row for row in schedule.events
             if row.kind == "save_opportunity"
         )
-        state = self.engine.new_state()
-        transition = self.engine.apply_resolved_branch(
+        state = self.engine._new_state()
+        transition = self.engine._apply_resolved_branch(
             state=state,
             effect=program,
             gate_id="absolute_zero_t0_save",
@@ -665,9 +2804,9 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             "explosion_implosion_secondary_targets": ["secondary"],
         }
         choices = {"explosion_implosion_mode": "explosion"}
-        state = self.engine.new_state()
+        state = self.engine._new_state()
         with self.assertRaisesRegex(ControlEngineError, "no prior reachable"):
-            self.engine.apply_resolved_branch(
+            self.engine._apply_resolved_branch(
                 state=state,
                 effect=program,
                 gate_id="explosion_implosion_t0_secondary_saves",
@@ -682,7 +2821,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 choices=choices,
             )
         with self.assertRaisesRegex(ControlEngineError, "does not match"):
-            self.engine.apply_resolved_branch(
+            self.engine._apply_resolved_branch(
                 state=state,
                 effect=program,
                 gate_id="explosion_implosion_t0_attack",
@@ -697,7 +2836,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 choices=choices,
             )
         with self.assertRaisesRegex(ControlEngineError, "Selector membership"):
-            self.engine.apply_resolved_branch(
+            self.engine._apply_resolved_branch(
                 state=state,
                 effect=program,
                 gate_id="explosion_implosion_t0_attack",
@@ -713,7 +2852,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 selector_context=_selector_context_for("primary", "secondary"),
                 choices=choices,
             )
-        root = self.engine.apply_resolved_branch(
+        root = self.engine._apply_resolved_branch(
             state=state,
             effect=program,
             gate_id="explosion_implosion_t0_attack",
@@ -736,7 +2875,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             ],
         )
         with self.assertRaisesRegex(ControlEngineError, "already resolved"):
-            self.engine.apply_resolved_branch(
+            self.engine._apply_resolved_branch(
                 state=state,
                 effect=program,
                 gate_id="explosion_implosion_t0_attack",
@@ -751,7 +2890,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 choices=choices,
             )
         with self.assertRaisesRegex(ControlEngineError, "other_invocation"):
-            self.engine.apply_resolved_branch(
+            self.engine._apply_resolved_branch(
                 state=state,
                 effect=program,
                 gate_id="explosion_implosion_t0_secondary_saves",
@@ -765,7 +2904,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 selector_context=_selector_context_for("primary", "secondary"),
                 choices=choices,
             )
-        transition = self.engine.apply_resolved_branch(
+        transition = self.engine._apply_resolved_branch(
             state=state,
             effect=program,
             gate_id="explosion_implosion_t0_secondary_saves",
@@ -814,8 +2953,8 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             event for event in schedule.events if event.kind == "save_opportunity"
         )
         membership = _single_selector_membership(program, "target")
-        state = self.engine.new_state()
-        self.engine.apply_resolved_branch(
+        state = self.engine._new_state()
+        self.engine._apply_resolved_branch(
             state=state,
             effect=program,
             gate_id="glacial_spike_t1_attack",
@@ -828,7 +2967,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             selector_membership=membership,
             selector_context=_selector_context_for("target"),
         )
-        transition = self.engine.apply_resolved_branch(
+        transition = self.engine._apply_resolved_branch(
             state=state,
             effect=program,
             gate_id="glacial_spike_t1_save",
@@ -872,8 +3011,8 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             and event.target_id == "target"
         )
         membership = _single_selector_membership(program, "target")
-        state = self.engine.new_state()
-        initial = self.engine.apply_resolved_branch(
+        state = self.engine._new_state()
+        initial = self.engine._apply_resolved_branch(
             state=state,
             effect=program,
             gate_id="mass_levitation_t0_initial_saves",
@@ -891,7 +3030,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             "mass_levitation_initial_lift",
             [component.component_id for component in state.active_components("target")],
         )
-        fall = self.engine.apply_resolved_branch(
+        fall = self.engine._apply_resolved_branch(
             state=state,
             effect=program,
             gate_id="mass_levitation_t0_repeat_saves",
@@ -908,7 +3047,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         self.assertEqual(fall_contribution["primitive_id"], "fall_transition")
         self.assertEqual(fall_contribution["family"], "retained_unpriced")
         self.assertEqual(state.active_components("target"), ())
-        result = self.engine.assemble_result(
+        result = self.engine._assemble_result_legacy(
             effect=program,
             reliability=_reliability(program.effect_id, "target"),
             schedule=schedule,
@@ -945,21 +3084,21 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             target_attack_counts={"target": 0},
         )
         event = next(event for event in schedule.events if event.kind == "hit")
-        resolution = self.engine.resolve_displacement(
+        resolution = self.engine._resolve_displacement(
             component=component,
             target_id="target",
             event_id=event.event_id,
-            epochs=self.engine.new_displacement_epochs(),
+            epochs=self.engine._new_displacement_epochs(),
             displacement_function_id="sqrt_5ft_v1",
             vector_feet=[10, 0, 0],
         )
-        result = self.engine.assemble_result(
+        result = self.engine._assemble_result_legacy(
             effect=program,
             reliability=_reliability(program.effect_id, "target"),
             schedule=schedule,
             area_response_convention="fixed_occupancy_v1",
             displacement_function_id="sqrt_5ft_v1",
-            state=self.engine.new_state(),
+            state=self.engine._new_state(),
             displacement_records=(resolution, resolution),
         ).to_dict()
         [contribution] = result["primitive_contributions"]["denial"]
@@ -986,10 +3125,10 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             event for event in schedule.events
             if event.kind == "target_movement_opportunity"
         ]
-        epochs = self.engine.new_displacement_epochs()
-        movement_state = self.engine.new_state()
+        epochs = self.engine._new_displacement_epochs()
+        movement_state = self.engine._new_state()
         frozen_program = self.engine.program_for("frozen_ground", 0)
-        forced = self.engine.resolve_displacement(
+        forced = self.engine._resolve_displacement(
             component=component,
             target_id="target",
             event_id=hit.event_id,
@@ -997,7 +3136,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             displacement_function_id="sqrt_5ft_v1",
             vector_feet=[10, 0, 0],
         )
-        legal_reset = self.engine.resolve_self_movement_epoch(
+        legal_reset = self.engine._resolve_self_movement_epoch(
             epochs=epochs,
             state=movement_state,
             schedule=schedule,
@@ -1013,7 +3152,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             frozen_program.component("frozen_ground_speed_zero"),
             event_id="fixture:speed_zero:apply",
         )
-        speed_zero = self.engine.resolve_self_movement_epoch(
+        speed_zero = self.engine._resolve_self_movement_epoch(
             epochs=epochs,
             state=movement_state,
             schedule=schedule,
@@ -1032,7 +3171,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             speed_zero["record"]["movement_authority"]["effective_speeds_ft"],
             {"walk": 0},
         )
-        result = self.engine.assemble_result(
+        result = self.engine._assemble_result_legacy(
             effect=program,
             reliability=_reliability(program.effect_id, "target"),
             schedule=schedule,
@@ -1068,7 +3207,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         activation = next(
             event for event in schedule.events if event.kind == "activation"
         )
-        state = self.engine.new_state()
+        state = self.engine._new_state()
         state.apply_component(
             effect_id="fixture_prone",
             component={
@@ -1099,7 +3238,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         )
         before_rejected = state.snapshot()
         with self.assertRaisesRegex(ControlEngineError, "typed movement"):
-            self.engine.resolve_prone_movement(
+            self.engine._resolve_prone_movement(
                 state=state,
                 schedule=schedule,
                 target_id="target",
@@ -1108,7 +3247,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 movement_mode="walk",
             )
         with self.assertRaisesRegex(TimelineError, "resolve exactly once"):
-            self.engine.resolve_prone_movement(
+            self.engine._resolve_prone_movement(
                 state=state,
                 schedule=schedule,
                 target_id="target",
@@ -1117,7 +3256,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 movement_mode="walk",
             )
         self.assertEqual(state.snapshot(), before_rejected)
-        blocked = self.engine.resolve_prone_movement(
+        blocked = self.engine._resolve_prone_movement(
             state=state,
             schedule=schedule,
             target_id="target",
@@ -1145,7 +3284,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             event_id="fixture:prone:speed_zero:end",
             reason="duration_expiry",
         )
-        stood = self.engine.resolve_prone_movement(
+        stood = self.engine._resolve_prone_movement(
             state=state,
             schedule=schedule,
             target_id="target",
@@ -1183,10 +3322,10 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                     event for event in schedule.events
                     if event.kind == event_kind
                 )
-                state = self.engine.new_state()
+                state = self.engine._new_state()
                 for component in program.components:
                     _activate_component(state, program, component)
-                response = self.engine.resolve_area_response(
+                response = self.engine._resolve_area_response(
                     state=state,
                     schedule=schedule,
                     effect=program,
@@ -1239,7 +3378,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         activation = next(
             event for event in schedule.events if event.kind == "activation"
         )
-        state = self.engine.new_state()
+        state = self.engine._new_state()
         state.apply_component(
             effect_id="fixture_prone",
             component={
@@ -1261,7 +3400,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             event_id="fixture:apply",
             invocation_id="fixture_invocation",
         )
-        prone_record = self.engine.resolve_prone_movement(
+        prone_record = self.engine._resolve_prone_movement(
             state=state,
             schedule=schedule,
             target_id="target",
@@ -1271,7 +3410,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         )
         for component in program.components:
             _activate_component(state, program, component)
-        area_record = self.engine.resolve_area_response(
+        area_record = self.engine._resolve_area_response(
             state=state,
             schedule=schedule,
             effect=program,
@@ -1293,7 +3432,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             }],
             base_speeds_ft={"walk": 30},
         )
-        assembled = self.engine.assemble_result(
+        assembled = self.engine._assemble_result_legacy(
             effect=program,
             reliability=_reliability(program.effect_id, "target"),
             schedule=schedule,
@@ -1316,7 +3455,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 ControlEngineError,
                 "closed record shape",
             ):
-                self.engine.assemble_result(
+                self.engine._assemble_result_legacy(
                     effect=program,
                     reliability=_reliability(program.effect_id, "target"),
                     schedule=schedule,
@@ -1332,7 +3471,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                     },
                 )
             with self.assertRaisesRegex(ControlEngineError, "conflicts"):
-                self.engine.assemble_result(
+                self.engine._assemble_result_legacy(
                     effect=program,
                     reliability=_reliability(program.effect_id, "target"),
                     schedule=schedule,
@@ -1355,7 +3494,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                     ControlEngineError,
                     "typed target event",
                 ):
-                    self.engine.assemble_result(
+                    self.engine._assemble_result_legacy(
                         effect=program,
                         reliability=_reliability(
                             program.effect_id,
@@ -1393,7 +3532,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             event for event in schedule.events
             if event.kind == "concentration_end"
         )
-        state = self.engine.new_state()
+        state = self.engine._new_state()
         for component_id in (
             "frozen_ground_difficult_terrain",
             "frozen_ground_speed_zero",
@@ -1408,7 +3547,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
 
         def resolve(distance_to_exit_ft: int) -> dict[str, object]:
             event = next(movement_events)
-            return self.engine.resolve_area_response(
+            return self.engine._resolve_area_response(
                 state=state,
                 schedule=schedule,
                 effect=program,
@@ -1504,7 +3643,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         )
         self.assertEqual(state.active_components("target"), ())
 
-        area_end_state = self.engine.new_state()
+        area_end_state = self.engine._new_state()
         for component_id in (
             "frozen_ground_difficult_terrain",
             "frozen_ground_speed_zero",
@@ -1514,7 +3653,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 program,
                 program.component(component_id),
             )
-        area_ended = self.engine.resolve_area_response(
+        area_ended = self.engine._resolve_area_response(
             state=area_end_state,
             schedule=schedule,
             effect=program,
@@ -1581,7 +3720,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             if event.kind == "target_movement_opportunity"
             and event.target_id == "target"
         )
-        state = self.engine.new_state()
+        state = self.engine._new_state()
         for component_id in (
             "frozen_ground_difficult_terrain",
             "frozen_ground_speed_zero",
@@ -1612,7 +3751,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             ControlEngineError,
             "requires shortest_route_v1",
         ):
-            self.engine.resolve_area_response(
+            self.engine._resolve_area_response(
                 **{
                     **common,
                     "area_response_convention": "fixed_occupancy_v1",
@@ -1667,11 +3806,11 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         for extra, message in invalid_calls:
             with self.subTest(extra=extra):
                 with self.assertRaisesRegex(ControlEngineError, message):
-                    self.engine.resolve_area_response(**common, **extra)
+                    self.engine._resolve_area_response(**common, **extra)
                 self.assertEqual(state.snapshot(), before_snapshot)
                 self.assertEqual(state.audit_ledger, before_audit)
 
-        response = self.engine.resolve_area_response(
+        response = self.engine._resolve_area_response(
             **common,
             event_id=target_exit.event_id,
             post_movement_membership=False,
@@ -1697,7 +3836,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             ],
             ["frozen_ground_speed_zero"],
         )
-        assembled = self.engine.assemble_result(
+        assembled = self.engine._assemble_result_legacy(
             effect=program,
             reliability=_reliability_for_targets(
                 program.effect_id,
@@ -1716,7 +3855,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
 
     def test_ball_lightning_moved_area_cannot_rewrite_entry_policy(self) -> None:
         program = self.engine.program("ball_lightning_t2_control")
-        blocked = self.engine.resolve_compiled_area_entry(
+        blocked = self.engine._resolve_compiled_area_entry(
             effect=program,
             target_ids=("target",),
             selector_membership=_single_selector_membership(program, "target"),
@@ -1733,7 +3872,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             blocked["entry_policy"]["moved_area_counts_as_entry"]
         )
         self.assertEqual(blocked["gate_opportunity_ids"], [])
-        entered = self.engine.resolve_compiled_area_entry(
+        entered = self.engine._resolve_compiled_area_entry(
             effect=program,
             target_ids=("target",),
             selector_membership=_single_selector_membership(program, "target"),
@@ -1788,9 +3927,9 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             if event.kind == "save_opportunity"
         )
         membership = _single_selector_membership(program, "target")
-        state = self.engine.new_state()
+        state = self.engine._new_state()
         invocation_id = f"mass_levitation_t{tier}_invocation"
-        self.engine.apply_resolved_branch(
+        self.engine._apply_resolved_branch(
             state=state,
             effect=program,
             gate_id=f"mass_levitation_t{tier}_initial_saves",
@@ -1804,7 +3943,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             selector_context=_selector_context_for("target"),
         )
         tracker = ConcentrationTracker(save_bonus=0)
-        start = self.engine.start_concentration(
+        start = self.engine._start_concentration(
             state=state,
             tracker=tracker,
             effect=program,
@@ -1837,7 +3976,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         before_audit = list(scenario["state"].audit_ledger)
         before_records = list(scenario["tracker"].records)
         with self.assertRaisesRegex(ControlEngineError, "immediate next"):
-            self.engine.start_concentration(
+            self.engine._start_concentration(
                 state=scenario["state"],
                 tracker=scenario["tracker"],
                 effect=second_program,
@@ -1859,7 +3998,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             scenario["tracker"].active_effect_id,
             scenario["program"].effect_id,
         )
-        replacement = self.engine.start_concentration(
+        replacement = self.engine._start_concentration(
             state=scenario["state"],
             tracker=scenario["tracker"],
             effect=second_program,
@@ -1926,7 +4065,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         before_audit = list(scenario["state"].audit_ledger)
         before_records = list(scenario["tracker"].records)
         with self.assertRaisesRegex(ControlEngineError, "immediate next"):
-            self.engine.check_concentration(
+            self.engine._check_concentration(
                 **{
                     **common,
                     "concentration_end_event_id": (
@@ -1946,12 +4085,12 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             ControlEngineError,
             "required on check failure",
         ):
-            self.engine.check_concentration(
+            self.engine._check_concentration(
                 **missing_end,
                 success_probability=Fraction(1, 2),
             )
         with self.assertRaisesRegex(TimelineError, "zero probability"):
-            self.engine.check_concentration(
+            self.engine._check_concentration(
                 **common,
                 success_probability=Fraction(1),
             )
@@ -1964,7 +4103,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             scenario["program"].effect_id,
         )
 
-        lifecycle = self.engine.check_concentration(
+        lifecycle = self.engine._check_concentration(
             **common,
             success_probability=Fraction(1, 2),
         )
@@ -2007,7 +4146,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             ledger_end["fall_transitions"][0]["source_component_ids"],
             ["mass_levitation_fall"],
         )
-        assembled = self.engine.assemble_result(
+        assembled = self.engine._assemble_result_legacy(
             effect=scenario["program"],
             reliability=_reliability(
                 scenario["program"].effect_id,
@@ -2041,12 +4180,12 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         before_snapshot = scenario["state"].snapshot()
         before_audit = list(scenario["state"].audit_ledger)
         with self.assertRaisesRegex(ControlEngineError, "after concentration startup"):
-            self.engine.check_concentration(
+            self.engine._check_concentration(
                 **common,
                 event_id=scenario["pre_start_damage_event"].event_id,
             )
         with self.assertRaisesRegex(ControlEngineError, "damage_context"):
-            self.engine.check_concentration(
+            self.engine._check_concentration(
                 **common,
                 event_id=scenario["activations"][1].event_id,
             )
@@ -2054,7 +4193,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             ControlEngineError,
             "invalid on check success",
         ):
-            self.engine.check_concentration(
+            self.engine._check_concentration(
                 **common,
                 event_id=scenario["damage_events"][0].event_id,
                 concentration_end_event_id=scenario["end_events"][0].event_id,
@@ -2062,7 +4201,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         self.assertEqual(scenario["tracker"].records, before_records)
         self.assertEqual(scenario["state"].snapshot(), before_snapshot)
         self.assertEqual(scenario["state"].audit_ledger, before_audit)
-        lifecycle = self.engine.check_concentration(
+        lifecycle = self.engine._check_concentration(
             **common,
             event_id=scenario["damage_events"][0].event_id,
         )
@@ -2085,7 +4224,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
     ) -> None:
         scenario = self._mass_levitation_concentration_scenario()
         start = scenario["start"]
-        check = self.engine.check_concentration(
+        check = self.engine._check_concentration(
             state=scenario["state"],
             tracker=scenario["tracker"],
             effect=scenario["program"],
@@ -2100,7 +4239,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             outcome="success",
             success_probability=Fraction(1, 2),
         )
-        reconciliation = self.engine.reconcile_concentration_duration(
+        reconciliation = self.engine._reconcile_concentration_duration(
             state=scenario["state"],
             tracker=scenario["tracker"],
             effect=scenario["program"],
@@ -2137,7 +4276,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             audits[2]["active_components_after"],
             reconciliation["active_components_after"],
         )
-        assembled = self.engine.assemble_result(
+        assembled = self.engine._assemble_result_legacy(
             effect=scenario["program"],
             reliability=_reliability(
                 scenario["program"].effect_id,
@@ -2173,7 +4312,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             (reconciliation, "audit ledger"),
         ):
             with self.assertRaisesRegex(ControlEngineError, message):
-                self.engine.assemble_result(
+                self.engine._assemble_result_legacy(
                     effect=scenario["program"],
                     reliability=_reliability(
                         scenario["program"].effect_id,
@@ -2201,7 +4340,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             ["mass_levitation_fall"],
         )
         with self.assertRaisesRegex(TypeError, "unexpected keyword"):
-            self.engine.start_concentration(
+            self.engine._start_concentration(
                 state=scenario["state"],
                 tracker=scenario["tracker"],
                 effect=scenario["program"],
@@ -2222,7 +4361,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             ControlEngineError,
             "do not match the active compiled slot",
         ):
-            self.engine.end_concentration(
+            self.engine._end_concentration(
                 state=scenario["state"],
                 tracker=scenario["tracker"],
                 effect=scenario["program"],
@@ -2238,7 +4377,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             len(scenario["state"].active_components("target")),
             2,
         )
-        result = self.engine.end_concentration(
+        result = self.engine._end_concentration(
             state=scenario["state"],
             tracker=scenario["tracker"],
             effect=scenario["program"],
@@ -2273,12 +4412,12 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             event for event in schedule.events
             if event.kind == "concentration_end"
         )
-        state = self.engine.new_state()
+        state = self.engine._new_state()
         for component in program.components:
             _activate_component(state, program, component)
         tracker = ConcentrationTracker(save_bonus=0)
         membership = _single_selector_membership(program, "target")
-        start = self.engine.start_concentration(
+        start = self.engine._start_concentration(
             state=state,
             tracker=tracker,
             effect=program,
@@ -2296,7 +4435,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             set(metadata["area_component_ids"]),
             {component.component_id for component in program.components},
         )
-        ended = self.engine.end_concentration(
+        ended = self.engine._end_concentration(
             state=state,
             tracker=tracker,
             effect=program,
@@ -2382,9 +4521,9 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         )
         membership = _single_selector_membership(program, "target")
         selector_context = _selector_context_for("target")
-        state = engine.new_state()
+        state = engine._new_state()
         invocation_id = "one_round_mass_levitation"
-        self.engine.apply_resolved_branch(
+        self.engine._apply_resolved_branch(
             state=state,
             effect=canonical_program,
             gate_id="mass_levitation_t0_initial_saves",
@@ -2400,7 +4539,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         tracker = ConcentrationTracker(save_bonus=0)
         before_snapshot = state.snapshot()
         with self.assertRaisesRegex(ControlEngineError, "loaded authority"):
-            engine.start_concentration(
+            engine._start_concentration(
                 state=state,
                 tracker=tracker,
                 effect=canonical_program,
@@ -2413,7 +4552,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             )
         self.assertEqual(state.snapshot(), before_snapshot)
         self.assertEqual(tracker.records, [])
-        start = engine.start_concentration(
+        start = engine._start_concentration(
             state=state,
             tracker=tracker,
             effect=program,
@@ -2452,7 +4591,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             "invocation_id": scenario["invocation_id"],
             "source_actor_id": "controller",
         }
-        early = engine.reconcile_concentration_duration(
+        early = engine._reconcile_concentration_duration(
             **common,
             event_id="r1:controller:turn:end",
         )
@@ -2471,7 +4610,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             2,
         )
 
-        ended = engine.reconcile_concentration_duration(
+        ended = engine._reconcile_concentration_duration(
             **common,
             event_id="r2:controller:turn:start",
         )
@@ -2483,7 +4622,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         self.assertEqual(scenario["state"].active_components("target"), ())
         self.assertIsNone(scenario["tracker"].active_effect_id)
 
-        assembled = engine.assemble_result(
+        assembled = engine._assemble_result_legacy(
             effect=scenario["program"],
             reliability=_reliability(
                 scenario["program"].effect_id,
@@ -2516,7 +4655,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             {**ended, "ended_component_ids": []},
         ):
             with self.assertRaises(ControlEngineError):
-                engine.assemble_result(
+                engine._assemble_result_legacy(
                     effect=program,
                     reliability=_reliability(program.effect_id, "target"),
                     schedule=schedule,
@@ -2529,7 +4668,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             ControlEngineError,
             "no engine-owned concentration authority context",
         ):
-            engine.reconcile_concentration_duration(
+            engine._reconcile_concentration_duration(
                 **common,
                 event_id="r2:controller:turn:start",
             )
@@ -2552,7 +4691,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             ControlEngineError,
             "beyond the maintained timeline horizon",
         ):
-            self.engine.end_concentration(
+            self.engine._end_concentration(
                 state=scenario["state"],
                 tracker=scenario["tracker"],
                 effect=scenario["program"],
@@ -2596,27 +4735,27 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         self.assertEqual(request.path, magnitude["path"])
         self.assertEqual(request.resolution_order, magnitude["resolution_order"])
         with self.assertRaisesRegex(ControlEngineError, "must supply"):
-            self.engine.resolve_displacement(
+            self.engine._resolve_displacement(
                 component=component,
                 target_id="target",
                 event_id="fixture:displacement",
-                epochs=self.engine.new_displacement_epochs(),
+                epochs=self.engine._new_displacement_epochs(),
                 displacement_function_id="sqrt_5ft_v1",
             )
         with self.assertRaisesRegex(ControlEngineError, "wrong distance"):
-            self.engine.resolve_displacement(
+            self.engine._resolve_displacement(
                 component=component,
                 target_id="target",
                 event_id="fixture:displacement",
-                epochs=self.engine.new_displacement_epochs(),
+                epochs=self.engine._new_displacement_epochs(),
                 displacement_function_id="sqrt_5ft_v1",
                 vector_feet=[5, 0, 0],
             )
-        resolution = self.engine.resolve_displacement(
+        resolution = self.engine._resolve_displacement(
             component=component,
             target_id="target",
             event_id="fixture:displacement",
-            epochs=self.engine.new_displacement_epochs(),
+            epochs=self.engine._new_displacement_epochs(),
             displacement_function_id="sqrt_5ft_v1",
             vector_feet=[10, 0, 0],
         )
@@ -2657,11 +4796,11 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             request.derived_vector_feet,
             (0.0, 0.0, request.distance_feet),
         )
-        resolution = self.engine.resolve_displacement(
+        resolution = self.engine._resolve_displacement(
             component=component,
             target_id="target",
             event_id="fixture:displacement",
-            epochs=self.engine.new_displacement_epochs(),
+            epochs=self.engine._new_displacement_epochs(),
             displacement_function_id="banded_10ft_v1",
         )
         self.assertGreater(
