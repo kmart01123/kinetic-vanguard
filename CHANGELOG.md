@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+### Added
+
+- Added a pinned, provenance-checked SRD 5.2.1 consequence catalog for Blinded, Charmed, Frightened, Incapacitated, Prone, Restrained, and Stunned, plus separate versioned control-engine methodology configuration.
+- Added the shared weight-free Python control consequence, reliability, overlap, state, and timeline engine; its compact validation and 67-case hand-calculated fixture commands cover both initiative schedules, both area-response conventions, and all three displacement functions without producing a Control Value scalar, classification, or optimization.
+
 ### Changed
 
 - Narrowed the maintained benchmark architecture to an explicit damage authority, projection, configuration, comparator, report, README generator, and command boundary.

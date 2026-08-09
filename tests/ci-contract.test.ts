@@ -28,6 +28,7 @@ const stepRuns = (workflow: any): readonly string[] =>
 test("CI exposes a stable main branch gate backed by complete verification", async () => {
   const workflow = (await loadWorkflows()).find(({ name }) => name === "ci.yml")?.workflow;
   assert.ok(workflow, "ci.yml exists");
+  assert.deepEqual(Object.keys(workflow.jobs ?? {}), ["metadata", "verification", "main_branch_gate"], "ordinary CI retains exactly three jobs");
   const verification = workflow.jobs?.verification;
   const gate = workflow.jobs?.main_branch_gate;
 
@@ -36,11 +37,11 @@ test("CI exposes a stable main branch gate backed by complete verification", asy
   assert.equal(verification["continue-on-error"], undefined);
   assert.equal(
     verification.steps?.find((step: any) => step.run === "npm run harness:validate")?.name,
-    "Validate damage authority, Control Authority v2, and control-target inputs"
+    "Validate damage authority, Control Authority v2, control-target inputs, and shared control engine"
   );
   assert.equal(
     verification.steps?.find((step: any) => step.run === "npm run test:harness")?.name,
-    "Test maintained damage, Control Authority v2, and control-target contracts"
+    "Test maintained damage, Control Authority v2, control-target, and shared control-engine contracts"
   );
   const requiredVerificationCommands = [
     "npm run typecheck",
@@ -80,6 +81,24 @@ test("CI exposes a stable main branch gate backed by complete verification", asy
   );
 });
 
+test("control-engine validation entrypoints are exact and reuse the maintained verification job", async () => {
+  const packageJson = JSON.parse(await readFile("package.json", "utf8")) as {
+    readonly scripts: Readonly<Record<string, string>>;
+  };
+  assert.equal(
+    packageJson.scripts["control:engine:validate"],
+    "python3 -m harness.control_engine --validate-only"
+  );
+  assert.equal(
+    packageJson.scripts["control:engine:fixtures"],
+    "python3 -m unittest harness.tests.test_control_engine_fixtures"
+  );
+  assert.equal(
+    packageJson.scripts["harness:validate"],
+    "python3 -m harness.damage_harness --output-dir /tmp/kv-harness-validation --validate-only && python3 -m harness.authority --projection-version 2.1.0 --require-benchmark-ready && python3 -m harness.control_targets && python3 -m harness.control_engine --validate-only"
+  );
+  assert.doesNotMatch(packageJson.scripts["harness:validate"] ?? "", /harness:damage|readme:damage|--fixtures-only/);
+});
 test("maintained automation cannot execute retired Control Reliability or regenerate analytical evidence in ordinary CI", async () => {
   const [workflows, packageJsonSource] = await Promise.all([
     loadWorkflows(),

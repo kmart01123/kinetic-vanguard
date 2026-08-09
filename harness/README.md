@@ -1,6 +1,6 @@
-# Kinetic Vanguard maintained damage harness
+# Kinetic Vanguard maintained computational harnesses
 
-Status: current canonical rules **v14.2.0**; durable numerical-review basis **v14.1.0** (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`), carried forward because PR #46 intentionally changed neither damage-relevant mechanics nor numerical evaluator semantics. No fresh v14.2 full-roster run, numerical certification, or Monte Carlo certification was performed. The maintained evaluator is damage-only. The Control Reliability implementation and its report pipeline were retired from current `main`; the frozen v14.1 release remains the historical source for those results.
+Status: current canonical rules **v14.2.0**; durable numerical-review basis **v14.1.0** (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`), carried forward because PR #46 intentionally changed neither damage-relevant mechanics nor numerical evaluator semantics. No fresh v14.2 full-roster run, numerical certification, or Monte Carlo certification was performed. The maintained damage evaluator remains damage-only. The shared control engine is comparator-neutral mechanical infrastructure and publishes no v14.2 Control Value result. The Control Reliability implementation and its report pipeline were retired from current `main`; the frozen v14.1 release remains the historical source for those results.
 
 `KineticVanguard.yaml` is the sole Kinetic Vanguard rules authority. Python does not parse feature prose or carry parallel Kinetic Vanguard progression, Psi, save, damage, tier, or targeting tables. The TypeScript loader validates the canonical YAML and emits `DamageHarnessProjection`; Python's `DamageAuthorityModel` loads that projection by stable entity ID and fails closed on missing, duplicate, unavailable, or inconsistent mechanics.
 
@@ -19,15 +19,33 @@ The runtime hashes canonical authority, methodology, comparator assumptions, and
 
 Control Authority v2.1 is the complete 35-modeled/14-excluded structured authority for the control-methodology redesign. Its `benchmark_ready` flag is scoped to authority completeness. Combined control-input readiness additionally requires the exact 28-row `data/srd_control_targets.json` supplement and `provenance/srd-control-targets.json` to validate against the unchanged `data/srd_targets.csv` roster; `npm run harness:validate` enforces both boundaries. The supplement records only official movement modes, hover, and relevant nonvisual senses and is loaded through `harness.control_targets`; it is not consumed by `DamageHarnessProjection` or the damage benchmark. This contract does not evaluate, classify, or publish a v14.2 control result.
 
+### Shared control mechanics engine
+
+`harness.control_engine` is the narrow public facade over the one maintained computational runtime for control consequences, gates, overlap, state, and timing. That runtime is Python only: `control_catalog.py`, `control_graph.py`, `control_state.py`, `control_timeline.py`, and `control_engine.py`. TypeScript retains cheap architecture, manifest, and input-presence checks, but has no twin semantic evaluator or engine-parity corpus. The facade consumes the validated Control Authority v2.1 projection, the exact control-target supplement, the pinned seven-condition SRD consequence catalog (Blinded, Charmed, Frightened, Incapacitated, Prone, Restrained, and Stunned), and the separate `config/control-engine.json` methodology configuration.
+
+The consequence catalog, primitive contract, normalization rules, timeline engine, and engine configuration are each version `1.0.0`. Engine results retain the authority projection version and digest, target-supplement digest, consequence-catalog version and digest, primitive-contract version, normalization-rules version, timeline-engine version, `engine_config_version` and `engine_config_digest`, selected initiative and area-response convention IDs and versions, and displacement-function ID and version. The catalog and provenance contain compact SRD-derived mechanics under the repository's existing SRD attribution and license boundary; the configuration and runtime are project-authored methodology and software.
+
+The two initiative schedules are `fighter_first_v1` and `target_before_fighter_v1`. The two area-response conventions are `shortest_route_v1`, which follows the shortest supplied legal exit route and fails closed when required route context is missing, and `fixed_occupancy_v1`, which preserves membership until the effect ends. Every schedule and area convention is version `1.0.0`.
+
+Each target has an explicit horizon-entry partial reaction interval from round-one start until its first turn start. Its initial availability remains unresolved unless supplied by the caller, and a scripted reaction window inside that partial interval fails closed without that fact. Every target-turn start then creates a known-available interval ending immediately before that target's next turn start (or at the round-three horizon end); targeted scripted reaction windows bind to the interval containing their event. Each round ends before the next round starts, with no implicit event window between those boundaries.
+
+The three version `1.0.0` displacement functions operate on `u = net displacement feet / 5`: `sqrt_5ft_v1` uses `sqrt(u)`, `log2_5ft_v1` uses `log2(1 + u)`, and `banded_10ft_v1` uses `0` at zero feet and otherwise `ceil(distance feet / 10)`. Contributions use only increases in the maximum net displacement within a movement epoch, so reversals and circles cannot farm path length. No function is selected as a permanent headline default.
+
+Outputs remain sparse denial, enablement, and retained/unpriced primitive vectors with deterministic transition and suppression ledgers. The engine assigns no final primitive weights, produces no combined Control Value scalar, applies no HOT/IDEAL/COLD/SENSITIVE classification, and performs no action, tier, target, resource, comparator, ranking, or optimization decision. It neither imports nor participates in the damage planner, evaluator, configuration, comparator packages, reports, or README evidence generation.
+
 ## Commands
 
 Install the checked-in Node dependencies before running Python because the authority adapter invokes the TypeScript projection:
 
 ```text
 npm ci
+npm run control:engine:validate
+npm run control:engine:fixtures
 npm run harness:validate
 npm run test:harness
 ```
+
+`control:engine:validate` validates the catalog, provenance, configuration, authority compilation, and public facade while emitting only a compact summary. `control:engine:fixtures` runs the reviewed hand-calculated corpus across both initiative schedules, both area conventions, and all three displacement functions without evaluating the complete target roster. `harness:validate` includes the same cheap engine validation alongside the maintained damage, authority, and control-target checks.
 
 Tiny fixed-input damage smoke run:
 
