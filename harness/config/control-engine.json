@@ -1,0 +1,105 @@
+{
+  "format_version": 1,
+  "config_version": "1.0.0",
+  "primitive_contract_version": "1.0.0",
+  "normalization_rules_version": "1.0.0",
+  "timeline_engine_version": "1.0.0",
+  "horizon_rounds": 3,
+  "initiative_schedules": [
+    {
+      "schedule_id": "fighter_first_v1",
+      "version": "1.0.0",
+      "round_events": [
+        "controller_turn_start",
+        "scripted_controller_events_and_opportunities_in_supplied_legal_order",
+        "controller_turn_end",
+        "target_turns_in_supplied_stable_order"
+      ],
+      "target_turn_events": [
+        "target_turn_start",
+        "repeat_saves_and_start_turn_triggers",
+        "target_active_turn_opportunity",
+        "target_attack_opportunities_in_supplied_order",
+        "target_movement_standing_area_response_opportunity",
+        "target_turn_end"
+      ],
+      "reaction_windows": [
+        "only_explicitly_scripted_reaction_opportunities",
+        "reaction_availability_resets_at_reactor_turn_start"
+      ],
+      "round_boundary": "after_last_target_turn_end"
+    },
+    {
+      "schedule_id": "target_before_fighter_v1",
+      "version": "1.0.0",
+      "round_events": [
+        "target_turns_in_supplied_stable_order",
+        "controller_turn_start",
+        "scripted_controller_events_and_opportunities_in_supplied_legal_order",
+        "controller_turn_end"
+      ],
+      "target_turn_events": [
+        "target_turn_start",
+        "repeat_saves_and_start_turn_triggers",
+        "target_active_turn_opportunity",
+        "target_attack_opportunities_in_supplied_order",
+        "target_movement_standing_area_response_opportunity",
+        "target_turn_end"
+      ],
+      "reaction_windows": [
+        "only_explicitly_scripted_reaction_opportunities",
+        "reaction_availability_resets_at_reactor_turn_start"
+      ],
+      "round_boundary": "after_controller_turn_end"
+    }
+  ],
+  "area_response_conventions": [
+    {
+      "area_response_id": "shortest_route_v1",
+      "version": "1.0.0",
+      "policy": "first_legal_movement_opportunity_minimizes_future_primitive_exposure",
+      "required_route_context": [
+        "current_membership",
+        "distance_to_exit_by_legal_movement_mode",
+        "route_compatibility_by_movement_mode",
+        "movement_cost_multiplier_by_route",
+        "airborne_grounded_or_in_liquid_state"
+      ],
+      "route_progress": "carry_deterministic_remaining_distance_until_exit",
+      "exit_effect": "end_while_in_area_components_only",
+      "missing_context": "error"
+    },
+    {
+      "area_response_id": "fixed_occupancy_v1",
+      "version": "1.0.0",
+      "policy": "retain_membership_until_effect_end",
+      "required_route_context": [],
+      "route_progress": "none",
+      "exit_effect": "effect_end_controls_membership",
+      "missing_context": "not_applicable"
+    }
+  ],
+  "displacement_functions": [
+    {
+      "function_id": "sqrt_5ft_v1",
+      "version": "1.0.0",
+      "input_unit": "feet",
+      "grid_unit_feet": 5,
+      "formula": "sqrt(distance_feet / 5)"
+    },
+    {
+      "function_id": "log2_5ft_v1",
+      "version": "1.0.0",
+      "input_unit": "feet",
+      "grid_unit_feet": 5,
+      "formula": "log2(1 + distance_feet / 5)"
+    },
+    {
+      "function_id": "banded_10ft_v1",
+      "version": "1.0.0",
+      "input_unit": "feet",
+      "grid_unit_feet": 5,
+      "formula": "0 if distance_feet == 0 else ceil(distance_feet / 10)"
+    }
+  ]
+}
