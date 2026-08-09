@@ -12,6 +12,7 @@ from typing import Any, Mapping, Sequence
 
 from harness.control_catalog import DIAGNOSTIC_FAMILIES, SenseQueryResult
 from harness.control_engine import (
+    AreaEntryTransition,
     AreaGeometryUpdate,
     AreaRouteGeometry,
     ControlEngine,
@@ -887,6 +888,206 @@ class ControlExecutionSessionTests(unittest.TestCase):
         rows = session.area_route_snapshot(target_id)
         self.assertEqual(len(rows), 1)
         return dict(rows[0])
+
+    def _frozen_entry_scenario(
+        self,
+        *,
+        engine: ControlEngine | None = None,
+        initiative: str = "fighter_first_v1",
+        target_ids: tuple[str, ...] = ("target",),
+        entry_specs_by_target: (
+            Mapping[str, Sequence[tuple[int, str, str]]] | None
+        ) = None,
+        area_response_convention: str = "shortest_route_v1",
+        routes_by_identity: (
+            Mapping[tuple[str, int], Sequence[AreaRouteGeometry]] | None
+        ) = None,
+        controller_events_by_round: (
+            Mapping[int, Sequence[Mapping[str, Any]]] | None
+        ) = None,
+        include_transitions: bool = True,
+    ) -> dict[str, Any]:
+        """Build one scenario-bound Frozen Ground entry script.
+
+        Each entry spec is ``(round, target phase, cause)``.  The returned
+        construction arguments are intentionally exposed so negative tests can
+        replace one bound value before the session exists.
+        """
+
+        selected_engine = self.engine if engine is None else engine
+        program = selected_engine.program("frozen_ground_t0_control")
+        specs = {
+            target_id: tuple(
+                (entry_specs_by_target or {}).get(
+                    target_id,
+                    ((1, "before_movement", "forced_movement"),),
+                )
+            )
+            for target_id in target_ids
+        }
+        target_events: dict[str, dict[int, list[dict[str, Any]]]] = {
+            target_id: {} for target_id in target_ids
+        }
+        for target_id, target_specs in specs.items():
+            for round_number, phase, _cause in target_specs:
+                target_events[target_id].setdefault(round_number, []).append({
+                    "kind": "entry",
+                    "phase": phase,
+                })
+        schedule = selected_engine.schedule(
+            initiative,
+            target_ids,
+            controller_events_by_round=(
+                {1: [{"kind": "activation"}]}
+                if controller_events_by_round is None
+                else controller_events_by_round
+            ),
+            target_events_by_round=target_events,
+            target_attack_counts={
+                target_id: [0, 0, 0] for target_id in target_ids
+            },
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        entries_by_target = {
+            target_id: tuple(
+                event for event in schedule.events
+                if event.kind == "entry" and event.target_id == target_id
+            )
+            for target_id in target_ids
+        }
+        entry_gate = program.gate("frozen_ground_t0_entry_save")
+        reliability_events: list[ReliabilityEvent] = []
+        operation_inputs: dict[str, dict[str, Any]] = {}
+        transitions: list[AreaEntryTransition] = []
+        route_rows = dict(routes_by_identity or {})
+        for target_id in target_ids:
+            target_entries = entries_by_target[target_id]
+            if len(target_entries) != len(specs[target_id]):
+                raise AssertionError("entry specs did not bind one event each")
+            for index, (event, spec) in enumerate(
+                zip(target_entries, specs[target_id], strict=True),
+                start=1,
+            ):
+                _round_number, _phase, cause = spec
+                reliability_event = ReliabilityEvent.create(
+                    f"frozen_ground_{target_id}_entry_{index}",
+                    entry_gate.trigger,
+                    target_ids=(target_id,),
+                    gate_ids=(entry_gate.gate_id,),
+                    window_id=event.event_id,
+                )
+                reliability_events.append(reliability_event)
+                operation_inputs[event.event_id] = {
+                    "reliability_event_ids": [reliability_event.event_id],
+                }
+                if include_transitions:
+                    routes = tuple(route_rows.get(
+                        (target_id, index),
+                        (
+                            self._route_geometry(
+                                f"{target_id}_entry_{index}_exit",
+                                distance=5,
+                            ),
+                        )
+                        if area_response_convention == "shortest_route_v1"
+                        else (),
+                    ))
+                    transitions.append(AreaEntryTransition(
+                        effect_id=program.effect_id,
+                        area_id="frozen_ground_cylinder",
+                        target_id=target_id,
+                        event_id=event.event_id,
+                        event_sequence=event.sequence,
+                        cause=cause,
+                        turn_id=str(event.turn_id),
+                        routes=routes,
+                        moved_area_counts_as_entry=False,
+                    ))
+        target_mechanics: dict[str, dict[str, Any]] = {}
+        for target_id in target_ids:
+            first_routes = tuple(route_rows.get(
+                (target_id, 1),
+                (self._route_geometry(
+                    f"{target_id}_entry_1_exit",
+                    distance=5,
+                ),),
+            ))
+            route_modes = tuple(dict.fromkeys(
+                route.mode for route in first_routes
+            )) or ("walk",)
+            mechanics: dict[str, Any] = {
+                "base_speeds_ft": {mode: 30 for mode in route_modes},
+                "movement_mode": route_modes[0],
+            }
+            if (
+                area_response_convention == "shortest_route_v1"
+                or include_transitions
+            ):
+                mechanics["area_membership"] = False
+            target_mechanics[target_id] = mechanics
+        session_kwargs = {
+            "targets": tuple(
+                ReliabilityTarget(
+                    target_id,
+                    15,
+                    {"constitution": 2, "dexterity": 2},
+                )
+                for target_id in target_ids
+            ),
+            "selector_membership": {
+                "frozen_ground_area_targets": target_ids,
+            },
+            "selector_context": _selector_context_for(*target_ids),
+            "schedule": schedule,
+            "target_mechanics": target_mechanics,
+            "area_response_convention": area_response_convention,
+            "displacement_function_id": "sqrt_5ft_v1",
+            "probability_context": ProbabilityContext(save_dc=15),
+            "reliability_events": tuple(reliability_events),
+            "operation_inputs_by_event": operation_inputs,
+            "concentration_save_bonus": 2,
+            "area_entry_transitions": tuple(transitions),
+        }
+        return {
+            "engine": selected_engine,
+            "program": program,
+            "schedule": schedule,
+            "activation": activation,
+            "entries_by_target": entries_by_target,
+            "transitions": tuple(transitions),
+            "session_kwargs": session_kwargs,
+        }
+
+    def _frozen_entry_session(self, **kwargs: Any):
+        scenario = self._frozen_entry_scenario(**kwargs)
+        session = scenario["engine"].execution_session(
+            scenario["program"],
+            **scenario["session_kwargs"],
+        )
+        return session, scenario
+
+    def _resolve_bound_frozen_entry(
+        self,
+        session,
+        event,
+        *,
+        target_id: str = "target",
+        outcome: str = "save_success",
+    ):
+        session.advance_to(event.event_id)
+        entry_record = session.resolve_area_entry(target_id=target_id)
+        payload = entry_record.to_dict()["payload"]
+        gate_record = None
+        if payload["gate_requirement_ids"]:
+            gate_record = session.apply_branch(
+                gate_id="frozen_ground_t0_entry_save",
+                outcome=outcome,
+                target_id=target_id,
+            )
+        session.close_event()
+        return entry_record, gate_record
 
     @staticmethod
     def _movement_event(schedule, *, round_number: int, target_id: str = "target"):
@@ -3553,7 +3754,9 @@ class ControlExecutionSessionTests(unittest.TestCase):
             {"numerator": 25, "denominator": 2},
         )
 
-    def test_area_route_14_fixed_occupancy_creates_no_route_state(self) -> None:
+    def test_area_route_14_fixed_occupancy_creates_membership_only_state(
+        self,
+    ) -> None:
         program = self.engine.program("ball_lightning_t2_control")
         schedule = self.engine.schedule(
             "fighter_first_v1",
@@ -3578,14 +3781,19 @@ class ControlExecutionSessionTests(unittest.TestCase):
             probability_context=ProbabilityContext(save_dc=15),
             concentration_save_bonus=2,
         )
-        self.assertEqual(session.area_route_snapshot(), ())
+        [initial_membership] = session.area_route_snapshot()
+        self.assertTrue(initial_membership["membership"])
+        self.assertEqual(initial_membership["routes"], [])
+        self.assertIsNone(initial_membership["selected_route_id"])
+        self.assertIsNone(initial_membership["remaining_distance_ft"])
         session.advance_to(activation.event_id)
         session.start_concentration()
         session.close_event()
         session.complete()
         result = session.result().to_dict()
         self.assertEqual(result["area_route_transitions"], [])
-        self.assertEqual(result["final_area_route_states"], [])
+        [final_membership] = result["final_area_route_states"]
+        self.assertEqual(final_membership, initial_membership)
 
     def test_area_route_15_initiative_conventions_preserve_response_progress(self) -> None:
         observed: dict[str, list[tuple[bool, int | float]]] = {}
@@ -4194,6 +4402,1251 @@ class ControlExecutionSessionTests(unittest.TestCase):
                     "Area-owned root-gate execution",
                 ):
                     session.result()
+
+    def test_area_entry_transition_01_forced_entry_attests_membership_then_gate(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session()
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        session.advance_to(entry.event_id)
+        self.assertFalse(self._area_route_row(session)["membership"])
+        transition = session.resolve_area_entry(target_id="target")
+        payload = transition.to_dict()["payload"]
+        self.assertEqual(payload["entry_cause"], "forced_movement")
+        self.assertFalse(payload["membership_before"])
+        self.assertTrue(payload["membership_after"])
+        self.assertTrue(payload["frequency_permitted"])
+        self.assertTrue(payload["triggered"])
+        self.assertEqual(
+            payload["gate_requirement_ids"],
+            ["frozen_ground_t0_entry_save"],
+        )
+        gate = session.apply_branch(
+            gate_id="frozen_ground_t0_entry_save",
+            outcome="save_success",
+            target_id="target",
+        )
+        self.assertEqual(
+            gate.to_dict()["payload"]["gate_id"],
+            "frozen_ground_t0_entry_save",
+        )
+        self.assertTrue(self._area_route_row(session)["membership"])
+        session.close_event()
+
+        with self.subTest(boundary="dormant_ambient_before_later_entry"):
+            delayed_session, delayed_scenario = self._frozen_entry_session(
+                entry_specs_by_target={
+                    "target": ((1, "after_movement", "forced_movement"),),
+                },
+            )
+            self._activate_frozen_ground(
+                delayed_session,
+                delayed_scenario["activation"],
+            )
+            movement = self._movement_event(
+                delayed_scenario["schedule"],
+                round_number=1,
+            )
+            delayed_session.advance_to(movement.event_id)
+            delayed_session.close_event()
+            [delayed_entry] = delayed_scenario["entries_by_target"]["target"]
+            delayed_transition, delayed_gate = (
+                self._resolve_bound_frozen_entry(
+                    delayed_session,
+                    delayed_entry,
+                )
+            )
+            delayed_payload = delayed_transition.to_dict()["payload"]
+            self.assertIn(
+                "frozen_ground_difficult_terrain",
+                delayed_payload["retained_ambient_component_ids"],
+            )
+            self.assertEqual(
+                delayed_payload["restored_ambient_component_ids"],
+                [],
+            )
+            self.assertIsNotNone(delayed_gate)
+
+    def test_area_entry_transition_02_failed_save_applies_exact_duration(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session()
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        _transition, gate = self._resolve_bound_frozen_entry(
+            session,
+            entry,
+            outcome="save_failure",
+        )
+        self.assertIsNotNone(gate)
+        [speed_zero] = [
+            row for row in session.state_snapshot("target")
+            if row["component_id"] == "frozen_ground_speed_zero"
+        ]
+        target_turn_end = next(
+            event for event in scenario["schedule"].events
+            if event.kind == "target_turn_end"
+            and event.turn_id == entry.turn_id
+        )
+        self.assertEqual(speed_zero["expiry_event_id"], target_turn_end.event_id)
+        self.assertEqual(
+            speed_zero["duration"],
+            {
+                "anchor": "end_turn",
+                "kind": "relative",
+                "offset_turns": 0,
+                "owner": "triggering_turn",
+            },
+        )
+
+    def test_area_entry_transition_03_success_keeps_membership_without_control(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session()
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        session.advance_to(entry.event_id)
+        transition = session.resolve_area_entry(target_id="target")
+        state_before_save = session.state_snapshot("target")
+        session.apply_branch(
+            gate_id="frozen_ground_t0_entry_save",
+            outcome="save_success",
+            target_id="target",
+        )
+        self.assertEqual(session.state_snapshot("target"), state_before_save)
+        self.assertNotIn(
+            "frozen_ground_speed_zero",
+            {row["component_id"] for row in state_before_save},
+        )
+        self.assertTrue(
+            transition.to_dict()["payload"]["membership_after"]
+        )
+        self.assertTrue(self._area_route_row(session)["membership"])
+        session.close_event()
+
+    def test_area_entry_transition_04_gate_before_transition_is_atomic_rejection(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session()
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        session.advance_to(entry.event_id)
+        requirement = "branch:frozen_ground_t0_entry_save:target"
+        self.assertIn(requirement, session._current_required_operations)
+        before = (
+            session.state_snapshot("target"),
+            session.area_route_snapshot("target"),
+            frozenset(session._area_entry_trigger_history),
+            tuple(session._area_route_transitions),
+            json.dumps(session._area_records, sort_keys=True),
+            session._operation_sequence,
+            frozenset(session._current_required_operations),
+            tuple(
+                (event_id, tuple(sorted(operations)))
+                for event_id, operations in sorted(
+                    session._future_required_operations.items()
+                )
+            ),
+            session.issued_records(),
+        )
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"entry transition|false-to-true",
+        ):
+            session.apply_branch(
+                gate_id="frozen_ground_t0_entry_save",
+                outcome="save_success",
+                target_id="target",
+            )
+        self.assertEqual(
+            (
+                session.state_snapshot("target"),
+                session.area_route_snapshot("target"),
+                frozenset(session._area_entry_trigger_history),
+                tuple(session._area_route_transitions),
+                json.dumps(session._area_records, sort_keys=True),
+                session._operation_sequence,
+                frozenset(session._current_required_operations),
+                tuple(
+                    (event_id, tuple(sorted(operations)))
+                    for event_id, operations in sorted(
+                        session._future_required_operations.items()
+                    )
+                ),
+                session.issued_records(),
+            ),
+            before,
+        )
+
+    def test_area_entry_transition_05_gate_without_bound_transition_is_rejected(
+        self,
+    ) -> None:
+        scenario = self._frozen_entry_scenario(include_transitions=False)
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"AreaEntryTransition|bound.*entry transition|entry gate",
+        ):
+            scenario["engine"].execution_session(
+                scenario["program"],
+                **scenario["session_kwargs"],
+            )
+
+        with self.subTest(boundary="inactive_area_entry_is_inert"):
+            inactive = self._frozen_entry_scenario(
+                controller_events_by_round={
+                    1: (
+                        {"kind": "activation"},
+                        {"kind": "concentration_end"},
+                    ),
+                },
+            )
+            end_event = next(
+                event for event in inactive["schedule"].events
+                if event.kind == "concentration_end"
+            )
+            inactive["session_kwargs"]["operation_inputs_by_event"][
+                end_event.event_id
+            ] = {"concentration_end_reason": "voluntary_end"}
+            inactive_session = inactive["engine"].execution_session(
+                inactive["program"],
+                **inactive["session_kwargs"],
+            )
+            self._activate_frozen_ground(
+                inactive_session,
+                inactive["activation"],
+            )
+            inactive_session.advance_to(end_event.event_id)
+            inactive_session.end_concentration()
+            inactive_session.close_event()
+            before_entry = (
+                inactive_session.state_snapshot("target"),
+                inactive_session.area_route_snapshot("target"),
+                frozenset(inactive_session._area_entry_trigger_history),
+                inactive_session.issued_records(),
+            )
+            [entry] = inactive["entries_by_target"]["target"]
+            inactive_session.advance_to(entry.event_id)
+            self.assertNotIn(
+                "area_entry:target",
+                inactive_session._current_required_operations,
+            )
+            self.assertNotIn(
+                "branch:frozen_ground_t0_entry_save:target",
+                inactive_session._current_required_operations,
+            )
+            self.assertEqual(
+                (
+                    inactive_session.state_snapshot("target"),
+                    inactive_session.area_route_snapshot("target"),
+                    frozenset(inactive_session._area_entry_trigger_history),
+                    inactive_session.issued_records(),
+                ),
+                before_entry,
+            )
+            inactive_session.close_event()
+            inactive_session.complete()
+            inactive_session.result()
+
+    def test_area_entry_transition_06_raw_membership_facts_are_not_accepted(
+        self,
+    ) -> None:
+        with self.subTest(boundary="event_inputs"):
+            scenario = self._frozen_entry_scenario()
+            [entry] = scenario["entries_by_target"]["target"]
+            inputs = scenario["session_kwargs"]["operation_inputs_by_event"]
+            inputs[entry.event_id].update({
+                "was_member": True,
+                "is_member": False,
+                "prior_trigger_turn_ids": [entry.turn_id],
+            })
+            with self.assertRaisesRegex(
+                ControlEngineError,
+                r"was_member|is_member|prior_trigger_turn_ids|raw.*membership",
+            ):
+                scenario["engine"].execution_session(
+                    scenario["program"],
+                    **scenario["session_kwargs"],
+                )
+
+        for key, value in (
+            ("was_member", True),
+            ("is_member_by_event", {"entry": False}),
+            ("prior_trigger_turn_ids", ["foreign:turn"]),
+            ("caused_by_area_movement_by_event", {"entry": True}),
+        ):
+            with self.subTest(boundary="target_mechanics", key=key):
+                scenario = self._frozen_entry_scenario()
+                scenario["session_kwargs"]["target_mechanics"]["target"][
+                    key
+                ] = value
+                with self.assertRaisesRegex(
+                    ControlEngineError,
+                    r"caller-authored area-entry|AreaEntryTransition",
+                ):
+                    scenario["engine"].execution_session(
+                        scenario["program"],
+                        **scenario["session_kwargs"],
+                    )
+
+        with self.subTest(boundary="fixed_occupancy_raw_route_geometry"):
+            scenario = self._frozen_entry_scenario(
+                area_response_convention="fixed_occupancy_v1",
+            )
+            [entry] = scenario["entries_by_target"]["target"]
+            scenario["session_kwargs"]["operation_inputs_by_event"][
+                entry.event_id
+            ]["area_routes"] = [{
+                "route_id": "caller_reset",
+                "mode": "walk",
+                "distance_to_exit_ft": 5,
+                "compatible": True,
+                "movement_cost_multiplier": 1,
+                "environment": "grounded",
+            }]
+            with self.assertRaisesRegex(
+                ControlEngineError,
+                r"raw route overrides|AreaGeometryUpdate|geometry",
+            ):
+                scenario["engine"].execution_session(
+                    scenario["program"],
+                    **scenario["session_kwargs"],
+                )
+
+    def test_area_entry_transition_07_first_entry_triggers_exactly_once(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session()
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        session.advance_to(entry.event_id)
+        transition = session.resolve_area_entry(target_id="target")
+        payload = transition.to_dict()["payload"]
+        self.assertEqual(
+            payload["frequency_decision"],
+            "first_qualifying_entry_this_turn",
+        )
+        self.assertEqual(payload["entry_policy"]["frequency"], "once_per_turn")
+        self.assertTrue(payload["frequency_permitted"])
+        self.assertEqual(len(payload["gate_requirement_ids"]), 1)
+        session.apply_branch(
+            gate_id="frozen_ground_t0_entry_save",
+            outcome="save_success",
+            target_id="target",
+        )
+        before = session.issued_records()
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"already consumed|scenario-bound|entry transition",
+        ):
+            session.resolve_area_entry(target_id="target")
+        self.assertEqual(session.issued_records(), before)
+        self.assertEqual(
+            len([
+                record for record in session.issued_records()
+                if record.record_kind == "area_entry"
+                and record.event_id == entry.event_id
+            ]),
+            1,
+        )
+        session.close_event()
+
+    def test_area_entry_transition_08_same_turn_exit_reentry_does_not_retrigger(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session(
+            entry_specs_by_target={
+                "target": (
+                    (1, "before_movement", "ordinary_movement"),
+                    (1, "after_movement", "ordinary_movement"),
+                ),
+            },
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        first_entry, second_entry = scenario["entries_by_target"]["target"]
+        first_transition, first_gate = self._resolve_bound_frozen_entry(
+            session,
+            first_entry,
+        )
+        self.assertIsNotNone(first_gate)
+        movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        session.advance_to(movement.event_id)
+        [movement_record] = session.resolve_movement_response(target_id="target")
+        self.assertTrue(movement_record.to_dict()["payload"]["exited"])
+        session.close_event()
+        second_transition, second_gate = self._resolve_bound_frozen_entry(
+            session,
+            second_entry,
+        )
+        first_payload = first_transition.to_dict()["payload"]
+        second_payload = second_transition.to_dict()["payload"]
+        self.assertEqual(first_payload["turn_id"], second_payload["turn_id"])
+        self.assertTrue(first_payload["frequency_permitted"])
+        self.assertFalse(second_payload["frequency_permitted"])
+        self.assertFalse(second_payload["triggered"])
+        self.assertEqual(second_payload["gate_requirement_ids"], [])
+        self.assertIsNone(second_gate)
+        self.assertTrue(self._area_route_row(session)["membership"])
+        self.assertEqual(
+            len([
+                record for record in session.issued_records()
+                if record.record_kind == "branch_transition"
+                and record.to_dict()["payload"].get("gate_id")
+                == "frozen_ground_t0_entry_save"
+            ]),
+            1,
+        )
+
+    def test_area_entry_transition_09_later_turn_reentry_may_trigger_again(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session(
+            entry_specs_by_target={
+                "target": (
+                    (1, "before_movement", "ordinary_movement"),
+                    (2, "before_movement", "ordinary_movement"),
+                ),
+            },
+            routes_by_identity={
+                ("target", 1): (
+                    self._route_geometry("first_round_exit", distance=5),
+                ),
+                ("target", 2): (
+                    self._route_geometry("second_round_exit", distance=45),
+                ),
+            },
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        first_entry, second_entry = scenario["entries_by_target"]["target"]
+        first_transition, first_gate = self._resolve_bound_frozen_entry(
+            session,
+            first_entry,
+        )
+        self.assertIsNotNone(first_gate)
+        first_movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        session.advance_to(first_movement.event_id)
+        [exit_record] = session.resolve_movement_response(target_id="target")
+        self.assertTrue(exit_record.to_dict()["payload"]["exited"])
+        session.close_event()
+        second_transition, second_gate = self._resolve_bound_frozen_entry(
+            session,
+            second_entry,
+        )
+        first_payload = first_transition.to_dict()["payload"]
+        second_payload = second_transition.to_dict()["payload"]
+        self.assertNotEqual(first_payload["turn_id"], second_payload["turn_id"])
+        self.assertTrue(second_payload["frequency_permitted"])
+        self.assertTrue(second_payload["triggered"])
+        self.assertIsNotNone(second_gate)
+        self.assertEqual(
+            second_payload["restored_ambient_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertIn(
+            "frozen_ground_difficult_terrain",
+            {
+                row["component_id"]
+                for row in session.state_snapshot("target")
+            },
+        )
+        second_movement = self._movement_event(
+            scenario["schedule"],
+            round_number=2,
+        )
+        session.advance_to(second_movement.event_id)
+        [movement_record] = session.resolve_movement_response(
+            target_id="target",
+        )
+        selected_route = movement_record.to_dict()["payload"]["selected_route"]
+        self.assertEqual(selected_route["movement_cost_multiplier"], 2)
+        self.assertEqual(selected_route["distance_before_ft"], 45)
+        self.assertEqual(selected_route["progress_ft"], 15)
+        self.assertEqual(selected_route["remaining_distance_ft"], 30)
+
+    def test_area_entry_transition_10_installed_route_is_consumed_later(
+        self,
+    ) -> None:
+        invalid = self._frozen_entry_scenario(
+            routes_by_identity={
+                ("target", 1): (
+                    self._route_geometry("walk_exit", distance=5),
+                    self._route_geometry(
+                        "unbound_flight_exit",
+                        distance=5,
+                        mode="fly",
+                        environment="airborne",
+                    ),
+                ),
+            },
+        )
+        invalid["session_kwargs"]["target_mechanics"]["target"][
+            "base_speeds_ft"
+        ] = {"walk": 30}
+        with self.subTest(boundary="unbound_route_mode"):
+            with self.assertRaisesRegex(
+                ControlEngineError,
+                r"without adding an unbound mode|route geometry",
+            ):
+                invalid["engine"].execution_session(
+                    invalid["program"],
+                    **invalid["session_kwargs"],
+                )
+
+        route = self._route_geometry(
+            "forced_flight_exit",
+            distance=45,
+            mode="fly",
+            multiplier=2,
+            environment="airborne",
+        )
+        session, scenario = self._frozen_entry_session(
+            routes_by_identity={("target", 1): (route,)},
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        transition, gate = self._resolve_bound_frozen_entry(session, entry)
+        self.assertIsNotNone(gate)
+        new_state = transition.to_dict()["payload"]["new_route_state"]
+        [installed] = new_state["routes"]
+        self.assertEqual(installed["route_id"], "forced_flight_exit")
+        self.assertEqual(
+            installed["distance_to_exit_ft"],
+            {"numerator": 45, "denominator": 1},
+        )
+        self.assertEqual(installed["mode"], "fly")
+        self.assertEqual(installed["environment"], "airborne")
+        self.assertEqual(
+            installed["movement_cost_multiplier"],
+            {"numerator": 2, "denominator": 1},
+        )
+        self.assertEqual(new_state["last_update_event_id"], entry.event_id)
+        self.assertEqual(new_state["last_update_event_sequence"], entry.sequence)
+        movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        session.advance_to(movement.event_id)
+        [response] = session.resolve_movement_response(target_id="target")
+        selected = response.to_dict()["payload"]["selected_route"]
+        self.assertEqual(selected["route_id"], "forced_flight_exit")
+        self.assertEqual(selected["mode"], "fly")
+        self.assertEqual(selected["environment"], "airborne")
+        self.assertEqual(selected["distance_before_ft"], 45)
+        carried = self._area_route_row(session)
+        self.assertEqual(carried["selected_route_id"], "forced_flight_exit")
+        self.assertEqual(
+            carried["remaining_distance_ft"],
+            selected["remaining_distance_ft"],
+        )
+
+    def test_area_entry_transition_11_stale_foreign_and_rewritten_are_rejected(
+        self,
+    ) -> None:
+        stale_scenario = self._frozen_entry_scenario()
+        [transition] = stale_scenario["transitions"]
+        stale_scenario["session_kwargs"]["area_entry_transitions"] = (
+            replace(transition, event_sequence=transition.event_sequence + 1),
+        )
+        with self.subTest(boundary="stale_sequence"):
+            with self.assertRaisesRegex(
+                ControlEngineError,
+                r"stale|event sequence",
+            ):
+                stale_scenario["engine"].execution_session(
+                    stale_scenario["program"],
+                    **stale_scenario["session_kwargs"],
+                )
+
+        live_entries: list[tuple[Any, Any]] = []
+        for _index in range(2):
+            session, scenario = self._frozen_entry_session()
+            self._activate_frozen_ground(session, scenario["activation"])
+            [entry] = scenario["entries_by_target"]["target"]
+            session.advance_to(entry.event_id)
+            live_entries.append((
+                session,
+                session.resolve_area_entry(target_id="target"),
+            ))
+        local_session, local_entry = live_entries[0]
+        _foreign_session, foreign_entry = live_entries[1]
+        local_session._issued_records[local_entry.operation_sequence - 1] = (
+            foreign_entry
+        )
+        live_before = (
+            local_session.state_snapshot("target"),
+            local_session.area_route_snapshot("target"),
+            local_session._operation_sequence,
+            frozenset(local_session._current_required_operations),
+        )
+        with self.subTest(boundary="foreign_live_gate_attestation"):
+            with self.assertRaisesRegex(
+                ControlEngineError,
+                r"foreign, replaced|local issuance attestation",
+            ):
+                local_session.apply_branch(
+                    gate_id="frozen_ground_t0_entry_save",
+                    outcome="save_success",
+                    target_id="target",
+                )
+        self.assertEqual(
+            (
+                local_session.state_snapshot("target"),
+                local_session.area_route_snapshot("target"),
+                local_session._operation_sequence,
+                frozenset(local_session._current_required_operations),
+            ),
+            live_before,
+        )
+
+        completed: list[tuple[Any, Any]] = []
+        for _index in range(2):
+            session, scenario = self._frozen_entry_session()
+            self._activate_frozen_ground(session, scenario["activation"])
+            [entry] = scenario["entries_by_target"]["target"]
+            entry_record, _gate = self._resolve_bound_frozen_entry(session, entry)
+            movement = self._movement_event(
+                scenario["schedule"],
+                round_number=1,
+            )
+            session.advance_to(movement.event_id)
+            session.resolve_movement_response(target_id="target")
+            session.close_event()
+            session.complete()
+            completed.append((session, entry_record))
+        first_session, first_entry = completed[0]
+        _foreign_session, foreign_entry = completed[1]
+        with self.subTest(boundary="foreign_session"):
+            mixed = tuple(
+                foreign_entry if record is first_entry else record
+                for record in first_session.issued_records()
+            )
+            with self.assertRaisesRegex(
+                ControlEngineError,
+                r"foreign, stale, or fabricated|issuance",
+            ):
+                first_session._assemble_for_test(records=mixed)
+
+        rewritten_session, rewritten_entry = completed[1]
+        with self.subTest(boundary="rewritten_record"):
+            rewritten_payload = rewritten_entry.to_dict()["payload"]
+            rewritten_payload["membership_before"] = True
+            self._rewrite_record_payload(rewritten_entry, rewritten_payload)
+            with self.assertRaisesRegex(
+                ControlEngineError,
+                r"issuance attestation|stale|entry transition",
+            ):
+                rewritten_session.result()
+
+    def test_area_entry_transition_12_final_replay_accepts_ordered_entry_gate(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session()
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        self._resolve_bound_frozen_entry(session, entry)
+        movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        session.advance_to(movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.complete()
+        result = session.result().to_dict()
+        event_records = [
+            row for row in result["execution_records"]
+            if row["event_id"] == entry.event_id
+        ]
+        self.assertEqual(
+            [row["record_kind"] for row in event_records],
+            ["area_entry", "branch_transition"],
+        )
+        self.assertLess(
+            event_records[0]["operation_sequence"],
+            event_records[1]["operation_sequence"],
+        )
+        self.assertFalse(
+            event_records[0]["pre_event_route_state"][0]["membership"]
+        )
+        self.assertTrue(
+            event_records[0]["post_operation_route_state"][0]["membership"]
+        )
+        self.assertEqual(
+            event_records[0]["post_operation_route_state"],
+            event_records[1]["pre_operation_route_state"],
+        )
+
+    def test_area_entry_transition_13_final_replay_rejects_gate_without_entry(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session()
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        entry_record, _gate = self._resolve_bound_frozen_entry(session, entry)
+        movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        session.advance_to(movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.complete()
+        session._issued_records = [
+            record for record in session.issued_records()
+            if record is not entry_record
+        ]
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"entry transition|area-owned branch|false-to-true|entry gate",
+        ):
+            session._validate_area_gate_execution()
+
+    def test_area_entry_transition_14_nontriggering_area_move_adds_no_gate(
+        self,
+    ) -> None:
+        session, _schedule, events = self._ball_membership_session(
+            initial_membership={"target": False},
+            geometry_update=(2, "target", True, 12),
+        )
+        self._start_ball_concentration(session, events["activation"])
+        [first_start] = events["starts_by_target"]["target"][:1]
+        session.advance_to(first_start.event_id)
+        session.close_event()
+        [first_movement] = events["movements_by_target"]["target"][:1]
+        session.advance_to(first_movement.event_id)
+        session.close_event()
+        update = events["update"]
+        session.advance_to(update.event_id)
+        before_records = session.issued_records()
+        record = session.apply_area_geometry_update(target_id="target")
+        payload = record.to_dict()["payload"]
+        self.assertFalse(payload["moved_area_counts_as_entry"])
+        self.assertEqual(payload["entry_gate_opportunity_ids"], [])
+        self.assertEqual(payload.get("entry_gate_requirement_ids", []), [])
+        [entry_record] = [
+            issued
+            for issued in session.issued_records()[len(before_records):]
+            if issued.record_kind == "area_entry"
+            and issued.event_id == update.event_id
+        ]
+        entry_payload = entry_record.to_dict()["payload"]
+        self.assertLess(record.operation_sequence, entry_record.operation_sequence)
+        self.assertFalse(entry_payload["triggered"])
+        self.assertEqual(
+            entry_payload["frequency_decision"],
+            "area_movement_does_not_count",
+        )
+        self.assertFalse(entry_payload["frequency_history_consumed"])
+        self.assertEqual(entry_payload["gate_requirement_ids"], [])
+        self.assertEqual(session._area_entry_trigger_history, set())
+        self.assertNotIn(
+            "branch:ball_lightning_entry_save:target",
+            session._current_required_operations,
+        )
+        self.assertTrue(self._area_route_row(session)["membership"])
+        session.close_event()
+
+    def test_area_entry_transition_15_triggering_area_move_requires_ordered_gate(
+        self,
+    ) -> None:
+        canonical_program = self.engine.program("ball_lightning_t2_control")
+        [canonical_selector] = canonical_program.selectors
+        canonical_area = canonical_selector.area
+        self.assertIsNotNone(canonical_area)
+        entry_policy = canonical_area.entry_policy.to_dict()
+        entry_policy["moved_area_counts_as_entry"] = True
+        area_data = canonical_area.data.to_dict()
+        area_data["entry_policy"] = entry_policy
+        synthetic_area = replace(
+            canonical_area,
+            entry_policy=_frozen_map(entry_policy),
+            data=_frozen_map(area_data),
+        )
+        synthetic_selector = replace(
+            canonical_selector,
+            area=synthetic_area,
+        )
+        synthetic_program = replace(
+            canonical_program,
+            selectors=(synthetic_selector,),
+            _selector_by_id=MappingProxyType({
+                synthetic_selector.selector_id: synthetic_selector,
+            }),
+        )
+        authority = self.engine.authority
+        programs = tuple(
+            synthetic_program
+            if program.effect_id == synthetic_program.effect_id else program
+            for program in authority.programs
+        )
+        program_by_id = dict(authority._program_by_id)
+        program_by_id[synthetic_program.effect_id] = synthetic_program
+        program_by_key = dict(authority._program_by_key)
+        program_by_key[(
+            synthetic_program.entity_id,
+            synthetic_program.tier,
+        )] = synthetic_program
+        synthetic_authority = replace(
+            authority,
+            programs=programs,
+            _program_by_id=MappingProxyType(program_by_id),
+            _program_by_key=MappingProxyType(program_by_key),
+        )
+        engine = ControlEngine(
+            catalog=self.engine.catalog,
+            config=self.engine.config,
+            authority=synthetic_authority,
+            targets=self.engine.targets,
+            target_supplement_digest=self.engine.target_supplement_digest,
+        )
+        schedule = engine.schedule(
+            "fighter_first_v1",
+            ("target",),
+            controller_events_by_round={
+                1: [{"kind": "activation"}],
+                2: [{"kind": "instantaneous_resolution"}],
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        update_event = next(
+            event for event in schedule.events
+            if event.kind == "instantaneous_resolution"
+        )
+        entry_gate = synthetic_program.gate("ball_lightning_entry_save")
+        reliability_event = ReliabilityEvent.create(
+            "synthetic_moved_area_entry",
+            entry_gate.trigger,
+            target_ids=("target",),
+            gate_ids=(entry_gate.gate_id,),
+            window_id=update_event.event_id,
+        )
+        routes = (self._route_geometry(
+            "moved_ball_exit",
+            distance=5,
+        ),)
+        geometry_update = AreaGeometryUpdate(
+            effect_id=synthetic_program.effect_id,
+            area_id="ball_lightning_sphere",
+            target_id="target",
+            event_id=update_event.event_id,
+            event_sequence=update_event.sequence,
+            new_membership=True,
+            routes=routes,
+        )
+        entry_transition = AreaEntryTransition(
+            effect_id=synthetic_program.effect_id,
+            area_id="ball_lightning_sphere",
+            target_id="target",
+            event_id=update_event.event_id,
+            event_sequence=update_event.sequence,
+            cause="area_movement",
+            turn_id=str(update_event.turn_id),
+            routes=routes,
+            moved_area_counts_as_entry=True,
+        )
+        session = engine.execution_session(
+            synthetic_program,
+            targets=(ReliabilityTarget("target", 15, {"charisma": 2}),),
+            selector_membership={
+                "ball_lightning_area_targets": ("target",),
+            },
+            selector_context=_selector_context_for("target"),
+            schedule=schedule,
+            target_mechanics={
+                "target": {
+                    "base_speeds_ft": {"walk": 30},
+                    "movement_mode": "walk",
+                    "area_membership": False,
+                },
+            },
+            area_response_convention="shortest_route_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            reliability_events=(reliability_event,),
+            operation_inputs_by_event={
+                update_event.event_id: {
+                    "reliability_event_ids": [reliability_event.event_id],
+                },
+            },
+            concentration_save_bonus=2,
+            area_geometry_updates=(geometry_update,),
+            area_entry_transitions=(entry_transition,),
+        )
+        self._start_ball_concentration(session, activation)
+        session.advance_to(update_event.event_id)
+        geometry_record = session.apply_area_geometry_update(target_id="target")
+        self.assertTrue(
+            geometry_record.to_dict()["payload"]["membership_after"]
+        )
+        [entry_record] = [
+            record for record in session.issued_records()
+            if record.record_kind == "area_entry"
+            and record.event_id == update_event.event_id
+        ]
+        entry_payload = entry_record.to_dict()["payload"]
+        self.assertEqual(entry_payload["entry_cause"], "area_movement")
+        self.assertTrue(entry_payload["frequency_permitted"])
+        self.assertEqual(
+            entry_payload["gate_requirement_ids"],
+            ["ball_lightning_entry_save"],
+        )
+        requirement = "branch:ball_lightning_entry_save:target"
+        self.assertIn(requirement, session._current_required_operations)
+        gate_record = session.apply_branch(
+            gate_id="ball_lightning_entry_save",
+            outcome="save_success",
+            target_id="target",
+        )
+        self.assertLess(
+            entry_record.operation_sequence,
+            gate_record.operation_sequence,
+        )
+        session.close_event()
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.sequence > update_event.sequence
+        )
+        session.advance_to(movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.complete()
+        session.result()
+
+    def test_area_entry_transition_16_exit_ends_only_while_area_components(
+        self,
+    ) -> None:
+        session, _schedule, events = self._ball_membership_session(
+            route_distances={"target": 45},
+            initial_conditions={"target": ("blinded",)},
+            geometry_update=(2, "target", False, 0),
+        )
+        self._start_ball_concentration(session, events["activation"])
+        [first_start] = events["starts_by_target"]["target"][:1]
+        self._apply_ball_start_save(
+            session,
+            first_start,
+            target_id="target",
+            outcome="save_failure",
+        )
+        [first_movement] = events["movements_by_target"]["target"][:1]
+        session.advance_to(first_movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        update = events["update"]
+        session.advance_to(update.event_id)
+        record = session.apply_area_geometry_update(target_id="target")
+        payload = record.to_dict()["payload"]
+        self.assertEqual(
+            set(payload["ended_component_ids"]),
+            {
+                "ball_lightning_attack_disadvantage",
+                "ball_lightning_reaction_denial",
+            },
+        )
+        self.assertEqual(
+            {row["component_id"] for row in session.state_snapshot("target")},
+            {"initial_blinded"},
+        )
+        self.assertFalse(self._area_route_row(session)["membership"])
+        session.close_event()
+
+    def test_area_entry_transition_17_target_order_preserves_independent_frequency(
+        self,
+    ) -> None:
+        observed: dict[tuple[str, ...], dict[str, Any]] = {}
+        for target_ids in (("alpha", "beta"), ("beta", "alpha")):
+            with self.subTest(target_ids=target_ids):
+                session, scenario = self._frozen_entry_session(
+                    target_ids=target_ids,
+                    entry_specs_by_target={
+                        target_id: ((
+                            1,
+                            "before_movement",
+                            "ordinary_movement",
+                        ),)
+                        for target_id in target_ids
+                    },
+                )
+                self._activate_frozen_ground(
+                    session,
+                    scenario["activation"],
+                    target_ids,
+                )
+                entry_payloads: dict[str, dict[str, Any]] = {}
+                while session.cursor + 1 < len(scenario["schedule"].events):
+                    event = scenario["schedule"].events[session.cursor + 1]
+                    session.advance(event.event_id)
+                    if event.kind == "entry" and event.target_id is not None:
+                        record = session.resolve_area_entry(
+                            target_id=event.target_id,
+                        )
+                        entry_payloads[event.target_id] = record.to_dict()[
+                            "payload"
+                        ]
+                        session.apply_branch(
+                            gate_id="frozen_ground_t0_entry_save",
+                            outcome="save_success",
+                            target_id=event.target_id,
+                        )
+                    elif (
+                        event.kind == "target_movement_opportunity"
+                        and event.target_id is not None
+                        and self._area_route_row(
+                            session,
+                            event.target_id,
+                        )["membership"]
+                    ):
+                        session.resolve_movement_response(
+                            target_id=event.target_id,
+                        )
+                    session.close_event()
+                session.result()
+                observed[target_ids] = {
+                    target_id: {
+                        "frequency_permitted": entry_payloads[target_id][
+                            "frequency_permitted"
+                        ],
+                        "triggered": entry_payloads[target_id]["triggered"],
+                        "gate_requirement_ids": entry_payloads[target_id][
+                            "gate_requirement_ids"
+                        ],
+                        "membership": self._area_route_row(
+                            session,
+                            target_id,
+                        )["membership"],
+                    }
+                    for target_id in sorted(target_ids)
+                }
+        self.assertEqual(
+            observed[("alpha", "beta")],
+            observed[("beta", "alpha")],
+        )
+        self.assertEqual(
+            observed[("alpha", "beta")],
+            {
+                "alpha": {
+                    "frequency_permitted": True,
+                    "triggered": True,
+                    "gate_requirement_ids": ["frozen_ground_t0_entry_save"],
+                    "membership": False,
+                },
+                "beta": {
+                    "frequency_permitted": True,
+                    "triggered": True,
+                    "gate_requirement_ids": ["frozen_ground_t0_entry_save"],
+                    "membership": False,
+                },
+            },
+        )
+
+    def test_area_entry_transition_18_initiatives_preserve_entry_semantics(
+        self,
+    ) -> None:
+        observed: dict[tuple[str, str], dict[str, Any]] = {}
+        for initiative, entry_round in (
+            ("fighter_first_v1", 1),
+            ("target_before_fighter_v1", 2),
+        ):
+            for convention in ("shortest_route_v1", "fixed_occupancy_v1"):
+                with self.subTest(
+                    initiative=initiative,
+                    convention=convention,
+                ):
+                    session, scenario = self._frozen_entry_session(
+                        initiative=initiative,
+                        entry_specs_by_target={
+                            "target": ((
+                                entry_round,
+                                "before_movement",
+                                "ordinary_movement",
+                            ),),
+                        },
+                        area_response_convention=convention,
+                    )
+                    self._activate_frozen_ground(
+                        session,
+                        scenario["activation"],
+                    )
+                    [entry] = scenario["entries_by_target"]["target"]
+                    self.assertEqual(entry.round, entry_round)
+                    self.assertLess(
+                        scenario["activation"].sequence,
+                        entry.sequence,
+                    )
+                    transition, gate = self._resolve_bound_frozen_entry(
+                        session,
+                        entry,
+                    )
+                    self.assertIsNotNone(gate)
+                    payload = transition.to_dict()["payload"]
+                    observed[(initiative, convention)] = {
+                        "membership_before": payload["membership_before"],
+                        "membership_after": payload["membership_after"],
+                        "frequency_permitted": payload["frequency_permitted"],
+                        "triggered": payload["triggered"],
+                        "gate_requirement_ids": payload[
+                            "gate_requirement_ids"
+                        ],
+                    }
+                    if convention == "shortest_route_v1":
+                        movement = self._movement_event(
+                            scenario["schedule"],
+                            round_number=entry_round,
+                        )
+                        session.advance_to(movement.event_id)
+                        session.resolve_movement_response(target_id="target")
+                        session.close_event()
+                    else:
+                        [membership_state] = session.area_route_snapshot()
+                        self.assertTrue(membership_state["membership"])
+                        self.assertEqual(membership_state["routes"], [])
+                        self.assertIsNone(membership_state["selected_route_id"])
+                        self.assertIsNone(
+                            membership_state["remaining_distance_ft"]
+                        )
+                        [post_state] = transition.to_dict()[
+                            "post_operation_route_state"
+                        ]
+                        self.assertTrue(post_state["membership"])
+                        self.assertEqual(post_state["routes"], [])
+                        movement = self._movement_event(
+                            scenario["schedule"],
+                            round_number=entry_round,
+                        )
+                        before_response = session.area_route_snapshot()
+                        session.advance_to(movement.event_id)
+                        [fixed_response] = session.resolve_movement_response(
+                            target_id="target",
+                        )
+                        fixed_payload = fixed_response.to_dict()["payload"]
+                        self.assertEqual(
+                            fixed_payload["reason"],
+                            "fixed_occupancy",
+                        )
+                        self.assertFalse(fixed_payload["exited"])
+                        self.assertTrue(fixed_payload["membership_after"])
+                        self.assertIsNone(fixed_payload["selected_route"])
+                        self.assertEqual(
+                            session.area_route_snapshot(),
+                            before_response,
+                        )
+                        session.close_event()
+                        later_movements = [
+                            event
+                            for event in scenario["schedule"].events
+                            if event.kind == "target_movement_opportunity"
+                            and event.sequence > movement.sequence
+                        ]
+                        for later_movement in later_movements:
+                            before_later_response = (
+                                session.area_route_snapshot()
+                            )
+                            session.advance_to(later_movement.event_id)
+                            [later_response] = (
+                                session.resolve_movement_response(
+                                    target_id="target",
+                                )
+                            )
+                            later_payload = later_response.to_dict()["payload"]
+                            self.assertEqual(
+                                later_payload["reason"],
+                                "fixed_occupancy",
+                            )
+                            self.assertFalse(later_payload["exited"])
+                            self.assertEqual(
+                                session.area_route_snapshot(),
+                                before_later_response,
+                            )
+                            session.close_event()
+                    session.complete()
+                    result = session.result().to_dict()
+                    if convention == "fixed_occupancy_v1":
+                        self.assertEqual(
+                            [
+                                row["transition_kind"]
+                                for row in result["area_route_transitions"]
+                            ],
+                            ["area_entry"],
+                        )
+                        [final_state] = result["final_area_route_states"]
+                        self.assertTrue(final_state["membership"])
+                        self.assertEqual(final_state["routes"], [])
+                        self.assertIsNone(final_state["selected_route_id"])
+                        self.assertIsNone(
+                            final_state["remaining_distance_ft"]
+                        )
+        expected = {
+            "membership_before": False,
+            "membership_after": True,
+            "frequency_permitted": True,
+            "triggered": True,
+            "gate_requirement_ids": ["frozen_ground_t0_entry_save"],
+        }
+        self.assertTrue(observed)
+        for semantics in observed.values():
+            self.assertEqual(semantics, expected)
+
+        with self.subTest(boundary="fixed_outside_prone_before_later_entry"):
+            scenario = self._frozen_entry_scenario(
+                entry_specs_by_target={
+                    "target": ((1, "after_movement", "ordinary_movement"),),
+                },
+                area_response_convention="fixed_occupancy_v1",
+            )
+            scenario["session_kwargs"]["target_mechanics"]["target"][
+                "initial_conditions"
+            ] = ["prone"]
+            session = scenario["engine"].execution_session(
+                scenario["program"],
+                **scenario["session_kwargs"],
+            )
+            self._activate_frozen_ground(session, scenario["activation"])
+            movement = self._movement_event(
+                scenario["schedule"],
+                round_number=1,
+            )
+            pre_route = session.area_route_snapshot("target")
+            session.advance_to(movement.event_id)
+            [prone_record] = session.resolve_movement_response(
+                target_id="target",
+            )
+            prone_payload = prone_record.to_dict()["payload"]
+            self.assertEqual(
+                prone_record.record_kind,
+                "prone_movement_response",
+            )
+            self.assertTrue(prone_payload["stood"])
+            self.assertEqual(prone_payload["standing_cost_ft"], 15)
+            self.assertEqual(
+                session.area_route_snapshot("target"),
+                pre_route,
+            )
+            self.assertFalse(self._area_route_row(session)["membership"])
+            self.assertFalse(any(
+                record.record_kind == "area_response"
+                and record.event_id == movement.event_id
+                for record in session.issued_records()
+            ))
+            session.close_event()
+            [entry] = scenario["entries_by_target"]["target"]
+            transition, gate = self._resolve_bound_frozen_entry(
+                session,
+                entry,
+            )
+            self.assertTrue(
+                transition.to_dict()["payload"]["membership_after"],
+            )
+            self.assertIsNotNone(gate)
 
     def test_zero_area_01_both_conventions_create_and_complete_sessions(self) -> None:
         results = {

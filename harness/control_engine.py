@@ -576,6 +576,69 @@ class AreaGeometryUpdate:
 
 
 @dataclass(frozen=True)
+class AreaEntryTransition:
+    """One scenario-bound false-to-true compiled-area membership transition."""
+
+    effect_id: str
+    area_id: str
+    target_id: str
+    event_id: str
+    event_sequence: int
+    cause: str
+    turn_id: str
+    routes: tuple[AreaRouteGeometry, ...]
+    moved_area_counts_as_entry: bool
+
+    def __post_init__(self) -> None:
+        for name in (
+            "effect_id",
+            "area_id",
+            "target_id",
+            "event_id",
+            "turn_id",
+        ):
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
+        if (
+            isinstance(self.event_sequence, bool)
+            or not isinstance(self.event_sequence, int)
+            or self.event_sequence < 0
+        ):
+            raise ControlEngineError("event_sequence must be a non-negative integer")
+        if self.cause not in {
+            "ordinary_movement",
+            "forced_movement",
+            "area_movement",
+        }:
+            raise ControlEngineError(
+                f"Unsupported area-entry cause: {self.cause!r}"
+            )
+        if not isinstance(self.moved_area_counts_as_entry, bool):
+            raise ControlEngineError(
+                "moved_area_counts_as_entry must be boolean"
+            )
+        route_rows = tuple(self.routes)
+        if any(not isinstance(route, AreaRouteGeometry) for route in route_rows):
+            raise ControlEngineError("routes must contain AreaRouteGeometry values")
+        route_ids = tuple(route.route_id for route in route_rows)
+        if len(route_ids) != len(set(route_ids)):
+            raise ControlEngineError("routes must contain unique route IDs")
+        object.__setattr__(self, "routes", route_rows)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "effect_id": self.effect_id,
+            "area_id": self.area_id,
+            "target_id": self.target_id,
+            "event_id": self.event_id,
+            "event_sequence": self.event_sequence,
+            "cause": self.cause,
+            "turn_id": self.turn_id,
+            "routes": [route.to_dict() for route in self.routes],
+            "moved_area_counts_as_entry": self.moved_area_counts_as_entry,
+        }
+
+
+@dataclass(frozen=True)
 class _AreaRouteState:
     effect_id: str
     area_id: str
@@ -3627,6 +3690,7 @@ class ControlEngine:
             Mapping[str, Mapping[str, Any]] | None
         ) = None,
         area_geometry_updates: Sequence[AreaGeometryUpdate] = (),
+        area_entry_transitions: Sequence[AreaEntryTransition] = (),
         concentration_save_bonus: int | None = None,
     ) -> "ControlExecutionSession":
         """Create the sole supported mutable execution and result boundary."""
@@ -3651,6 +3715,7 @@ class ControlEngine:
             invocation_id=invocation_id,
             operation_inputs_by_event=operation_inputs_by_event,
             area_geometry_updates=area_geometry_updates,
+            area_entry_transitions=area_entry_transitions,
             concentration_save_bonus=concentration_save_bonus,
         )
         self._execution_tokens.add(session._issuer)
@@ -5936,6 +6001,7 @@ class ControlExecutionSession:
         invocation_id: str,
         operation_inputs_by_event: Mapping[str, Mapping[str, Any]] | None,
         area_geometry_updates: Sequence[AreaGeometryUpdate],
+        area_entry_transitions: Sequence[AreaEntryTransition],
         concentration_save_bonus: int | None,
     ) -> None:
         if not isinstance(engine, ControlEngine):
@@ -6653,10 +6719,7 @@ class ControlExecutionSession:
             component_area_bindings,
         )
         initial_area_route_states: list[_AreaRouteState] = []
-        if (
-            area_response_convention == "shortest_route_v1"
-            and len(compiled_areas) == 1
-        ):
+        if len(compiled_areas) == 1:
             area_id = next(iter(compiled_areas))
             area_targets = set(area_target_ids_by_area[area_id])
             forbidden_target_overrides = {
@@ -6667,18 +6730,29 @@ class ControlExecutionSession:
                 "route_compatibility_by_event",
                 "movement_cost_multiplier_by_event",
                 "distance_to_exit_ft_by_event",
+                "was_member",
+                "was_member_by_event",
+                "is_member",
+                "is_member_by_event",
+                "prior_trigger_turn_ids",
+                "prior_trigger_turn_ids_by_event",
+                "caused_by_area_movement",
+                "caused_by_area_movement_by_event",
             }
             for target_id in schedule.target_ids:
                 mechanics = safe_target_mechanics[target_id]
                 forbidden = sorted(set(mechanics) & forbidden_target_overrides)
                 if forbidden:
                     raise ControlEngineError(
-                        f"target_mechanics.{target_id} contains raw per-event route "
-                        f"overrides: {forbidden}"
+                        f"target_mechanics.{target_id} contains raw route or "
+                        f"caller-authored area-entry overrides: {forbidden}"
                     )
                 if target_id not in area_targets:
                     continue
-                member = mechanics.get("area_membership")
+                member = mechanics.get(
+                    "area_membership",
+                    True if area_response_convention == "fixed_occupancy_v1" else None,
+                )
                 if not isinstance(member, bool):
                     raise ControlEngineError(
                         f"target_mechanics.{target_id}.area_membership must be boolean"
@@ -6710,12 +6784,16 @@ class ControlExecutionSession:
                         f"target_mechanics.{target_id}.area_routes contains duplicate "
                         "route IDs"
                     )
-                if member and not routes:
+                if (
+                    area_response_convention == "shortest_route_v1"
+                    and member
+                    and not routes
+                ):
                     raise ControlEngineError(
                         f"target_mechanics.{target_id}.area_routes must be non-empty"
                     )
                 base_speeds = mechanics.get("base_speeds_ft")
-                if member and (
+                if area_response_convention == "shortest_route_v1" and member and (
                     not isinstance(base_speeds, Mapping)
                     or any(route.mode not in base_speeds for route in routes)
                 ):
@@ -6727,6 +6805,11 @@ class ControlExecutionSession:
                     raise ControlEngineError(
                         f"target_mechanics.{target_id}.area_routes cannot be supplied "
                         "for a non-member"
+                    )
+                if area_response_convention == "fixed_occupancy_v1" and routes:
+                    raise ControlEngineError(
+                        f"target_mechanics.{target_id}.area_routes cannot be supplied "
+                        "under fixed_occupancy_v1"
                     )
                 initial_area_route_states.append(_AreaRouteState(
                     effect_id=program.effect_id,
@@ -6776,7 +6859,26 @@ class ControlExecutionSession:
                 )
             safe_operation_inputs[event_id] = safe_value
 
-        if area_response_convention == "shortest_route_v1":
+        legacy_entry_truth_keys = {
+            "area_membership",
+            "was_member",
+            "was_member_by_event",
+            "is_member",
+            "is_member_by_event",
+            "prior_trigger_turn_ids",
+            "prior_trigger_turn_ids_by_event",
+            "caused_by_area_movement",
+            "caused_by_area_movement_by_event",
+        }
+        for event_id, inputs in safe_operation_inputs.items():
+            legacy = sorted(set(inputs) & legacy_entry_truth_keys)
+            if legacy:
+                raise ControlEngineError(
+                    f"operation_inputs_by_event.{event_id} contains caller-authored "
+                    f"area-entry truth: {legacy}; use AreaEntryTransition"
+                )
+
+        if compiled_areas:
             forbidden_event_geometry = {
                 "area_routes",
                 "area_membership",
@@ -6873,6 +6975,185 @@ class ControlExecutionSession:
                 raise ControlEngineError(
                     "A compiled area may move at most once per controller turn"
                 )
+
+        if not isinstance(area_entry_transitions, Sequence) or isinstance(
+            area_entry_transitions,
+            (str, bytes),
+        ):
+            raise ControlEngineError("area_entry_transitions must be an array")
+        supplied_area_entry_transitions = tuple(area_entry_transitions)
+        if any(
+            not isinstance(transition, AreaEntryTransition)
+            for transition in supplied_area_entry_transitions
+        ):
+            raise ControlEngineError(
+                "area_entry_transitions must contain AreaEntryTransition values"
+            )
+        entry_identities: set[tuple[str, str, str, str]] = set()
+        validated_area_entry_transitions: list[AreaEntryTransition] = []
+        updates_by_identity = {
+            (
+                update.effect_id,
+                update.area_id,
+                update.target_id,
+                update.event_id,
+            ): update
+            for update in bound_area_geometry_updates
+        }
+        for transition in supplied_area_entry_transitions:
+            identity = (
+                transition.effect_id,
+                transition.area_id,
+                transition.target_id,
+                transition.event_id,
+            )
+            if identity in entry_identities:
+                raise ControlEngineError("AreaEntryTransition identity is duplicated")
+            entry_identities.add(identity)
+            if transition.effect_id != program.effect_id:
+                raise ControlEngineError(
+                    "AreaEntryTransition effect does not match the session program"
+                )
+            area = compiled_areas.get(transition.area_id)
+            if area is None or transition.target_id not in targets_by_id:
+                raise ControlEngineError(
+                    "AreaEntryTransition references a foreign area or target"
+                )
+            if (
+                not area.persistent
+                or transition.target_id
+                not in area_target_ids_by_area[transition.area_id]
+            ):
+                raise ControlEngineError(
+                    "AreaEntryTransition target is not bound to a compiled "
+                    "persistent-area selector"
+                )
+            event = schedule.event(transition.event_id)
+            if event.sequence != transition.event_sequence:
+                raise ControlEngineError(
+                    "AreaEntryTransition event sequence is stale or malformed"
+                )
+            if event.turn_id != transition.turn_id:
+                raise ControlEngineError(
+                    "AreaEntryTransition turn identity does not match its event"
+                )
+            policy = None if area.entry_policy is None else area.entry_policy.to_dict()
+            if (
+                not isinstance(policy, Mapping)
+                or policy.get("frequency") not in {"once_per_turn", "unlimited"}
+                or not isinstance(policy.get("moved_area_counts_as_entry"), bool)
+                or transition.moved_area_counts_as_entry
+                != policy["moved_area_counts_as_entry"]
+            ):
+                raise ControlEngineError(
+                    "AreaEntryTransition does not match compiled entry policy"
+                )
+            if transition.cause == "area_movement":
+                update = updates_by_identity.get(identity)
+                if (
+                    update is None
+                    or not update.new_membership
+                    or update.routes != transition.routes
+                    or event.kind != "instantaneous_resolution"
+                ):
+                    raise ControlEngineError(
+                        "Area-movement entry transition must exactly match a bound "
+                        "false-to-true-capable AreaGeometryUpdate"
+                    )
+            elif (
+                event.kind != "entry"
+                or event.target_id != transition.target_id
+                or identity in updates_by_identity
+            ):
+                raise ControlEngineError(
+                    "Ordinary or forced AreaEntryTransition requires its exact "
+                    "target-owned entry event"
+                )
+            mechanics = safe_target_mechanics[transition.target_id]
+            if area_response_convention == "shortest_route_v1":
+                base_speeds = mechanics.get("base_speeds_ft")
+                if not isinstance(base_speeds, Mapping) or not base_speeds:
+                    raise ControlEngineError(
+                        "AreaEntryTransition under shortest_route_v1 requires "
+                        "bound base_speeds_ft"
+                    )
+                available_modes = set(base_speeds)
+                route_modes = {route.mode for route in transition.routes}
+                compatible_modes = {
+                    route.mode for route in transition.routes if route.compatible
+                }
+                if (
+                    not transition.routes
+                    or route_modes - available_modes
+                    or available_modes - compatible_modes
+                ):
+                    raise ControlEngineError(
+                        "AreaEntryTransition route geometry must cover every "
+                        "available movement mode without adding an unbound mode"
+                    )
+            elif transition.routes:
+                raise ControlEngineError(
+                    "AreaEntryTransition under fixed_occupancy_v1 cannot create "
+                    "nominal exit-route progress"
+                )
+            validated_area_entry_transitions.append(transition)
+
+        for update in bound_area_geometry_updates:
+            if not update.new_membership:
+                continue
+            identity = (
+                update.effect_id,
+                update.area_id,
+                update.target_id,
+                update.event_id,
+            )
+            if identity in entry_identities:
+                continue
+            area = compiled_areas[update.area_id]
+            policy = None if area.entry_policy is None else area.entry_policy.to_dict()
+            event = schedule.event(update.event_id)
+            if not isinstance(policy, Mapping) or event.turn_id is None:
+                raise ControlEngineError(
+                    "AreaGeometryUpdate cannot derive a canonical area-entry transition"
+                )
+            if policy.get("moved_area_counts_as_entry") is True:
+                # A policy-true movement requires an explicit transition only
+                # when the scenario means to permit a false-to-true entry.  A
+                # plain true-to-true geometry refresh is not an entry and must
+                # not require a fictional reliability gate binding.
+                continue
+            base_speeds = safe_target_mechanics[update.target_id].get(
+                "base_speeds_ft"
+            )
+            compatible_modes = {
+                route.mode for route in update.routes if route.compatible
+            }
+            if (
+                not isinstance(base_speeds, Mapping)
+                or not base_speeds
+                or {route.mode for route in update.routes} - set(base_speeds)
+                or set(base_speeds) - compatible_modes
+            ):
+                raise ControlEngineError(
+                    "AreaGeometryUpdate entry geometry must cover every "
+                    "available movement mode without adding an unbound mode"
+                )
+            derived = AreaEntryTransition(
+                effect_id=update.effect_id,
+                area_id=update.area_id,
+                target_id=update.target_id,
+                event_id=update.event_id,
+                event_sequence=update.event_sequence,
+                cause="area_movement",
+                turn_id=event.turn_id,
+                routes=update.routes,
+                moved_area_counts_as_entry=bool(
+                    policy.get("moved_area_counts_as_entry")
+                ),
+            )
+            entry_identities.add(identity)
+            validated_area_entry_transitions.append(derived)
+        bound_area_entry_transitions = tuple(validated_area_entry_transitions)
 
         if concentration_save_bonus is not None and (
             isinstance(concentration_save_bonus, bool)
@@ -7073,8 +7354,32 @@ class ControlExecutionSession:
                 for gate_row in gate_rows:
                     gate = program.gate(gate_row.gate_id)
                     scoped_targets = gate_row.target_ids or (None,)
+                    moved_area_entry_continuation = bool(
+                        explicit_event_id == schedule_event.event_id
+                        and gate.trigger.kind == "entry"
+                        and reliability_event.trigger.kind == "entry"
+                        and any(
+                            target_id is not None
+                            and any(
+                                transition.event_id == schedule_event.event_id
+                                and transition.target_id == target_id
+                                and transition.cause == "area_movement"
+                                and transition.moved_area_counts_as_entry
+                                and transition.area_id
+                                in area_gate_bindings.get(gate.gate_id, ())
+                                and (
+                                    transition.effect_id,
+                                    transition.area_id,
+                                    transition.target_id,
+                                    transition.event_id,
+                                ) in updates_by_identity
+                                for transition in bound_area_entry_transitions
+                            )
+                            for target_id in scoped_targets
+                        )
+                    )
                     try:
-                        matches = any(
+                        matches = moved_area_entry_continuation or any(
                             typed_event_matches(
                                 schedule_event,
                                 reliability_event.trigger.data.to_dict(),
@@ -7102,6 +7407,71 @@ class ControlExecutionSession:
             reliability_timeline_bindings[reliability_event_id] = (
                 candidates_for_event[0]
             )
+        for transition in bound_area_entry_transitions:
+            if (
+                transition.cause == "area_movement"
+                and not transition.moved_area_counts_as_entry
+            ):
+                continue
+            entry_gate_ids = tuple(sorted(
+                gate.gate_id
+                for gate in program.gates
+                if gate.trigger.kind == "entry"
+                and transition.area_id
+                in area_gate_bindings.get(gate.gate_id, ())
+            ))
+            missing_entry_gate_bindings = [
+                gate_id
+                for gate_id in entry_gate_ids
+                if not any(
+                    row.gate_id == gate_id
+                    and row.probability > 0
+                    and reliability_timeline_bindings.get(row.event_id)
+                    == transition.event_id
+                    and (
+                        not row.target_ids
+                        or transition.target_id in row.target_ids
+                    )
+                    for row in reliability.gate_probabilities
+                )
+            ]
+            if missing_entry_gate_bindings:
+                raise ControlEngineError(
+                    "AreaEntryTransition has no exact same-event reliability "
+                    f"binding for entry gates: {missing_entry_gate_bindings}"
+                )
+        for reliability_event_id, gate_rows in gate_rows_by_reliability_event.items():
+            event_id = reliability_timeline_bindings[reliability_event_id]
+            for gate_row in gate_rows:
+                gate = program.gate(gate_row.gate_id)
+                if (
+                    gate.trigger.kind != "entry"
+                    or gate.gate_id not in program.root_gate_ids
+                ):
+                    continue
+                selected_targets = (
+                    tuple(gate_row.target_ids)
+                    if gate_row.target_ids
+                    else tuple(sorted({
+                        target_id
+                        for selector_id in gate.selector_ids
+                        for target_id in membership[selector_id]
+                    }))
+                )
+                for target_id in selected_targets:
+                    transition = next((
+                        value
+                        for value in bound_area_entry_transitions
+                        if value.event_id == event_id
+                        and value.target_id == target_id
+                        and value.area_id
+                        in area_gate_bindings.get(gate.gate_id, ())
+                    ), None)
+                    if transition is None:
+                        raise ControlEngineError(
+                            "Entry-gate reliability binding lacks its exact "
+                            "scenario-bound AreaEntryTransition"
+                        )
         if concentration_start_event_id is not None:
             start_sequence = schedule.event(
                 concentration_start_event_id
@@ -7188,6 +7558,10 @@ class ControlExecutionSession:
             required_operation_plan.setdefault(update.event_id, []).append(
                 f"area_geometry_update:{update.target_id}"
             )
+        for transition in bound_area_entry_transitions:
+            required_operation_plan.setdefault(transition.event_id, []).append(
+                f"area_entry:{transition.target_id}"
+            )
         canonical_required_plan = {
             event_id: list(dict.fromkeys(operations))
             for event_id, operations in sorted(required_operation_plan.items())
@@ -7242,6 +7616,10 @@ class ControlExecutionSession:
             "area_geometry_updates": [
                 update.to_dict() for update in bound_area_geometry_updates
             ],
+            "area_entry_transitions": [
+                transition.to_dict()
+                for transition in bound_area_entry_transitions
+            ],
             "area_gate_bindings": {
                 gate_id: list(area_ids)
                 for gate_id, area_ids in sorted(area_gate_bindings.items())
@@ -7280,6 +7658,12 @@ class ControlExecutionSession:
         self._operation_inputs_json = _canonical_json(safe_operation_inputs)
         self._area_geometry_updates_json = _canonical_json(
             [update.to_dict() for update in bound_area_geometry_updates]
+        )
+        self._area_entry_transitions_json = _canonical_json(
+            [
+                transition.to_dict()
+                for transition in bound_area_entry_transitions
+            ]
         )
         self._area_gate_bindings = MappingProxyType(dict(area_gate_bindings))
         self._area_gate_bindings_json = _canonical_json({
@@ -7334,6 +7718,10 @@ class ControlExecutionSession:
             (update.event_id, update.target_id): update
             for update in bound_area_geometry_updates
         }
+        self._area_entry_transitions = {
+            (transition.event_id, transition.target_id): transition
+            for transition in bound_area_entry_transitions
+        }
         for target_id in self._schedule.target_ids:
             for condition in initial_conditions_by_target[target_id]:
                 self._state.apply_component(
@@ -7374,6 +7762,7 @@ class ControlExecutionSession:
         self._current_pre_route_state_json: str | None = None
         self._operation_sequence = 0
         self._issued_records: list[_IssuedControlRecord] = []
+        self._issued_record_originals: list[_IssuedControlRecord] = []
         self._issued_record_attestations: list[str] = []
         self._event_snapshots: list[_ClosedEventSnapshot] = []
         self._normalization_results: list[NormalizationResult] = []
@@ -7395,6 +7784,9 @@ class ControlExecutionSession:
         self._area_effect_ended = False
         self._shared_gate_outcomes: dict[tuple[str, str], str] = {}
         self._same_event_gate_overrides: set[tuple[str, str]] = set()
+        self._area_entry_trigger_history: set[
+            tuple[str, str, str, str]
+        ] = set()
         self._cached_result: ControlEngineResult | None = None
 
     @property
@@ -7425,7 +7817,12 @@ class ControlExecutionSession:
             for row in json.loads(_canonical_json(self._state.snapshot(target_id)))
         )
 
-    def _area_route_state_rows(self, target_id: str | None = None) -> list[dict[str, Any]]:
+    def _area_route_state_rows(
+        self,
+        target_id: str | None = None,
+        *,
+        public: bool = False,
+    ) -> list[dict[str, Any]]:
         target_rank = {
             value: index for index, value in enumerate(self._schedule.target_ids)
         }
@@ -7453,7 +7850,7 @@ class ControlExecutionSession:
         return tuple(
             MappingProxyType(row)
             for row in json.loads(_canonical_json(
-                self._area_route_state_rows(target_id)
+                self._area_route_state_rows(target_id, public=True)
             ))
         )
 
@@ -7544,27 +7941,18 @@ class ControlExecutionSession:
         area_ids = area_gate_bindings.get(gate_id, ())
         if not area_ids:
             return True, None
-        area_target_ids_by_area = self._canonical_area_target_ids_by_area()
         for area_id in area_ids:
-            if self._area_response_convention == "shortest_route_v1":
-                route_state = self._area_route_state_or_none(
-                    target_id,
-                    area_id=area_id,
+            route_state = self._area_route_state_or_none(
+                target_id,
+                area_id=area_id,
+            )
+            if route_state is None:
+                raise ControlEngineError(
+                    f"Area-owned gate {gate_id!r} has no authoritative area "
+                    f"membership state for target {target_id!r} and area "
+                    f"{area_id!r}"
                 )
-                if route_state is None:
-                    raise ControlEngineError(
-                        f"Area-owned gate {gate_id!r} has no authoritative area "
-                        f"membership state for target {target_id!r} and area "
-                        f"{area_id!r}"
-                    )
-                member = route_state.membership
-            else:
-                if area_id not in area_target_ids_by_area:
-                    raise ControlEngineError(
-                        f"Area-owned gate {gate_id!r} references unknown compiled "
-                        f"area {area_id!r}"
-                    )
-                member = target_id in area_target_ids_by_area[area_id]
+            member = route_state.membership
             if not member:
                 return False, (
                     f"target {target_id!r} is a nonmember according to "
@@ -7633,6 +8021,343 @@ class ControlExecutionSession:
         if key not in self._area_route_states:
             raise ControlEngineError("Area-route transition references unknown state")
         self._area_route_states[key] = state
+
+    def _entry_gate_ids(
+        self,
+        transition: AreaEntryTransition,
+    ) -> tuple[str, ...]:
+        bindings = self._canonical_area_gate_bindings()
+        return tuple(sorted(
+            gate.gate_id
+            for gate in self._program.gates
+            if gate.trigger.kind == "entry"
+            and transition.area_id in bindings.get(gate.gate_id, ())
+        ))
+
+    def _ambient_area_component_ids(
+        self,
+        *,
+        area_id: str,
+        target_id: str,
+    ) -> tuple[str, ...]:
+        """Return selected area-bound components applied by activation cadence."""
+
+        bindings = self._engine._compiled_area_bindings(self._program)
+        return tuple(sorted(
+            component.component_id
+            for component in self._program.components
+            if area_id in bindings.get(component.component_id, ())
+            and any(cadence.kind == "activation" for cadence in component.cadence_apply)
+            and (
+                component.choice_id is None
+                or self._choices[component.choice_id] == component.choice_option_id
+            )
+            and any(
+                target_id in self._membership[selector_id]
+                for selector_id in component.target_selector_ids
+            )
+        ))
+
+    def _ambient_area_restoration_plan(
+        self,
+        *,
+        transition: AreaEntryTransition,
+        event: TimelineEvent,
+    ) -> dict[str, Any]:
+        """Preflight exact ambient restoration before membership mutation."""
+
+        ambient_ids = self._ambient_area_component_ids(
+            area_id=transition.area_id,
+            target_id=transition.target_id,
+        )
+        active_ids = {
+            component.component_id
+            for component in self._state.active_components(transition.target_id)
+            if component.effect_id == transition.effect_id
+        }
+        retained_ids = tuple(
+            component_id
+            for component_id in ambient_ids
+            if component_id in active_ids
+        )
+        restore_rows: list[tuple[CompiledComponent, str | None]] = []
+        for component_id in ambient_ids:
+            if component_id in active_ids:
+                continue
+            component = self._program.component(component_id)
+            activation_events = tuple(
+                candidate
+                for candidate in self._schedule.events
+                if candidate.sequence < event.sequence
+                and any(
+                    cadence.kind == "activation"
+                    and typed_event_matches(
+                        candidate,
+                        cadence.data.to_dict(),
+                        target_id=transition.target_id,
+                        triggering_turn_id=candidate.turn_id,
+                    )
+                    for cadence in component.cadence_apply
+                )
+            )
+            if len(activation_events) != 1:
+                raise ControlEngineError(
+                    f"Ambient area component {component_id!r} requires exactly "
+                    "one prior canonical activation event"
+                )
+            activation_event = activation_events[0]
+            expiry_index = resolve_expiry_index(
+                self._schedule,
+                activation_event.event_id,
+                component.duration.to_dict(),
+                target_id=transition.target_id,
+            )
+            expiry_event_id = (
+                self._schedule.events[expiry_index].event_id
+                if expiry_index is not None
+                else None
+            )
+            restore_rows.append((component, expiry_event_id))
+        return {
+            "ambient_component_ids": ambient_ids,
+            "retained_component_ids": retained_ids,
+            "restore_rows": tuple(restore_rows),
+        }
+
+    def _restore_ambient_area_components(
+        self,
+        *,
+        plan: Mapping[str, Any],
+        transition: AreaEntryTransition,
+        event: TimelineEvent,
+    ) -> tuple[str, ...]:
+        restored: list[str] = []
+        for component, expiry_event_id in plan["restore_rows"]:
+            applied = self._state.apply_component(
+                effect_id=self._program.effect_id,
+                component=self._engine._state_component_definition(component),
+                target_id=transition.target_id,
+                source_actor_id=self._source_actor_id,
+                event_id=event.event_id,
+                invocation_id=self._invocation_id,
+                expiry_event_id=expiry_event_id,
+                condition_immunities=self._targets_by_id[
+                    transition.target_id
+                ].condition_immunities,
+            )
+            if applied is None or applied.component_id != component.component_id:
+                raise ControlEngineError(
+                    "Compiled ambient area component could not be restored"
+                )
+            restored.append(component.component_id)
+        return tuple(restored)
+
+    def _entry_decision(
+        self,
+        *,
+        transition: AreaEntryTransition,
+        old_state: _AreaRouteState,
+        event: TimelineEvent,
+    ) -> dict[str, Any]:
+        """Validate one exact entry and decide frequency before any mutation."""
+
+        label = f"area_entry:{transition.target_id}"
+        if label not in self._current_required_operations:
+            raise ControlEngineError(
+                "The scenario-bound AreaEntryTransition was already consumed"
+            )
+        if (
+            transition.event_id != event.event_id
+            or transition.event_sequence != event.sequence
+            or transition.effect_id != self._program.effect_id
+            or old_state.effect_id != transition.effect_id
+            or old_state.area_id != transition.area_id
+            or old_state.target_id != transition.target_id
+        ):
+            raise ControlEngineError(
+                "AreaEntryTransition is foreign, stale, or bound to another event"
+            )
+        if old_state.membership:
+            raise ControlEngineError(
+                "AreaEntryTransition requires authoritative pre-entry membership false"
+            )
+        if not self._area_effect_is_active(transition.area_id):
+            raise ControlEngineError(
+                "AreaEntryTransition requires an active compiled persistent area"
+            )
+        area = next(
+            selector.area
+            for selector in self._program.selectors
+            if selector.area is not None
+            and selector.area.area_id == transition.area_id
+        )
+        policy = None if area.entry_policy is None else area.entry_policy.to_dict()
+        if (
+            not isinstance(policy, Mapping)
+            or policy.get("frequency") not in {"once_per_turn", "unlimited"}
+            or policy.get("moved_area_counts_as_entry")
+            != transition.moved_area_counts_as_entry
+        ):
+            raise ControlEngineError(
+                "AreaEntryTransition no longer matches compiled entry policy"
+            )
+        frequency_key = (
+            transition.effect_id,
+            transition.area_id,
+            transition.target_id,
+            transition.turn_id,
+        )
+        previously_triggered = frequency_key in self._area_entry_trigger_history
+        frequency_permitted = bool(
+            policy["frequency"] == "unlimited" or not previously_triggered
+        )
+        movement_counts = bool(
+            transition.cause != "area_movement"
+            or transition.moved_area_counts_as_entry
+        )
+        triggered = bool(movement_counts and frequency_permitted)
+        if not movement_counts:
+            frequency_decision = "area_movement_does_not_count"
+        elif not frequency_permitted:
+            frequency_decision = "once_per_turn_already_triggered"
+        elif policy["frequency"] == "once_per_turn":
+            frequency_decision = "first_qualifying_entry_this_turn"
+        else:
+            frequency_decision = "unlimited_entry"
+        gate_ids = self._entry_gate_ids(transition)
+        if triggered:
+            bindings = json.loads(self._reliability_timeline_bindings_json)
+            missing_gate_bindings = [
+                gate_id
+                for gate_id in gate_ids
+                if not any(
+                    row.gate_id == gate_id
+                    and row.probability > 0
+                    and bindings.get(row.event_id) == event.event_id
+                    and (
+                        not row.target_ids
+                        or transition.target_id in row.target_ids
+                    )
+                    for row in self._reliability.gate_probabilities
+                )
+            ]
+            if missing_gate_bindings:
+                raise ControlEngineError(
+                    "AreaEntryTransition has no exact reliability binding for "
+                    f"entry gates: {missing_gate_bindings}"
+                )
+        return {
+            "entry_policy": dict(policy),
+            "frequency_key": {
+                "effect_id": frequency_key[0],
+                "area_id": frequency_key[1],
+                "target_id": frequency_key[2],
+                "turn_id": frequency_key[3],
+            },
+            "previously_triggered_this_turn": previously_triggered,
+            "frequency_permitted": frequency_permitted,
+            "frequency_decision": frequency_decision,
+            "frequency_history_consumed": triggered,
+            "triggered": triggered,
+            "gate_ids": gate_ids,
+            "frequency_key_tuple": frequency_key,
+        }
+
+    def _commit_entry_decision(
+        self,
+        *,
+        transition: AreaEntryTransition,
+        decision: Mapping[str, Any],
+    ) -> None:
+        gate_ids = tuple(decision["gate_ids"])
+        if decision["triggered"]:
+            if decision["frequency_history_consumed"]:
+                self._area_entry_trigger_history.add(
+                    tuple(decision["frequency_key_tuple"])
+                )
+            for gate_id in gate_ids:
+                self._current_required_operations.add(
+                    f"branch:{gate_id}:{transition.target_id}"
+                )
+                if transition.cause == "area_movement":
+                    self._same_event_gate_overrides.add(
+                        (gate_id, transition.target_id)
+                    )
+        else:
+            for gate_id in gate_ids:
+                self._current_required_operations.discard(
+                    f"branch:{gate_id}:{transition.target_id}"
+                )
+                self._current_required_operations.discard(f"branch:{gate_id}")
+        self._current_required_operations.discard(
+            f"area_entry:{transition.target_id}"
+        )
+
+    def _require_entry_gate_attested(
+        self,
+        *,
+        gate_id: str,
+        target_id: str,
+        event: TimelineEvent,
+    ) -> _IssuedControlRecord:
+        matches: list[_IssuedControlRecord] = []
+        for record in self._issued_records:
+            if (
+                record.record_kind != "area_entry"
+                or record.event_id != event.event_id
+                or record.target_id != target_id
+            ):
+                continue
+            self._require_locally_issued_record(record)
+            payload = json.loads(record.payload_json)
+            if (
+                payload.get("triggered") is True
+                and payload.get("frequency_permitted") is True
+                and gate_id in payload.get("gate_requirement_ids", ())
+            ):
+                matches.append(record)
+        if len(matches) != 1:
+            raise ControlEngineError(
+                f"Entry gate {gate_id!r}/{target_id!r} requires one earlier "
+                "attested false-to-true AreaEntryTransition"
+            )
+        record = matches[0]
+        payload = json.loads(record.payload_json)
+        bound = self._area_entry_transitions.get((event.event_id, target_id))
+        if (
+            bound is None
+            or payload.get("bound_transition") != bound.to_dict()
+            or payload.get("area_id")
+            not in self._canonical_area_gate_bindings().get(gate_id, ())
+            or record.operation_sequence >= self._operation_sequence + 1
+        ):
+            raise ControlEngineError(
+                "Entry gate transition attestation is foreign, stale, or out of order"
+            )
+        pre_rows = json.loads(record.pre_event_route_state_json)
+        pre_matches = [
+            row for row in pre_rows
+            if row.get("effect_id") == bound.effect_id
+            and row.get("area_id") == bound.area_id
+            and row.get("target_id") == bound.target_id
+        ]
+        current = self._area_route_state_or_none(
+            target_id,
+            area_id=bound.area_id,
+        )
+        if (
+            len(pre_matches) != 1
+            or pre_matches[0].get("membership") is not False
+            or payload.get("membership_before") is not False
+            or payload.get("membership_after") is not True
+            or current is None
+            or not current.membership
+            or not self._area_effect_is_active(bound.area_id)
+        ):
+            raise ControlEngineError(
+                "Entry gate lacks continuous false-to-true authoritative membership"
+            )
+        return record
 
     def _route_transition(
         self,
@@ -7861,9 +8586,60 @@ class ControlExecutionSession:
             _issuer=self._issuer,
         )
         self._issued_records.append(record)
+        self._issued_record_originals.append(record)
         self._issued_record_attestations.append(record.record_sha256)
         self._cached_result = None
         return record
+
+    def _require_locally_issued_record(
+        self,
+        record: _IssuedControlRecord,
+    ) -> None:
+        """Reject a foreign, replaced, or rewritten record before live use."""
+
+        index = record.operation_sequence - 1
+        if (
+            record._issuer is not self._issuer
+            or record.scenario_digest != self._scenario_digest
+            or index < 0
+            or index >= len(self._issued_records)
+            or index >= len(self._issued_record_originals)
+            or index >= len(self._issued_record_attestations)
+            or self._issued_records[index] is not record
+            or self._issued_record_originals[index] is not record
+            or self._issued_record_attestations[index] != record.record_sha256
+            or hashlib.sha256(record.payload_json.encode("utf-8")).hexdigest()
+            != record.payload_sha256
+        ):
+            raise ControlEngineError(
+                "Live operation record is foreign, replaced, or differs from "
+                "its local issuance attestation"
+            )
+        record_identity = {
+            "scenario_digest": record.scenario_digest,
+            "event_id": record.event_id,
+            "event_sequence": record.event_sequence,
+            "operation_sequence": record.operation_sequence,
+            "target_id": record.target_id,
+            "record_kind": record.record_kind,
+            "pre_event_state": json.loads(record.pre_event_state_json),
+            "pre_operation_state": json.loads(record.pre_operation_state_json),
+            "post_operation_state": json.loads(record.post_operation_state_json),
+            "pre_event_route_state": json.loads(
+                record.pre_event_route_state_json
+            ),
+            "pre_operation_route_state": json.loads(
+                record.pre_operation_route_state_json
+            ),
+            "post_operation_route_state": json.loads(
+                record.post_operation_route_state_json
+            ),
+            "payload": json.loads(record.payload_json),
+        }
+        if _sha256_record(record_identity) != record.record_sha256:
+            raise ControlEngineError(
+                "Live operation record envelope differs from its local issuance"
+            )
 
     def _active_area_component_ids(self, target_id: str) -> tuple[str, ...]:
         bindings = self._engine._compiled_area_bindings(self._program)
@@ -8039,6 +8815,24 @@ class ControlExecutionSession:
         self._current_required_operations.update(
             self._future_required_operations.pop(event.event_id, set())
         )
+        for (entry_event_id, target_id), transition in (
+            self._area_entry_transitions.items()
+        ):
+            if (
+                entry_event_id != event.event_id
+                or self._area_effect_is_active(transition.area_id)
+            ):
+                continue
+            self._current_required_operations.discard(
+                f"area_entry:{target_id}"
+            )
+            for gate_id in self._entry_gate_ids(transition):
+                self._current_required_operations.discard(
+                    f"branch:{gate_id}:{target_id}"
+                )
+                self._current_required_operations.discard(
+                    f"branch:{gate_id}"
+                )
         pre_event_rows = json.loads(self._current_pre_state_json)
         for operation in tuple(self._current_required_operations):
             if not operation.startswith(("branch:", "concentration_end:")):
@@ -8048,13 +8842,23 @@ class ControlExecutionSession:
             target_id = parts[2] if len(parts) == 3 else event.target_id
             if target_id is None:
                 continue
-            area_eligible, _area_reason = self._area_gate_eligibility(
-                gate_id=gate.gate_id,
-                target_id=target_id,
+            bound_entry = self._area_entry_transitions.get(
+                (event.event_id, target_id)
             )
-            if not area_eligible:
-                self._current_required_operations.discard(operation)
-                continue
+            same_event_entry = bool(
+                gate.trigger.kind == "entry"
+                and bound_entry is not None
+                and bound_entry.area_id
+                in self._canonical_area_gate_bindings().get(gate.gate_id, ())
+            )
+            if not same_event_entry:
+                area_eligible, _area_reason = self._area_gate_eligibility(
+                    gate_id=gate.gate_id,
+                    target_id=target_id,
+                )
+                if not area_eligible:
+                    self._current_required_operations.discard(operation)
+                    continue
             if not gate.requires_active_component_ids:
                 continue
             active_ids = {
@@ -8075,19 +8879,29 @@ class ControlExecutionSession:
                 for component in self._state.active_components(target)
             )
             area_component_ids = self._active_area_component_ids(target)
-            route_state = (
-                self._area_route_state_or_none(target)
-                if self._area_response_convention == "shortest_route_v1"
-                else None
-            )
-            if (
-                self._area_response_convention == "shortest_route_v1"
-                and area_component_ids
-                and (route_state is None or not route_state.membership)
-            ):
+            route_state = self._area_route_state_or_none(target)
+            if area_component_ids and route_state is None:
                 raise ControlEngineError(
                     "Active area-bound components lack authoritative live area "
                     f"membership for target {target!r}"
+                )
+            non_ambient_area_component_ids = (
+                set(area_component_ids)
+                - set(self._ambient_area_component_ids(
+                    area_id=route_state.area_id,
+                    target_id=target,
+                ))
+                if route_state is not None else set(area_component_ids)
+            )
+            if (
+                route_state is not None
+                and not route_state.membership
+                and non_ambient_area_component_ids
+            ):
+                raise ControlEngineError(
+                    "Active non-ambient area components lack authoritative live "
+                    f"membership for target {target!r}: "
+                    f"{sorted(non_ambient_area_component_ids)}"
                 )
             live_area_membership = bool(
                 route_state is not None
@@ -8096,10 +8910,18 @@ class ControlExecutionSession:
             )
             self._movement_response_required = bool(
                 prone
-                or live_area_membership
+                or (
+                    self._area_response_convention == "shortest_route_v1"
+                    and live_area_membership
+                )
                 or (
                     self._area_response_convention != "shortest_route_v1"
-                    and self._active_area_component_ids(target)
+                    and bool(area_component_ids)
+                    and route_state is not None
+                    and (
+                        route_state.membership
+                        and self._area_effect_is_active(route_state.area_id)
+                    )
                 )
                 or target in self._displaced_targets
             )
@@ -8213,6 +9035,12 @@ class ControlExecutionSession:
         if gate.trigger.kind == "concentration_end":
             raise ControlEngineError(
                 "Concentration-end gates are owned by end_concentration()"
+            )
+        if gate.trigger.kind == "entry":
+            self._require_entry_gate_attested(
+                gate_id=gate.gate_id,
+                target_id=target_id,
+                event=event,
             )
         self._require_area_gate_eligible(
             gate_id=gate.gate_id,
@@ -8458,33 +9286,116 @@ class ControlExecutionSession:
 
     def resolve_area_entry(self, *, target_id: str) -> _IssuedControlRecord:
         event = self._require_current(target_id=target_id, kinds={"entry"})
-        pre = _canonical_json(self._state.snapshot())
-        result = self._engine._resolve_compiled_area_entry(
-            effect=self._program,
-            target_ids=self._schedule.target_ids,
-            selector_membership=self._membership,
-            selector_context=self._selector_context,
-            target_id=target_id,
-            turn_id=_identifier(
-                self._bound_input("turn_id", target_id=target_id),
-                "turn_id",
-            ),
-            was_member=self._bound_input("was_member", target_id=target_id),
-            is_member=self._bound_input("is_member", target_id=target_id),
-            caused_by_area_movement=self._bound_input(
-                "caused_by_area_movement", target_id=target_id
-            ),
-            prior_trigger_turn_ids=self._bound_input(
-                "prior_trigger_turn_ids", target_id=target_id, default=()
-            ),
-            area_id=self._bound_input("area_id", target_id=target_id, default=None),
+        target = _identifier(target_id, "target_id")
+        transition = self._area_entry_transitions.get((event.event_id, target))
+        if transition is None or transition.cause == "area_movement":
+            raise ControlEngineError(
+                "The current event has no scenario-bound ordinary or forced "
+                f"AreaEntryTransition for target {target!r}"
+            )
+        old_state = self._area_route_state(target)
+        decision = self._entry_decision(
+            transition=transition,
+            old_state=old_state,
+            event=event,
         )
-        self._current_required_operations.discard("area_entry")
+        ambient_plan = self._ambient_area_restoration_plan(
+            transition=transition,
+            event=event,
+        )
+        pre = _canonical_json(self._state.snapshot())
+        pre_route = self._area_route_state_json()
+        new_state = replace(
+            old_state,
+            membership=True,
+            routes=(
+                transition.routes
+                if self._area_response_convention == "shortest_route_v1"
+                else ()
+            ),
+            selected_route_id=None,
+            movement_mode=None,
+            environment=None,
+            remaining_distance_ft=None,
+            movement_cost_basis=None,
+            closed_reason=None,
+            last_update_event_id=event.event_id,
+            last_update_event_sequence=event.sequence,
+        )
+        self._set_area_route_state(new_state)
+        restored_ambient_ids = self._restore_ambient_area_components(
+            plan=ambient_plan,
+            transition=transition,
+            event=event,
+        )
+        route_transition = self._route_transition(
+            transition_kind="area_entry",
+            event=event,
+            old_state=old_state,
+            new_state=new_state,
+            pre_route_state_json=pre_route,
+            extra={
+                "entry_cause": transition.cause,
+                "turn_id": transition.turn_id,
+            },
+        )
+        self._commit_entry_decision(
+            transition=transition,
+            decision=decision,
+        )
+        gate_ids = list(decision["gate_ids"])
+        result = {
+            "kind": "area_entry",
+            "event_id": event.event_id,
+            "event_sequence": event.sequence,
+            "effect_id": transition.effect_id,
+            "area_id": transition.area_id,
+            "target_id": transition.target_id,
+            "entry_cause": transition.cause,
+            "turn_id": transition.turn_id,
+            "entry_policy": decision["entry_policy"],
+            "frequency_key": decision["frequency_key"],
+            "previously_triggered_this_turn": decision[
+                "previously_triggered_this_turn"
+            ],
+            "frequency_permitted": decision["frequency_permitted"],
+            "frequency_decision": decision["frequency_decision"],
+            "frequency_history_consumed": decision[
+                "frequency_history_consumed"
+            ],
+            "triggered": decision["triggered"],
+            "gate_opportunity_ids": gate_ids if decision["triggered"] else [],
+            "gate_requirement_ids": gate_ids if decision["triggered"] else [],
+            "ambient_area_component_ids": list(
+                ambient_plan["ambient_component_ids"]
+            ),
+            "retained_ambient_component_ids": list(
+                ambient_plan["retained_component_ids"]
+            ),
+            "restored_ambient_component_ids": list(restored_ambient_ids),
+            "membership_before": False,
+            "membership_after": True,
+            "old_route_state": old_state.to_dict(),
+            "new_route_state": new_state.to_dict(),
+            "pre_route_state_sha256": route_transition[
+                "pre_route_state_sha256"
+            ],
+            "post_route_state_sha256": route_transition[
+                "post_route_state_sha256"
+            ],
+            "bound_transition": transition.to_dict(),
+            "route_transition": route_transition,
+        }
+        self._state.audit_ledger.append({
+            "operation": "area_entry",
+            **result,
+        })
         return self._issue(
             record_kind="area_entry",
             payload=result,
             pre_operation_state_json=pre,
-            target_id=target_id,
+            pre_operation_route_state_json=pre_route,
+            target_id=target,
         )
 
     def apply_area_geometry_update(
@@ -8537,6 +9448,32 @@ class ControlExecutionSession:
             raise ControlEngineError(
                 "AreaGeometryUpdate no longer matches compiled moving-area authority"
             )
+        bound_entry = self._area_entry_transitions.get(
+            (event.event_id, target)
+        )
+        entry_decision: dict[str, Any] | None = None
+        ambient_plan: dict[str, Any] | None = None
+        if not old_state.membership and update.new_membership:
+            if (
+                bound_entry is None
+                or bound_entry.cause != "area_movement"
+                or bound_entry.effect_id != update.effect_id
+                or bound_entry.area_id != update.area_id
+                or bound_entry.routes != update.routes
+            ):
+                raise ControlEngineError(
+                    "False-to-true AreaGeometryUpdate lacks its exact "
+                    "scenario-bound AreaEntryTransition"
+                )
+            entry_decision = self._entry_decision(
+                transition=bound_entry,
+                old_state=old_state,
+                event=event,
+            )
+            ambient_plan = self._ambient_area_restoration_plan(
+                transition=bound_entry,
+                event=event,
+            )
         pre = _canonical_json(self._state.snapshot())
         pre_route = self._area_route_state_json()
         ended_instances: list[dict[str, Any]] = []
@@ -8579,6 +9516,13 @@ class ControlExecutionSession:
             last_update_event_sequence=event.sequence,
         )
         self._set_area_route_state(new_state)
+        restored_ambient_ids: tuple[str, ...] = ()
+        if ambient_plan is not None and bound_entry is not None:
+            restored_ambient_ids = self._restore_ambient_area_components(
+                plan=ambient_plan,
+                transition=bound_entry,
+                event=event,
+            )
         if old_state.membership and not new_state.membership:
             self._prune_future_area_gate_operations(
                 area_id=old_state.area_id,
@@ -8591,14 +9535,11 @@ class ControlExecutionSession:
             isinstance(entry_policy, Mapping)
             and entry_policy.get("moved_area_counts_as_entry")
         )
-        entry_gate_ids = sorted({
-            gate.gate_id
-            for gate in self._program.gates
-            if gate.trigger.kind == "entry"
-            and not old_state.membership
-            and update.new_membership
-            and moved_area_counts_as_entry
-        })
+        entry_gate_ids = (
+            list(entry_decision["gate_ids"])
+            if entry_decision is not None and entry_decision["triggered"]
+            else []
+        )
         exit_gate_ids = sorted({
             gate.gate_id
             for gate in self._program.gates
@@ -8633,6 +9574,15 @@ class ControlExecutionSession:
             "membership_before": old_state.membership,
             "membership_after": new_state.membership,
             "entry_gate_opportunity_ids": entry_gate_ids,
+            "ambient_area_component_ids": (
+                list(ambient_plan["ambient_component_ids"])
+                if ambient_plan is not None else []
+            ),
+            "retained_ambient_component_ids": (
+                list(ambient_plan["retained_component_ids"])
+                if ambient_plan is not None else []
+            ),
+            "restored_ambient_component_ids": list(restored_ambient_ids),
             "exit_gate_opportunity_ids": exit_gate_ids,
             "ended_component_ids": sorted(set(ended_component_ids)),
             "ended_state_instances": ended_instances,
@@ -8647,13 +9597,89 @@ class ControlExecutionSession:
             **payload,
         })
         self._current_required_operations.discard(label)
-        return self._issue(
+        geometry_record = self._issue(
             record_kind="area_geometry_update",
             payload=payload,
             pre_operation_state_json=pre,
             pre_operation_route_state_json=pre_route,
             target_id=target,
         )
+        if entry_decision is None:
+            if bound_entry is not None:
+                for gate_id in self._entry_gate_ids(bound_entry):
+                    self._current_required_operations.discard(
+                        f"branch:{gate_id}:{target}"
+                    )
+                    self._current_required_operations.discard(f"branch:{gate_id}")
+                self._current_required_operations.discard(
+                    f"area_entry:{target}"
+                )
+            return geometry_record
+
+        assert bound_entry is not None  # validated before mutation
+        self._commit_entry_decision(
+            transition=bound_entry,
+            decision=entry_decision,
+        )
+        entry_payload = {
+            "kind": "area_entry",
+            "event_id": event.event_id,
+            "event_sequence": event.sequence,
+            "effect_id": bound_entry.effect_id,
+            "area_id": bound_entry.area_id,
+            "target_id": bound_entry.target_id,
+            "entry_cause": bound_entry.cause,
+            "turn_id": bound_entry.turn_id,
+            "entry_policy": entry_decision["entry_policy"],
+            "frequency_key": entry_decision["frequency_key"],
+            "previously_triggered_this_turn": entry_decision[
+                "previously_triggered_this_turn"
+            ],
+            "frequency_permitted": entry_decision["frequency_permitted"],
+            "frequency_decision": entry_decision["frequency_decision"],
+            "frequency_history_consumed": entry_decision[
+                "frequency_history_consumed"
+            ],
+            "triggered": entry_decision["triggered"],
+            "gate_opportunity_ids": (
+                list(entry_decision["gate_ids"])
+                if entry_decision["triggered"] else []
+            ),
+            "gate_requirement_ids": (
+                list(entry_decision["gate_ids"])
+                if entry_decision["triggered"] else []
+            ),
+            "ambient_area_component_ids": list(
+                ambient_plan["ambient_component_ids"]
+            ),
+            "retained_ambient_component_ids": list(
+                ambient_plan["retained_component_ids"]
+            ),
+            "restored_ambient_component_ids": list(restored_ambient_ids),
+            "membership_before": False,
+            "membership_after": True,
+            "old_route_state": old_state.to_dict(),
+            "new_route_state": new_state.to_dict(),
+            "pre_route_state_sha256": transition["pre_route_state_sha256"],
+            "post_route_state_sha256": transition["post_route_state_sha256"],
+            "bound_transition": bound_entry.to_dict(),
+            "geometry_operation_sequence": geometry_record.operation_sequence,
+            "geometry_record_sha256": geometry_record.record_sha256,
+        }
+        entry_pre = _canonical_json(self._state.snapshot())
+        entry_pre_route = self._area_route_state_json()
+        self._state.audit_ledger.append({
+            "operation": "area_entry",
+            **entry_payload,
+        })
+        self._issue(
+            record_kind="area_entry",
+            payload=entry_payload,
+            pre_operation_state_json=entry_pre,
+            pre_operation_route_state_json=entry_pre_route,
+            target_id=target,
+        )
+        return geometry_record
 
     def resolve_movement_response(
         self,
@@ -8699,8 +9725,47 @@ class ControlExecutionSession:
                 mixed_speed_operation_order=mixed_order,
             )
         area_component_ids = self._active_area_component_ids(target)
+        authoritative_area_state = self._area_route_state_or_none(target)
+        non_ambient_area_component_ids: set[str] = set()
+        if area_component_ids:
+            if authoritative_area_state is None:
+                raise ControlEngineError(
+                    "Active area-bound components lack authoritative live area "
+                    f"membership for target {target!r}"
+                )
+            non_ambient_area_component_ids = set(area_component_ids) - set(
+                self._ambient_area_component_ids(
+                    area_id=authoritative_area_state.area_id,
+                    target_id=target,
+                )
+            )
+            if (
+                not authoritative_area_state.membership
+                and non_ambient_area_component_ids
+            ):
+                raise ControlEngineError(
+                    "Active non-ambient area components lack authoritative live "
+                    f"membership for target {target!r}: "
+                    f"{sorted(non_ambient_area_component_ids)}"
+                )
+        fixed_area_effect_active: bool | None = None
+        fixed_area_response_required = bool(
+            self._area_response_convention != "shortest_route_v1"
+            and area_component_ids
+            and authoritative_area_state is not None
+            and authoritative_area_state.membership
+        )
+        if fixed_area_response_required:
+            fixed_area_effect_active = self._bound_input(
+                "area_effect_active", target_id=target, default=True
+            )
+            if fixed_area_effect_active is not True:
+                raise ControlEngineError(
+                    "Movement response cannot retain active area components "
+                    "for an effect already marked ended"
+                )
         route_state = (
-            self._area_route_state_or_none(target)
+            authoritative_area_state
             if self._area_response_convention == "shortest_route_v1"
             else None
         )
@@ -8709,15 +9774,6 @@ class ControlExecutionSession:
             and route_state.membership
             and self._area_effect_is_active(route_state.area_id)
         )
-        if (
-            self._area_response_convention == "shortest_route_v1"
-            and area_component_ids
-            and (route_state is None or not route_state.membership)
-        ):
-            raise ControlEngineError(
-                "Active area-bound components lack authoritative live area "
-                f"membership for target {target!r}"
-            )
         prone = any(
             component.magnitude.get("kind") == "condition"
             and component.magnitude.get("condition") == "prone"
@@ -8858,25 +9914,15 @@ class ControlExecutionSession:
                     pre_operation_state_json=pre,
                     target_id=target,
                 ))
-            if (
-                area_component_ids
-                and self._area_response_convention != "shortest_route_v1"
-            ):
-                area_membership = self._bound_input(
-                    "area_membership",
-                    target_id=target,
-                )
-                if area_membership is not True:
+            if fixed_area_response_required:
+                if authoritative_area_state is None:  # pragma: no cover - preflight
                     raise ControlEngineError(
-                        "Active area-bound components require bound membership true"
+                        "Fixed-occupancy area response lost authoritative "
+                        "membership state"
                     )
-                area_effect_active = self._bound_input(
-                    "area_effect_active", target_id=target, default=True
-                )
-                if area_effect_active is not True:
+                if fixed_area_effect_active is not True:  # pragma: no cover - preflight
                     raise ControlEngineError(
-                        "Movement response cannot retain active area components "
-                        "for an effect already marked ended"
+                        "Fixed-occupancy area response lost active-area authority"
                     )
                 pre = _canonical_json(self._state.snapshot())
                 area = self._engine._resolve_area_response(
@@ -8889,8 +9935,8 @@ class ControlExecutionSession:
                     target_id=target,
                     event_id=event.event_id,
                     area_response_convention=self._area_response_convention,
-                    membership=area_membership,
-                    effect_active=area_effect_active,
+                    membership=authoritative_area_state.membership,
+                    effect_active=fixed_area_effect_active,
                 )
                 self._area_records.append(area)
                 issued.append(self._issue(
@@ -9295,7 +10341,10 @@ class ControlExecutionSession:
         self,
         records: Sequence[_IssuedControlRecord],
     ) -> None:
-        if len(records) != len(self._issued_records):
+        if (
+            len(records) != len(self._issued_records)
+            or len(self._issued_record_originals) != len(self._issued_records)
+        ):
             raise ControlEngineError(
                 "Final result must consume the complete session-issued record stream"
             )
@@ -9310,7 +10359,10 @@ class ControlExecutionSession:
         for index, record in enumerate(records):
             if not isinstance(record, _IssuedControlRecord):
                 raise ControlEngineError("Final records must be typed session records")
-            if record is not self._issued_records[index]:
+            if (
+                record is not self._issued_records[index]
+                or record is not self._issued_record_originals[index]
+            ):
                 raise ControlEngineError(
                     "Final records contain a foreign, stale, or fabricated record"
                 )
@@ -9545,6 +10597,7 @@ class ControlExecutionSession:
                         "movement_blocked",
                         "movement_progress",
                         "route_exit",
+                        "area_entry",
                         "explicit_geometry_update",
                         "effect_end",
                     }
@@ -9685,16 +10738,15 @@ class ControlExecutionSession:
             return True
         if not self._area_effect_active_before_event(event):
             return False
-        fixed_targets = self._canonical_area_target_ids_by_area()
         route_rows = json.loads(snapshot.pre_event_route_state_json)
         for area_id in area_ids:
-            if self._area_response_convention == "shortest_route_v1":
-                matches = [
-                    row for row in route_rows
-                    if row.get("effect_id") == self._program.effect_id
-                    and row.get("area_id") == area_id
-                    and row.get("target_id") == target_id
-                ]
+            matches = [
+                row for row in route_rows
+                if row.get("effect_id") == self._program.effect_id
+                and row.get("area_id") == area_id
+                and row.get("target_id") == target_id
+            ]
+            if matches:
                 if len(matches) != 1:
                     raise ControlEngineError(
                         "Area-owned gate replay has no unique authoritative "
@@ -9703,8 +10755,9 @@ class ControlExecutionSession:
                 if matches[0].get("membership") is not True:
                     return False
             else:
-                if target_id not in fixed_targets.get(area_id, ()):
-                    return False
+                raise ControlEngineError(
+                    "Area-owned gate replay has no authoritative membership state"
+                )
         gate = self._program.gate(gate_id)
         active_component_ids = {
             row["component_id"]
@@ -9716,6 +10769,248 @@ class ControlExecutionSession:
             set(gate.requires_active_component_ids) - active_component_ids
         )
 
+    def _validate_area_entry_history(self) -> None:
+        """Replay issued entry decisions and authoritative membership changes."""
+
+        replay_history: set[tuple[str, str, str, str]] = set()
+        entry_records: dict[tuple[str, str], _IssuedControlRecord] = {}
+        geometry_records = {
+            (record.event_id, str(record.target_id)): record
+            for record in self._issued_records
+            if record.record_kind == "area_geometry_update"
+            and record.target_id is not None
+        }
+        for record in self._issued_records:
+            if record.record_kind != "area_entry" or record.target_id is None:
+                continue
+            identity = (record.event_id, record.target_id)
+            if identity in entry_records:
+                raise ControlEngineError(
+                    "Area-entry replay found duplicate transition identities"
+                )
+            entry_records[identity] = record
+            payload = json.loads(record.payload_json)
+            bound = self._area_entry_transitions.get(identity)
+            if bound is None or payload.get("bound_transition") != bound.to_dict():
+                raise ControlEngineError(
+                    "Area-entry replay found a foreign or rewritten transition"
+                )
+            if (
+                payload.get("kind") != "area_entry"
+                or payload.get("event_id") != bound.event_id
+                or payload.get("event_sequence") != bound.event_sequence
+                or payload.get("effect_id") != bound.effect_id
+                or payload.get("area_id") != bound.area_id
+                or payload.get("target_id") != bound.target_id
+                or payload.get("entry_cause") != bound.cause
+                or payload.get("turn_id") != bound.turn_id
+                or payload.get("membership_before") is not False
+                or payload.get("membership_after") is not True
+            ):
+                raise ControlEngineError(
+                    "Area-entry replay identity or membership facts are malformed"
+                )
+            pre_event_rows = json.loads(record.pre_event_route_state_json)
+            pre_matches = [
+                row for row in pre_event_rows
+                if row.get("effect_id") == bound.effect_id
+                and row.get("area_id") == bound.area_id
+                and row.get("target_id") == bound.target_id
+            ]
+            if len(pre_matches) != 1 or pre_matches[0].get("membership") is not False:
+                raise ControlEngineError(
+                    "Area-entry replay requires authoritative pre-event "
+                    "membership false"
+                )
+            if not self._area_effect_active_before_event(
+                self._schedule.event(record.event_id)
+            ):
+                raise ControlEngineError(
+                    "Area-entry replay found an inactive compiled area"
+                )
+            if bound.cause == "area_movement":
+                geometry = geometry_records.get(identity)
+                if geometry is None:
+                    raise ControlEngineError(
+                        "Area-movement entry lacks its issued geometry update"
+                    )
+                geometry_payload = json.loads(geometry.payload_json)
+                restoration_pre_state_json = geometry.pre_operation_state_json
+                if (
+                    geometry.operation_sequence >= record.operation_sequence
+                    or payload.get("geometry_operation_sequence")
+                    != geometry.operation_sequence
+                    or payload.get("geometry_record_sha256")
+                    != geometry.record_sha256
+                    or geometry_payload.get("membership_before") is not False
+                    or geometry_payload.get("membership_after") is not True
+                    or geometry_payload.get("old_route_state")
+                    != payload.get("old_route_state")
+                    or geometry_payload.get("new_route_state")
+                    != payload.get("new_route_state")
+                    or payload.get("pre_route_state_sha256")
+                    != geometry_payload.get("pre_route_state_sha256")
+                    or payload.get("post_route_state_sha256")
+                    != geometry_payload.get("post_route_state_sha256")
+                    or payload.get("ambient_area_component_ids")
+                    != geometry_payload.get("ambient_area_component_ids")
+                    or payload.get("retained_ambient_component_ids")
+                    != geometry_payload.get("retained_ambient_component_ids")
+                    or payload.get("restored_ambient_component_ids")
+                    != geometry_payload.get("restored_ambient_component_ids")
+                ):
+                    raise ControlEngineError(
+                        "Area-movement entry and geometry operation are discontinuous"
+                    )
+            else:
+                restoration_pre_state_json = record.pre_operation_state_json
+                route_transition = payload.get("route_transition")
+                if (
+                    not isinstance(route_transition, Mapping)
+                    or route_transition.get("transition_kind") != "area_entry"
+                    or payload.get("pre_route_state_sha256")
+                    != route_transition.get("pre_route_state_sha256")
+                    or payload.get("post_route_state_sha256")
+                    != route_transition.get("post_route_state_sha256")
+                ):
+                    raise ControlEngineError(
+                        "Ordinary/forced entry lacks its membership route transition"
+                    )
+            ambient_ids = list(self._ambient_area_component_ids(
+                area_id=bound.area_id,
+                target_id=bound.target_id,
+            ))
+            restoration_pre_ids = {
+                row["component_id"]
+                for row in json.loads(restoration_pre_state_json)
+                if row.get("effect_id") == bound.effect_id
+                and row.get("target_id") == bound.target_id
+            }
+            expected_retained_ambient_ids = [
+                component_id
+                for component_id in ambient_ids
+                if component_id in restoration_pre_ids
+            ]
+            expected_restored_ambient_ids = [
+                component_id
+                for component_id in ambient_ids
+                if component_id not in restoration_pre_ids
+            ]
+            post_rows = [
+                row for row in json.loads(record.post_operation_state_json)
+                if row.get("effect_id") == bound.effect_id
+                and row.get("target_id") == bound.target_id
+            ]
+            post_by_component_id = {
+                row["component_id"]: row for row in post_rows
+            }
+            if (
+                payload.get("ambient_area_component_ids") != ambient_ids
+                or payload.get("retained_ambient_component_ids")
+                != expected_retained_ambient_ids
+                or payload.get("restored_ambient_component_ids")
+                != expected_restored_ambient_ids
+                or any(
+                    component_id not in post_by_component_id
+                    for component_id in ambient_ids
+                )
+                or any(
+                    post_by_component_id[component_id].get("applied_event_id")
+                    != record.event_id
+                    for component_id in expected_restored_ambient_ids
+                )
+            ):
+                raise ControlEngineError(
+                    "Area-entry ambient component restoration does not replay"
+                )
+            area = next(
+                selector.area
+                for selector in self._program.selectors
+                if selector.area is not None
+                and selector.area.area_id == bound.area_id
+            )
+            policy = None if area.entry_policy is None else area.entry_policy.to_dict()
+            if not isinstance(policy, Mapping):
+                raise ControlEngineError(
+                    "Area-entry replay found missing compiled policy"
+                )
+            frequency_key = (
+                bound.effect_id,
+                bound.area_id,
+                bound.target_id,
+                bound.turn_id,
+            )
+            previously_triggered = frequency_key in replay_history
+            frequency_permitted = bool(
+                policy.get("frequency") == "unlimited"
+                or not previously_triggered
+            )
+            movement_counts = bool(
+                bound.cause != "area_movement"
+                or bound.moved_area_counts_as_entry
+            )
+            triggered = bool(movement_counts and frequency_permitted)
+            if not movement_counts:
+                frequency_decision = "area_movement_does_not_count"
+            elif not frequency_permitted:
+                frequency_decision = "once_per_turn_already_triggered"
+            elif policy.get("frequency") == "once_per_turn":
+                frequency_decision = "first_qualifying_entry_this_turn"
+            else:
+                frequency_decision = "unlimited_entry"
+            gate_ids = list(self._entry_gate_ids(bound)) if triggered else []
+            if (
+                payload.get("entry_policy") != policy
+                or payload.get("frequency_key") != {
+                    "effect_id": frequency_key[0],
+                    "area_id": frequency_key[1],
+                    "target_id": frequency_key[2],
+                    "turn_id": frequency_key[3],
+                }
+                or payload.get("previously_triggered_this_turn")
+                is not previously_triggered
+                or payload.get("frequency_permitted") is not frequency_permitted
+                or payload.get("frequency_decision") != frequency_decision
+                or payload.get("frequency_history_consumed") is not triggered
+                or payload.get("triggered") is not triggered
+                or payload.get("gate_opportunity_ids") != gate_ids
+                or payload.get("gate_requirement_ids") != gate_ids
+            ):
+                raise ControlEngineError(
+                    "Area-entry frequency or gate decision does not replay"
+                )
+            if triggered:
+                replay_history.add(frequency_key)
+
+        for identity, bound in self._area_entry_transitions.items():
+            if (
+                bound.cause != "area_movement"
+                and self._area_effect_active_before_event(
+                    self._schedule.event(bound.event_id)
+                )
+                and identity not in entry_records
+            ):
+                raise ControlEngineError(
+                    "Active scenario-bound AreaEntryTransition lacks its issued "
+                    "false-to-true membership attestation"
+                )
+
+        false_to_true = {
+            (str(row.get("event_id")), str(row.get("target_id")))
+            for row in self._area_route_transitions
+            if row.get("old_route_state", {}).get("membership") is False
+            and row.get("new_route_state", {}).get("membership") is True
+        }
+        if set(entry_records) != false_to_true:
+            raise ControlEngineError(
+                "Area-entry records do not exactly cover false-to-true membership "
+                "transitions"
+            )
+        if replay_history != self._area_entry_trigger_history:
+            raise ControlEngineError(
+                "Engine-owned area-entry frequency history is stale or malformed"
+            )
+
     def _validate_area_gate_execution(self) -> None:
         area_gate_bindings = self._canonical_area_gate_bindings()
         if not area_gate_bindings:
@@ -9723,6 +11018,37 @@ class ControlExecutionSession:
         snapshots = {
             snapshot.event_id: snapshot for snapshot in self._event_snapshots
         }
+        entry_records: dict[tuple[str, str], _IssuedControlRecord] = {}
+        for record in self._issued_records:
+            if record.record_kind != "area_entry" or record.target_id is None:
+                continue
+            identity = (record.event_id, record.target_id)
+            if identity in entry_records:
+                raise ControlEngineError(
+                    "Area-gate replay found duplicate entry attestations"
+                )
+            entry_records[identity] = record
+
+        def entry_eligible(
+            gate_id: str,
+            target_id: str,
+            event_id: str,
+        ) -> tuple[bool, _IssuedControlRecord | None]:
+            entry_record = entry_records.get((event_id, target_id))
+            if entry_record is None:
+                return False, None
+            payload = json.loads(entry_record.payload_json)
+            bound = self._area_entry_transitions.get((event_id, target_id))
+            eligible = bool(
+                bound is not None
+                and payload.get("bound_transition") == bound.to_dict()
+                and payload.get("triggered") is True
+                and payload.get("frequency_permitted") is True
+                and gate_id in payload.get("gate_requirement_ids", ())
+                and bound.area_id in area_gate_bindings.get(gate_id, ())
+            )
+            return eligible, entry_record
+
         observed: dict[tuple[str, str, str], list[_IssuedControlRecord]] = {}
         for record in self._issued_records:
             if record.record_kind != "branch_transition":
@@ -9733,7 +11059,23 @@ class ControlExecutionSession:
                 continue
             event = self._schedule.event(record.event_id)
             snapshot = snapshots[record.event_id]
-            if not self._area_gate_eligible_in_snapshot(
+            gate = self._program.gate(str(gate_id))
+            if gate.trigger.kind == "entry":
+                eligible, entry_record = entry_eligible(
+                    str(gate_id),
+                    record.target_id,
+                    record.event_id,
+                )
+                if (
+                    not eligible
+                    or entry_record is None
+                    or entry_record.operation_sequence >= record.operation_sequence
+                ):
+                    raise ControlEngineError(
+                        "Issued entry branch lacks an earlier same-event attested "
+                        "false-to-true membership transition"
+                    )
+            elif not self._area_gate_eligible_in_snapshot(
                 gate_id=str(gate_id),
                 target_id=record.target_id,
                 event=event,
@@ -9762,12 +11104,20 @@ class ControlExecutionSession:
                     or gate_id not in self._program.root_gate_ids
                 ):
                     continue
-                eligible = self._area_gate_eligible_in_snapshot(
-                    gate_id=gate_id,
-                    target_id=target_id,
-                    event=event,
-                    snapshot=snapshot,
-                )
+                gate = self._program.gate(gate_id)
+                if gate.trigger.kind == "entry":
+                    eligible, _entry_record = entry_eligible(
+                        gate_id,
+                        target_id,
+                        event_id,
+                    )
+                else:
+                    eligible = self._area_gate_eligible_in_snapshot(
+                        gate_id=gate_id,
+                        target_id=target_id,
+                        event=event,
+                        snapshot=snapshot,
+                    )
                 count = len(observed.get((event_id, gate_id, target_id), ()))
                 if count != (1 if eligible else 0):
                     raise ControlEngineError(
@@ -9935,6 +11285,16 @@ class ControlExecutionSession:
             or _canonical_json([
                 update.to_dict() for update in self._area_geometry_updates.values()
             ]) != self._area_geometry_updates_json
+            or _canonical_json(scenario.get("area_entry_transitions"))
+            != self._area_entry_transitions_json
+            or _canonical_json([
+                transition.to_dict()
+                for transition in self._area_entry_transitions.values()
+            ]) != self._area_entry_transitions_json
+            or any(
+                key != (transition.event_id, transition.target_id)
+                for key, transition in self._area_entry_transitions.items()
+            )
             or _canonical_json(scenario.get("area_gate_bindings"))
             != self._area_gate_bindings_json
             or _canonical_json({
@@ -10017,6 +11377,7 @@ class ControlExecutionSession:
         )
         self._validate_issued_records(selected_records)
         self._validate_internal_ledgers()
+        self._validate_area_entry_history()
         self._validate_area_gate_execution()
         selected_reliability = self._reliability if reliability is None else reliability
         self._validate_reliability(selected_reliability)
@@ -10045,7 +11406,9 @@ class ControlExecutionSession:
                 snapshot.to_dict() for snapshot in self._event_snapshots
             ),
             area_route_transitions=tuple(self._area_route_transitions),
-            final_area_route_states=tuple(self._area_route_state_rows()),
+            final_area_route_states=tuple(
+                self._area_route_state_rows(public=True)
+            ),
         )
 
     def result(self) -> ControlEngineResult:
@@ -10366,6 +11729,7 @@ if __name__ == "__main__":
 
 
 __all__ = [
+    "AreaEntryTransition",
     "AreaGeometryUpdate",
     "AreaRouteGeometry",
     "ControlEngine",
