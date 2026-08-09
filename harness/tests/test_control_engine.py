@@ -1,0 +1,2674 @@
+"""Public-facade and architecture tests for the shared control engine."""
+
+from __future__ import annotations
+
+import json
+import unittest
+from dataclasses import replace
+from fractions import Fraction
+from types import MappingProxyType
+
+from harness.control_catalog import DIAGNOSTIC_FAMILIES, SenseQueryResult
+from harness.control_engine import (
+    ControlEngine,
+    ControlEngineError,
+    ControlEngineResult,
+    ENGINE_VERSION,
+    ScenarioConvention,
+    VersionProvenance,
+    reliability_result_to_dict,
+    validate_engine,
+)
+from harness.control_graph import (
+    ImmunitySuppression,
+    ReliabilityResult,
+    SelectorContext,
+    _frozen_map,
+)
+from harness.control_timeline import ConcentrationTracker, TimelineError
+
+
+def _reliability_for_targets(
+    effect_id: str,
+    target_ids: tuple[str, ...],
+    *,
+    immunity_suppressions: tuple[ImmunitySuppression, ...] = (),
+) -> ReliabilityResult:
+    return ReliabilityResult(
+        effect_id=effect_id,
+        target_ids=target_ids,
+        component_reliability=(),
+        gate_probabilities=(),
+        branch_probabilities=(),
+        repeat_survival=(),
+        immunity_suppressions=immunity_suppressions,
+        any_candidate_probability=Fraction(0),
+        any_component_probability=Fraction(0),
+        any_candidate_by_target=tuple(
+            (target_id, Fraction(0)) for target_id in target_ids
+        ),
+        any_component_by_target=tuple(
+            (target_id, Fraction(0)) for target_id in target_ids
+        ),
+        final_world_count=1,
+    )
+
+
+def _reliability(
+    effect_id: str,
+    target_id: str = "fixture_target",
+) -> ReliabilityResult:
+    return _reliability_for_targets(effect_id, (target_id,))
+
+
+def _single_selector_membership(program, target_id: str) -> dict[str, list[str]]:
+    return {
+        selector.selector_id: [target_id]
+        for selector in program.selectors
+    }
+
+
+def _selector_context_for(*target_ids: str) -> SelectorContext:
+    return SelectorContext(
+        controller_can_see_by_target={target_id: True for target_id in target_ids},
+        target_size_by_id={target_id: "medium" for target_id in target_ids},
+        controller_proficiency_bonus=6,
+    )
+
+
+def _activate_component(
+    state,
+    program,
+    component,
+    *,
+    target_id: str = "target",
+    event_id: str = "fixture:apply",
+) -> None:
+    state.apply_component(
+        effect_id=program.effect_id,
+        component={
+            "component_id": component.component_id,
+            "magnitude": component.magnitude.data.to_dict(),
+            "duration": component.duration.to_dict(),
+            "stacking": component.stacking.data.to_dict(),
+        },
+        target_id=target_id,
+        source_actor_id="controller",
+        event_id=event_id,
+        invocation_id="fixture_invocation",
+    )
+
+
+class ControlEngineFacadeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.engine = ControlEngine.load()
+
+    def test_load_validates_every_shared_input_without_damage_or_planner_data(self) -> None:
+        self.assertEqual(self.engine.authority.projection_version, "2.1.0")
+        self.assertEqual(len(self.engine.authority.programs), 35)
+        self.assertEqual(len(self.engine.authority.masteries), 3)
+        self.assertEqual(len(self.engine.authority.exclusions), 14)
+        self.assertEqual(len(self.engine.targets), 28)
+        self.assertEqual(len(self.engine.catalog.conditions), 7)
+        self.assertEqual(self.engine.config.horizon_rounds, 3)
+
+    def test_version_block_carries_every_selected_identity_and_digest(self) -> None:
+        identity = self.engine.version_provenance(
+            initiative_convention="fighter_first_v1",
+            area_response_convention="shortest_route_v1",
+            displacement_function_id="sqrt_5ft_v1",
+        ).to_dict()
+        self.assertEqual(identity["engine_version"], ENGINE_VERSION)
+        self.assertEqual(identity["authority_projection_version"], "2.1.0")
+        self.assertEqual(identity["consequence_catalog_version"], "1.0.0")
+        self.assertEqual(identity["primitive_contract_version"], "1.0.0")
+        self.assertEqual(identity["normalization_rules_version"], "1.0.0")
+        self.assertEqual(identity["timeline_engine_version"], "1.0.0")
+        self.assertEqual(identity["engine_config_version"], "1.0.0")
+        for key in (
+            "authority_projection_digest",
+            "target_supplement_digest",
+            "consequence_catalog_digest",
+            "engine_config_digest",
+        ):
+            self.assertRegex(identity[key], r"^[0-9a-f]{64}$")
+
+    def test_unknown_methodology_variant_fails_closed(self) -> None:
+        with self.assertRaisesRegex(ControlEngineError, "initiative"):
+            self.engine.version_provenance(
+                initiative_convention="hidden_default",
+                area_response_convention="shortest_route_v1",
+                displacement_function_id="sqrt_5ft_v1",
+            )
+
+    def test_exact_reliability_serialization_retains_fraction_records(self) -> None:
+        serialized = reliability_result_to_dict(_reliability("fixture"))
+        self.assertEqual(
+            serialized["any_candidate_probability"],
+            {"numerator": 0, "denominator": 1},
+        )
+        self.assertEqual(serialized["explored_state_count"], 1)
+        json.dumps(serialized, sort_keys=True, allow_nan=False)
+
+    def test_facade_assembles_all_required_result_surfaces_weight_free(self) -> None:
+        program = self.engine.authority.programs[0]
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["fixture_target"],
+            target_attack_counts={"fixture_target": [1, 0, 2]},
+        )
+        state = self.engine.new_state()
+        result = self.engine.assemble_result(
+            effect=program,
+            reliability=_reliability(program.effect_id),
+            schedule=schedule,
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="log2_5ft_v1",
+            state=state,
+        ).to_dict()
+        self.assertEqual(
+            set(result["primitive_contributions"]),
+            set(DIAGNOSTIC_FAMILIES),
+        )
+        self.assertEqual(result["compiled_program_id"], program.effect_id)
+        self.assertEqual(result["explored_state_count"], 1)
+        self.assertNotIn("control_value", json.dumps(result).lower())
+        first = json.dumps(result, sort_keys=True, allow_nan=False)
+        second = json.dumps(result, sort_keys=True, allow_nan=False)
+        self.assertEqual(first, second)
+
+    def test_tremorsense_location_awareness_reaches_public_result(self) -> None:
+        program = self.engine.authority.programs[0]
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["fixture_target"],
+            target_attack_counts={"fixture_target": 0},
+        )
+        resolution = SenseQueryResult(
+            alternative_sight=False,
+            location_detection=True,
+            alternative_sight_evidence=("no_alternative_sight",),
+            location_detection_evidence=("tremorsense_contact",),
+            alternative_sight_missing_context=(),
+            location_detection_missing_context=(),
+        )
+        normalization = self.engine.new_state().normalize_for_window(
+            target_id="fixture_target",
+            window_id="fixture_location_window",
+            window_kind="location_opportunity",
+            context={"sense_resolution": resolution},
+        )
+        result = self.engine.assemble_result(
+            effect=program,
+            reliability=_reliability(program.effect_id),
+            schedule=schedule,
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=self.engine.new_state(),
+            normalization_results=(normalization,),
+        ).to_dict()
+        [contribution] = result["primitive_contributions"][
+            "retained_unpriced"
+        ]
+        self.assertEqual(
+            contribution["primitive_id"],
+            "nonsight_location_awareness",
+        )
+        self.assertEqual(
+            contribution["source_component_ids"],
+            ["target_sense:fixture_target:tremorsense"],
+        )
+        self.assertEqual(
+            contribution["context"]["location_detection_evidence"],
+            ["tremorsense_contact"],
+        )
+
+    def test_scheduled_reaction_normalization_uses_interval_authority(self) -> None:
+        program = self.engine.program("snow_chains_t1_control")
+        reaction_component = program.component(
+            "snow_chains_reaction_denial"
+        )
+        state = self.engine.new_state()
+        _activate_component(state, program, reaction_component)
+        unavailable_schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{"kind": "reaction_window", "target_id": "target"}]
+            },
+            target_events_by_round={
+                "target": {
+                    1: [{"kind": "reaction_window", "phase": "start"}]
+                }
+            },
+            target_attack_counts={"target": 0},
+            initial_reaction_availability={"target": False},
+        )
+        reaction_events = [
+            event
+            for event in unavailable_schedule.events
+            if event.kind == "reaction_window"
+        ]
+        pre_turn = next(
+            event
+            for event in reaction_events
+            if event.reaction_interval_id.startswith("horizon:")
+        )
+        reset_marker = next(
+            event
+            for event in reaction_events
+            if event.event_id == event.window_id
+            and not event.reaction_interval_id.startswith("horizon:")
+        )
+        post_reset = next(
+            event
+            for event in reaction_events
+            if ":script:" in event.event_id
+            and not event.reaction_interval_id.startswith("horizon:")
+        )
+
+        unavailable = self.engine.normalize_scheduled_window(
+            state=state,
+            schedule=unavailable_schedule,
+            target_id="target",
+            event_id=pre_turn.event_id,
+        )
+        marker = self.engine.normalize_scheduled_window(
+            state=state,
+            schedule=unavailable_schedule,
+            target_id="target",
+            event_id=reset_marker.event_id,
+        )
+        available_after_reset = self.engine.normalize_scheduled_window(
+            state=state,
+            schedule=unavailable_schedule,
+            target_id="target",
+            event_id=post_reset.event_id,
+        )
+        self.assertFalse(unavailable.contributions)
+        self.assertEqual(
+            unavailable.suppressions[-1].reason,
+            "reaction_unavailable_at_interval_start",
+        )
+        self.assertFalse(marker.contributions)
+        [post_contribution] = available_after_reset.contributions
+        self.assertEqual(post_contribution.primitive_id, "reaction_denial")
+        self.assertEqual(
+            post_contribution.event_or_window_id,
+            post_reset.reaction_interval_id,
+        )
+        self.assertTrue(post_contribution.context["reaction_available"])
+
+        assembled = self.engine.assemble_result(
+            effect=program,
+            reliability=_reliability(program.effect_id, "target"),
+            schedule=unavailable_schedule,
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=state,
+            normalization_results=(
+                unavailable,
+                marker,
+                available_after_reset,
+            ),
+        ).to_dict()
+        self.assertEqual(
+            len(assembled["primitive_contributions"]["denial"]),
+            1,
+        )
+        [availability_suppression] = [
+            row
+            for row in assembled["suppression_and_dominance_records"]
+            if row["reason"] == "reaction_unavailable_at_interval_start"
+        ]
+        self.assertEqual(
+            availability_suppression["suppressed_source_component_ids"],
+            ["snow_chains_t1_control:snow_chains_reaction_denial"],
+        )
+
+        available_schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{"kind": "reaction_window", "target_id": "target"}]
+            },
+            target_attack_counts={"target": 0},
+            initial_reaction_availability={"target": True},
+        )
+        available_pre_turn = next(
+            event
+            for event in available_schedule.events
+            if event.kind == "reaction_window"
+            and event.reaction_interval_id.startswith("horizon:")
+        )
+        initial = self.engine.normalize_scheduled_window(
+            state=state,
+            schedule=available_schedule,
+            target_id="target",
+            event_id=available_pre_turn.event_id,
+        )
+        self.assertEqual(
+            [item.primitive_id for item in initial.contributions],
+            ["reaction_denial"],
+        )
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "derived from the schedule",
+        ):
+            self.engine.normalize_scheduled_window(
+                state=state,
+                schedule=unavailable_schedule,
+                target_id="target",
+                event_id=pre_turn.event_id,
+                context={"reaction_available": True},
+            )
+
+    def test_all_attacks_is_one_public_affected_turn_not_per_attack(self) -> None:
+        program = self.engine.program("electron_burst_t2_control")
+        state = self.engine.new_state()
+        _activate_component(
+            state,
+            program,
+            program.component("electron_burst_attack_disadvantage"),
+        )
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            target_attack_counts={"target": [2, 0, 0]},
+        )
+        active_turn = next(
+            event for event in schedule.events
+            if event.kind == "target_active_turn_opportunity"
+            and event.round == 1
+        )
+        attacks = [
+            event for event in schedule.events
+            if event.kind == "target_attack_opportunity"
+            and event.round == 1
+        ]
+        normalizations = [
+            self.engine.normalize_scheduled_window(
+                state=state,
+                schedule=schedule,
+                target_id="target",
+                event_id=event.event_id,
+            )
+            for event in (active_turn, *attacks)
+        ]
+        self.assertEqual(
+            [
+                contribution.primitive_id
+                for result in normalizations[1:]
+                for contribution in result.contributions
+                if contribution.primitive_id
+                == "offensive_impairment_all_attacks"
+            ],
+            [],
+        )
+        assembled = self.engine.assemble_result(
+            effect=program,
+            reliability=_reliability(program.effect_id, "target"),
+            schedule=schedule,
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=state,
+            normalization_results=normalizations,
+        ).to_dict()
+        rows = [
+            row for row in assembled["primitive_contributions"]["denial"]
+            if row["primitive_id"] == "offensive_impairment_all_attacks"
+        ]
+        self.assertEqual(len(rows), 1)
+        self.assertEqual(rows[0]["unit"], "affected_target_turn")
+        self.assertEqual(rows[0]["event_or_window_id"], active_turn.window_id)
+
+    def test_result_model_rejects_all_nested_weight_and_temperature_keys(self) -> None:
+        version = self.engine.version_provenance(
+            initiative_convention="fighter_first_v1",
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="banded_10ft_v1",
+        )
+        base = ControlEngineResult(
+            version_provenance=version,
+            scenario_convention=ScenarioConvention(
+                3,
+                "fighter_first_v1",
+                "fixed_occupancy_v1",
+                "banded_10ft_v1",
+            ),
+            compiled_program_id="fixture",
+            target_ids=("target",),
+            gate_probabilities=(),
+            branch_probabilities=(),
+            component_reliability=(),
+            any_candidate_reliability={},
+            any_component_reliability={},
+            timeline={},
+            event_state_transitions=(),
+            audit_ledger=(),
+            primitive_contributions={family: () for family in DIAGNOSTIC_FAMILIES},
+            suppression_and_dominance_records=(),
+            refresh_and_replacement_records=(),
+            repeat_save_records=(),
+            area_membership_and_route_records=(),
+            prone_standing_records=(),
+            concentration_records=(),
+            displacement_epoch_records=(),
+            final_normalized_state={},
+            explored_state_count=1,
+        )
+        for forbidden_key in (
+            "control_value",
+            "WeIgHt",
+            "Primitive_Weight",
+            "HoT",
+            "IDEAL",
+            "cOlD",
+            "Sensitive",
+        ):
+            with self.subTest(forbidden_key=forbidden_key):
+                result = replace(
+                    base,
+                    final_normalized_state={
+                        "target": {"nested": {forbidden_key: 1}}
+                    },
+                )
+                with self.assertRaisesRegex(ControlEngineError, "forbidden"):
+                    result.to_dict()
+
+    def test_result_uses_schedule_target_order_after_identity_set_validation(self) -> None:
+        program = self.engine.authority.programs[0]
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target_z", "target_a"],
+            target_attack_counts={"target_z": 0, "target_a": 0},
+        )
+        reliability = _reliability_for_targets(
+            program.effect_id,
+            ("target_a", "target_z"),
+        )
+        result = self.engine.assemble_result(
+            effect=program,
+            reliability=reliability,
+            schedule=schedule,
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=self.engine.new_state(),
+        ).to_dict()
+        self.assertEqual(result["target_ids"], ["target_z", "target_a"])
+        self.assertEqual(
+            [
+                row["target_id"]
+                for row in result["any_candidate_reliability"]["by_target"]
+            ],
+            ["target_z", "target_a"],
+        )
+        with self.assertRaisesRegex(ControlEngineError, "same identities"):
+            self.engine.assemble_result(
+                effect=program,
+                reliability=_reliability_for_targets(
+                    program.effect_id,
+                    ("target_a", "different_target"),
+                ),
+                schedule=schedule,
+                area_response_convention="fixed_occupancy_v1",
+                displacement_function_id="sqrt_5ft_v1",
+                state=self.engine.new_state(),
+            )
+
+    def test_result_preserves_reliability_immunity_suppression_with_reason(self) -> None:
+        program = self.engine.program_for("absolute_zero", 1)
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            target_attack_counts={"target": 0},
+        )
+        suppression = ImmunitySuppression(
+            event_id="initial:fixture_gate",
+            gate_id="fixture_gate",
+            branch_id="fixture_branch",
+            target_id="target",
+            component_id="absolute_zero_restrained",
+            condition="restrained",
+            probability=Fraction(1, 2),
+        )
+        reliability = _reliability_for_targets(
+            program.effect_id,
+            ("target",),
+            immunity_suppressions=(suppression,),
+        )
+        result = self.engine.assemble_result(
+            effect=program,
+            reliability=reliability,
+            schedule=schedule,
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=self.engine.new_state(),
+        ).to_dict()
+        [record] = result["suppression_and_dominance_records"]
+        self.assertEqual(
+            record["record_type"],
+            "reliability_immunity_suppression",
+        )
+        self.assertEqual(record["reason"], "target_condition_immunity")
+        self.assertEqual(record["probability"], {"numerator": 1, "denominator": 2})
+
+    def test_default_candidate_set_excludes_retained_fall_and_elevation(self) -> None:
+        program = self.engine.program_for("mass_levitation", 0)
+        candidates = set(self.engine.candidate_component_ids(program))
+        self.assertIn("mass_levitation_initial_lift", candidates)
+        self.assertIn("mass_levitation_restrained", candidates)
+        self.assertNotIn("mass_levitation_persistent_elevation", candidates)
+        self.assertNotIn("mass_levitation_fall", candidates)
+        selector_membership = {
+            selector.selector_id: ()
+            for selector in program.selectors
+        }
+        with self.assertRaisesRegex(ControlEngineError, "cannot reclassify"):
+            self.engine.reliability(
+                program,
+                targets=(),
+                selector_membership=selector_membership,
+                selector_context=_selector_context_for(),
+                candidate_component_ids=("mass_levitation_fall",),
+                include_initial=False,
+            )
+
+    def test_validation_summary_is_compact_and_preserves_scope_counts(self) -> None:
+        summary = validate_engine()
+        self.assertEqual(summary["status"], "ok")
+        self.assertEqual(summary["compiled_programs"], 35)
+        self.assertEqual(summary["compiled_masteries"], 3)
+        self.assertEqual(summary["preserved_exclusions"], 14)
+        self.assertEqual(summary["control_target_rows"], 28)
+        self.assertEqual(summary["fixture_cases"], 67)
+        self.assertEqual(len(summary["initiative_schedules"]), 2)
+        self.assertEqual(len(summary["area_response_conventions"]), 2)
+        self.assertEqual(len(summary["displacement_functions"]), 3)
+
+
+class ControlEngineIntegrationBridgeTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        cls.engine = ControlEngine.load()
+
+    def test_compiled_branch_applies_to_state_with_timeline_expiry(self) -> None:
+        program = self.engine.program_for("absolute_zero", 0)
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [
+                    {
+                        "kind": "save_opportunity",
+                        "target_id": "target",
+                    }
+                ]
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        event = next(
+            row for row in schedule.events
+            if row.kind == "save_opportunity"
+        )
+        state = self.engine.new_state()
+        transition = self.engine.apply_resolved_branch(
+            state=state,
+            effect=program,
+            gate_id="absolute_zero_t0_save",
+            outcome="save_failure",
+            target_id="target",
+            source_actor_id="controller",
+            event_id=event.event_id,
+            invocation_id="invocation",
+            schedule=schedule,
+            selector_membership=_single_selector_membership(program, "target"),
+            selector_context=_selector_context_for("target"),
+        )
+        self.assertEqual(transition["operation"], "branch_transition")
+        self.assertEqual(
+            [row.component_id for row in state.active_components("target")],
+            ["absolute_zero_speed_zero"],
+        )
+        self.assertEqual(
+            state.active_components("target")[0].expiry_event_id,
+            "r2:controller:turn:end",
+        )
+
+    def test_branch_requires_typed_event_selectors_and_reachable_invocation_edge(self) -> None:
+        program = self.engine.program("explosion_implosion_t0_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["primary", "secondary"],
+            controller_events_by_round={
+                1: [
+                    {"kind": "hit", "target_id": "primary"},
+                    {"kind": "save_opportunity", "target_id": "secondary"},
+                ]
+            },
+            target_attack_counts={"primary": 0, "secondary": 0},
+        )
+        hit_event = next(
+            event
+            for event in schedule.events
+            if event.kind == "hit" and event.target_id == "primary"
+        )
+        save_event = next(
+            event
+            for event in schedule.events
+            if event.kind == "save_opportunity"
+            and event.target_id == "secondary"
+        )
+        membership = {
+            "explosion_implosion_primary": ["primary"],
+            "explosion_implosion_secondary_targets": ["secondary"],
+        }
+        choices = {"explosion_implosion_mode": "explosion"}
+        state = self.engine.new_state()
+        with self.assertRaisesRegex(ControlEngineError, "no prior reachable"):
+            self.engine.apply_resolved_branch(
+                state=state,
+                effect=program,
+                gate_id="explosion_implosion_t0_secondary_saves",
+                outcome="save_failure",
+                target_id="secondary",
+                source_actor_id="controller",
+                event_id=save_event.event_id,
+                invocation_id="invocation",
+                schedule=schedule,
+                selector_membership=membership,
+                selector_context=_selector_context_for("primary", "secondary"),
+                choices=choices,
+            )
+        with self.assertRaisesRegex(ControlEngineError, "does not match"):
+            self.engine.apply_resolved_branch(
+                state=state,
+                effect=program,
+                gate_id="explosion_implosion_t0_attack",
+                outcome="attack_hit",
+                target_id="primary",
+                source_actor_id="controller",
+                event_id=save_event.event_id,
+                invocation_id="invocation",
+                schedule=schedule,
+                selector_membership=membership,
+                selector_context=_selector_context_for("primary", "secondary"),
+                choices=choices,
+            )
+        with self.assertRaisesRegex(ControlEngineError, "Selector membership"):
+            self.engine.apply_resolved_branch(
+                state=state,
+                effect=program,
+                gate_id="explosion_implosion_t0_attack",
+                outcome="attack_hit",
+                target_id="primary",
+                source_actor_id="controller",
+                event_id=hit_event.event_id,
+                invocation_id="invocation",
+                schedule=schedule,
+                selector_membership={
+                    "explosion_implosion_primary": ["primary"]
+                },
+                selector_context=_selector_context_for("primary", "secondary"),
+                choices=choices,
+            )
+        root = self.engine.apply_resolved_branch(
+            state=state,
+            effect=program,
+            gate_id="explosion_implosion_t0_attack",
+            outcome="attack_hit",
+            target_id="primary",
+            source_actor_id="controller",
+            event_id=hit_event.event_id,
+            invocation_id="invocation",
+            schedule=schedule,
+            selector_membership=membership,
+            selector_context=_selector_context_for("primary", "secondary"),
+            choices=choices,
+        )
+        self.assertEqual(root["gate_id"], "explosion_implosion_t0_attack")
+        self.assertEqual(
+            root["next_gate_ids"],
+            [
+                "explosion_implosion_t0_primary_save",
+                "explosion_implosion_t0_secondary_saves",
+            ],
+        )
+        with self.assertRaisesRegex(ControlEngineError, "already resolved"):
+            self.engine.apply_resolved_branch(
+                state=state,
+                effect=program,
+                gate_id="explosion_implosion_t0_attack",
+                outcome="attack_hit",
+                target_id="primary",
+                source_actor_id="controller",
+                event_id=hit_event.event_id,
+                invocation_id="invocation",
+                schedule=schedule,
+                selector_membership=membership,
+                selector_context=_selector_context_for("primary", "secondary"),
+                choices=choices,
+            )
+        with self.assertRaisesRegex(ControlEngineError, "other_invocation"):
+            self.engine.apply_resolved_branch(
+                state=state,
+                effect=program,
+                gate_id="explosion_implosion_t0_secondary_saves",
+                outcome="save_failure",
+                target_id="secondary",
+                source_actor_id="controller",
+                event_id=save_event.event_id,
+                invocation_id="other_invocation",
+                schedule=schedule,
+                selector_membership=membership,
+                selector_context=_selector_context_for("primary", "secondary"),
+                choices=choices,
+            )
+        transition = self.engine.apply_resolved_branch(
+            state=state,
+            effect=program,
+            gate_id="explosion_implosion_t0_secondary_saves",
+            outcome="save_failure",
+            target_id="secondary",
+            source_actor_id="controller",
+            event_id=save_event.event_id,
+            invocation_id="invocation",
+            schedule=schedule,
+            selector_membership=membership,
+            selector_context=_selector_context_for("primary", "secondary"),
+            choices=choices,
+        )
+        self.assertEqual(
+            transition["filtered_branch"]["applies"],
+            [
+                "explosion_implosion_restrained",
+                "explosion_implosion_outward_movement",
+            ],
+        )
+        self.assertEqual(len(transition["pending_displacement_requests"]), 1)
+        self.assertEqual(
+            [component.component_id for component in state.active_components("secondary")],
+            ["explosion_implosion_restrained"],
+        )
+        self.assertEqual(
+            state.audit_ledger[-1]["invocation_id"],
+            "invocation",
+        )
+
+    def test_refresh_branch_computes_and_records_timeline_expiry(self) -> None:
+        program = self.engine.program("glacial_spike_t1_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [
+                    {"kind": "hit", "target_id": "target"},
+                    {"kind": "save_opportunity", "target_id": "target"},
+                ]
+            },
+            target_attack_counts={"target": 0},
+        )
+        hit_event = next(event for event in schedule.events if event.kind == "hit")
+        save_event = next(
+            event for event in schedule.events if event.kind == "save_opportunity"
+        )
+        membership = _single_selector_membership(program, "target")
+        state = self.engine.new_state()
+        self.engine.apply_resolved_branch(
+            state=state,
+            effect=program,
+            gate_id="glacial_spike_t1_attack",
+            outcome="attack_hit",
+            target_id="target",
+            source_actor_id="controller",
+            event_id=hit_event.event_id,
+            invocation_id="invocation",
+            schedule=schedule,
+            selector_membership=membership,
+            selector_context=_selector_context_for("target"),
+        )
+        transition = self.engine.apply_resolved_branch(
+            state=state,
+            effect=program,
+            gate_id="glacial_spike_t1_save",
+            outcome="save_success",
+            target_id="target",
+            source_actor_id="controller",
+            event_id=save_event.event_id,
+            invocation_id="invocation",
+            schedule=schedule,
+            selector_membership=membership,
+            selector_context=_selector_context_for("target"),
+        )
+        self.assertEqual(
+            transition["refresh_expiry_event_ids"],
+            {"glacial_spike_speed_reduction": "r2:controller:turn:end"},
+        )
+        self.assertEqual(
+            state.active_components("target")[0].expiry_event_id,
+            "r2:controller:turn:end",
+        )
+
+    def test_instantaneous_lift_and_fall_surface_outputs_without_persistent_state(self) -> None:
+        program = self.engine.program_for("mass_levitation", 0)
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{"kind": "save_opportunity", "target_id": "target"}]
+            },
+            target_attack_counts={"target": 0},
+        )
+        initial_event = next(
+            event
+            for event in schedule.events
+            if event.kind == "save_opportunity"
+        )
+        repeat_event = next(
+            event
+            for event in schedule.events
+            if event.kind == "target_turn_start"
+            and event.target_id == "target"
+        )
+        membership = _single_selector_membership(program, "target")
+        state = self.engine.new_state()
+        initial = self.engine.apply_resolved_branch(
+            state=state,
+            effect=program,
+            gate_id="mass_levitation_t0_initial_saves",
+            outcome="save_failure",
+            target_id="target",
+            source_actor_id="controller",
+            event_id=initial_event.event_id,
+            invocation_id="invocation",
+            schedule=schedule,
+            selector_membership=membership,
+            selector_context=_selector_context_for("target"),
+        )
+        self.assertEqual(len(initial["pending_displacement_requests"]), 1)
+        self.assertNotIn(
+            "mass_levitation_initial_lift",
+            [component.component_id for component in state.active_components("target")],
+        )
+        fall = self.engine.apply_resolved_branch(
+            state=state,
+            effect=program,
+            gate_id="mass_levitation_t0_repeat_saves",
+            outcome="save_success",
+            target_id="target",
+            source_actor_id="controller",
+            event_id=repeat_event.event_id,
+            invocation_id="invocation",
+            schedule=schedule,
+            selector_membership=membership,
+            selector_context=_selector_context_for("target"),
+        )
+        [fall_contribution] = fall["instantaneous_contributions"]
+        self.assertEqual(fall_contribution["primitive_id"], "fall_transition")
+        self.assertEqual(fall_contribution["family"], "retained_unpriced")
+        self.assertEqual(state.active_components("target"), ())
+        result = self.engine.assemble_result(
+            effect=program,
+            reliability=_reliability(program.effect_id, "target"),
+            schedule=schedule,
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=state,
+            event_state_transitions=(initial, fall),
+        ).to_dict()
+        self.assertEqual(
+            [
+                row["primitive_id"]
+                for row in result["primitive_contributions"]["retained_unpriced"]
+            ],
+            ["fall_transition"],
+        )
+        self.assertEqual(
+            result["final_normalized_state"]["target"]["active_components"],
+            [],
+        )
+
+    def test_displacement_resolution_enters_public_vector_once(self) -> None:
+        program = self.engine.program_for("telekinetic_shove", 0)
+        component = next(
+            component
+            for component in program.components
+            if component.magnitude.kind == "forced_movement"
+        )
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{"kind": "hit", "target_id": "target"}]
+            },
+            target_attack_counts={"target": 0},
+        )
+        event = next(event for event in schedule.events if event.kind == "hit")
+        resolution = self.engine.resolve_displacement(
+            component=component,
+            target_id="target",
+            event_id=event.event_id,
+            epochs=self.engine.new_displacement_epochs(),
+            displacement_function_id="sqrt_5ft_v1",
+            vector_feet=[10, 0, 0],
+        )
+        result = self.engine.assemble_result(
+            effect=program,
+            reliability=_reliability(program.effect_id, "target"),
+            schedule=schedule,
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=self.engine.new_state(),
+            displacement_records=(resolution, resolution),
+        ).to_dict()
+        [contribution] = result["primitive_contributions"]["denial"]
+        self.assertEqual(contribution["primitive_id"], "forced_displacement")
+        self.assertEqual(contribution["event_or_window_id"], event.event_id)
+        self.assertEqual(len(result["displacement_epoch_records"]), 1)
+
+    def test_typed_self_movement_boundaries_enter_public_result(self) -> None:
+        program = self.engine.program_for("telekinetic_shove", 0)
+        component = next(
+            component for component in program.components
+            if component.magnitude.kind == "forced_movement"
+        )
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{"kind": "hit", "target_id": "target"}]
+            },
+            target_attack_counts={"target": 0},
+        )
+        hit = next(event for event in schedule.events if event.kind == "hit")
+        movement_events = [
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+        ]
+        epochs = self.engine.new_displacement_epochs()
+        movement_state = self.engine.new_state()
+        frozen_program = self.engine.program_for("frozen_ground", 0)
+        forced = self.engine.resolve_displacement(
+            component=component,
+            target_id="target",
+            event_id=hit.event_id,
+            epochs=epochs,
+            displacement_function_id="sqrt_5ft_v1",
+            vector_feet=[10, 0, 0],
+        )
+        legal_reset = self.engine.resolve_self_movement_epoch(
+            epochs=epochs,
+            state=movement_state,
+            schedule=schedule,
+            target_id="target",
+            event_id=movement_events[0].event_id,
+            legal=True,
+            base_speeds_ft={"walk": 30},
+            movement_mode="walk",
+        )
+        _activate_component(
+            movement_state,
+            frozen_program,
+            frozen_program.component("frozen_ground_speed_zero"),
+            event_id="fixture:speed_zero:apply",
+        )
+        speed_zero = self.engine.resolve_self_movement_epoch(
+            epochs=epochs,
+            state=movement_state,
+            schedule=schedule,
+            target_id="target",
+            event_id=movement_events[1].event_id,
+            legal=True,
+            base_speeds_ft={"walk": 30},
+            movement_mode="walk",
+        )
+        self.assertTrue(legal_reset["record"]["reset"])
+        self.assertEqual(legal_reset["record"]["new_epoch"], 2)
+        self.assertFalse(speed_zero["record"]["reset"])
+        self.assertEqual(speed_zero["record"]["new_epoch"], 2)
+        self.assertEqual(speed_zero["record"]["reason"], "speed_zero")
+        self.assertEqual(
+            speed_zero["record"]["movement_authority"]["effective_speeds_ft"],
+            {"walk": 0},
+        )
+        result = self.engine.assemble_result(
+            effect=program,
+            reliability=_reliability(program.effect_id, "target"),
+            schedule=schedule,
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=movement_state,
+            displacement_records=(forced, legal_reset, speed_zero),
+        ).to_dict()
+        self.assertEqual(
+            [row["kind"] for row in result["displacement_epoch_records"]],
+            [
+                "forced_displacement",
+                "displacement_epoch_boundary",
+                "displacement_epoch_boundary",
+            ],
+        )
+        self.assertEqual(
+            len(result["primitive_contributions"]["denial"]),
+            1,
+        )
+
+    def test_prone_lifecycle_mutates_state_only_after_a_legal_stand(self) -> None:
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={1: [{"kind": "activation"}]},
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        movement_events = [
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+        ]
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        state = self.engine.new_state()
+        state.apply_component(
+            effect_id="fixture_prone",
+            component={
+                "component_id": "fixture_prone_component",
+                "magnitude": {"kind": "condition", "condition": "prone"},
+                "duration": {
+                    "kind": "concentration",
+                    "maximum_value": 1,
+                    "unit": "minute",
+                },
+                "stacking": {
+                    "key": "fixture_prone",
+                    "mode": "nonstacking",
+                    "refresh": "none",
+                },
+            },
+            target_id="target",
+            source_actor_id="controller",
+            event_id="fixture:apply",
+            invocation_id="fixture_invocation",
+        )
+        frozen_program = self.engine.program_for("frozen_ground", 0)
+        _activate_component(
+            state,
+            frozen_program,
+            frozen_program.component("frozen_ground_speed_zero"),
+            event_id="fixture:prone:speed_zero",
+        )
+        before_rejected = state.snapshot()
+        with self.assertRaisesRegex(ControlEngineError, "typed movement"):
+            self.engine.resolve_prone_movement(
+                state=state,
+                schedule=schedule,
+                target_id="target",
+                event_id=activation.event_id,
+                base_speeds_ft={"walk": 30},
+                movement_mode="walk",
+            )
+        with self.assertRaisesRegex(TimelineError, "resolve exactly once"):
+            self.engine.resolve_prone_movement(
+                state=state,
+                schedule=schedule,
+                target_id="target",
+                event_id="fixture:not_in_schedule",
+                base_speeds_ft={"walk": 30},
+                movement_mode="walk",
+            )
+        self.assertEqual(state.snapshot(), before_rejected)
+        blocked = self.engine.resolve_prone_movement(
+            state=state,
+            schedule=schedule,
+            target_id="target",
+            event_id=movement_events[0].event_id,
+            base_speeds_ft={"walk": 30},
+            movement_mode="walk",
+        )
+        self.assertFalse(blocked["stood"])
+        self.assertEqual(blocked["reason"], "speed_zero")
+        self.assertEqual(
+            blocked["movement_authority"]["effective_speeds_ft"],
+            {"walk": 0},
+        )
+        self.assertEqual(
+            {
+                component.component_id
+                for component in state.active_components("target")
+            },
+            {"fixture_prone_component", "frozen_ground_speed_zero"},
+        )
+        state.terminate(
+            target_id="target",
+            component_id="frozen_ground_speed_zero",
+            effect_id=frozen_program.effect_id,
+            event_id="fixture:prone:speed_zero:end",
+            reason="duration_expiry",
+        )
+        stood = self.engine.resolve_prone_movement(
+            state=state,
+            schedule=schedule,
+            target_id="target",
+            event_id=movement_events[1].event_id,
+            base_speeds_ft={"walk": 30},
+            movement_mode="walk",
+        )
+        self.assertTrue(stood["stood"])
+        self.assertEqual(state.active_components("target"), ())
+        self.assertEqual(
+            state.final_normalized_state(self.engine.catalog)["target"]["conditions"],
+            [],
+        )
+
+    def test_area_exit_and_area_end_records_match_mutated_state(self) -> None:
+        program = self.engine.program("ball_lightning_t2_control")
+        for effect_active, convention in (
+            (True, "shortest_route_v1"),
+            (False, "fixed_occupancy_v1"),
+        ):
+            with self.subTest(effect_active=effect_active):
+                schedule = self.engine.schedule(
+                    "fighter_first_v1",
+                    ["target"],
+                    controller_events_by_round={
+                        1: [{"kind": "concentration_end"}]
+                    },
+                    target_attack_counts={"target": [0, 0, 0]},
+                )
+                event_kind = (
+                    "target_movement_opportunity"
+                    if effect_active else "concentration_end"
+                )
+                response_event = next(
+                    event for event in schedule.events
+                    if event.kind == event_kind
+                )
+                state = self.engine.new_state()
+                for component in program.components:
+                    _activate_component(state, program, component)
+                response = self.engine.resolve_area_response(
+                    state=state,
+                    schedule=schedule,
+                    effect=program,
+                    target_ids=("target",),
+                    selector_membership=_single_selector_membership(program, "target"),
+                    selector_context=_selector_context_for("target"),
+                    target_id="target",
+                    event_id=response_event.event_id,
+                    area_response_convention=convention,
+                    membership=True,
+                    effect_active=effect_active,
+                    routes=(
+                        [
+                            {
+                                "route_id": "walk_exit",
+                                "mode": "walk",
+                                "distance_to_exit_ft": 5,
+                                "compatible": True,
+                                "movement_cost_multiplier": 1,
+                                "environment": "grounded",
+                            }
+                        ]
+                        if effect_active
+                        else None
+                    ),
+                    base_speeds_ft=(
+                        {"walk": 30} if effect_active else None
+                    ),
+                )
+                self.assertTrue(response["exited"])
+                self.assertEqual(
+                    set(response["ended_component_ids"]),
+                    {component.component_id for component in program.components},
+                )
+                self.assertEqual(state.active_components("target"), ())
+                self.assertEqual(response["active_components_after"], [])
+
+    def test_assembler_rejects_forged_prone_and_area_event_ownership(self) -> None:
+        program = self.engine.program("ball_lightning_t2_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={1: [{"kind": "activation"}]},
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        state = self.engine.new_state()
+        state.apply_component(
+            effect_id="fixture_prone",
+            component={
+                "component_id": "fixture_prone_component",
+                "magnitude": {"kind": "condition", "condition": "prone"},
+                "duration": {
+                    "kind": "concentration",
+                    "maximum_value": 1,
+                    "unit": "minute",
+                },
+                "stacking": {
+                    "key": "fixture_prone",
+                    "mode": "nonstacking",
+                    "refresh": "none",
+                },
+            },
+            target_id="target",
+            source_actor_id="controller",
+            event_id="fixture:apply",
+            invocation_id="fixture_invocation",
+        )
+        prone_record = self.engine.resolve_prone_movement(
+            state=state,
+            schedule=schedule,
+            target_id="target",
+            event_id=movement.event_id,
+            base_speeds_ft={"walk": 30},
+            movement_mode="walk",
+        )
+        for component in program.components:
+            _activate_component(state, program, component)
+        area_record = self.engine.resolve_area_response(
+            state=state,
+            schedule=schedule,
+            effect=program,
+            target_ids=("target",),
+            selector_membership=_single_selector_membership(program, "target"),
+            selector_context=_selector_context_for("target"),
+            target_id="target",
+            event_id=movement.event_id,
+            area_response_convention="shortest_route_v1",
+            membership=True,
+            effect_active=True,
+            routes=[{
+                "route_id": "walk_exit",
+                "mode": "walk",
+                "distance_to_exit_ft": 5,
+                "compatible": True,
+                "movement_cost_multiplier": 1,
+                "environment": "grounded",
+            }],
+            base_speeds_ft={"walk": 30},
+        )
+        assembled = self.engine.assemble_result(
+            effect=program,
+            reliability=_reliability(program.effect_id, "target"),
+            schedule=schedule,
+            area_response_convention="shortest_route_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=state,
+            prone_records=(prone_record, prone_record),
+            area_records=(area_record, area_record),
+        ).to_dict()
+        self.assertEqual(len(assembled["prone_standing_records"]), 1)
+        self.assertEqual(
+            len(assembled["area_membership_and_route_records"]),
+            1,
+        )
+        for field_name, record in (
+            ("prone_records", prone_record),
+            ("area_records", area_record),
+        ):
+            with self.assertRaisesRegex(
+                ControlEngineError,
+                "closed record shape",
+            ):
+                self.engine.assemble_result(
+                    effect=program,
+                    reliability=_reliability(program.effect_id, "target"),
+                    schedule=schedule,
+                    area_response_convention="shortest_route_v1",
+                    displacement_function_id="sqrt_5ft_v1",
+                    state=state,
+                    **{
+                        field_name: ({
+                            "kind": record["kind"],
+                            "event_id": record["event_id"],
+                            "target_id": "target",
+                        },)
+                    },
+                )
+            with self.assertRaisesRegex(ControlEngineError, "conflicts"):
+                self.engine.assemble_result(
+                    effect=program,
+                    reliability=_reliability(program.effect_id, "target"),
+                    schedule=schedule,
+                    area_response_convention="shortest_route_v1",
+                    displacement_function_id="sqrt_5ft_v1",
+                    state=state,
+                    **{
+                        field_name: (
+                            record,
+                            {**record, "ended_component_ids": []},
+                        )
+                    },
+                )
+        for field_name, record in (
+            ("prone_records", prone_record),
+            ("area_records", area_record),
+        ):
+            with self.subTest(field_name=field_name):
+                with self.assertRaisesRegex(
+                    ControlEngineError,
+                    "typed target event",
+                ):
+                    self.engine.assemble_result(
+                        effect=program,
+                        reliability=_reliability(
+                            program.effect_id,
+                            "target",
+                        ),
+                        schedule=schedule,
+                        area_response_convention="shortest_route_v1",
+                        displacement_function_id="sqrt_5ft_v1",
+                        state=state,
+                        **{
+                            field_name: (
+                                {
+                                    **record,
+                                    "event_id": activation.event_id,
+                                },
+                            )
+                        },
+                    )
+
+    def test_frozen_ground_movement_uses_active_state_authority(self) -> None:
+        program = self.engine.program_for("frozen_ground", 0)
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{"kind": "concentration_end"}]
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        movement_events = iter(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+        )
+        area_end_event = next(
+            event for event in schedule.events
+            if event.kind == "concentration_end"
+        )
+        state = self.engine.new_state()
+        for component_id in (
+            "frozen_ground_difficult_terrain",
+            "frozen_ground_speed_zero",
+        ):
+            _activate_component(
+                state,
+                program,
+                program.component(component_id),
+            )
+        membership = _single_selector_membership(program, "target")
+        selector_context = _selector_context_for("target")
+
+        def resolve(distance_to_exit_ft: int) -> dict[str, object]:
+            event = next(movement_events)
+            return self.engine.resolve_area_response(
+                state=state,
+                schedule=schedule,
+                effect=program,
+                target_ids=("target",),
+                selector_membership=membership,
+                selector_context=selector_context,
+                target_id="target",
+                event_id=event.event_id,
+                area_response_convention="shortest_route_v1",
+                membership=True,
+                effect_active=True,
+                routes=[{
+                    "route_id": "walk_out",
+                    "mode": "walk",
+                    "distance_to_exit_ft": distance_to_exit_ft,
+                    "compatible": True,
+                    "movement_cost_multiplier": 1,
+                    "environment": "grounded",
+                }],
+                base_speeds_ft={"walk": 30},
+            )
+
+        blocked = resolve(20)
+        self.assertFalse(blocked["exited"])
+        self.assertEqual(blocked["reason"], "movement_unavailable")
+        self.assertEqual(
+            blocked["movement_authority"]["effective_speeds_ft"],
+            {"walk": 0},
+        )
+        self.assertEqual(
+            blocked["movement_authority"][
+                "active_area_movement_cost_multiplier"
+            ],
+            {"numerator": 2, "denominator": 1},
+        )
+        [route_authority] = blocked["movement_authority"]["route_multipliers"]
+        self.assertEqual(
+            route_authority["base_movement_cost_multiplier"],
+            {"numerator": 1, "denominator": 1},
+        )
+        self.assertEqual(
+            route_authority["effective_movement_cost_multiplier"],
+            {"numerator": 2, "denominator": 1},
+        )
+        self.assertEqual(
+            blocked["area_bound_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertEqual(
+            blocked["retained_component_ids"],
+            ["frozen_ground_speed_zero"],
+        )
+        self.assertEqual(
+            {
+                component.component_id
+                for component in state.active_components("target")
+            },
+            {
+                "frozen_ground_difficult_terrain",
+                "frozen_ground_speed_zero",
+            },
+        )
+
+        state.terminate(
+            target_id="target",
+            component_id="frozen_ground_speed_zero",
+            effect_id=program.effect_id,
+            event_id="fixture:frozen_ground:speed_zero:end",
+            reason="duration_expiry",
+        )
+        progress = resolve(20)
+        self.assertFalse(progress["exited"])
+        self.assertEqual(
+            progress["movement_authority"]["effective_speeds_ft"],
+            {"walk": 30},
+        )
+        self.assertEqual(
+            progress["selected_route"]["movement_cost_multiplier"],
+            2,
+        )
+        self.assertEqual(progress["selected_route"]["progress_ft"], 15)
+        self.assertEqual(
+            progress["selected_route"]["remaining_distance_ft"],
+            5,
+        )
+        self.assertEqual(progress["ended_component_ids"], [])
+
+        exited = resolve(5)
+        self.assertTrue(exited["exited"])
+        self.assertEqual(
+            exited["ended_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertEqual(state.active_components("target"), ())
+
+        area_end_state = self.engine.new_state()
+        for component_id in (
+            "frozen_ground_difficult_terrain",
+            "frozen_ground_speed_zero",
+        ):
+            _activate_component(
+                area_end_state,
+                program,
+                program.component(component_id),
+            )
+        area_ended = self.engine.resolve_area_response(
+            state=area_end_state,
+            schedule=schedule,
+            effect=program,
+            target_ids=("target",),
+            selector_membership=membership,
+            selector_context=selector_context,
+            target_id="target",
+            event_id=area_end_event.event_id,
+            area_response_convention="fixed_occupancy_v1",
+            membership=True,
+            effect_active=False,
+        )
+        self.assertEqual(
+            area_ended["ended_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertEqual(
+            [
+                component.component_id
+                for component in area_end_state.active_components("target")
+            ],
+            ["frozen_ground_speed_zero"],
+        )
+
+    def test_active_area_typed_target_exit_ends_only_area_bound_state(self) -> None:
+        program = self.engine.program_for("frozen_ground", 0)
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target", "other"],
+            controller_events_by_round={
+                1: [{"kind": "exit", "target_id": "target"}],
+            },
+            target_events_by_round={
+                "target": {
+                    1: [{"kind": "exit", "phase": "after_movement"}],
+                },
+                "other": {
+                    1: [{"kind": "exit", "phase": "after_movement"}],
+                },
+            },
+            target_attack_counts={
+                "target": [0, 0, 0],
+                "other": [0, 0, 0],
+            },
+        )
+        target_exit = next(
+            event for event in schedule.events
+            if event.kind == "exit"
+            and event.target_id == "target"
+            and event.turn_owner == "target"
+        )
+        other_exit = next(
+            event for event in schedule.events
+            if event.kind == "exit"
+            and event.target_id == "other"
+        )
+        controller_exit = next(
+            event for event in schedule.events
+            if event.kind == "exit"
+            and event.turn_owner == "controller"
+        )
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.target_id == "target"
+        )
+        state = self.engine.new_state()
+        for component_id in (
+            "frozen_ground_difficult_terrain",
+            "frozen_ground_speed_zero",
+        ):
+            _activate_component(
+                state,
+                program,
+                program.component(component_id),
+            )
+        common = {
+            "state": state,
+            "schedule": schedule,
+            "effect": program,
+            "target_ids": ("target", "other"),
+            "selector_membership": _single_selector_membership(
+                program,
+                "target",
+            ),
+            "selector_context": _selector_context_for("target", "other"),
+            "target_id": "target",
+            "area_response_convention": "shortest_route_v1",
+            "membership": True,
+            "effect_active": True,
+        }
+        before_snapshot = state.snapshot()
+        before_audit = json.loads(json.dumps(state.audit_ledger))
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "requires shortest_route_v1",
+        ):
+            self.engine.resolve_area_response(
+                **{
+                    **common,
+                    "area_response_convention": "fixed_occupancy_v1",
+                    "event_id": target_exit.event_id,
+                    "post_movement_membership": False,
+                }
+            )
+        self.assertEqual(state.snapshot(), before_snapshot)
+        self.assertEqual(state.audit_ledger, before_audit)
+        invalid_calls = (
+            (
+                {"event_id": target_exit.event_id},
+                "explicit post_movement_membership false",
+            ),
+            (
+                {
+                    "event_id": target_exit.event_id,
+                    "post_movement_membership": True,
+                },
+                "explicit post_movement_membership false",
+            ),
+            (
+                {
+                    "event_id": controller_exit.event_id,
+                    "post_movement_membership": False,
+                },
+                "exact typed exit event",
+            ),
+            (
+                {
+                    "event_id": other_exit.event_id,
+                    "post_movement_membership": False,
+                },
+                "exact typed exit event",
+            ),
+            (
+                {
+                    "event_id": movement.event_id,
+                    "post_movement_membership": False,
+                },
+                "valid only for an active typed exit",
+            ),
+            (
+                {
+                    "event_id": target_exit.event_id,
+                    "post_movement_membership": False,
+                    "base_speeds_ft": {"walk": 30},
+                },
+                "does not accept movement or route inference",
+            ),
+        )
+        for extra, message in invalid_calls:
+            with self.subTest(extra=extra):
+                with self.assertRaisesRegex(ControlEngineError, message):
+                    self.engine.resolve_area_response(**common, **extra)
+                self.assertEqual(state.snapshot(), before_snapshot)
+                self.assertEqual(state.audit_ledger, before_audit)
+
+        response = self.engine.resolve_area_response(
+            **common,
+            event_id=target_exit.event_id,
+            post_movement_membership=False,
+        )
+        self.assertEqual(response["reason"], "typed_target_exit")
+        self.assertTrue(response["membership_before"])
+        self.assertFalse(response["membership_after"])
+        self.assertTrue(response["exited"])
+        self.assertIsNone(response["movement_authority"])
+        self.assertIsNone(response["selected_route"])
+        self.assertEqual(
+            response["ended_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertEqual(
+            response["retained_component_ids"],
+            ["frozen_ground_speed_zero"],
+        )
+        self.assertEqual(
+            [
+                component.component_id
+                for component in state.active_components("target")
+            ],
+            ["frozen_ground_speed_zero"],
+        )
+        assembled = self.engine.assemble_result(
+            effect=program,
+            reliability=_reliability_for_targets(
+                program.effect_id,
+                ("target", "other"),
+            ),
+            schedule=schedule,
+            area_response_convention="shortest_route_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=state,
+            area_records=(response,),
+        ).to_dict()
+        self.assertEqual(
+            assembled["area_membership_and_route_records"],
+            [response],
+        )
+
+    def test_ball_lightning_moved_area_cannot_rewrite_entry_policy(self) -> None:
+        program = self.engine.program("ball_lightning_t2_control")
+        blocked = self.engine.resolve_compiled_area_entry(
+            effect=program,
+            target_ids=("target",),
+            selector_membership=_single_selector_membership(program, "target"),
+            selector_context=_selector_context_for("target"),
+            target_id="target",
+            turn_id="round_1_target_turn",
+            was_member=False,
+            is_member=True,
+            caused_by_area_movement=True,
+        )
+        self.assertFalse(blocked["triggered"])
+        self.assertEqual(blocked["reason"], "moved_area_does_not_count")
+        self.assertFalse(
+            blocked["entry_policy"]["moved_area_counts_as_entry"]
+        )
+        self.assertEqual(blocked["gate_opportunity_ids"], [])
+        entered = self.engine.resolve_compiled_area_entry(
+            effect=program,
+            target_ids=("target",),
+            selector_membership=_single_selector_membership(program, "target"),
+            selector_context=_selector_context_for("target"),
+            target_id="target",
+            turn_id="round_1_target_turn",
+            was_member=False,
+            is_member=True,
+            caused_by_area_movement=False,
+        )
+        self.assertTrue(entered["triggered"])
+        self.assertEqual(
+            entered["gate_opportunity_ids"],
+            ["ball_lightning_entry_save"],
+        )
+
+    def _mass_levitation_concentration_scenario(
+        self,
+        *,
+        tier: int = 0,
+    ) -> dict[str, object]:
+        program = self.engine.program_for("mass_levitation", tier)
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [
+                    {"kind": "damage_context"},
+                    {"kind": "activation"},
+                    {"kind": "save_opportunity", "target_id": "target"},
+                    {"kind": "damage_context"},
+                    {"kind": "concentration_end"},
+                    {"kind": "activation"},
+                    {"kind": "concentration_end"},
+                ]
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        activations = [
+            event for event in schedule.events if event.kind == "activation"
+        ]
+        end_events = [
+            event for event in schedule.events
+            if event.kind == "concentration_end"
+        ]
+        damage_events = [
+            event for event in schedule.events
+            if event.kind == "damage_context"
+        ]
+        save_event = next(
+            event for event in schedule.events
+            if event.kind == "save_opportunity"
+        )
+        membership = _single_selector_membership(program, "target")
+        state = self.engine.new_state()
+        invocation_id = f"mass_levitation_t{tier}_invocation"
+        self.engine.apply_resolved_branch(
+            state=state,
+            effect=program,
+            gate_id=f"mass_levitation_t{tier}_initial_saves",
+            outcome="save_failure",
+            target_id="target",
+            source_actor_id="controller",
+            event_id=save_event.event_id,
+            invocation_id=invocation_id,
+            schedule=schedule,
+            selector_membership=membership,
+            selector_context=_selector_context_for("target"),
+        )
+        tracker = ConcentrationTracker(save_bonus=0)
+        start = self.engine.start_concentration(
+            state=state,
+            tracker=tracker,
+            effect=program,
+            event_id=activations[0].event_id,
+            schedule=schedule,
+            selector_membership=membership,
+            selector_context=_selector_context_for("target"),
+            invocation_id=invocation_id,
+            source_actor_id="controller",
+        )
+        return {
+            "program": program,
+            "schedule": schedule,
+            "membership": membership,
+            "selector_context": _selector_context_for("target"),
+            "state": state,
+            "tracker": tracker,
+            "invocation_id": invocation_id,
+            "activations": activations,
+            "end_events": end_events,
+            "pre_start_damage_event": damage_events[0],
+            "damage_events": damage_events[1:],
+            "start": start,
+        }
+
+    def test_concentration_replacement_executes_old_compiled_end_gate(self) -> None:
+        scenario = self._mass_levitation_concentration_scenario(tier=0)
+        second_program = self.engine.program_for("mass_levitation", 1)
+        before_snapshot = scenario["state"].snapshot()
+        before_audit = list(scenario["state"].audit_ledger)
+        before_records = list(scenario["tracker"].records)
+        with self.assertRaisesRegex(ControlEngineError, "immediate next"):
+            self.engine.start_concentration(
+                state=scenario["state"],
+                tracker=scenario["tracker"],
+                effect=second_program,
+                event_id=scenario["activations"][1].event_id,
+                replacement_end_event_id=scenario["end_events"][1].event_id,
+                schedule=scenario["schedule"],
+                selector_membership=_single_selector_membership(
+                    second_program,
+                    "target",
+                ),
+                selector_context=_selector_context_for("target"),
+                invocation_id="mass_levitation_t1_invocation",
+                source_actor_id="controller",
+            )
+        self.assertEqual(scenario["state"].snapshot(), before_snapshot)
+        self.assertEqual(scenario["state"].audit_ledger, before_audit)
+        self.assertEqual(scenario["tracker"].records, before_records)
+        self.assertEqual(
+            scenario["tracker"].active_effect_id,
+            scenario["program"].effect_id,
+        )
+        replacement = self.engine.start_concentration(
+            state=scenario["state"],
+            tracker=scenario["tracker"],
+            effect=second_program,
+            event_id=scenario["activations"][1].event_id,
+            replacement_end_event_id=scenario["end_events"][0].event_id,
+            schedule=scenario["schedule"],
+            selector_membership=_single_selector_membership(
+                second_program,
+                "target",
+            ),
+            selector_context=_selector_context_for("target"),
+            invocation_id="mass_levitation_t1_invocation",
+            source_actor_id="controller",
+        )
+        self.assertEqual(
+            [record["kind"] for record in replacement["tracker_records"]],
+            ["concentration_end", "concentration_start"],
+        )
+        [end_transition] = replacement["applied_end_transitions"]
+        self.assertEqual(
+            end_transition["reason"],
+            "new_concentration_replacement",
+        )
+        self.assertEqual(len(end_transition["ended_state_instances"]), 2)
+        [gate_transition] = end_transition[
+            "concentration_end_gate_transitions"
+        ]
+        self.assertEqual(
+            gate_transition["gate_id"],
+            "mass_levitation_t0_concentration_end",
+        )
+        self.assertEqual(
+            [row["primitive_id"] for row in gate_transition[
+                "instantaneous_contributions"
+            ]],
+            ["fall_transition"],
+        )
+        self.assertEqual(scenario["state"].active_components("target"), ())
+        self.assertEqual(
+            scenario["tracker"].active_effect_id,
+            second_program.effect_id,
+        )
+
+    def test_failed_concentration_check_executes_fall_and_final_ledger_agrees(
+        self,
+    ) -> None:
+        scenario = self._mass_levitation_concentration_scenario()
+        common = {
+            "state": scenario["state"],
+            "tracker": scenario["tracker"],
+            "effect": scenario["program"],
+            "schedule": scenario["schedule"],
+            "selector_membership": scenario["membership"],
+            "selector_context": scenario["selector_context"],
+            "invocation_id": scenario["invocation_id"],
+            "source_actor_id": "controller",
+            "amount": 1,
+            "source": "later_blood_tax",
+            "event_id": scenario["damage_events"][0].event_id,
+            "concentration_end_event_id": scenario["end_events"][0].event_id,
+            "outcome": "failure",
+        }
+        before_snapshot = scenario["state"].snapshot()
+        before_audit = list(scenario["state"].audit_ledger)
+        before_records = list(scenario["tracker"].records)
+        with self.assertRaisesRegex(ControlEngineError, "immediate next"):
+            self.engine.check_concentration(
+                **{
+                    **common,
+                    "concentration_end_event_id": (
+                        scenario["end_events"][1].event_id
+                    ),
+                },
+                success_probability=Fraction(1, 2),
+            )
+        self.assertEqual(scenario["state"].snapshot(), before_snapshot)
+        self.assertEqual(scenario["state"].audit_ledger, before_audit)
+        self.assertEqual(scenario["tracker"].records, before_records)
+        missing_end = {
+            key: value for key, value in common.items()
+            if key != "concentration_end_event_id"
+        }
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "required on check failure",
+        ):
+            self.engine.check_concentration(
+                **missing_end,
+                success_probability=Fraction(1, 2),
+            )
+        with self.assertRaisesRegex(TimelineError, "zero probability"):
+            self.engine.check_concentration(
+                **common,
+                success_probability=Fraction(1),
+            )
+        self.assertEqual(
+            len(scenario["state"].active_components("target")),
+            2,
+        )
+        self.assertEqual(
+            scenario["tracker"].active_effect_id,
+            scenario["program"].effect_id,
+        )
+
+        lifecycle = self.engine.check_concentration(
+            **common,
+            success_probability=Fraction(1, 2),
+        )
+        self.assertEqual(
+            [record["kind"] for record in lifecycle["tracker_records"]],
+            ["concentration_check", "concentration_end"],
+        )
+        self.assertEqual(
+            lifecycle["tracker_records"][0]["event_id"],
+            scenario["damage_events"][0].event_id,
+        )
+        self.assertEqual(
+            lifecycle["tracker_records"][1]["event_id"],
+            scenario["end_events"][0].event_id,
+        )
+        [end_transition] = lifecycle["applied_end_transitions"]
+        self.assertEqual(end_transition["reason"], "failed_concentration_save")
+        [gate_transition] = end_transition[
+            "concentration_end_gate_transitions"
+        ]
+        [fall] = gate_transition["instantaneous_contributions"]
+        self.assertEqual(fall["primitive_id"], "fall_transition")
+        self.assertEqual(scenario["state"].active_components("target"), ())
+        self.assertIsNone(scenario["tracker"].active_effect_id)
+        self.assertNotIn(
+            "mass_levitation_fall",
+            [
+                row["component_id"]
+                for row in end_transition["active_components_after"]
+            ],
+        )
+        ledger_end = next(
+            row
+            for row in reversed(scenario["state"].audit_ledger)
+            if row.get("operation") == "concentration_end"
+        )
+        self.assertEqual(ledger_end["operation"], "concentration_end")
+        self.assertEqual(ledger_end["active_components_after"], [])
+        self.assertEqual(
+            ledger_end["fall_transitions"][0]["source_component_ids"],
+            ["mass_levitation_fall"],
+        )
+        assembled = self.engine.assemble_result(
+            effect=scenario["program"],
+            reliability=_reliability(
+                scenario["program"].effect_id,
+                "target",
+            ),
+            schedule=scenario["schedule"],
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=scenario["state"],
+            concentration_records=(lifecycle, lifecycle),
+        ).to_dict()
+        self.assertEqual(assembled["concentration_records"], [lifecycle])
+
+    def test_successful_concentration_check_validates_only_damage_cause(self) -> None:
+        scenario = self._mass_levitation_concentration_scenario()
+        common = {
+            "state": scenario["state"],
+            "tracker": scenario["tracker"],
+            "effect": scenario["program"],
+            "schedule": scenario["schedule"],
+            "selector_membership": scenario["membership"],
+            "selector_context": scenario["selector_context"],
+            "invocation_id": scenario["invocation_id"],
+            "source_actor_id": "controller",
+            "amount": 12,
+            "source": "damage",
+            "outcome": "success",
+            "success_probability": Fraction(1, 2),
+        }
+        before_records = list(scenario["tracker"].records)
+        before_snapshot = scenario["state"].snapshot()
+        before_audit = list(scenario["state"].audit_ledger)
+        with self.assertRaisesRegex(ControlEngineError, "after concentration startup"):
+            self.engine.check_concentration(
+                **common,
+                event_id=scenario["pre_start_damage_event"].event_id,
+            )
+        with self.assertRaisesRegex(ControlEngineError, "damage_context"):
+            self.engine.check_concentration(
+                **common,
+                event_id=scenario["activations"][1].event_id,
+            )
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "invalid on check success",
+        ):
+            self.engine.check_concentration(
+                **common,
+                event_id=scenario["damage_events"][0].event_id,
+                concentration_end_event_id=scenario["end_events"][0].event_id,
+            )
+        self.assertEqual(scenario["tracker"].records, before_records)
+        self.assertEqual(scenario["state"].snapshot(), before_snapshot)
+        self.assertEqual(scenario["state"].audit_ledger, before_audit)
+        lifecycle = self.engine.check_concentration(
+            **common,
+            event_id=scenario["damage_events"][0].event_id,
+        )
+        self.assertEqual(
+            [row["kind"] for row in lifecycle["tracker_records"]],
+            ["concentration_check"],
+        )
+        self.assertEqual(
+            lifecycle["check_record"]["event_id"],
+            scenario["damage_events"][0].event_id,
+        )
+        self.assertEqual(lifecycle["applied_end_transitions"], [])
+        self.assertEqual(
+            scenario["tracker"].active_effect_id,
+            scenario["program"].effect_id,
+        )
+
+    def test_concentration_lifecycle_audits_are_exact_and_non_aliasing(
+        self,
+    ) -> None:
+        scenario = self._mass_levitation_concentration_scenario()
+        start = scenario["start"]
+        check = self.engine.check_concentration(
+            state=scenario["state"],
+            tracker=scenario["tracker"],
+            effect=scenario["program"],
+            schedule=scenario["schedule"],
+            selector_membership=scenario["membership"],
+            selector_context=scenario["selector_context"],
+            invocation_id=scenario["invocation_id"],
+            source_actor_id="controller",
+            amount=12,
+            source="damage",
+            event_id=scenario["damage_events"][0].event_id,
+            outcome="success",
+            success_probability=Fraction(1, 2),
+        )
+        reconciliation = self.engine.reconcile_concentration_duration(
+            state=scenario["state"],
+            tracker=scenario["tracker"],
+            effect=scenario["program"],
+            schedule=scenario["schedule"],
+            selector_membership=scenario["membership"],
+            selector_context=scenario["selector_context"],
+            invocation_id=scenario["invocation_id"],
+            source_actor_id="controller",
+            event_id="r1:controller:turn:end",
+        )
+        saved = [
+            json.loads(json.dumps(row))
+            for row in (start, check, reconciliation)
+        ]
+        operations = [row["kind"] for row in saved]
+        audits = [
+            next(
+                row
+                for row in reversed(scenario["state"].audit_ledger)
+                if row.get("operation") == operation
+            )
+            for operation in operations
+        ]
+        for operation, row, audit in zip(
+            operations,
+            saved,
+            audits,
+            strict=True,
+        ):
+            self.assertEqual(audit, {"operation": operation, **row})
+        self.assertIsNot(audits[0]["start_record"], start["start_record"])
+        self.assertIsNot(audits[1]["check_record"], check["check_record"])
+        self.assertIsNot(
+            audits[2]["active_components_after"],
+            reconciliation["active_components_after"],
+        )
+        assembled = self.engine.assemble_result(
+            effect=scenario["program"],
+            reliability=_reliability(
+                scenario["program"].effect_id,
+                "target",
+            ),
+            schedule=scenario["schedule"],
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=scenario["state"],
+            concentration_records=tuple(saved),
+        ).to_dict()
+        self.assertEqual(len(assembled["concentration_records"]), 3)
+
+        start["start_record"]["authority_metadata"][
+            "concentration_component_ids"
+        ] = []
+        check["check_record"]["dc"] = 999
+        check["tracker_records"][0]["dc"] = 999
+        reconciliation["status"] = "before_expiry"
+        reconciliation["expected_expiry_event_id"] = (
+            "r2:controller:turn:start"
+        )
+        for operation, row, audit in zip(
+            operations,
+            saved,
+            audits,
+            strict=True,
+        ):
+            self.assertEqual(audit, {"operation": operation, **row})
+        for forged, message in (
+            (start, "concentration_component_ids"),
+            (check, "numerics"),
+            (reconciliation, "audit ledger"),
+        ):
+            with self.assertRaisesRegex(ControlEngineError, message):
+                self.engine.assemble_result(
+                    effect=scenario["program"],
+                    reliability=_reliability(
+                        scenario["program"].effect_id,
+                        "target",
+                    ),
+                    schedule=scenario["schedule"],
+                    area_response_convention="fixed_occupancy_v1",
+                    displacement_function_id="sqrt_5ft_v1",
+                    state=scenario["state"],
+                    concentration_records=(forged,),
+                )
+
+    def test_concentration_authority_ids_cannot_be_emptied_or_forged(self) -> None:
+        scenario = self._mass_levitation_concentration_scenario()
+        metadata = scenario["start"]["start_record"]["authority_metadata"]
+        self.assertEqual(
+            metadata["concentration_component_ids"],
+            [
+                "mass_levitation_persistent_elevation",
+                "mass_levitation_restrained",
+            ],
+        )
+        self.assertEqual(
+            metadata["fall_component_ids"],
+            ["mass_levitation_fall"],
+        )
+        with self.assertRaisesRegex(TypeError, "unexpected keyword"):
+            self.engine.start_concentration(
+                state=scenario["state"],
+                tracker=scenario["tracker"],
+                effect=scenario["program"],
+                event_id=scenario["activations"][1].event_id,
+                replacement_end_event_id=scenario["end_events"][0].event_id,
+                schedule=scenario["schedule"],
+                selector_membership=scenario["membership"],
+                selector_context=scenario["selector_context"],
+                invocation_id=scenario["invocation_id"],
+                source_actor_id="controller",
+                concentration_component_ids=(),
+            )
+        forged_membership = {
+            selector.selector_id: []
+            for selector in scenario["program"].selectors
+        }
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "do not match the active compiled slot",
+        ):
+            self.engine.end_concentration(
+                state=scenario["state"],
+                tracker=scenario["tracker"],
+                effect=scenario["program"],
+                schedule=scenario["schedule"],
+                selector_membership=forged_membership,
+                selector_context=scenario["selector_context"],
+                invocation_id=scenario["invocation_id"],
+                source_actor_id="controller",
+                reason="voluntary_end",
+                event_id=scenario["end_events"][0].event_id,
+            )
+        self.assertEqual(
+            len(scenario["state"].active_components("target")),
+            2,
+        )
+        result = self.engine.end_concentration(
+            state=scenario["state"],
+            tracker=scenario["tracker"],
+            effect=scenario["program"],
+            schedule=scenario["schedule"],
+            selector_membership=scenario["membership"],
+            selector_context=scenario["selector_context"],
+            invocation_id=scenario["invocation_id"],
+            source_actor_id="controller",
+            reason="voluntary_end",
+            event_id=scenario["end_events"][0].event_id,
+        )
+        self.assertEqual(len(result["ended_state_instances"]), 2)
+        self.assertEqual(scenario["state"].active_components("target"), ())
+
+    def test_explicit_end_derives_and_terminates_compiled_area_state(self) -> None:
+        program = self.engine.program("ball_lightning_t2_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [
+                    {"kind": "activation"},
+                    {"kind": "concentration_end"},
+                ]
+            },
+            target_attack_counts={"target": 0},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        end_event = next(
+            event for event in schedule.events
+            if event.kind == "concentration_end"
+        )
+        state = self.engine.new_state()
+        for component in program.components:
+            _activate_component(state, program, component)
+        tracker = ConcentrationTracker(save_bonus=0)
+        membership = _single_selector_membership(program, "target")
+        start = self.engine.start_concentration(
+            state=state,
+            tracker=tracker,
+            effect=program,
+            event_id=activation.event_id,
+            schedule=schedule,
+            selector_membership=membership,
+            selector_context=_selector_context_for("target"),
+            invocation_id="ball_lightning_invocation",
+            source_actor_id="controller",
+        )
+        metadata = start["start_record"]["authority_metadata"]
+        self.assertEqual(metadata["concentration_component_ids"], [])
+        self.assertEqual(metadata["area_ids"], ["ball_lightning_sphere"])
+        self.assertEqual(
+            set(metadata["area_component_ids"]),
+            {component.component_id for component in program.components},
+        )
+        ended = self.engine.end_concentration(
+            state=state,
+            tracker=tracker,
+            effect=program,
+            schedule=schedule,
+            selector_membership=membership,
+            selector_context=_selector_context_for("target"),
+            invocation_id="ball_lightning_invocation",
+            source_actor_id="controller",
+            reason="voluntary_end",
+            event_id=end_event.event_id,
+        )
+        self.assertEqual(len(ended["ended_state_instances"]), 2)
+        self.assertEqual(state.active_components("target"), ())
+        self.assertEqual(ended["active_components_after"], [])
+
+    def test_duration_reconciliation_ends_only_at_exact_canonical_boundary(
+        self,
+    ) -> None:
+        canonical_program = self.engine.program_for("mass_levitation", 0)
+        maximum_duration = {"value": 1, "unit": "round"}
+        components = tuple(
+            replace(
+                component,
+                duration=_frozen_map({
+                    "kind": "concentration",
+                    "maximum_value": 1,
+                    "unit": "round",
+                }),
+            )
+            if component.duration.get("kind") == "concentration"
+            else component
+            for component in canonical_program.components
+        )
+        concentration = canonical_program.concentration.to_dict()
+        concentration["maximum_duration"] = maximum_duration
+        program = replace(
+            canonical_program,
+            components=components,
+            concentration=_frozen_map(concentration),
+            _component_by_id=MappingProxyType({
+                component.component_id: component
+                for component in components
+            }),
+        )
+        programs = tuple(
+            program if row.effect_id == program.effect_id else row
+            for row in self.engine.authority.programs
+        )
+        authority = replace(
+            self.engine.authority,
+            programs=programs,
+            _program_by_id=MappingProxyType({
+                row.effect_id: row for row in programs
+            }),
+            _program_by_key=MappingProxyType({
+                (row.entity_id, row.tier): row for row in programs
+            }),
+        )
+        engine = ControlEngine(
+            catalog=self.engine.catalog,
+            config=self.engine.config,
+            authority=authority,
+            targets=self.engine.targets,
+            target_supplement_digest=self.engine.target_supplement_digest,
+        )
+        schedule = engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [
+                    {"kind": "activation"},
+                    {"kind": "save_opportunity", "target_id": "target"},
+                ]
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        save_event = next(
+            event for event in schedule.events
+            if event.kind == "save_opportunity"
+        )
+        membership = _single_selector_membership(program, "target")
+        selector_context = _selector_context_for("target")
+        state = engine.new_state()
+        invocation_id = "one_round_mass_levitation"
+        self.engine.apply_resolved_branch(
+            state=state,
+            effect=canonical_program,
+            gate_id="mass_levitation_t0_initial_saves",
+            outcome="save_failure",
+            target_id="target",
+            source_actor_id="controller",
+            event_id=save_event.event_id,
+            invocation_id=invocation_id,
+            schedule=schedule,
+            selector_membership=membership,
+            selector_context=selector_context,
+        )
+        tracker = ConcentrationTracker(save_bonus=0)
+        before_snapshot = state.snapshot()
+        with self.assertRaisesRegex(ControlEngineError, "loaded authority"):
+            engine.start_concentration(
+                state=state,
+                tracker=tracker,
+                effect=canonical_program,
+                event_id=activation.event_id,
+                schedule=schedule,
+                selector_membership=membership,
+                selector_context=selector_context,
+                invocation_id=invocation_id,
+                source_actor_id="controller",
+            )
+        self.assertEqual(state.snapshot(), before_snapshot)
+        self.assertEqual(tracker.records, [])
+        start = engine.start_concentration(
+            state=state,
+            tracker=tracker,
+            effect=program,
+            event_id=activation.event_id,
+            schedule=schedule,
+            selector_membership=membership,
+            selector_context=selector_context,
+            invocation_id=invocation_id,
+            source_actor_id="controller",
+        )
+        scenario = {
+            "program": program,
+            "schedule": schedule,
+            "membership": membership,
+            "selector_context": selector_context,
+            "state": state,
+            "tracker": tracker,
+            "invocation_id": invocation_id,
+        }
+        boundary = start["start_record"]["authority_metadata"][
+            "duration_boundary"
+        ]
+        self.assertEqual(boundary["start_event_id"], activation.event_id)
+        self.assertEqual(
+            boundary["duration_anchor_event_id"],
+            "r1:controller:turn:start",
+        )
+        self.assertEqual(boundary["expiry_event_id"], "r2:controller:turn:start")
+        common = {
+            "state": scenario["state"],
+            "tracker": scenario["tracker"],
+            "effect": scenario["program"],
+            "schedule": scenario["schedule"],
+            "selector_membership": scenario["membership"],
+            "selector_context": scenario["selector_context"],
+            "invocation_id": scenario["invocation_id"],
+            "source_actor_id": "controller",
+        }
+        early = engine.reconcile_concentration_duration(
+            **common,
+            event_id="r1:controller:turn:end",
+        )
+        self.assertEqual(early["status"], "before_expiry")
+        self.assertFalse(early["ended"])
+        self.assertEqual(
+            early["expected_expiry_event_id"],
+            "r2:controller:turn:start",
+        )
+        self.assertEqual(
+            scenario["tracker"].active_effect_id,
+            scenario["program"].effect_id,
+        )
+        self.assertEqual(
+            len(scenario["state"].active_components("target")),
+            2,
+        )
+
+        ended = engine.reconcile_concentration_duration(
+            **common,
+            event_id="r2:controller:turn:start",
+        )
+        self.assertEqual(ended["reason"], "duration_expiry")
+        self.assertEqual(ended["event_id"], "r2:controller:turn:start")
+        [gate_transition] = ended["concentration_end_gate_transitions"]
+        [fall] = gate_transition["instantaneous_contributions"]
+        self.assertEqual(fall["primitive_id"], "fall_transition")
+        self.assertEqual(scenario["state"].active_components("target"), ())
+        self.assertIsNone(scenario["tracker"].active_effect_id)
+
+        assembled = engine.assemble_result(
+            effect=scenario["program"],
+            reliability=_reliability(
+                scenario["program"].effect_id,
+                "target",
+            ),
+            schedule=scenario["schedule"],
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            state=scenario["state"],
+            concentration_records=(start, start, early, early, ended, ended),
+        ).to_dict()
+        self.assertEqual(
+            [
+                (
+                    row.get("event_id")
+                    or row.get("start_record", {}).get("event_id")
+                    or row.get("check_record", {}).get("event_id")
+                )
+                for row in assembled["concentration_records"]
+            ],
+            [
+                activation.event_id,
+                "r1:controller:turn:end",
+                "r2:controller:turn:start",
+            ],
+        )
+        for forged in (
+            {"kind": "arbitrary_concentration_record"},
+            {"kind": "concentration_end", "event_id": ended["event_id"]},
+            {**ended, "ended_component_ids": []},
+        ):
+            with self.assertRaises(ControlEngineError):
+                engine.assemble_result(
+                    effect=program,
+                    reliability=_reliability(program.effect_id, "target"),
+                    schedule=schedule,
+                    area_response_convention="fixed_occupancy_v1",
+                    displacement_function_id="sqrt_5ft_v1",
+                    state=state,
+                    concentration_records=(forged,),
+                )
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "no engine-owned concentration authority context",
+        ):
+            engine.reconcile_concentration_duration(
+                **common,
+                event_id="r2:controller:turn:start",
+            )
+
+    def test_compiled_concentration_duration_is_explicitly_beyond_horizon(
+        self,
+    ) -> None:
+        scenario = self._mass_levitation_concentration_scenario()
+        boundary = scenario["start"]["start_record"]["authority_metadata"][
+            "duration_boundary"
+        ]
+        self.assertEqual(boundary["maximum_duration"], {
+            "value": 1,
+            "unit": "minute",
+        })
+        self.assertEqual(boundary["duration_rounds"], 10)
+        self.assertEqual(boundary["status"], "beyond_horizon")
+        self.assertIsNone(boundary["expiry_event_id"])
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "beyond the maintained timeline horizon",
+        ):
+            self.engine.end_concentration(
+                state=scenario["state"],
+                tracker=scenario["tracker"],
+                effect=scenario["program"],
+                schedule=scenario["schedule"],
+                selector_membership=scenario["membership"],
+                selector_context=scenario["selector_context"],
+                invocation_id=scenario["invocation_id"],
+                source_actor_id="controller",
+                reason="duration_expiry",
+                event_id=scenario["end_events"][0].event_id,
+            )
+        self.assertEqual(
+            scenario["tracker"].active_effect_id,
+            scenario["program"].effect_id,
+        )
+        self.assertEqual(
+            len(scenario["state"].active_components("target")),
+            2,
+        )
+
+    def test_horizontal_displacement_requires_exact_caller_geometry(self) -> None:
+        component = next(
+            component
+            for program in self.engine.authority.programs
+            for component in program.components
+            if (
+                component.magnitude.kind == "forced_movement"
+                and component.magnitude.data.get("distance_feet") == 10
+                and component.magnitude.data.get("distance_mode") == "exact"
+                and component.magnitude.data.get("axis") == "horizontal"
+            )
+        )
+        request = self.engine.displacement_request(
+            component=component,
+            target_id="target",
+        )
+        self.assertTrue(request.caller_vector_required)
+        magnitude = component.magnitude.data.to_dict()
+        self.assertEqual(request.direction, magnitude["direction"])
+        self.assertEqual(request.destination, magnitude["destination"])
+        self.assertEqual(request.path, magnitude["path"])
+        self.assertEqual(request.resolution_order, magnitude["resolution_order"])
+        with self.assertRaisesRegex(ControlEngineError, "must supply"):
+            self.engine.resolve_displacement(
+                component=component,
+                target_id="target",
+                event_id="fixture:displacement",
+                epochs=self.engine.new_displacement_epochs(),
+                displacement_function_id="sqrt_5ft_v1",
+            )
+        with self.assertRaisesRegex(ControlEngineError, "wrong distance"):
+            self.engine.resolve_displacement(
+                component=component,
+                target_id="target",
+                event_id="fixture:displacement",
+                epochs=self.engine.new_displacement_epochs(),
+                displacement_function_id="sqrt_5ft_v1",
+                vector_feet=[5, 0, 0],
+            )
+        resolution = self.engine.resolve_displacement(
+            component=component,
+            target_id="target",
+            event_id="fixture:displacement",
+            epochs=self.engine.new_displacement_epochs(),
+            displacement_function_id="sqrt_5ft_v1",
+            vector_feet=[10, 0, 0],
+        )
+        self.assertEqual(
+            resolution["contribution"]["primitive_id"],
+            "forced_displacement",
+        )
+        self.assertAlmostEqual(
+            resolution["contribution"]["quantity"],
+            2 ** 0.5,
+        )
+        self.assertEqual(
+            resolution["record"]["function_id"],
+            "sqrt_5ft_v1",
+        )
+        self.assertEqual(
+            resolution["contribution"]["event_or_window_id"],
+            "fixture:displacement",
+        )
+
+    def test_structured_vertical_lift_derives_its_vector(self) -> None:
+        component = next(
+            component
+            for program in self.engine.authority.programs
+            for component in program.components
+            if (
+                component.magnitude.kind == "forced_movement"
+                and component.magnitude.data.get("movement_mode") == "lift"
+                and component.magnitude.data.get("axis") == "vertical"
+            )
+        )
+        request = self.engine.displacement_request(
+            component=component,
+            target_id="target",
+        )
+        self.assertFalse(request.caller_vector_required)
+        self.assertEqual(
+            request.derived_vector_feet,
+            (0.0, 0.0, request.distance_feet),
+        )
+        resolution = self.engine.resolve_displacement(
+            component=component,
+            target_id="target",
+            event_id="fixture:displacement",
+            epochs=self.engine.new_displacement_epochs(),
+            displacement_function_id="banded_10ft_v1",
+        )
+        self.assertGreater(
+            resolution["contribution"]["quantity"],
+            0,
+        )
+
+
+if __name__ == "__main__":
+    unittest.main()
