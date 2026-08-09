@@ -5861,6 +5861,59 @@ class ControlExecutionSession:
     record is opaque and is accepted only by the session that created it.
     """
 
+    @staticmethod
+    def _compiled_area_gate_bindings(
+        program: CompiledEffect,
+        component_area_bindings: Mapping[str, tuple[str, ...]],
+    ) -> dict[str, tuple[str, ...]]:
+        """Derive gates whose structured authority depends on area membership."""
+
+        persistent_selector_area_ids = {
+            selector.selector_id: selector.area.area_id
+            for selector in program.selectors
+            if selector.area is not None and selector.area.persistent
+        }
+        compiled_areas = {
+            selector.area.area_id: selector.area
+            for selector in program.selectors
+            if selector.area is not None and selector.area.persistent
+        }
+        result: dict[str, tuple[str, ...]] = {}
+        for gate in program.gates:
+            area_ids: set[str] = set()
+            area_selector_ids = {
+                persistent_selector_area_ids[selector_id]
+                for selector_id in gate.selector_ids
+                if selector_id in persistent_selector_area_ids
+            }
+            recurring_area_gate = bool(
+                gate.role == "recurring"
+                or (
+                    gate.trigger.kind == "turn"
+                    and gate.trigger.owner == "target"
+                    and gate.trigger.turn_anchor == "start"
+                )
+            )
+            if gate.trigger.kind == "entry" or recurring_area_gate:
+                area_ids.update(area_selector_ids)
+            for component_id in gate.requires_active_component_ids:
+                area_ids.update(
+                    area_id
+                    for area_id in component_area_bindings.get(component_id, ())
+                    if area_id in compiled_areas
+                )
+            if gate.trigger.kind == "entry" and not area_ids:
+                area_ids.update(
+                    area_id
+                    for area_id, area in compiled_areas.items()
+                    if gate.trigger.key in {
+                        trigger.key for trigger in area.triggers
+                    }
+                )
+            if area_ids:
+                result[gate.gate_id] = tuple(sorted(area_ids))
+        return result
+
     def __init__(
         self,
         engine: ControlEngine,
@@ -6572,23 +6625,40 @@ class ControlExecutionSession:
             for selector in program.selectors
             if selector.area is not None
         }
-        initial_area_route_states: list[_AreaRouteState] = []
-        if area_response_convention == "shortest_route_v1":
-            if len(compiled_areas) != 1:
-                raise ControlEngineError(
-                    "shortest_route_v1 requires exactly one compiled selector area"
-                )
-            area_id = next(iter(compiled_areas))
-            area_selector_ids = {
+        if len(compiled_areas) > 1:
+            raise ControlEngineError(
+                "Execution sessions do not support programs with multiple "
+                f"compiled areas: {sorted(compiled_areas)}"
+            )
+        area_selector_ids_by_area = {
+            area_id: tuple(sorted(
                 selector.selector_id
                 for selector in program.selectors
-                if selector.area is not None and selector.area.area_id == area_id
-            }
-            area_targets = {
+                if selector.area is not None
+                and selector.area.area_id == area_id
+            ))
+            for area_id in compiled_areas
+        }
+        area_target_ids_by_area = {
+            area_id: tuple(sorted({
                 target_id
-                for selector_id in area_selector_ids
+                for selector_id in selector_ids
                 for target_id in membership[selector_id]
-            }
+            }))
+            for area_id, selector_ids in area_selector_ids_by_area.items()
+        }
+        component_area_bindings = engine._compiled_area_bindings(program)
+        area_gate_bindings = self._compiled_area_gate_bindings(
+            program,
+            component_area_bindings,
+        )
+        initial_area_route_states: list[_AreaRouteState] = []
+        if (
+            area_response_convention == "shortest_route_v1"
+            and len(compiled_areas) == 1
+        ):
+            area_id = next(iter(compiled_areas))
+            area_targets = set(area_target_ids_by_area[area_id])
             forbidden_target_overrides = {
                 "area_routes_by_event",
                 "area_membership_by_event",
@@ -6736,6 +6806,10 @@ class ControlExecutionSession:
         ):
             raise ControlEngineError(
                 "area_geometry_updates must contain AreaGeometryUpdate values"
+            )
+        if bound_area_geometry_updates and not compiled_areas:
+            raise ControlEngineError(
+                "AreaGeometryUpdate is invalid for a program with zero compiled areas"
             )
         update_identities: set[tuple[str, str, str, str]] = set()
         movement_events_by_turn: dict[tuple[str, str], str] = {}
@@ -7137,7 +7211,7 @@ class ControlExecutionSession:
             "target_mechanics": safe_target_mechanics,
             "initial_state": initial_state_rows,
             "selector_membership": {
-                selector_id: list(membership[selector_id])
+                selector_id: sorted(membership[selector_id])
                 for selector_id in sorted(membership)
             },
             "selector_context": selector_context.to_dict(),
@@ -7168,6 +7242,21 @@ class ControlExecutionSession:
             "area_geometry_updates": [
                 update.to_dict() for update in bound_area_geometry_updates
             ],
+            "area_gate_bindings": {
+                gate_id: list(area_ids)
+                for gate_id, area_ids in sorted(area_gate_bindings.items())
+            },
+            "area_target_ids_by_area": {
+                area_id: list(target_ids)
+                for area_id, target_ids in sorted(
+                    area_target_ids_by_area.items()
+                )
+            },
+            "persistent_area_ids": sorted(
+                area_id
+                for area_id, area in compiled_areas.items()
+                if area.persistent
+            ),
             "required_operation_plan": canonical_required_plan,
             "reliability_timeline_bindings": reliability_timeline_bindings,
             "concentration_save_bonus": concentration_save_bonus,
@@ -7191,6 +7280,26 @@ class ControlExecutionSession:
         self._operation_inputs_json = _canonical_json(safe_operation_inputs)
         self._area_geometry_updates_json = _canonical_json(
             [update.to_dict() for update in bound_area_geometry_updates]
+        )
+        self._area_gate_bindings = MappingProxyType(dict(area_gate_bindings))
+        self._area_gate_bindings_json = _canonical_json({
+            gate_id: list(area_ids)
+            for gate_id, area_ids in sorted(area_gate_bindings.items())
+        })
+        self._area_target_ids_by_area = MappingProxyType(
+            dict(area_target_ids_by_area)
+        )
+        self._area_target_ids_by_area_json = _canonical_json({
+            area_id: list(target_ids)
+            for area_id, target_ids in sorted(area_target_ids_by_area.items())
+        })
+        self._persistent_area_ids = frozenset(
+            area_id
+            for area_id, area in compiled_areas.items()
+            if area.persistent
+        )
+        self._persistent_area_ids_json = _canonical_json(
+            sorted(self._persistent_area_ids)
         )
         self._required_operation_plan_json = _canonical_json(
             canonical_required_plan
@@ -7282,6 +7391,8 @@ class ControlExecutionSession:
         self._current_required_operations: set[str] = set()
         self._future_required_operations: dict[str, set[str]] = {}
         self._pending_concentration_end: dict[str, Any] | None = None
+        self._area_effect_started = False
+        self._area_effect_ended = False
         self._shared_gate_outcomes: dict[tuple[str, str], str] = {}
         self._same_event_gate_overrides: set[tuple[str, str]] = set()
         self._cached_result: ControlEngineResult | None = None
@@ -7346,18 +7457,176 @@ class ControlExecutionSession:
             ))
         )
 
-    def _area_route_state(self, target_id: str) -> _AreaRouteState:
+    def _area_route_state_or_none(
+        self,
+        target_id: str,
+        *,
+        area_id: str | None = None,
+    ) -> _AreaRouteState | None:
         matches = [
             state
             for state in self._area_route_states.values()
             if state.effect_id == self._program.effect_id
             and state.target_id == target_id
+            and (area_id is None or state.area_id == area_id)
         ]
+        if not matches:
+            return None
         if len(matches) != 1:
+            raise ControlEngineError(
+                f"Target {target_id!r} has ambiguous bound area-route state"
+            )
+        return matches[0]
+
+    def _area_route_state(self, target_id: str) -> _AreaRouteState:
+        state = self._area_route_state_or_none(target_id)
+        if state is None:
             raise ControlEngineError(
                 f"Target {target_id!r} does not have exactly one bound area-route state"
             )
-        return matches[0]
+        return state
+
+    def _canonical_area_gate_bindings(
+        self,
+    ) -> dict[str, tuple[str, ...]]:
+        return self._compiled_area_gate_bindings(
+            self._program,
+            self._engine._compiled_area_bindings(self._program),
+        )
+
+    def _canonical_area_target_ids_by_area(
+        self,
+    ) -> dict[str, tuple[str, ...]]:
+        membership = self._reliability.scenario.canonical_record()[
+            "selector_membership"
+        ]
+        area_ids = {
+            selector.area.area_id
+            for selector in self._program.selectors
+            if selector.area is not None
+        }
+        return {
+            area_id: tuple(sorted({
+                target_id
+                for selector in self._program.selectors
+                if selector.area is not None
+                and selector.area.area_id == area_id
+                for target_id in membership[selector.selector_id]
+            }))
+            for area_id in area_ids
+        }
+
+    def _canonical_persistent_area_ids(self) -> frozenset[str]:
+        return frozenset(
+            selector.area.area_id
+            for selector in self._program.selectors
+            if selector.area is not None and selector.area.persistent
+        )
+
+    def _area_effect_is_active(self, area_id: str) -> bool:
+        if area_id not in self._canonical_persistent_area_ids():
+            return False
+        if self._concentration_required:
+            return bool(
+                self._concentration_tracker is not None
+                and self._concentration_tracker.active_effect_id
+                == self._program.effect_id
+            )
+        return self._area_effect_started and not self._area_effect_ended
+
+    def _area_gate_eligibility(
+        self,
+        *,
+        gate_id: str,
+        target_id: str,
+    ) -> tuple[bool, str | None]:
+        area_gate_bindings = self._canonical_area_gate_bindings()
+        area_ids = area_gate_bindings.get(gate_id, ())
+        if not area_ids:
+            return True, None
+        area_target_ids_by_area = self._canonical_area_target_ids_by_area()
+        for area_id in area_ids:
+            if self._area_response_convention == "shortest_route_v1":
+                route_state = self._area_route_state_or_none(
+                    target_id,
+                    area_id=area_id,
+                )
+                if route_state is None:
+                    raise ControlEngineError(
+                        f"Area-owned gate {gate_id!r} has no authoritative area "
+                        f"membership state for target {target_id!r} and area "
+                        f"{area_id!r}"
+                    )
+                member = route_state.membership
+            else:
+                if area_id not in area_target_ids_by_area:
+                    raise ControlEngineError(
+                        f"Area-owned gate {gate_id!r} references unknown compiled "
+                        f"area {area_id!r}"
+                    )
+                member = target_id in area_target_ids_by_area[area_id]
+            if not member:
+                return False, (
+                    f"target {target_id!r} is a nonmember according to "
+                    f"authoritative area membership for area {area_id!r}"
+                )
+            if not self._area_effect_is_active(area_id):
+                return False, (
+                    f"compiled area {area_id!r} is not active at the current event"
+                )
+        return True, None
+
+    def _require_area_gate_eligible(
+        self,
+        *,
+        gate_id: str,
+        target_id: str,
+    ) -> None:
+        eligible, reason = self._area_gate_eligibility(
+            gate_id=gate_id,
+            target_id=target_id,
+        )
+        if not eligible:
+            raise ControlEngineError(
+                f"Area-owned gate {gate_id!r} is ineligible because {reason}"
+            )
+
+    def _prune_future_area_gate_operations(
+        self,
+        *,
+        area_id: str,
+        target_id: str,
+    ) -> None:
+        area_gate_bindings = self._canonical_area_gate_bindings()
+
+        def retained(operation: str) -> bool:
+            parts = operation.split(":", 2)
+            if len(parts) != 3 or parts[0] not in {
+                "branch",
+                "concentration_end",
+            }:
+                return True
+            gate_id, operation_target = parts[1], parts[2]
+            return not (
+                operation_target == target_id
+                and area_id in area_gate_bindings.get(gate_id, ())
+            )
+
+        self._current_required_operations = {
+            operation
+            for operation in self._current_required_operations
+            if retained(operation)
+        }
+        for event_id in tuple(self._future_required_operations):
+            remaining = {
+                operation
+                for operation in self._future_required_operations[event_id]
+                if retained(operation)
+            }
+            if remaining:
+                self._future_required_operations[event_id] = remaining
+            else:
+                del self._future_required_operations[event_id]
 
     def _set_area_route_state(self, state: _AreaRouteState) -> None:
         key = (state.effect_id, state.area_id, state.target_id)
@@ -7416,6 +7685,10 @@ class ControlExecutionSession:
                 last_update_event_sequence=event.sequence,
             )
             self._set_area_route_state(new_state)
+            self._prune_future_area_gate_operations(
+                area_id=old_state.area_id,
+                target_id=old_state.target_id,
+            )
             transition = self._route_transition(
                 transition_kind="effect_end",
                 event=event,
@@ -7609,6 +7882,10 @@ class ControlExecutionSession:
         after_sequence: int,
     ) -> tuple[TimelineEvent, str, bool]:
         gate = self._program.gate(gate_id)
+        self._require_area_gate_eligible(
+            gate_id=gate.gate_id,
+            target_id=target_id,
+        )
         bindings = json.loads(self._reliability_timeline_bindings_json)
         matching_events: list[TimelineEvent] = []
         for gate_row in self._reliability.gate_probabilities:
@@ -7769,7 +8046,16 @@ class ControlExecutionSession:
             parts = operation.split(":", 2)
             gate = self._program.gate(parts[1])
             target_id = parts[2] if len(parts) == 3 else event.target_id
-            if target_id is None or not gate.requires_active_component_ids:
+            if target_id is None:
+                continue
+            area_eligible, _area_reason = self._area_gate_eligibility(
+                gate_id=gate.gate_id,
+                target_id=target_id,
+            )
+            if not area_eligible:
+                self._current_required_operations.discard(operation)
+                continue
+            if not gate.requires_active_component_ids:
                 continue
             active_ids = {
                 row["component_id"]
@@ -7788,9 +8074,33 @@ class ControlExecutionSession:
                 and component.magnitude.get("condition") == "prone"
                 for component in self._state.active_components(target)
             )
+            area_component_ids = self._active_area_component_ids(target)
+            route_state = (
+                self._area_route_state_or_none(target)
+                if self._area_response_convention == "shortest_route_v1"
+                else None
+            )
+            if (
+                self._area_response_convention == "shortest_route_v1"
+                and area_component_ids
+                and (route_state is None or not route_state.membership)
+            ):
+                raise ControlEngineError(
+                    "Active area-bound components lack authoritative live area "
+                    f"membership for target {target!r}"
+                )
+            live_area_membership = bool(
+                route_state is not None
+                and route_state.membership
+                and self._area_effect_is_active(route_state.area_id)
+            )
             self._movement_response_required = bool(
                 prone
-                or self._active_area_component_ids(target)
+                or live_area_membership
+                or (
+                    self._area_response_convention != "shortest_route_v1"
+                    and self._active_area_component_ids(target)
+                )
                 or target in self._displaced_targets
             )
         if (
@@ -7859,6 +8169,9 @@ class ControlExecutionSession:
                     }),
                 },
             )
+        if event.kind == "activation" and not self._concentration_required:
+            self._area_effect_started = True
+            self._area_effect_ended = False
         self._current_required_operations.discard("component_expiry")
         snapshot = _ClosedEventSnapshot(
             scenario_digest=self._scenario_digest,
@@ -7901,6 +8214,10 @@ class ControlExecutionSession:
             raise ControlEngineError(
                 "Concentration-end gates are owned by end_concentration()"
             )
+        self._require_area_gate_eligible(
+            gate_id=gate.gate_id,
+            target_id=target_id,
+        )
         observed_outcome = _identifier(outcome, "outcome")
         pre_event_rows = json.loads(self._current_pre_state_json or "[]")
         active_guard_ids = {
@@ -7968,6 +8285,12 @@ class ControlExecutionSession:
             if not next_targets:
                 continue
             for next_target in next_targets:
+                next_eligible, _next_reason = self._area_gate_eligibility(
+                    gate_id=next_gate.gate_id,
+                    target_id=next_target,
+                )
+                if not next_eligible:
+                    continue
                 next_gate_plans.append((
                     next_gate.gate_id,
                     next_target,
@@ -8188,6 +8511,10 @@ class ControlExecutionSession:
         old_state = self._area_route_state(target)
         if old_state.area_id != update.area_id:
             raise ControlEngineError("AreaGeometryUpdate route state is foreign")
+        if not self._area_effect_is_active(update.area_id):
+            raise ControlEngineError(
+                "AreaGeometryUpdate requires an active compiled persistent area"
+            )
         area = next(
             selector.area
             for selector in self._program.selectors
@@ -8252,6 +8579,11 @@ class ControlExecutionSession:
             last_update_event_sequence=event.sequence,
         )
         self._set_area_route_state(new_state)
+        if old_state.membership and not new_state.membership:
+            self._prune_future_area_gate_operations(
+                area_id=old_state.area_id,
+                target_id=target,
+            )
         entry_policy = (
             None if area.entry_policy is None else area.entry_policy.to_dict()
         )
@@ -8367,6 +8699,25 @@ class ControlExecutionSession:
                 mixed_speed_operation_order=mixed_order,
             )
         area_component_ids = self._active_area_component_ids(target)
+        route_state = (
+            self._area_route_state_or_none(target)
+            if self._area_response_convention == "shortest_route_v1"
+            else None
+        )
+        live_area_membership = bool(
+            route_state is not None
+            and route_state.membership
+            and self._area_effect_is_active(route_state.area_id)
+        )
+        if (
+            self._area_response_convention == "shortest_route_v1"
+            and area_component_ids
+            and (route_state is None or not route_state.membership)
+        ):
+            raise ControlEngineError(
+                "Active area-bound components lack authoritative live area "
+                f"membership for target {target!r}"
+            )
         prone = any(
             component.magnitude.get("kind") == "condition"
             and component.magnitude.get("condition") == "prone"
@@ -8374,12 +8725,9 @@ class ControlExecutionSession:
         )
         issued: list[_IssuedControlRecord] = []
 
-        if area_component_ids and self._area_response_convention == "shortest_route_v1":
-            route_state = self._area_route_state(target)
-            if route_state.membership is not True:
-                raise ControlEngineError(
-                    "Active area-bound components require session-owned membership true"
-                )
+        if live_area_membership:
+            if route_state is None:  # pragma: no cover - narrowed above
+                raise ControlEngineError("Missing live session-owned area route state")
             routes = [route.route_input() for route in route_state.routes]
             pre = _canonical_json(self._state.snapshot())
             pre_route = self._area_route_state_json()
@@ -8459,6 +8807,11 @@ class ControlExecutionSession:
                 )
                 transition_kind = "movement_blocked"
             self._set_area_route_state(new_route_state)
+            if route_state.membership and not new_route_state.membership:
+                self._prune_future_area_gate_operations(
+                    area_id=route_state.area_id,
+                    target_id=target,
+                )
             route_transition = self._route_transition(
                 transition_kind=transition_kind,
                 event=event,
@@ -8505,7 +8858,10 @@ class ControlExecutionSession:
                     pre_operation_state_json=pre,
                     target_id=target,
                 ))
-            if area_component_ids:
+            if (
+                area_component_ids
+                and self._area_response_convention != "shortest_route_v1"
+            ):
                 area_membership = self._bound_input(
                     "area_membership",
                     target_id=target,
@@ -8654,6 +9010,8 @@ class ControlExecutionSession:
             ),
             choices=self._choices,
         )
+        self._area_effect_started = True
+        self._area_effect_ended = False
         self._concentration_records.append(lifecycle)
         self._current_required_operations.discard("concentration_start")
         return self._issue(
@@ -8889,6 +9247,7 @@ class ControlExecutionSession:
             payload=lifecycle,
             pre_operation_state_json=pre,
         )
+        self._area_effect_ended = True
         self._close_area_routes_for_effect_end(
             event=event,
             reason="effect_ended",
@@ -8925,6 +9284,7 @@ class ControlExecutionSession:
             pre_operation_state_json=pre,
         )
         if tracker.active_effect_id is None:
+            self._area_effect_ended = True
             self._close_area_routes_for_effect_end(
                 event=event,
                 reason="effect_ended",
@@ -9289,6 +9649,132 @@ class ControlExecutionSession:
                 "Session repeat-save rows must be represented by branch records"
             )
 
+    def _area_effect_active_before_event(self, event: TimelineEvent) -> bool:
+        if not self._canonical_persistent_area_ids():
+            return False
+        if not self._concentration_required:
+            return any(
+                candidate.kind == "activation"
+                and candidate.sequence < event.sequence
+                for candidate in self._schedule.events
+            )
+        active = False
+        for record in self._issued_records:
+            if record.event_sequence >= event.sequence:
+                continue
+            if record.record_kind == "concentration_start":
+                active = True
+            elif record.record_kind == "concentration_end":
+                active = False
+            elif record.record_kind == "concentration_duration_reconciliation":
+                payload = json.loads(record.payload_json)
+                if payload.get("active_effect_id") is None:
+                    active = False
+        return active
+
+    def _area_gate_eligible_in_snapshot(
+        self,
+        *,
+        gate_id: str,
+        target_id: str,
+        event: TimelineEvent,
+        snapshot: _ClosedEventSnapshot,
+    ) -> bool:
+        area_ids = self._canonical_area_gate_bindings().get(gate_id, ())
+        if not area_ids:
+            return True
+        if not self._area_effect_active_before_event(event):
+            return False
+        fixed_targets = self._canonical_area_target_ids_by_area()
+        route_rows = json.loads(snapshot.pre_event_route_state_json)
+        for area_id in area_ids:
+            if self._area_response_convention == "shortest_route_v1":
+                matches = [
+                    row for row in route_rows
+                    if row.get("effect_id") == self._program.effect_id
+                    and row.get("area_id") == area_id
+                    and row.get("target_id") == target_id
+                ]
+                if len(matches) != 1:
+                    raise ControlEngineError(
+                        "Area-owned gate replay has no unique authoritative "
+                        "pre-event membership state"
+                    )
+                if matches[0].get("membership") is not True:
+                    return False
+            else:
+                if target_id not in fixed_targets.get(area_id, ()):
+                    return False
+        gate = self._program.gate(gate_id)
+        active_component_ids = {
+            row["component_id"]
+            for row in json.loads(snapshot.pre_event_state_json)
+            if row.get("effect_id") == self._program.effect_id
+            and row.get("target_id") == target_id
+        }
+        return not (
+            set(gate.requires_active_component_ids) - active_component_ids
+        )
+
+    def _validate_area_gate_execution(self) -> None:
+        area_gate_bindings = self._canonical_area_gate_bindings()
+        if not area_gate_bindings:
+            return
+        snapshots = {
+            snapshot.event_id: snapshot for snapshot in self._event_snapshots
+        }
+        observed: dict[tuple[str, str, str], list[_IssuedControlRecord]] = {}
+        for record in self._issued_records:
+            if record.record_kind != "branch_transition":
+                continue
+            payload = json.loads(record.payload_json)
+            gate_id = payload.get("gate_id")
+            if gate_id not in area_gate_bindings or record.target_id is None:
+                continue
+            event = self._schedule.event(record.event_id)
+            snapshot = snapshots[record.event_id]
+            if not self._area_gate_eligible_in_snapshot(
+                gate_id=str(gate_id),
+                target_id=record.target_id,
+                event=event,
+                snapshot=snapshot,
+            ):
+                raise ControlEngineError(
+                    "Issued area-owned branch lacks authoritative pre-event "
+                    "membership or active-area eligibility"
+                )
+            observed.setdefault(
+                (record.event_id, str(gate_id), record.target_id),
+                [],
+            ).append(record)
+
+        required_plan = json.loads(self._required_operation_plan_json)
+        for event_id, operations in required_plan.items():
+            event = self._schedule.event(event_id)
+            snapshot = snapshots[event_id]
+            for operation in operations:
+                parts = operation.split(":", 2)
+                if len(parts) != 3 or parts[0] != "branch":
+                    continue
+                gate_id, target_id = parts[1], parts[2]
+                if (
+                    gate_id not in area_gate_bindings
+                    or gate_id not in self._program.root_gate_ids
+                ):
+                    continue
+                eligible = self._area_gate_eligible_in_snapshot(
+                    gate_id=gate_id,
+                    target_id=target_id,
+                    event=event,
+                    snapshot=snapshot,
+                )
+                count = len(observed.get((event_id, gate_id, target_id), ()))
+                if count != (1 if eligible else 0):
+                    raise ControlEngineError(
+                        "Area-owned root-gate execution does not match canonical "
+                        "pre-event membership and effect chronology"
+                    )
+
     def _validate_event_snapshots(self) -> None:
         if len(self._event_snapshots) != len(self._schedule.events):
             raise ControlEngineError(
@@ -9403,9 +9889,41 @@ class ControlExecutionSession:
             area_response_convention=self._area_response_convention,
             displacement_function_id=self._displacement_function_id,
         ).to_dict()
+        scenario_membership = scenario.get("selector_membership", {})
+        compiled_area_ids = {
+            selector.area.area_id
+            for selector in self._program.selectors
+            if selector.area is not None
+        }
+        expected_area_target_ids_by_area = {
+            area_id: sorted({
+                target_id
+                for selector in self._program.selectors
+                if selector.area is not None
+                and selector.area.area_id == area_id
+                for target_id in scenario_membership[selector.selector_id]
+            })
+            for area_id in compiled_area_ids
+        }
+        expected_persistent_area_ids = sorted({
+            selector.area.area_id
+            for selector in self._program.selectors
+            if selector.area is not None and selector.area.persistent
+        })
         if (
             _canonical_json(scenario.get("target_mechanics"))
             != self._target_mechanics_json
+            or _canonical_json(scenario_membership)
+            != _canonical_json({
+                selector_id: sorted(target_ids)
+                for selector_id, target_ids in sorted(self._membership.items())
+            })
+            or _canonical_json(scenario_membership)
+            != _canonical_json(
+                self._reliability.scenario.canonical_record().get(
+                    "selector_membership"
+                )
+            )
             or _canonical_json(scenario.get("initial_state"))
             != self._initial_state_json
             or _canonical_json(scenario.get("operation_inputs_by_event"))
@@ -9417,6 +9935,39 @@ class ControlExecutionSession:
             or _canonical_json([
                 update.to_dict() for update in self._area_geometry_updates.values()
             ]) != self._area_geometry_updates_json
+            or _canonical_json(scenario.get("area_gate_bindings"))
+            != self._area_gate_bindings_json
+            or _canonical_json({
+                gate_id: list(area_ids)
+                for gate_id, area_ids in sorted(
+                    self._area_gate_bindings.items()
+                )
+            }) != self._area_gate_bindings_json
+            or _canonical_json({
+                gate_id: list(area_ids)
+                for gate_id, area_ids in sorted(
+                    self._compiled_area_gate_bindings(
+                        self._program,
+                        self._engine._compiled_area_bindings(self._program),
+                    ).items()
+                )
+            }) != self._area_gate_bindings_json
+            or _canonical_json(scenario.get("area_target_ids_by_area"))
+            != self._area_target_ids_by_area_json
+            or _canonical_json({
+                area_id: list(target_ids)
+                for area_id, target_ids in sorted(
+                    self._area_target_ids_by_area.items()
+                )
+            }) != self._area_target_ids_by_area_json
+            or _canonical_json(expected_area_target_ids_by_area)
+            != self._area_target_ids_by_area_json
+            or _canonical_json(scenario.get("persistent_area_ids"))
+            != self._persistent_area_ids_json
+            or _canonical_json(sorted(self._persistent_area_ids))
+            != self._persistent_area_ids_json
+            or _canonical_json(expected_persistent_area_ids)
+            != self._persistent_area_ids_json
             or _canonical_json(scenario.get("required_operation_plan"))
             != self._required_operation_plan_json
             or _canonical_json(scenario.get("reliability_timeline_bindings"))
@@ -9466,6 +10017,7 @@ class ControlExecutionSession:
         )
         self._validate_issued_records(selected_records)
         self._validate_internal_ledgers()
+        self._validate_area_gate_execution()
         selected_reliability = self._reliability if reliability is None else reliability
         self._validate_reliability(selected_reliability)
         self._validate_concentration_lifecycle()

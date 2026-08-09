@@ -114,7 +114,7 @@ EXPECTED_INVARIANTS = (
     "Frozen Ground route progress is session-owned across movement opportunities.",
     "Speed 0 preserves session-owned route distance until expiry.",
     "A target exits by the shortest supplied legal route.",
-    "Ball Lightning while-in-area effects end on exit.",
+    "Ball Lightning membership drives exit after a successful save applies no components.",
     "Frozen Ground’s separately timed failed-save effect does not end merely because the target exits.",
     "Fixed occupancy preserves membership.",
     "Missing distance-to-exit data fails closed.",
@@ -272,6 +272,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
             "repeat_survival": self.run_repeat_survival,
             "concentration_scenario": self.run_concentration_scenario,
             "session_area_route": self.run_session_area_route,
+            "session_area_membership": self.run_session_area_membership,
             "area_response": self.run_area_response,
             "area_error": self.run_area_error,
             "area_entry": self.run_area_entry,
@@ -1464,6 +1465,117 @@ class ControlEngineFixtureTests(unittest.TestCase):
                     "operation_inputs_by_event"
                 ].get(movement_events[1].event_id, {})
             ),
+        }
+        for path, value in case["expected"]["paths"].items():
+            self.assertEqual(path_value(result, path), value)
+        json.dumps(result, sort_keys=True, allow_nan=False)
+
+    def run_session_area_membership(self, case: Mapping[str, Any]) -> None:
+        inputs = case["input"]
+        target_id = "target"
+        program = self.engine.program("ball_lightning_t2_control")
+        schedule = self.engine.schedule(
+            inputs["initiative_convention"],
+            (target_id,),
+            controller_events_by_round={1: [{"kind": "activation"}]},
+            target_attack_counts={target_id: [0, 0, 0]},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        starts = tuple(
+            event for event in schedule.events
+            if event.kind == "target_turn_start"
+            and event.target_id == target_id
+            and event.sequence > activation.sequence
+        )[:2]
+        self.assertEqual(len(starts), 2)
+        gate = program.gate("ball_lightning_start_turn_save")
+        reliability_events = tuple(
+            ReliabilityEvent.create(
+                f"fixture:{case['id']}:round-{event.round}:start-save",
+                gate.trigger,
+                target_ids=(target_id,),
+                gate_ids=(gate.gate_id,),
+                window_id=event.event_id,
+            )
+            for event in starts
+        )
+        operation_inputs = {
+            event.event_id: {
+                "reliability_event_ids": [reliability_event.event_id],
+            }
+            for event, reliability_event in zip(
+                starts,
+                reliability_events,
+                strict=True,
+            )
+        }
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget(
+                target_id,
+                15,
+                {"charisma": 2},
+            ),),
+            selector_membership={
+                "ball_lightning_area_targets": (target_id,),
+            },
+            selector_context=SelectorContext(),
+            schedule=schedule,
+            target_mechanics={
+                target_id: {
+                    "base_speeds_ft": {"walk": inputs["base_speed_ft"]},
+                    "movement_mode": "walk",
+                    "area_membership": True,
+                    "area_routes": [{
+                        "route_id": "ball_lightning_exit",
+                        "mode": "walk",
+                        "distance_to_exit_ft": inputs["route_distance_ft"],
+                        "compatible": True,
+                        "movement_cost_multiplier": 1,
+                        "environment": "grounded",
+                    }],
+                },
+            },
+            area_response_convention="shortest_route_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            reliability_events=reliability_events,
+            operation_inputs_by_event=operation_inputs,
+            concentration_save_bonus=2,
+        )
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        session.close_event()
+        session.advance_to(starts[0].event_id)
+        success = session.apply_branch(
+            gate_id=gate.gate_id,
+            outcome="save_success",
+            target_id=target_id,
+        )
+        session.close_event()
+        active_before_movement = [
+            row["component_id"] for row in session.state_snapshot(target_id)
+        ]
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.target_id == target_id
+            and event.sequence > activation.sequence
+        )
+        session.advance_to(movement.event_id)
+        [response] = session.resolve_movement_response(target_id=target_id)
+        session.close_event()
+        route_after = dict(session.area_route_snapshot(target_id)[0])
+        session.advance_to(starts[1].event_id)
+        session.close_event()
+        result = {
+            "success": success.to_dict()["payload"],
+            "active_component_ids_before_movement": active_before_movement,
+            "movement": response.to_dict()["payload"],
+            "route_after": route_after,
+            "later_recurring_gate_pruned": True,
         }
         for path, value in case["expected"]["paths"].items():
             self.assertEqual(path_value(result, path), value)

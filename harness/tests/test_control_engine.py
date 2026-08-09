@@ -31,6 +31,7 @@ from harness.control_graph import (
     ReliabilityEvent,
     ReliabilityResult,
     ReliabilityTarget,
+    QualifiedId,
     SelectorContext,
     _frozen_map,
 )
@@ -581,6 +582,8 @@ class ControlExecutionSessionTests(unittest.TestCase):
         normalize_attack: bool = False,
         target_mechanics: Mapping[str, Any] | None = None,
         kernel: Any = None,
+        area_response_convention: str = "fixed_occupancy_v1",
+        area_geometry_updates: Sequence[AreaGeometryUpdate] = (),
     ):
         program = self.engine.program("absolute_zero_t0_control")
         schedule = self.engine.schedule(
@@ -638,11 +641,12 @@ class ControlExecutionSessionTests(unittest.TestCase):
             target_mechanics={
                 target_id: dict(target_mechanics or {}),
             },
-            area_response_convention="fixed_occupancy_v1",
+            area_response_convention=area_response_convention,
             displacement_function_id="sqrt_5ft_v1",
             probability_context=ProbabilityContext(save_dc=15),
             kernel=kernel,
             operation_inputs_by_event=operation_inputs or None,
+            area_geometry_updates=area_geometry_updates,
         )
         return session, schedule, save_event
 
@@ -902,10 +906,14 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session.advance_to(activation.event_id)
         session.start_concentration()
         for target_id in sorted(target_ids):
-            session.apply_branch(
+            activation_record = session.apply_branch(
                 gate_id="frozen_ground_t0_activation",
                 outcome="no_save",
                 target_id=target_id,
+            )
+            self.assertEqual(
+                activation_record.to_dict()["payload"]["gate_id"],
+                "frozen_ground_t0_activation",
             )
         session.close_event()
 
@@ -1024,6 +1032,202 @@ class ControlExecutionSessionTests(unittest.TestCase):
             target_id="target",
         )
         session.close_event()
+
+    def _ball_membership_session(
+        self,
+        *,
+        initiative: str = "fighter_first_v1",
+        area_response_convention: str = "shortest_route_v1",
+        target_ids: tuple[str, ...] = ("target",),
+        route_distances: Mapping[str, int] | None = None,
+        initial_membership: Mapping[str, bool] | None = None,
+        speed_zero_first_movement: Sequence[str] = (),
+        initial_conditions: Mapping[str, Sequence[str]] | None = None,
+        geometry_update: tuple[int, str, bool, int] | None = None,
+    ) -> tuple[Any, Any, Mapping[str, Any]]:
+        program = self.engine.program("ball_lightning_t2_control")
+        controller_events: dict[int, list[dict[str, Any]]] = {
+            1: [{"kind": "activation"}],
+        }
+        if geometry_update is not None:
+            update_round, _target_id, _membership, _distance = geometry_update
+            controller_events.setdefault(update_round, []).append({
+                "kind": "instantaneous_resolution",
+            })
+        schedule = self.engine.schedule(
+            initiative,
+            target_ids,
+            controller_events_by_round=controller_events,
+            target_attack_counts={target_id: [1, 0, 0] for target_id in target_ids},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        gate = program.gate("ball_lightning_start_turn_save")
+        starts_by_target: dict[str, tuple[Any, ...]] = {}
+        movements_by_target: dict[str, tuple[Any, ...]] = {}
+        reliability_events: list[ReliabilityEvent] = []
+        operation_inputs: dict[str, dict[str, Any]] = {}
+        for target_id in target_ids:
+            starts = tuple(
+                event for event in schedule.events
+                if event.kind == "target_turn_start"
+                and event.target_id == target_id
+                and event.sequence > activation.sequence
+            )[:2]
+            if len(starts) != 2:
+                raise AssertionError("membership helper requires two post-activation turns")
+            starts_by_target[target_id] = starts
+            for start in starts:
+                reliability_event = ReliabilityEvent.create(
+                    f"ball_lightning_{target_id}_round_{start.round}_start_save",
+                    gate.trigger,
+                    target_ids=(target_id,),
+                    gate_ids=(gate.gate_id,),
+                    window_id=start.event_id,
+                )
+                reliability_events.append(reliability_event)
+                operation_inputs[start.event_id] = {
+                    "reliability_event_ids": [reliability_event.event_id],
+                }
+            movements_by_target[target_id] = tuple(
+                event for event in schedule.events
+                if event.kind == "target_movement_opportunity"
+                and event.target_id == target_id
+                and event.sequence > activation.sequence
+            )[:2]
+
+        route_distances = dict(route_distances or {})
+        initial_membership = dict(initial_membership or {})
+        initial_conditions = dict(initial_conditions or {})
+        speed_zero_targets = set(speed_zero_first_movement)
+        target_mechanics: dict[str, dict[str, Any]] = {}
+        for target_id in target_ids:
+            member = initial_membership.get(target_id, True)
+            mechanics: dict[str, Any] = {
+                "base_speeds_ft": {"walk": 30},
+                "movement_mode": "walk",
+                "initial_conditions": list(initial_conditions.get(target_id, ())),
+            }
+            if area_response_convention == "shortest_route_v1":
+                mechanics["area_membership"] = member
+            if member and area_response_convention == "shortest_route_v1":
+                mechanics["area_routes"] = [self._route_geometry(
+                    f"{target_id}_initial_exit",
+                    distance=route_distances.get(target_id, 10),
+                ).route_input()]
+            if target_id in speed_zero_targets:
+                [first_movement] = movements_by_target[target_id][:1]
+                mechanics["base_speeds_ft_by_event"] = {
+                    first_movement.event_id: {"walk": 0},
+                }
+            target_mechanics[target_id] = mechanics
+
+        update_event = None
+        updates: tuple[AreaGeometryUpdate, ...] = ()
+        if geometry_update is not None:
+            update_round, update_target, new_membership, update_distance = (
+                geometry_update
+            )
+            update_event = next(
+                event for event in schedule.events
+                if event.kind == "instantaneous_resolution"
+                and event.round == update_round
+            )
+            routes = (
+                (self._route_geometry(
+                    f"{update_target}_reentry_exit",
+                    distance=update_distance,
+                ),)
+                if new_membership else ()
+            )
+            updates = (AreaGeometryUpdate(
+                effect_id=program.effect_id,
+                area_id="ball_lightning_sphere",
+                target_id=update_target,
+                event_id=update_event.event_id,
+                event_sequence=update_event.sequence,
+                new_membership=new_membership,
+                routes=routes,
+            ),)
+
+        session = self.engine.execution_session(
+            program,
+            targets=tuple(
+                ReliabilityTarget(target_id, 15, {"charisma": 2})
+                for target_id in target_ids
+            ),
+            selector_membership={
+                "ball_lightning_area_targets": target_ids,
+            },
+            selector_context=_selector_context_for(*target_ids),
+            schedule=schedule,
+            target_mechanics=target_mechanics,
+            area_response_convention=area_response_convention,
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            reliability_events=tuple(reliability_events),
+            operation_inputs_by_event=operation_inputs,
+            concentration_save_bonus=2,
+            area_geometry_updates=updates,
+        )
+        return session, schedule, {
+            "activation": activation,
+            "gate": gate,
+            "starts_by_target": starts_by_target,
+            "movements_by_target": movements_by_target,
+            "update": update_event,
+        }
+
+    @staticmethod
+    def _start_ball_concentration(session, activation) -> None:
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        session.close_event()
+
+    @staticmethod
+    def _apply_ball_start_save(session, event, *, target_id: str, outcome: str):
+        session.advance_to(event.event_id)
+        record = session.apply_branch(
+            gate_id="ball_lightning_start_turn_save",
+            outcome=outcome,
+            target_id=target_id,
+        )
+        session.close_event()
+        return record
+
+    def _completed_zero_area_result(
+        self,
+        area_response_convention: str,
+    ) -> dict[str, Any]:
+        session, schedule, save = self._absolute_zero_session(
+            normalize_movement=True,
+            normalize_attack=True,
+            area_response_convention=area_response_convention,
+        )
+        session.advance_to(save.event_id)
+        session.apply_branch(
+            gate_id="absolute_zero_t0_save",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.close_event()
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+        )
+        session.advance_to(movement.event_id)
+        session.normalize(target_id="target")
+        session.close_event()
+        attack = next(
+            event for event in schedule.events
+            if event.kind == "target_attack_opportunity"
+        )
+        session.advance_to(attack.event_id)
+        session.normalize(target_id="target")
+        session.close_event()
+        session.complete()
+        return session.result().to_dict()
 
     def _mass_levitation_session(self, *, bind_future: bool):
         program = self.engine.program("mass_levitation_t2_control")
@@ -3460,6 +3664,749 @@ class ControlExecutionSessionTests(unittest.TestCase):
             observed[("alpha", "beta")],
             observed[("beta", "alpha")],
         )
+
+    def test_area_membership_01_success_without_components_still_requires_exit_response(
+        self,
+    ) -> None:
+        session, _schedule, events = self._ball_membership_session()
+        self._start_ball_concentration(session, events["activation"])
+        [first_start] = events["starts_by_target"]["target"][:1]
+        self._apply_ball_start_save(
+            session,
+            first_start,
+            target_id="target",
+            outcome="save_success",
+        )
+        self.assertEqual(session.state_snapshot("target"), ())
+        [first_movement] = events["movements_by_target"]["target"][:1]
+        session.advance_to(first_movement.event_id)
+        with self.assertRaisesRegex(ControlEngineError, "target movement response"):
+            session.close_event()
+        [record] = session.resolve_movement_response(target_id="target")
+        payload = record.to_dict()["payload"]
+        self.assertTrue(payload["exited"])
+        self.assertEqual(payload["ended_component_ids"], [])
+        self.assertFalse(self._area_route_row(session)["membership"])
+
+    def test_area_membership_02_successful_exit_precedes_active_and_attack_windows(
+        self,
+    ) -> None:
+        session, schedule, events = self._ball_membership_session()
+        self._start_ball_concentration(session, events["activation"])
+        [first_start] = events["starts_by_target"]["target"][:1]
+        self._apply_ball_start_save(
+            session,
+            first_start,
+            target_id="target",
+            outcome="save_success",
+        )
+        [movement] = events["movements_by_target"]["target"][:1]
+        active = next(
+            event for event in schedule.events
+            if event.kind == "target_active_turn_opportunity"
+            and event.target_id == "target"
+            and event.round == movement.round
+        )
+        attack = next(
+            event for event in schedule.events
+            if event.kind == "target_attack_opportunity"
+            and event.target_id == "target"
+            and event.round == movement.round
+        )
+        session.advance_to(movement.event_id)
+        [record] = session.resolve_movement_response(target_id="target")
+        self.assertTrue(record.to_dict()["payload"]["exited"])
+        self.assertLess(movement.sequence, active.sequence)
+        self.assertLess(active.sequence, attack.sequence)
+        session.close_event()
+        session.advance_to(active.event_id)
+        self.assertFalse(self._area_route_row(session)["membership"])
+        active_record = session.normalize(target_id="target")
+        self.assertEqual(
+            active_record.to_dict()["payload"]["contributions"],
+            [],
+        )
+        self.assertEqual(session.state_snapshot("target"), ())
+        session.close_event()
+        session.advance_to(attack.event_id)
+        attack_record = session.normalize(target_id="target")
+        self.assertEqual(
+            attack_record.to_dict()["payload"]["contributions"],
+            [],
+        )
+        self.assertEqual(session.state_snapshot("target"), ())
+
+    def test_area_membership_03_exit_prunes_later_recurring_gate_requirement(
+        self,
+    ) -> None:
+        session, _schedule, events = self._ball_membership_session()
+        self._start_ball_concentration(session, events["activation"])
+        first_start, second_start = events["starts_by_target"]["target"]
+        self._apply_ball_start_save(
+            session,
+            first_start,
+            target_id="target",
+            outcome="save_success",
+        )
+        [first_movement] = events["movements_by_target"]["target"][:1]
+        session.advance_to(first_movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.advance_to(second_start.event_id)
+        session.close_event()
+        self.assertFalse(self._area_route_row(session)["membership"])
+
+    def test_area_membership_04_direct_later_gate_for_nonmember_fails_closed(
+        self,
+    ) -> None:
+        session, _schedule, events = self._ball_membership_session()
+        self._start_ball_concentration(session, events["activation"])
+        first_start, second_start = events["starts_by_target"]["target"]
+        self._apply_ball_start_save(
+            session,
+            first_start,
+            target_id="target",
+            outcome="save_success",
+        )
+        [first_movement] = events["movements_by_target"]["target"][:1]
+        session.advance_to(first_movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.advance_to(second_start.event_id)
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"Area-owned gate .* nonmember",
+        ):
+            session.apply_branch(
+                gate_id="ball_lightning_start_turn_save",
+                outcome="save_success",
+                target_id="target",
+            )
+        session.close_event()
+
+    def test_area_membership_05_speed_zero_preserves_member_and_later_gate(
+        self,
+    ) -> None:
+        session, _schedule, events = self._ball_membership_session(
+            route_distances={"target": 45},
+            speed_zero_first_movement=("target",),
+        )
+        self._start_ball_concentration(session, events["activation"])
+        first_start, second_start = events["starts_by_target"]["target"]
+        self._apply_ball_start_save(
+            session,
+            first_start,
+            target_id="target",
+            outcome="save_failure",
+        )
+        [first_movement] = events["movements_by_target"]["target"][:1]
+        session.advance_to(first_movement.event_id)
+        [blocked] = session.resolve_movement_response(target_id="target")
+        blocked_payload = blocked.to_dict()["payload"]
+        self.assertEqual(blocked_payload["reason"], "movement_unavailable")
+        self.assertEqual(
+            blocked_payload["movement_authority"]["effective_speeds_ft"],
+            {"walk": 0},
+        )
+        route = self._area_route_row(session)
+        self.assertTrue(route["membership"])
+        self.assertEqual(
+            route["routes"][0]["distance_to_exit_exact"],
+            {"numerator": 45, "denominator": 1},
+        )
+        session.close_event()
+        record = self._apply_ball_start_save(
+            session,
+            second_start,
+            target_id="target",
+            outcome="save_success",
+        )
+        self.assertEqual(
+            record.to_dict()["payload"]["gate_id"],
+            "ball_lightning_start_turn_save",
+        )
+
+    def test_area_membership_06_speed_recovery_consumes_preserved_route(
+        self,
+    ) -> None:
+        session, _schedule, events = self._ball_membership_session(
+            route_distances={"target": 45},
+            speed_zero_first_movement=("target",),
+        )
+        self._start_ball_concentration(session, events["activation"])
+        first_start, second_start = events["starts_by_target"]["target"]
+        self._apply_ball_start_save(
+            session,
+            first_start,
+            target_id="target",
+            outcome="save_failure",
+        )
+        first_movement, second_movement = events["movements_by_target"]["target"]
+        session.advance_to(first_movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        self._apply_ball_start_save(
+            session,
+            second_start,
+            target_id="target",
+            outcome="save_success",
+        )
+        session.advance_to(second_movement.event_id)
+        [record] = session.resolve_movement_response(target_id="target")
+        selected = record.to_dict()["payload"]["selected_route"]
+        self.assertEqual(selected["distance_before_ft"], 45)
+        self.assertEqual(selected["progress_ft"], 30)
+        self.assertEqual(selected["remaining_distance_ft"], 15)
+        self.assertEqual(self._area_route_row(session)["remaining_distance_ft"], 15)
+
+    def test_area_membership_07_compiled_reentry_restores_later_gate_eligibility(
+        self,
+    ) -> None:
+        session, _schedule, events = self._ball_membership_session(
+            geometry_update=(2, "target", True, 12),
+        )
+        self._start_ball_concentration(session, events["activation"])
+        first_start, second_start = events["starts_by_target"]["target"]
+        self._apply_ball_start_save(
+            session,
+            first_start,
+            target_id="target",
+            outcome="save_success",
+        )
+        [first_movement] = events["movements_by_target"]["target"][:1]
+        session.advance_to(first_movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        update = events["update"]
+        session.advance_to(update.event_id)
+        update_record = session.apply_area_geometry_update(target_id="target")
+        self.assertTrue(update_record.to_dict()["payload"]["membership_after"])
+        session.close_event()
+        recurring = self._apply_ball_start_save(
+            session,
+            second_start,
+            target_id="target",
+            outcome="save_success",
+        )
+        self.assertEqual(
+            recurring.to_dict()["payload"]["gate_id"],
+            "ball_lightning_start_turn_save",
+        )
+
+    def test_area_membership_08_moved_reentry_does_not_execute_entry_gate(
+        self,
+    ) -> None:
+        session, _schedule, events = self._ball_membership_session(
+            initial_membership={"target": False},
+            geometry_update=(2, "target", True, 12),
+        )
+        self._start_ball_concentration(session, events["activation"])
+        [first_start] = events["starts_by_target"]["target"][:1]
+        session.advance_to(first_start.event_id)
+        session.close_event()
+        [first_movement] = events["movements_by_target"]["target"][:1]
+        session.advance_to(first_movement.event_id)
+        session.close_event()
+        update = events["update"]
+        session.advance_to(update.event_id)
+        record = session.apply_area_geometry_update(target_id="target")
+        payload = record.to_dict()["payload"]
+        self.assertFalse(payload["moved_area_counts_as_entry"])
+        self.assertEqual(payload["entry_gate_opportunity_ids"], [])
+        self.assertEqual(record.record_kind, "area_geometry_update")
+        self.assertFalse(any(
+            issued.record_kind == "branch_transition"
+            and issued.event_id == update.event_id
+            for issued in session.issued_records()
+        ))
+
+    def test_area_membership_09_compiled_exit_prunes_gates_and_area_components(
+        self,
+    ) -> None:
+        session, _schedule, events = self._ball_membership_session(
+            route_distances={"target": 45},
+            speed_zero_first_movement=("target",),
+            initial_conditions={"target": ("blinded",)},
+            geometry_update=(2, "target", False, 0),
+        )
+        self._start_ball_concentration(session, events["activation"])
+        first_start, second_start = events["starts_by_target"]["target"]
+        self._apply_ball_start_save(
+            session,
+            first_start,
+            target_id="target",
+            outcome="save_failure",
+        )
+        [first_movement] = events["movements_by_target"]["target"][:1]
+        session.advance_to(first_movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        update = events["update"]
+        session.advance_to(update.event_id)
+        record = session.apply_area_geometry_update(target_id="target")
+        payload = record.to_dict()["payload"]
+        self.assertEqual(
+            set(payload["ended_component_ids"]),
+            {
+                "ball_lightning_attack_disadvantage",
+                "ball_lightning_reaction_denial",
+            },
+        )
+        self.assertEqual(
+            {row["component_id"] for row in session.state_snapshot("target")},
+            {"initial_blinded"},
+        )
+        self.assertFalse(self._area_route_row(session)["membership"])
+        session.close_event()
+        session.advance_to(second_start.event_id)
+        session.close_event()
+
+    def test_area_membership_10_member_without_components_carries_route_progress(
+        self,
+    ) -> None:
+        session, _schedule, events = self._ball_membership_session(
+            route_distances={"target": 45},
+        )
+        self._start_ball_concentration(session, events["activation"])
+        [first_start] = events["starts_by_target"]["target"][:1]
+        self._apply_ball_start_save(
+            session,
+            first_start,
+            target_id="target",
+            outcome="save_success",
+        )
+        self.assertEqual(session.state_snapshot("target"), ())
+        [first_movement] = events["movements_by_target"]["target"][:1]
+        session.advance_to(first_movement.event_id)
+        [record] = session.resolve_movement_response(target_id="target")
+        payload = record.to_dict()["payload"]
+        self.assertFalse(payload["exited"])
+        self.assertEqual(payload["ended_component_ids"], [])
+        self.assertEqual(payload["selected_route"]["remaining_distance_ft"], 15)
+        route = self._area_route_row(session)
+        self.assertTrue(route["membership"])
+        self.assertEqual(route["remaining_distance_ft"], 15)
+
+    def test_area_membership_11_target_permutation_preserves_membership_and_gates(
+        self,
+    ) -> None:
+        observed: dict[tuple[str, ...], dict[str, Any]] = {}
+        for target_ids in (("alpha", "beta"), ("beta", "alpha")):
+            with self.subTest(target_ids=target_ids):
+                session, schedule, events = self._ball_membership_session(
+                    target_ids=target_ids,
+                    route_distances={"alpha": 10, "beta": 45},
+                )
+                self._start_ball_concentration(session, events["activation"])
+                first_starts = {
+                    rows[0].event_id: target_id
+                    for target_id, rows in events["starts_by_target"].items()
+                }
+                second_starts = {
+                    rows[1].event_id: target_id
+                    for target_id, rows in events["starts_by_target"].items()
+                }
+                first_progress: dict[str, tuple[bool, int | float]] = {}
+                later_gate_eligible: dict[str, bool] = {}
+                last_second_start = max(
+                    schedule.event(event_id).sequence
+                    for event_id in second_starts
+                )
+                while session.cursor < last_second_start:
+                    event = schedule.events[session.cursor + 1]
+                    session.advance(event.event_id)
+                    if event.event_id in first_starts:
+                        session.apply_branch(
+                            gate_id="ball_lightning_start_turn_save",
+                            outcome="save_success",
+                            target_id=first_starts[event.event_id],
+                        )
+                    elif event.event_id in second_starts:
+                        target_id = second_starts[event.event_id]
+                        member = self._area_route_row(session, target_id)["membership"]
+                        later_gate_eligible[target_id] = bool(member)
+                        if member:
+                            session.apply_branch(
+                                gate_id="ball_lightning_start_turn_save",
+                                outcome="save_success",
+                                target_id=target_id,
+                            )
+                    elif (
+                        event.kind == "target_movement_opportunity"
+                        and event.target_id in target_ids
+                    ):
+                        target_id = str(event.target_id)
+                        route = self._area_route_row(session, target_id)
+                        if route["membership"]:
+                            session.resolve_movement_response(target_id=target_id)
+                            if event.round == 1:
+                                updated = self._area_route_row(session, target_id)
+                                first_progress[target_id] = (
+                                    bool(updated["membership"]),
+                                    updated["remaining_distance_ft"],
+                                )
+                    session.close_event()
+                observed[target_ids] = {
+                    "first_progress": first_progress,
+                    "later_gate_eligible": later_gate_eligible,
+                }
+        self.assertEqual(
+            observed[("alpha", "beta")],
+            observed[("beta", "alpha")],
+        )
+        self.assertEqual(
+            observed[("alpha", "beta")],
+            {
+                "first_progress": {
+                    "alpha": (False, 0),
+                    "beta": (True, 15),
+                },
+                "later_gate_eligible": {
+                    "alpha": False,
+                    "beta": True,
+                },
+            },
+        )
+
+    def test_area_membership_12_initiative_conventions_use_correct_live_rounds(
+        self,
+    ) -> None:
+        observed: dict[str, tuple[int, bool]] = {}
+        for initiative, expected_round in (
+            ("fighter_first_v1", 1),
+            ("target_before_fighter_v1", 2),
+        ):
+            with self.subTest(initiative=initiative):
+                session, _schedule, events = self._ball_membership_session(
+                    initiative=initiative,
+                )
+                self._start_ball_concentration(session, events["activation"])
+                first_start, second_start = events["starts_by_target"]["target"]
+                self._apply_ball_start_save(
+                    session,
+                    first_start,
+                    target_id="target",
+                    outcome="save_success",
+                )
+                [first_movement] = events["movements_by_target"]["target"][:1]
+                session.advance_to(first_movement.event_id)
+                session.resolve_movement_response(target_id="target")
+                session.close_event()
+                session.advance_to(second_start.event_id)
+                session.close_event()
+                observed[initiative] = (
+                    int(first_movement.round),
+                    bool(self._area_route_row(session)["membership"]),
+                )
+                self.assertEqual(first_movement.round, expected_round)
+        self.assertEqual(
+            observed,
+            {
+                "fighter_first_v1": (1, False),
+                "target_before_fighter_v1": (2, False),
+            },
+        )
+
+    def test_area_membership_binding_tamper_fails_every_identity_boundary(
+        self,
+    ) -> None:
+        tampered_values = {
+            "_area_gate_bindings": MappingProxyType({}),
+            "_persistent_area_ids": frozenset(),
+            "_area_target_ids_by_area": MappingProxyType({}),
+        }
+        for field_name, tampered_value in tampered_values.items():
+            with self.subTest(field=field_name, boundary="advance"):
+                session, _schedule, events = self._ball_membership_session(
+                    initial_membership={"target": False},
+                )
+                original = getattr(session, field_name)
+                setattr(session, field_name, tampered_value)
+                with self.assertRaisesRegex(
+                    ControlEngineError,
+                    "runtime bindings",
+                ):
+                    session.advance_to(events["activation"].event_id)
+                setattr(session, field_name, original)
+
+            with self.subTest(field=field_name, boundary="apply"):
+                session, _schedule, events = self._ball_membership_session()
+                self._start_ball_concentration(session, events["activation"])
+                [first_start] = events["starts_by_target"]["target"][:1]
+                session.advance_to(first_start.event_id)
+                original = getattr(session, field_name)
+                setattr(session, field_name, tampered_value)
+                with self.assertRaisesRegex(
+                    ControlEngineError,
+                    "runtime bindings",
+                ):
+                    session.apply_branch(
+                        gate_id="ball_lightning_start_turn_save",
+                        outcome="save_success",
+                        target_id="target",
+                    )
+                setattr(session, field_name, original)
+
+            with self.subTest(field=field_name, boundary="result"):
+                session, _schedule, events = self._ball_membership_session(
+                    initial_membership={"target": False},
+                )
+                self._start_ball_concentration(session, events["activation"])
+                session.complete()
+                original = getattr(session, field_name)
+                setattr(session, field_name, tampered_value)
+                with self.assertRaisesRegex(
+                    ControlEngineError,
+                    "runtime bindings",
+                ):
+                    session.result()
+                setattr(session, field_name, original)
+                session.result()
+
+        for convention in ("shortest_route_v1", "fixed_occupancy_v1"):
+            with self.subTest(convention=convention, boundary="root_replay"):
+                session, _schedule, events = self._ball_membership_session(
+                    area_response_convention=convention,
+                )
+                self._start_ball_concentration(session, events["activation"])
+                [first_start] = events["starts_by_target"]["target"][:1]
+                session.advance_to(first_start.event_id)
+                requirement = "branch:ball_lightning_start_turn_save:target"
+                self.assertIn(requirement, session._current_required_operations)
+                session._current_required_operations.discard(requirement)
+                session.close_event()
+                if convention == "shortest_route_v1":
+                    [first_movement] = events["movements_by_target"]["target"][:1]
+                    session.advance_to(first_movement.event_id)
+                    session.resolve_movement_response(target_id="target")
+                    session.close_event()
+                else:
+                    second_start = events["starts_by_target"]["target"][1]
+                    self._apply_ball_start_save(
+                        session,
+                        second_start,
+                        target_id="target",
+                        outcome="save_success",
+                    )
+                session.complete()
+                with self.assertRaisesRegex(
+                    ControlEngineError,
+                    "Area-owned root-gate execution",
+                ):
+                    session.result()
+
+    def test_zero_area_01_both_conventions_create_and_complete_sessions(self) -> None:
+        results = {
+            convention: self._completed_zero_area_result(convention)
+            for convention in ("shortest_route_v1", "fixed_occupancy_v1")
+        }
+        self.assertEqual(
+            {result["compiled_program_id"] for result in results.values()},
+            {"absolute_zero_t0_control"},
+        )
+        self.assertEqual(
+            {
+                result["scenario_convention"]["area_response_convention"]
+                for result in results.values()
+            },
+            {"shortest_route_v1", "fixed_occupancy_v1"},
+        )
+
+    def test_zero_area_02_both_conventions_have_identical_mechanical_evidence(
+        self,
+    ) -> None:
+        shortest = self._completed_zero_area_result("shortest_route_v1")
+        fixed = self._completed_zero_area_result("fixed_occupancy_v1")
+        mechanical_fields = (
+            "gate_probabilities",
+            "branch_probabilities",
+            "component_reliability",
+            "any_candidate_reliability",
+            "any_component_reliability",
+            "event_state_transitions",
+            "primitive_contributions",
+            "final_normalized_state",
+        )
+        for field in mechanical_fields:
+            with self.subTest(field=field):
+                self.assertEqual(shortest[field], fixed[field])
+
+    def test_zero_area_03_scenario_provenance_differs_only_by_area_convention(
+        self,
+    ) -> None:
+        shortest = self._completed_zero_area_result("shortest_route_v1")
+        fixed = self._completed_zero_area_result("fixed_occupancy_v1")
+        self.assertNotEqual(shortest["scenario_digest"], fixed["scenario_digest"])
+        shortest_scenario = json.loads(json.dumps(shortest["scenario_record"]))
+        fixed_scenario = json.loads(json.dumps(fixed["scenario_record"]))
+        self.assertEqual(
+            shortest_scenario["area_response_convention"],
+            "shortest_route_v1",
+        )
+        self.assertEqual(
+            fixed_scenario["area_response_convention"],
+            "fixed_occupancy_v1",
+        )
+        for scenario in (shortest_scenario, fixed_scenario):
+            scenario["area_response_convention"] = "selected_convention"
+            scenario["versions"]["area_response_convention"] = (
+                "selected_convention"
+            )
+        self.assertEqual(shortest_scenario, fixed_scenario)
+
+    def test_zero_area_04_both_conventions_emit_no_area_route_state(self) -> None:
+        for convention in ("shortest_route_v1", "fixed_occupancy_v1"):
+            with self.subTest(convention=convention):
+                result = self._completed_zero_area_result(convention)
+                self.assertEqual(result["area_membership_and_route_records"], [])
+                self.assertEqual(result["area_route_transitions"], [])
+                self.assertEqual(result["final_area_route_states"], [])
+
+    def test_zero_area_05_geometry_update_is_rejected(self) -> None:
+        program = self.engine.program("absolute_zero_t0_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ("target",),
+            controller_events_by_round={
+                1: [{"kind": "instantaneous_resolution"}],
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        update_event = next(
+            event for event in schedule.events
+            if event.kind == "instantaneous_resolution"
+        )
+        update = AreaGeometryUpdate(
+            effect_id=program.effect_id,
+            area_id="foreign_area",
+            target_id="target",
+            event_id=update_event.event_id,
+            event_sequence=update_event.sequence,
+            new_membership=False,
+            routes=(),
+        )
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"zero compiled areas|does not accept AreaGeometryUpdate",
+        ):
+            self.engine.execution_session(
+                program,
+                targets=(ReliabilityTarget(
+                    "target",
+                    15,
+                    {"constitution": 2},
+                ),),
+                selector_membership={
+                    "absolute_zero_target": ("target",),
+                },
+                selector_context=_selector_context_for("target"),
+                schedule=schedule,
+                target_mechanics={"target": {}},
+                area_response_convention="shortest_route_v1",
+                displacement_function_id="sqrt_5ft_v1",
+                probability_context=ProbabilityContext(save_dc=15),
+                area_geometry_updates=(update,),
+            )
+
+    def test_zero_area_06_multiple_compiled_areas_are_rejected(self) -> None:
+        program = self.engine.program("ball_lightning_t2_control")
+        [area_selector] = [
+            selector for selector in program.selectors
+            if selector.area is not None
+        ]
+        area = area_selector.area
+        self.assertIsNotNone(area)
+        second_area_id = "synthetic_second_area"
+        second_area_data = area.data.to_dict()
+        second_area_data["area_id"] = second_area_id
+        second_area = replace(
+            area,
+            area_id=second_area_id,
+            qualified_id=QualifiedId(
+                area.qualified_id.namespace,
+                second_area_id,
+            ),
+            data=_frozen_map(second_area_data),
+        )
+        second_selector_id = "synthetic_second_area_targets"
+        second_selector = replace(
+            area_selector,
+            selector_id=second_selector_id,
+            qualified_id=QualifiedId(
+                area_selector.qualified_id.namespace,
+                second_selector_id,
+            ),
+            area=second_area,
+        )
+        selectors = (*program.selectors, second_selector)
+        synthetic_program = replace(
+            program,
+            selectors=selectors,
+            _selector_by_id=MappingProxyType({
+                selector.selector_id: selector for selector in selectors
+            }),
+        )
+        authority = self.engine.authority
+        programs = tuple(
+            synthetic_program if row.effect_id == program.effect_id else row
+            for row in authority.programs
+        )
+        program_by_id = dict(authority._program_by_id)
+        program_by_id[program.effect_id] = synthetic_program
+        program_by_key = dict(authority._program_by_key)
+        program_by_key[(program.entity_id, program.tier)] = synthetic_program
+        synthetic_authority = replace(
+            authority,
+            programs=programs,
+            _program_by_id=MappingProxyType(program_by_id),
+            _program_by_key=MappingProxyType(program_by_key),
+        )
+        synthetic_engine = ControlEngine(
+            catalog=self.engine.catalog,
+            config=self.engine.config,
+            authority=synthetic_authority,
+            targets=self.engine.targets,
+            target_supplement_digest=self.engine.target_supplement_digest,
+        )
+        schedule = synthetic_engine.schedule(
+            "fighter_first_v1",
+            ("target",),
+            controller_events_by_round={1: [{"kind": "activation"}]},
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "do not support programs with multiple compiled areas",
+        ):
+            synthetic_engine.execution_session(
+                synthetic_program,
+                targets=(ReliabilityTarget(
+                    "target",
+                    15,
+                    {"charisma": 2},
+                ),),
+                selector_membership={
+                    "ball_lightning_area_targets": ("target",),
+                    second_selector_id: ("target",),
+                },
+                selector_context=_selector_context_for("target"),
+                schedule=schedule,
+                target_mechanics={
+                    "target": {
+                        "base_speeds_ft": {"walk": 30},
+                        "movement_mode": "walk",
+                        "area_membership": True,
+                        "area_routes": [self._route_geometry(
+                            "target_exit",
+                            distance=10,
+                        ).route_input()],
+                    },
+                },
+                area_response_convention="shortest_route_v1",
+                displacement_function_id="sqrt_5ft_v1",
+                probability_context=ProbabilityContext(save_dc=15),
+                concentration_save_bonus=2,
+            )
 
 
 class ControlEngineIntegrationBridgeTests(unittest.TestCase):

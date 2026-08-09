@@ -1475,40 +1475,24 @@
     {
       "id": 52,
       "category": "areas",
-      "invariant": "Ball Lightning while-in-area effects end on exit.",
-      "operation": "area_response",
+      "invariant": "Ball Lightning membership drives exit after a successful save applies no components.",
+      "operation": "session_area_membership",
       "input": {
-        "convention": "shortest_route_v1",
-        "compiled_effect": {
-          "mastery_id": "ball_lightning",
-          "tier": 2
-        },
-        "target_id": "target",
-        "membership": true,
-        "effect_active": true,
-        "routes": [
-          {
-            "route_id": "exit",
-            "mode": "walk",
-            "distance_to_exit_ft": 10,
-            "compatible": true,
-            "movement_cost_multiplier": 1,
-            "environment": "grounded"
-          }
-        ],
-        "base_speeds_ft": {
-          "walk": 30
-        }
+        "initiative_convention": "fighter_first_v1",
+        "route_distance_ft": 10,
+        "base_speed_ft": 30
       },
       "expected": {
         "paths": {
-          "exited": true,
-          "membership_after": false
-        },
-        "ended_component_ids": [
-          "ball_lightning_attack_disadvantage",
-          "ball_lightning_reaction_denial"
-        ]
+          "success.filtered_branch.applies": [],
+          "active_component_ids_before_movement": [],
+          "movement.exited": true,
+          "movement.ended_component_ids": [],
+          "movement.route_transition.transition_kind": "route_exit",
+          "route_after.membership": false,
+          "route_after.closed_reason": "route_exhausted",
+          "later_recurring_gate_pruned": true
+        }
       }
     },
     {
