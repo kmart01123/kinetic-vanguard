@@ -111,8 +111,8 @@ EXPECTED_INVARIANTS = (
     "Starting a second concentration effect ends the first.",
     "Incapacitated controller event ends concentration.",
     "Mass Levitation concentration end causes current-position falls.",
-    "Frozen Ground difficult terrain reduces route progress without changing Speed.",
-    "Speed 0 prevents nominal exit until expiry.",
+    "Frozen Ground route progress is session-owned across movement opportunities.",
+    "Speed 0 preserves session-owned route distance until expiry.",
     "A target exits by the shortest supplied legal route.",
     "Ball Lightning while-in-area effects end on exit.",
     "Frozen Ground’s separately timed failed-save effect does not end merely because the target exits.",
@@ -271,6 +271,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
             "levitation_repeat": self.run_levitation_repeat,
             "repeat_survival": self.run_repeat_survival,
             "concentration_scenario": self.run_concentration_scenario,
+            "session_area_route": self.run_session_area_route,
             "area_response": self.run_area_response,
             "area_error": self.run_area_error,
             "area_entry": self.run_area_entry,
@@ -1352,6 +1353,120 @@ class ControlEngineFixtureTests(unittest.TestCase):
                 expected["effective_speeds_unchanged"],
             )
             self.assertEqual(params["effective_speeds_ft"], speeds_before)
+        json.dumps(result, sort_keys=True, allow_nan=False)
+
+    def run_session_area_route(self, case: Mapping[str, Any]) -> None:
+        inputs = case["input"]
+        target_id = "target"
+        program = self.engine.program("frozen_ground_t0_control")
+        schedule = self.engine.schedule(
+            inputs["initiative_convention"],
+            (target_id,),
+            controller_events_by_round={1: [{"kind": "activation"}]},
+            target_attack_counts={target_id: [0, 0, 0]},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        operation_inputs: dict[str, dict[str, Any]] = {}
+        reliability_events: tuple[ReliabilityEvent, ...] = ()
+        target_start = None
+        if inputs["speed_zero_on_first_response"]:
+            target_start = next(
+                event for event in schedule.events
+                if event.kind == "target_turn_start" and event.round == 1
+            )
+            gate = program.gate("frozen_ground_t0_start_turn_save")
+            reliability_event = ReliabilityEvent.create(
+                f"fixture:{case['id']}:start-save",
+                gate.trigger,
+                target_ids=(target_id,),
+                gate_ids=(gate.gate_id,),
+                window_id=target_start.event_id,
+            )
+            reliability_events = (reliability_event,)
+            operation_inputs[target_start.event_id] = {
+                "reliability_event_ids": [reliability_event.event_id],
+            }
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget(
+                target_id,
+                15,
+                {"constitution": 2, "dexterity": 2},
+            ),),
+            selector_membership={
+                "frozen_ground_area_targets": (target_id,),
+            },
+            selector_context=SelectorContext(),
+            schedule=schedule,
+            target_mechanics={
+                target_id: {
+                    "base_speeds_ft": {
+                        "walk": inputs["base_speed_ft"],
+                    },
+                    "movement_mode": "walk",
+                    "area_membership": True,
+                    "area_routes": [{
+                        "route_id": "ground_exit",
+                        "mode": "walk",
+                        "distance_to_exit_ft": inputs["route_distance_ft"],
+                        "compatible": True,
+                        "movement_cost_multiplier": 1,
+                        "environment": "grounded",
+                    }],
+                },
+            },
+            area_response_convention="shortest_route_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            reliability_events=reliability_events,
+            operation_inputs_by_event=operation_inputs,
+            concentration_save_bonus=2,
+        )
+        initial_route = dict(session.area_route_snapshot(target_id)[0])
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        session.apply_branch(
+            gate_id="frozen_ground_t0_activation",
+            outcome="no_save",
+            target_id=target_id,
+        )
+        session.close_event()
+        if target_start is not None:
+            session.advance_to(target_start.event_id)
+            session.apply_branch(
+                gate_id="frozen_ground_t0_start_turn_save",
+                outcome="save_failure",
+                target_id=target_id,
+            )
+            session.close_event()
+        movement_events = [
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.target_id == target_id
+        ]
+        session.advance_to(movement_events[0].event_id)
+        [first_record] = session.resolve_movement_response(target_id=target_id)
+        first_route = dict(session.area_route_snapshot(target_id)[0])
+        session.close_event()
+        session.advance_to(movement_events[1].event_id)
+        [second_record] = session.resolve_movement_response(target_id=target_id)
+        second_route = dict(session.area_route_snapshot(target_id)[0])
+        result = {
+            "initial_route": initial_route,
+            "first_response": first_record.to_dict()["payload"],
+            "route_after_first": first_route,
+            "second_response": second_record.to_dict()["payload"],
+            "route_after_second": second_route,
+            "second_response_restates_routes": (
+                "area_routes" in session.scenario_record[
+                    "operation_inputs_by_event"
+                ].get(movement_events[1].event_id, {})
+            ),
+        }
+        for path, value in case["expected"]["paths"].items():
+            self.assertEqual(path_value(result, path), value)
         json.dumps(result, sort_keys=True, allow_nan=False)
 
     def run_area_error(self, case: Mapping[str, Any]) -> None:

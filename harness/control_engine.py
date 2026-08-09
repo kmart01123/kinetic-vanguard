@@ -68,6 +68,7 @@ from harness.control_targets import (
 from harness.control_timeline import (
     AREA_RESPONSE_CONVENTIONS,
     DISPLACEMENT_FUNCTIONS,
+    ENVIRONMENTS,
     INITIATIVE_CONVENTIONS,
     TIMELINE_ENGINE_VERSION,
     ConcentrationTracker,
@@ -181,6 +182,10 @@ def _fraction_record(value: Fraction) -> dict[str, int]:
     return {"numerator": value.numerator, "denominator": value.denominator}
 
 
+def _fraction_number(value: Fraction) -> int | float:
+    return value.numerator if value.denominator == 1 else float(value)
+
+
 def _positive_fraction(value: Any, label: str) -> Fraction:
     """Parse one exact positive scenario multiplier."""
 
@@ -215,6 +220,32 @@ def _positive_fraction(value: Any, label: str) -> Fraction:
         )
     if result <= 0:
         raise ControlEngineError(f"{label} must be positive")
+    return result
+
+
+def _nonnegative_fraction(value: Any, label: str) -> Fraction:
+    if isinstance(value, bool):
+        raise ControlEngineError(f"{label} must be a non-negative finite number")
+    if isinstance(value, Fraction):
+        result = value
+    elif isinstance(value, int):
+        result = Fraction(value)
+    elif isinstance(value, float) and math.isfinite(value):
+        result = Fraction(str(value))
+    elif (
+        isinstance(value, Mapping)
+        and set(value) == {"numerator", "denominator"}
+        and isinstance(value["numerator"], int)
+        and not isinstance(value["numerator"], bool)
+        and isinstance(value["denominator"], int)
+        and not isinstance(value["denominator"], bool)
+        and value["denominator"] > 0
+    ):
+        result = Fraction(value["numerator"], value["denominator"])
+    else:
+        raise ControlEngineError(f"{label} must be a non-negative finite number")
+    if result < 0:
+        raise ControlEngineError(f"{label} must be non-negative")
     return result
 
 
@@ -421,6 +452,173 @@ class DisplacementRequest:
 
 
 @dataclass(frozen=True)
+class AreaRouteGeometry:
+    """One exact, caller-observed exit route normalized at scenario binding."""
+
+    route_id: str
+    mode: str
+    distance_to_exit_ft: Fraction | int | float | Mapping[str, int]
+    compatible: bool
+    movement_cost_multiplier: Fraction | int | float | Mapping[str, int]
+    environment: str
+
+    def __post_init__(self) -> None:
+        object.__setattr__(self, "route_id", _identifier(self.route_id, "route_id"))
+        if self.mode not in MOVEMENT_MODES:
+            raise ControlEngineError(f"Unsupported route movement mode: {self.mode!r}")
+        if self.environment not in ENVIRONMENTS:
+            raise ControlEngineError(f"Unsupported route environment: {self.environment!r}")
+        if not isinstance(self.compatible, bool):
+            raise ControlEngineError("route compatibility must be boolean")
+        object.__setattr__(
+            self,
+            "distance_to_exit_ft",
+            _nonnegative_fraction(self.distance_to_exit_ft, "distance_to_exit_ft"),
+        )
+        object.__setattr__(
+            self,
+            "movement_cost_multiplier",
+            _positive_fraction(
+                self.movement_cost_multiplier,
+                "movement_cost_multiplier",
+            ),
+        )
+
+    @classmethod
+    def from_mapping(cls, value: Mapping[str, Any], label: str) -> "AreaRouteGeometry":
+        if not isinstance(value, Mapping):
+            raise ControlEngineError(f"{label} must be an object")
+        expected = {
+            "route_id",
+            "mode",
+            "distance_to_exit_ft",
+            "compatible",
+            "movement_cost_multiplier",
+            "environment",
+        }
+        if set(value) != expected:
+            raise ControlEngineError(
+                f"{label} keys are invalid; missing={sorted(expected - set(value))}, "
+                f"unknown={sorted(set(value) - expected)}"
+            )
+        try:
+            return cls(**dict(value))
+        except (ControlEngineError, TypeError, ValueError) as error:
+            raise ControlEngineError(f"{label} is invalid: {error}") from error
+
+    def route_input(self) -> dict[str, Any]:
+        return {
+            "route_id": self.route_id,
+            "mode": self.mode,
+            "distance_to_exit_ft": _fraction_record(self.distance_to_exit_ft),
+            "compatible": self.compatible,
+            "movement_cost_multiplier": _fraction_record(
+                self.movement_cost_multiplier
+            ),
+            "environment": self.environment,
+        }
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self.route_input(),
+            "distance_to_exit_exact": _fraction_record(self.distance_to_exit_ft),
+            "movement_cost_multiplier_exact": _fraction_record(
+                self.movement_cost_multiplier
+            ),
+        }
+
+
+@dataclass(frozen=True)
+class AreaGeometryUpdate:
+    """Scenario-bound geometry supplied for one compiled moving-area event."""
+
+    effect_id: str
+    area_id: str
+    target_id: str
+    event_id: str
+    event_sequence: int
+    new_membership: bool
+    routes: tuple[AreaRouteGeometry, ...]
+
+    def __post_init__(self) -> None:
+        for name in ("effect_id", "area_id", "target_id", "event_id"):
+            object.__setattr__(self, name, _identifier(getattr(self, name), name))
+        if (
+            isinstance(self.event_sequence, bool)
+            or not isinstance(self.event_sequence, int)
+            or self.event_sequence < 0
+        ):
+            raise ControlEngineError("event_sequence must be a non-negative integer")
+        if not isinstance(self.new_membership, bool):
+            raise ControlEngineError("new_membership must be boolean")
+        route_rows = tuple(self.routes)
+        if any(not isinstance(route, AreaRouteGeometry) for route in route_rows):
+            raise ControlEngineError("routes must contain AreaRouteGeometry values")
+        route_ids = tuple(route.route_id for route in route_rows)
+        if len(route_ids) != len(set(route_ids)):
+            raise ControlEngineError("routes must contain unique route IDs")
+        if self.new_membership and not route_rows:
+            raise ControlEngineError("member geometry updates require at least one route")
+        if not self.new_membership and route_rows:
+            raise ControlEngineError("non-member geometry updates cannot retain routes")
+        object.__setattr__(self, "routes", route_rows)
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "effect_id": self.effect_id,
+            "area_id": self.area_id,
+            "target_id": self.target_id,
+            "event_id": self.event_id,
+            "event_sequence": self.event_sequence,
+            "new_membership": self.new_membership,
+            "routes": [route.to_dict() for route in self.routes],
+        }
+
+
+@dataclass(frozen=True)
+class _AreaRouteState:
+    effect_id: str
+    area_id: str
+    target_id: str
+    membership: bool
+    routes: tuple[AreaRouteGeometry, ...]
+    selected_route_id: str | None
+    movement_mode: str | None
+    environment: str | None
+    remaining_distance_ft: Fraction | None
+    movement_cost_basis: Mapping[str, Any] | None
+    closed_reason: str | None
+    last_update_event_id: str
+    last_update_event_sequence: int
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "effect_id": self.effect_id,
+            "area_id": self.area_id,
+            "target_id": self.target_id,
+            "membership": self.membership,
+            "routes": [route.to_dict() for route in self.routes],
+            "selected_route_id": self.selected_route_id,
+            "movement_mode": self.movement_mode,
+            "environment": self.environment,
+            "remaining_distance_ft": (
+                None
+                if self.remaining_distance_ft is None
+                else _fraction_number(self.remaining_distance_ft)
+            ),
+            "remaining_distance_exact": (
+                None
+                if self.remaining_distance_ft is None
+                else _fraction_record(self.remaining_distance_ft)
+            ),
+            "movement_cost_basis": _json_safe(self.movement_cost_basis),
+            "closed_reason": self.closed_reason,
+            "last_update_event_id": self.last_update_event_id,
+            "last_update_event_sequence": self.last_update_event_sequence,
+        }
+
+
+@dataclass(frozen=True)
 class _IssuedControlRecord:
     """Opaque proof that one record was emitted by one execution session.
 
@@ -438,6 +636,9 @@ class _IssuedControlRecord:
     pre_event_state_json: str
     pre_operation_state_json: str
     post_operation_state_json: str
+    pre_event_route_state_json: str
+    pre_operation_route_state_json: str
+    post_operation_route_state_json: str
     payload_json: str
     payload_sha256: str
     record_sha256: str
@@ -454,6 +655,13 @@ class _IssuedControlRecord:
             "pre_event_state": json.loads(self.pre_event_state_json),
             "pre_operation_state": json.loads(self.pre_operation_state_json),
             "post_operation_state": json.loads(self.post_operation_state_json),
+            "pre_event_route_state": json.loads(self.pre_event_route_state_json),
+            "pre_operation_route_state": json.loads(
+                self.pre_operation_route_state_json
+            ),
+            "post_operation_route_state": json.loads(
+                self.post_operation_route_state_json
+            ),
             "payload": json.loads(self.payload_json),
             "payload_sha256": self.payload_sha256,
             "record_sha256": self.record_sha256,
@@ -475,6 +683,8 @@ class _ClosedEventSnapshot:
     event_sequence: int
     pre_event_state_json: str
     post_event_state_json: str
+    pre_event_route_state_json: str
+    post_event_route_state_json: str
 
     def to_dict(self) -> dict[str, Any]:
         return {
@@ -483,6 +693,8 @@ class _ClosedEventSnapshot:
             "event_sequence": self.event_sequence,
             "pre_event_state": json.loads(self.pre_event_state_json),
             "post_event_state": json.loads(self.post_event_state_json),
+            "pre_event_route_state": json.loads(self.pre_event_route_state_json),
+            "post_event_route_state": json.loads(self.post_event_route_state_json),
         }
 
 
@@ -538,6 +750,8 @@ class ControlEngineResult:
     scenario_record: Mapping[str, Any] = field(default_factory=dict)
     execution_records: tuple[Mapping[str, Any], ...] = ()
     event_snapshots: tuple[Mapping[str, Any], ...] = ()
+    area_route_transitions: tuple[Mapping[str, Any], ...] = ()
+    final_area_route_states: tuple[Mapping[str, Any], ...] = ()
     _construction_token: object | None = field(
         default=None,
         init=False,
@@ -612,6 +826,8 @@ class ControlEngineResult:
             "scenario_record": self.scenario_record or None,
             "execution_records": self.execution_records,
             "event_snapshots": self.event_snapshots,
+            "area_route_transitions": self.area_route_transitions,
+            "final_area_route_states": self.final_area_route_states,
         }
         safe = _json_safe(result)
         _assert_weight_free(safe)
@@ -3410,6 +3626,7 @@ class ControlEngine:
         operation_inputs_by_event: (
             Mapping[str, Mapping[str, Any]] | None
         ) = None,
+        area_geometry_updates: Sequence[AreaGeometryUpdate] = (),
         concentration_save_bonus: int | None = None,
     ) -> "ControlExecutionSession":
         """Create the sole supported mutable execution and result boundary."""
@@ -3433,6 +3650,7 @@ class ControlEngine:
             source_actor_id=source_actor_id,
             invocation_id=invocation_id,
             operation_inputs_by_event=operation_inputs_by_event,
+            area_geometry_updates=area_geometry_updates,
             concentration_save_bonus=concentration_save_bonus,
         )
         self._execution_tokens.add(session._issuer)
@@ -3972,7 +4190,16 @@ class ControlEngine:
                     optional_fields = {"blocked_routes", "prone_after"}
                     if "prone_response" in row:
                         optional_fields.add("prone_response")
+                if "route_transition" in row:
+                    optional_fields.add("route_transition")
                 require_exact_keys(row, base_fields | optional_fields, label)
+                if "route_transition" in row and not isinstance(
+                    row["route_transition"],
+                    Mapping,
+                ):
+                    raise ControlEngineError(
+                        f"{label}.route_transition must be an object"
+                    )
                 if (
                     reason not in {
                         "not_in_area",
@@ -5608,6 +5835,8 @@ class ControlEngine:
 _MISSING = object()
 _SESSION_RECORD_KINDS = frozenset({
     "area_entry",
+    "area_geometry_update",
+    "area_route_transition",
     "area_response",
     "branch_transition",
     "component_expiry",
@@ -5653,6 +5882,7 @@ class ControlExecutionSession:
         source_actor_id: str,
         invocation_id: str,
         operation_inputs_by_event: Mapping[str, Mapping[str, Any]] | None,
+        area_geometry_updates: Sequence[AreaGeometryUpdate],
         concentration_save_bonus: int | None,
     ) -> None:
         if not isinstance(engine, ControlEngine):
@@ -6336,25 +6566,113 @@ class ControlExecutionSession:
                     f"target_mechanics.{target_id} must be an object"
                 )
             safe_target_mechanics[target_id] = safe
-            if (
-                area_response_convention == "shortest_route_v1"
-                and "area_routes" in safe
-            ):
-                try:
-                    area_response(
-                        area_response_convention,
-                        target_id=target_id,
-                        membership=True,
-                        effect_active=True,
-                        routes=safe["area_routes"],
-                        effective_speeds_ft=safe.get("base_speeds_ft"),
-                        prone="prone" in safe.get("initial_conditions", ()),
+
+        compiled_areas = {
+            selector.area.area_id: selector.area
+            for selector in program.selectors
+            if selector.area is not None
+        }
+        initial_area_route_states: list[_AreaRouteState] = []
+        if area_response_convention == "shortest_route_v1":
+            if len(compiled_areas) != 1:
+                raise ControlEngineError(
+                    "shortest_route_v1 requires exactly one compiled selector area"
+                )
+            area_id = next(iter(compiled_areas))
+            area_selector_ids = {
+                selector.selector_id
+                for selector in program.selectors
+                if selector.area is not None and selector.area.area_id == area_id
+            }
+            area_targets = {
+                target_id
+                for selector_id in area_selector_ids
+                for target_id in membership[selector_id]
+            }
+            forbidden_target_overrides = {
+                "area_routes_by_event",
+                "area_membership_by_event",
+                "movement_mode_by_event",
+                "environment_by_event",
+                "route_compatibility_by_event",
+                "movement_cost_multiplier_by_event",
+                "distance_to_exit_ft_by_event",
+            }
+            for target_id in schedule.target_ids:
+                mechanics = safe_target_mechanics[target_id]
+                forbidden = sorted(set(mechanics) & forbidden_target_overrides)
+                if forbidden:
+                    raise ControlEngineError(
+                        f"target_mechanics.{target_id} contains raw per-event route "
+                        f"overrides: {forbidden}"
                     )
-                except (TimelineError, TypeError, ValueError) as error:
+                if target_id not in area_targets:
+                    continue
+                member = mechanics.get("area_membership")
+                if not isinstance(member, bool):
+                    raise ControlEngineError(
+                        f"target_mechanics.{target_id}.area_membership must be boolean"
+                    )
+                raw_routes = mechanics.get("area_routes", ())
+                if (
+                    not isinstance(raw_routes, Sequence)
+                    or isinstance(raw_routes, (str, bytes))
+                ):
+                    raise ControlEngineError(
+                        f"target_mechanics.{target_id}.area_routes must be an array"
+                    )
+                try:
+                    routes = tuple(
+                        AreaRouteGeometry.from_mapping(
+                            route,
+                            f"target_mechanics.{target_id}.area_routes[{index}]",
+                        )
+                        for index, route in enumerate(raw_routes)
+                    )
+                except ControlEngineError as error:
                     raise ControlEngineError(
                         f"target_mechanics.{target_id}.area_routes are invalid: "
                         f"{error}"
                     ) from error
+                route_ids = tuple(route.route_id for route in routes)
+                if len(route_ids) != len(set(route_ids)):
+                    raise ControlEngineError(
+                        f"target_mechanics.{target_id}.area_routes contains duplicate "
+                        "route IDs"
+                    )
+                if member and not routes:
+                    raise ControlEngineError(
+                        f"target_mechanics.{target_id}.area_routes must be non-empty"
+                    )
+                base_speeds = mechanics.get("base_speeds_ft")
+                if member and (
+                    not isinstance(base_speeds, Mapping)
+                    or any(route.mode not in base_speeds for route in routes)
+                ):
+                    raise ControlEngineError(
+                        f"target_mechanics.{target_id}.base_speeds_ft must cover "
+                        "every initial area route mode"
+                    )
+                if not member and routes:
+                    raise ControlEngineError(
+                        f"target_mechanics.{target_id}.area_routes cannot be supplied "
+                        "for a non-member"
+                    )
+                initial_area_route_states.append(_AreaRouteState(
+                    effect_id=program.effect_id,
+                    area_id=area_id,
+                    target_id=target_id,
+                    membership=member,
+                    routes=routes,
+                    selected_route_id=None,
+                    movement_mode=None,
+                    environment=None,
+                    remaining_distance_ft=None,
+                    movement_cost_basis=None,
+                    closed_reason=None if member else "initial_nonmember",
+                    last_update_event_id="session_initial_area_geometry",
+                    last_update_event_sequence=-1,
+                ))
 
         raw_operation_inputs = (
             {} if operation_inputs_by_event is None else operation_inputs_by_event
@@ -6387,6 +6705,100 @@ class ControlExecutionSession:
                     f"operation_inputs_by_event.{event_id} must be an object"
                 )
             safe_operation_inputs[event_id] = safe_value
+
+        if area_response_convention == "shortest_route_v1":
+            forbidden_event_geometry = {
+                "area_routes",
+                "area_membership",
+                "movement_mode",
+                "environment",
+                "compatible",
+                "movement_cost_multiplier",
+                "distance_to_exit_ft",
+            }
+            for event_id, inputs in safe_operation_inputs.items():
+                forbidden = sorted(set(inputs) & forbidden_event_geometry)
+                if forbidden:
+                    raise ControlEngineError(
+                        f"operation_inputs_by_event.{event_id} contains raw route "
+                        f"overrides: {forbidden}; use AreaGeometryUpdate"
+                    )
+
+        if not isinstance(area_geometry_updates, Sequence) or isinstance(
+            area_geometry_updates,
+            (str, bytes),
+        ):
+            raise ControlEngineError("area_geometry_updates must be an array")
+        bound_area_geometry_updates = tuple(area_geometry_updates)
+        if any(
+            not isinstance(update, AreaGeometryUpdate)
+            for update in bound_area_geometry_updates
+        ):
+            raise ControlEngineError(
+                "area_geometry_updates must contain AreaGeometryUpdate values"
+            )
+        update_identities: set[tuple[str, str, str, str]] = set()
+        movement_events_by_turn: dict[tuple[str, str], str] = {}
+        for update in bound_area_geometry_updates:
+            if area_response_convention != "shortest_route_v1":
+                raise ControlEngineError(
+                    "AreaGeometryUpdate requires shortest_route_v1"
+                )
+            if update.effect_id != program.effect_id:
+                raise ControlEngineError(
+                    "AreaGeometryUpdate effect does not match the session program"
+                )
+            area = compiled_areas.get(update.area_id)
+            if area is None or update.target_id not in targets_by_id:
+                raise ControlEngineError(
+                    "AreaGeometryUpdate references a foreign area or target"
+                )
+            event = schedule.event(update.event_id)
+            if event.sequence != update.event_sequence:
+                raise ControlEngineError(
+                    "AreaGeometryUpdate event sequence is stale or malformed"
+                )
+            movement = None if area.movement is None else area.movement.to_dict()
+            if (
+                not area.persistent
+                or not isinstance(movement, Mapping)
+                or movement.get("kind") != "controller_reposition"
+                or event.kind != "instantaneous_resolution"
+                or event.turn_owner != "controller"
+                or event.actor_id != "controller"
+                or not typed_event_matches(event, movement.get("timing", {}))
+            ):
+                raise ControlEngineError(
+                    "AreaGeometryUpdate is not bound to the compiled moving-area "
+                    "authority and compatible controller event"
+                )
+            if not any(
+                state.effect_id == update.effect_id
+                and state.area_id == update.area_id
+                and state.target_id == update.target_id
+                for state in initial_area_route_states
+            ):
+                raise ControlEngineError(
+                    "AreaGeometryUpdate target is not bound to the compiled area selector"
+                )
+            identity = (
+                update.effect_id,
+                update.area_id,
+                update.target_id,
+                update.event_id,
+            )
+            if identity in update_identities:
+                raise ControlEngineError("AreaGeometryUpdate identity is duplicated")
+            update_identities.add(identity)
+            turn_key = (update.area_id, str(event.turn_id))
+            prior_event_id = movement_events_by_turn.setdefault(
+                turn_key,
+                event.event_id,
+            )
+            if prior_event_id != event.event_id:
+                raise ControlEngineError(
+                    "A compiled area may move at most once per controller turn"
+                )
 
         if concentration_save_bonus is not None and (
             isinstance(concentration_save_bonus, bool)
@@ -6698,6 +7110,10 @@ class ControlExecutionSession:
                 concentration_start_event_id,
                 [],
             ).append("concentration_start")
+        for update in bound_area_geometry_updates:
+            required_operation_plan.setdefault(update.event_id, []).append(
+                f"area_geometry_update:{update.target_id}"
+            )
         canonical_required_plan = {
             event_id: list(dict.fromkeys(operations))
             for event_id, operations in sorted(required_operation_plan.items())
@@ -6746,6 +7162,12 @@ class ControlExecutionSession:
             "source_actor_id": source_actor,
             "invocation_id": invocation,
             "operation_inputs_by_event": safe_operation_inputs,
+            "initial_area_route_states": [
+                state.to_dict() for state in initial_area_route_states
+            ],
+            "area_geometry_updates": [
+                update.to_dict() for update in bound_area_geometry_updates
+            ],
             "required_operation_plan": canonical_required_plan,
             "reliability_timeline_bindings": reliability_timeline_bindings,
             "concentration_save_bonus": concentration_save_bonus,
@@ -6767,6 +7189,9 @@ class ControlExecutionSession:
         self._schedule_json = _canonical_json(schedule_record)
         self._target_mechanics_json = _canonical_json(safe_target_mechanics)
         self._operation_inputs_json = _canonical_json(safe_operation_inputs)
+        self._area_geometry_updates_json = _canonical_json(
+            [update.to_dict() for update in bound_area_geometry_updates]
+        )
         self._required_operation_plan_json = _canonical_json(
             canonical_required_plan
         )
@@ -6789,6 +7214,17 @@ class ControlExecutionSession:
         ).hexdigest()
         self._issuer = object()
         self._state = ControlState()
+        self._area_route_states = {
+            (state.effect_id, state.area_id, state.target_id): state
+            for state in initial_area_route_states
+        }
+        self._initial_area_route_state_json = _canonical_json(
+            [state.to_dict() for state in initial_area_route_states]
+        )
+        self._area_geometry_updates = {
+            (update.event_id, update.target_id): update
+            for update in bound_area_geometry_updates
+        }
         for target_id in self._schedule.target_ids:
             for condition in initial_conditions_by_target[target_id]:
                 self._state.apply_component(
@@ -6826,6 +7262,7 @@ class ControlExecutionSession:
         self._cursor = -1
         self._current_event: TimelineEvent | None = None
         self._current_pre_state_json: str | None = None
+        self._current_pre_route_state_json: str | None = None
         self._operation_sequence = 0
         self._issued_records: list[_IssuedControlRecord] = []
         self._issued_record_attestations: list[str] = []
@@ -6834,6 +7271,7 @@ class ControlExecutionSession:
         self._event_state_transitions: list[dict[str, Any]] = []
         self._repeat_save_records: list[dict[str, Any]] = []
         self._area_records: list[dict[str, Any]] = []
+        self._area_route_transitions: list[dict[str, Any]] = []
         self._prone_records: list[dict[str, Any]] = []
         self._concentration_records: list[dict[str, Any]] = []
         self._displacement_records: list[dict[str, Any]] = []
@@ -6875,6 +7313,139 @@ class ControlExecutionSession:
             MappingProxyType(row)
             for row in json.loads(_canonical_json(self._state.snapshot(target_id)))
         )
+
+    def _area_route_state_rows(self, target_id: str | None = None) -> list[dict[str, Any]]:
+        target_rank = {
+            value: index for index, value in enumerate(self._schedule.target_ids)
+        }
+        states = [
+            state
+            for state in self._area_route_states.values()
+            if target_id is None or state.target_id == target_id
+        ]
+        states.sort(key=lambda state: (
+            target_rank[state.target_id],
+            state.effect_id,
+            state.area_id,
+        ))
+        return [state.to_dict() for state in states]
+
+    def _area_route_state_json(self) -> str:
+        return _canonical_json(self._area_route_state_rows())
+
+    def area_route_snapshot(
+        self,
+        target_id: str | None = None,
+    ) -> tuple[Mapping[str, Any], ...]:
+        if target_id is not None and target_id not in self._targets_by_id:
+            raise ControlEngineError(f"Unknown session target: {target_id!r}")
+        return tuple(
+            MappingProxyType(row)
+            for row in json.loads(_canonical_json(
+                self._area_route_state_rows(target_id)
+            ))
+        )
+
+    def _area_route_state(self, target_id: str) -> _AreaRouteState:
+        matches = [
+            state
+            for state in self._area_route_states.values()
+            if state.effect_id == self._program.effect_id
+            and state.target_id == target_id
+        ]
+        if len(matches) != 1:
+            raise ControlEngineError(
+                f"Target {target_id!r} does not have exactly one bound area-route state"
+            )
+        return matches[0]
+
+    def _set_area_route_state(self, state: _AreaRouteState) -> None:
+        key = (state.effect_id, state.area_id, state.target_id)
+        if key not in self._area_route_states:
+            raise ControlEngineError("Area-route transition references unknown state")
+        self._area_route_states[key] = state
+
+    def _route_transition(
+        self,
+        *,
+        transition_kind: str,
+        event: TimelineEvent,
+        old_state: _AreaRouteState,
+        new_state: _AreaRouteState,
+        pre_route_state_json: str,
+        extra: Mapping[str, Any] | None = None,
+    ) -> dict[str, Any]:
+        post_route_state_json = self._area_route_state_json()
+        transition = {
+            "transition_kind": transition_kind,
+            "event_id": event.event_id,
+            "event_sequence": event.sequence,
+            "effect_id": old_state.effect_id,
+            "area_id": old_state.area_id,
+            "target_id": old_state.target_id,
+            "old_route_state": old_state.to_dict(),
+            "new_route_state": new_state.to_dict(),
+            "pre_route_state_sha256": hashlib.sha256(
+                pre_route_state_json.encode("utf-8")
+            ).hexdigest(),
+            "post_route_state_sha256": hashlib.sha256(
+                post_route_state_json.encode("utf-8")
+            ).hexdigest(),
+            **dict(_json_safe(extra or {})),
+        }
+        self._area_route_transitions.append(transition)
+        return transition
+
+    def _close_area_routes_for_effect_end(
+        self,
+        *,
+        event: TimelineEvent,
+        reason: str,
+    ) -> tuple[_IssuedControlRecord, ...]:
+        issued: list[_IssuedControlRecord] = []
+        for old_state in tuple(self._area_route_states.values()):
+            if not old_state.membership:
+                continue
+            pre = _canonical_json(self._state.snapshot())
+            pre_route = self._area_route_state_json()
+            new_state = replace(
+                old_state,
+                membership=False,
+                closed_reason=reason,
+                last_update_event_id=event.event_id,
+                last_update_event_sequence=event.sequence,
+            )
+            self._set_area_route_state(new_state)
+            transition = self._route_transition(
+                transition_kind="effect_end",
+                event=event,
+                old_state=old_state,
+                new_state=new_state,
+                pre_route_state_json=pre_route,
+                extra={"canonical_reason": reason},
+            )
+            payload = {
+                "kind": "area_route_transition",
+                "canonical_reason": reason,
+                "event_id": event.event_id,
+                "event_sequence": event.sequence,
+                "effect_id": old_state.effect_id,
+                "area_id": old_state.area_id,
+                "target_id": old_state.target_id,
+                "route_transition": transition,
+            }
+            self._state.audit_ledger.append({
+                "operation": "area_route_transition",
+                **payload,
+            })
+            issued.append(self._issue(
+                record_kind="area_route_transition",
+                payload=payload,
+                pre_operation_state_json=pre,
+                pre_operation_route_state_json=pre_route,
+                target_id=old_state.target_id,
+            ))
+        return tuple(issued)
 
     def issued_records(self) -> tuple[_IssuedControlRecord, ...]:
         return tuple(self._issued_records)
@@ -6957,11 +7528,19 @@ class ControlExecutionSession:
         record_kind: str,
         payload: Any,
         pre_operation_state_json: str,
+        pre_operation_route_state_json: str | None = None,
         target_id: str | None = None,
     ) -> _IssuedControlRecord:
         event = self._require_current(target_id=target_id)
         if self._current_pre_state_json is None:  # pragma: no cover - invariant
             raise ControlEngineError("Current event has no pre-event snapshot")
+        if self._current_pre_route_state_json is None:  # pragma: no cover
+            raise ControlEngineError("Current event has no pre-event route snapshot")
+        pre_route_json = (
+            self._area_route_state_json()
+            if pre_operation_route_state_json is None
+            else pre_operation_route_state_json
+        )
         payload_json = _canonical_json(payload)
         normalized_kind = _identifier(record_kind, "record_kind")
         if normalized_kind not in _SESSION_RECORD_KINDS:
@@ -6970,6 +7549,7 @@ class ControlExecutionSession:
             )
         self._operation_sequence += 1
         post_operation_state_json = _canonical_json(self._state.snapshot())
+        post_operation_route_state_json = self._area_route_state_json()
         record_identity = {
             "scenario_digest": self._scenario_digest,
             "event_id": event.event_id,
@@ -6980,6 +7560,13 @@ class ControlExecutionSession:
             "pre_event_state": json.loads(self._current_pre_state_json),
             "pre_operation_state": json.loads(pre_operation_state_json),
             "post_operation_state": json.loads(post_operation_state_json),
+            "pre_event_route_state": json.loads(
+                self._current_pre_route_state_json
+            ),
+            "pre_operation_route_state": json.loads(pre_route_json),
+            "post_operation_route_state": json.loads(
+                post_operation_route_state_json
+            ),
             "payload": json.loads(payload_json),
         }
         record = _IssuedControlRecord(
@@ -6992,6 +7579,9 @@ class ControlExecutionSession:
             pre_event_state_json=self._current_pre_state_json,
             pre_operation_state_json=pre_operation_state_json,
             post_operation_state_json=post_operation_state_json,
+            pre_event_route_state_json=self._current_pre_route_state_json,
+            pre_operation_route_state_json=pre_route_json,
+            post_operation_route_state_json=post_operation_route_state_json,
             payload_json=payload_json,
             payload_sha256=hashlib.sha256(payload_json.encode("utf-8")).hexdigest(),
             record_sha256=_sha256_record(record_identity),
@@ -7165,6 +7755,7 @@ class ControlExecutionSession:
 
         self._current_event = event
         self._current_pre_state_json = _canonical_json(self._state.snapshot())
+        self._current_pre_route_state_json = self._area_route_state_json()
         self._current_required_operations = set(
             json.loads(self._required_operation_plan_json).get(event.event_id, ())
         )
@@ -7275,11 +7866,14 @@ class ControlExecutionSession:
             event_sequence=event.sequence,
             pre_event_state_json=self._current_pre_state_json,
             post_event_state_json=_canonical_json(self._state.snapshot()),
+            pre_event_route_state_json=self._current_pre_route_state_json,
+            post_event_route_state_json=self._area_route_state_json(),
         )
         self._event_snapshots.append(snapshot)
         self._cursor = event.sequence
         self._current_event = None
         self._current_pre_state_json = None
+        self._current_pre_route_state_json = None
         self._current_required_operations = set()
         self._cached_result = None
         return snapshot
@@ -7570,6 +8164,165 @@ class ControlExecutionSession:
             target_id=target_id,
         )
 
+    def apply_area_geometry_update(
+        self,
+        *,
+        target_id: str,
+    ) -> _IssuedControlRecord:
+        event = self._require_current(
+            target_id=target_id,
+            kinds={"instantaneous_resolution"},
+        )
+        target = _identifier(target_id, "target_id")
+        update = self._area_geometry_updates.get((event.event_id, target))
+        if update is None:
+            raise ControlEngineError(
+                "The current event has no scenario-bound AreaGeometryUpdate for "
+                f"target {target!r}"
+            )
+        label = f"area_geometry_update:{target}"
+        if label not in self._current_required_operations:
+            raise ControlEngineError(
+                "The scenario-bound area geometry update was already consumed"
+            )
+        old_state = self._area_route_state(target)
+        if old_state.area_id != update.area_id:
+            raise ControlEngineError("AreaGeometryUpdate route state is foreign")
+        area = next(
+            selector.area
+            for selector in self._program.selectors
+            if selector.area is not None
+            and selector.area.area_id == update.area_id
+        )
+        movement_authority = (
+            None if area.movement is None else area.movement.to_dict()
+        )
+        if (
+            not isinstance(movement_authority, Mapping)
+            or movement_authority.get("kind") != "controller_reposition"
+            or event.turn_owner != "controller"
+            or event.actor_id != "controller"
+            or not typed_event_matches(
+                event,
+                movement_authority.get("timing", {}),
+            )
+        ):
+            raise ControlEngineError(
+                "AreaGeometryUpdate no longer matches compiled moving-area authority"
+            )
+        pre = _canonical_json(self._state.snapshot())
+        pre_route = self._area_route_state_json()
+        ended_instances: list[dict[str, Any]] = []
+        ended_component_ids: list[str] = []
+        if old_state.membership and not update.new_membership:
+            bindings = self._engine._compiled_area_bindings(self._program)
+            for component in tuple(self._state.active_components(target)):
+                if (
+                    component.effect_id != self._program.effect_id
+                    or update.area_id
+                    not in bindings.get(component.component_id, ())
+                ):
+                    continue
+                removed = self._state.terminate(
+                    target_id=target,
+                    component_id=component.component_id,
+                    event_id=event.event_id,
+                    effect_id=self._program.effect_id,
+                    reason="compiled_area_reposition_exit",
+                )
+                ended_component_ids.append(component.component_id)
+                ended_instances.extend({
+                    "target_id": item.target_id,
+                    "component_id": item.component_id,
+                    "instance_id": item.instance_id,
+                } for item in removed)
+        new_state = _AreaRouteState(
+            effect_id=old_state.effect_id,
+            area_id=old_state.area_id,
+            target_id=old_state.target_id,
+            membership=update.new_membership,
+            routes=update.routes,
+            selected_route_id=None,
+            movement_mode=None,
+            environment=None,
+            remaining_distance_ft=None,
+            movement_cost_basis=None,
+            closed_reason=None if update.new_membership else "explicit_area_exit",
+            last_update_event_id=event.event_id,
+            last_update_event_sequence=event.sequence,
+        )
+        self._set_area_route_state(new_state)
+        entry_policy = (
+            None if area.entry_policy is None else area.entry_policy.to_dict()
+        )
+        moved_area_counts_as_entry = bool(
+            isinstance(entry_policy, Mapping)
+            and entry_policy.get("moved_area_counts_as_entry")
+        )
+        entry_gate_ids = sorted({
+            gate.gate_id
+            for gate in self._program.gates
+            if gate.trigger.kind == "entry"
+            and not old_state.membership
+            and update.new_membership
+            and moved_area_counts_as_entry
+        })
+        exit_gate_ids = sorted({
+            gate.gate_id
+            for gate in self._program.gates
+            if gate.trigger.kind == "exit"
+            and old_state.membership
+            and not update.new_membership
+        })
+        transition = self._route_transition(
+            transition_kind="explicit_geometry_update",
+            event=event,
+            old_state=old_state,
+            new_state=new_state,
+            pre_route_state_json=pre_route,
+            extra={
+                "canonical_reason": "controller_reposition",
+                "compiled_movement_authority": movement_authority,
+                "moved_area_counts_as_entry": moved_area_counts_as_entry,
+                "entry_gate_opportunity_ids": entry_gate_ids,
+                "exit_gate_opportunity_ids": exit_gate_ids,
+            },
+        )
+        payload = {
+            "kind": "area_geometry_update",
+            "event_id": event.event_id,
+            "event_sequence": event.sequence,
+            "effect_id": self._program.effect_id,
+            "area_id": update.area_id,
+            "target_id": target,
+            "canonical_reason": "controller_reposition",
+            "compiled_movement_authority": movement_authority,
+            "moved_area_counts_as_entry": moved_area_counts_as_entry,
+            "membership_before": old_state.membership,
+            "membership_after": new_state.membership,
+            "entry_gate_opportunity_ids": entry_gate_ids,
+            "exit_gate_opportunity_ids": exit_gate_ids,
+            "ended_component_ids": sorted(set(ended_component_ids)),
+            "ended_state_instances": ended_instances,
+            "old_route_state": old_state.to_dict(),
+            "new_route_state": new_state.to_dict(),
+            "pre_route_state_sha256": transition["pre_route_state_sha256"],
+            "post_route_state_sha256": transition["post_route_state_sha256"],
+            "route_transition": transition,
+        }
+        self._state.audit_ledger.append({
+            "operation": "area_geometry_update",
+            **payload,
+        })
+        self._current_required_operations.discard(label)
+        return self._issue(
+            record_kind="area_geometry_update",
+            payload=payload,
+            pre_operation_state_json=pre,
+            pre_operation_route_state_json=pre_route,
+            target_id=target,
+        )
+
     def resolve_movement_response(
         self,
         *,
@@ -7622,24 +8375,14 @@ class ControlExecutionSession:
         issued: list[_IssuedControlRecord] = []
 
         if area_component_ids and self._area_response_convention == "shortest_route_v1":
-            area_membership = self._bound_input(
-                "area_membership",
-                target_id=target,
-            )
-            if area_membership is not True:
+            route_state = self._area_route_state(target)
+            if route_state.membership is not True:
                 raise ControlEngineError(
-                    "Active area-bound components require bound membership true"
+                    "Active area-bound components require session-owned membership true"
                 )
-            area_effect_active = self._bound_input(
-                "area_effect_active", target_id=target, default=True
-            )
-            if area_effect_active is not True:
-                raise ControlEngineError(
-                    "Movement response cannot retain active area components for "
-                    "an effect already marked ended"
-                )
-            routes = self._bound_input("area_routes", target_id=target)
+            routes = [route.route_input() for route in route_state.routes]
             pre = _canonical_json(self._state.snapshot())
+            pre_route = self._area_route_state_json()
             area = self._engine._resolve_area_response(
                 state=self._state,
                 schedule=self._schedule,
@@ -7650,13 +8393,12 @@ class ControlExecutionSession:
                 target_id=target,
                 event_id=event.event_id,
                 area_response_convention=self._area_response_convention,
-                membership=area_membership,
-                effect_active=area_effect_active,
+                membership=True,
+                effect_active=True,
                 routes=routes,
                 base_speeds_ft=base_speeds,
                 mixed_speed_operation_order=mixed_order,
             )
-            self._area_records.append(area)
             area_authority = area.get("movement_authority")
             if isinstance(area_authority, Mapping):
                 epoch_movement_authority = {
@@ -7674,10 +8416,70 @@ class ControlExecutionSession:
             selected_route = area.get("selected_route")
             if isinstance(selected_route, Mapping):
                 epoch_movement_mode = str(selected_route["mode"])
+                route_id = str(selected_route["route_id"])
+                source_routes = {
+                    route.route_id: route for route in route_state.routes
+                }
+                if route_id not in source_routes:
+                    raise ControlEngineError(
+                        "Area response selected a route outside session geometry"
+                    )
+                remaining = _nonnegative_fraction(
+                    selected_route["remaining_distance_exact"],
+                    "selected route remaining distance",
+                )
+                selected_geometry = replace(
+                    source_routes[route_id],
+                    distance_to_exit_ft=remaining,
+                )
+                new_route_state = replace(
+                    route_state,
+                    membership=remaining > 0,
+                    routes=(selected_geometry,),
+                    selected_route_id=route_id,
+                    movement_mode=selected_geometry.mode,
+                    environment=selected_geometry.environment,
+                    remaining_distance_ft=remaining,
+                    movement_cost_basis=_json_safe(area_authority),
+                    closed_reason=(
+                        "route_exhausted" if remaining == 0 else None
+                    ),
+                    last_update_event_id=event.event_id,
+                    last_update_event_sequence=event.sequence,
+                )
+                transition_kind = (
+                    "route_exit" if remaining == 0 else "movement_progress"
+                )
+            else:
+                new_route_state = replace(
+                    route_state,
+                    movement_cost_basis=_json_safe(area_authority),
+                    last_update_event_id=event.event_id,
+                    last_update_event_sequence=event.sequence,
+                )
+                transition_kind = "movement_blocked"
+            self._set_area_route_state(new_route_state)
+            route_transition = self._route_transition(
+                transition_kind=transition_kind,
+                event=event,
+                old_state=route_state,
+                new_state=new_route_state,
+                pre_route_state_json=pre_route,
+            )
+            area = {**area, "route_transition": route_transition}
+            if self._state.audit_ledger and self._state.audit_ledger[-1].get(
+                "operation"
+            ) == "area_response":
+                self._state.audit_ledger[-1] = {
+                    "operation": "area_response",
+                    **area,
+                }
+            self._area_records.append(area)
             issued.append(self._issue(
                 record_kind="area_response",
                 payload=area,
                 pre_operation_state_json=pre,
+                pre_operation_route_state_json=pre_route,
                 target_id=target,
             ))
         else:
@@ -8082,11 +8884,16 @@ class ControlExecutionSession:
         self._concentration_records.append(lifecycle)
         self._current_required_operations.discard("concentration_end")
         self._current_required_operations.difference_update(required_gate_labels)
-        return self._issue(
+        issued = self._issue(
             record_kind="concentration_end",
             payload=lifecycle,
             pre_operation_state_json=pre,
         )
+        self._close_area_routes_for_effect_end(
+            event=event,
+            reason="effect_ended",
+        )
+        return issued
 
     def reconcile_concentration_duration(self) -> _IssuedControlRecord:
         event = self._require_current()
@@ -8112,11 +8919,17 @@ class ControlExecutionSession:
         self._current_required_operations.discard(
             "concentration_duration_reconciliation"
         )
-        return self._issue(
+        issued = self._issue(
             record_kind="concentration_duration_reconciliation",
             payload=lifecycle,
             pre_operation_state_json=pre,
         )
+        if tracker.active_effect_id is None:
+            self._close_area_routes_for_effect_end(
+                event=event,
+                reason="effect_ended",
+            )
+        return issued
 
     def _validate_issued_records(
         self,
@@ -8131,6 +8944,7 @@ class ControlExecutionSession:
             snapshot.event_id: snapshot for snapshot in self._event_snapshots
         }
         prior_post_by_event: dict[str, str] = {}
+        prior_route_post_by_event: dict[str, str] = {}
         prior_operation = 0
         prior_event_sequence = -1
         for index, record in enumerate(records):
@@ -8176,6 +8990,15 @@ class ControlExecutionSession:
                     raise ControlEngineError(
                         "Final record state snapshot is stale or malformed"
                     )
+            for route_snapshot_json in (
+                record.pre_event_route_state_json,
+                record.pre_operation_route_state_json,
+                record.post_operation_route_state_json,
+            ):
+                if _canonical_json(json.loads(route_snapshot_json)) != route_snapshot_json:
+                    raise ControlEngineError(
+                        "Final record route snapshot is stale or malformed"
+                    )
             record_identity = {
                 "scenario_digest": record.scenario_digest,
                 "event_id": record.event_id,
@@ -8186,6 +9009,15 @@ class ControlExecutionSession:
                 "pre_event_state": json.loads(record.pre_event_state_json),
                 "pre_operation_state": json.loads(record.pre_operation_state_json),
                 "post_operation_state": json.loads(record.post_operation_state_json),
+                "pre_event_route_state": json.loads(
+                    record.pre_event_route_state_json
+                ),
+                "pre_operation_route_state": json.loads(
+                    record.pre_operation_route_state_json
+                ),
+                "post_operation_route_state": json.loads(
+                    record.post_operation_route_state_json
+                ),
                 "payload": json.loads(record.payload_json),
             }
             if _sha256_record(record_identity) != record.record_sha256:
@@ -8198,6 +9030,8 @@ class ControlExecutionSession:
             if (
                 snapshot is None
                 or record.pre_event_state_json != snapshot.pre_event_state_json
+                or record.pre_event_route_state_json
+                != snapshot.pre_event_route_state_json
             ):
                 raise ControlEngineError(
                     "Final record pre-event state does not match its closed event"
@@ -8211,6 +9045,17 @@ class ControlExecutionSession:
                     "Same-event operation state chain is stale or out of order"
                 )
             prior_post_by_event[record.event_id] = record.post_operation_state_json
+            expected_pre_route = prior_route_post_by_event.get(
+                record.event_id,
+                snapshot.pre_event_route_state_json,
+            )
+            if record.pre_operation_route_state_json != expected_pre_route:
+                raise ControlEngineError(
+                    "Same-event route-state chain is stale or out of order"
+                )
+            prior_route_post_by_event[record.event_id] = (
+                record.post_operation_route_state_json
+            )
 
             payload = json.loads(record.payload_json)
             if (
@@ -8289,6 +9134,71 @@ class ControlExecutionSession:
                             raise ControlEngineError(
                                 "Primitive contribution source was not active in the pre-state"
                             )
+            route_transition = payload.get("route_transition")
+            if route_transition is not None:
+                if not isinstance(route_transition, Mapping):
+                    raise ControlEngineError("Route transition payload is malformed")
+                if (
+                    route_transition.get("event_id") != record.event_id
+                    or route_transition.get("event_sequence")
+                    != record.event_sequence
+                    or route_transition.get("target_id") != record.target_id
+                    or route_transition.get("effect_id") != self._program.effect_id
+                    or route_transition.get("pre_route_state_sha256")
+                    != hashlib.sha256(
+                        record.pre_operation_route_state_json.encode("utf-8")
+                    ).hexdigest()
+                    or route_transition.get("post_route_state_sha256")
+                    != hashlib.sha256(
+                        record.post_operation_route_state_json.encode("utf-8")
+                    ).hexdigest()
+                ):
+                    raise ControlEngineError(
+                        "Route transition is foreign, stale, rewritten, or discontinuous"
+                    )
+                transition_identity = (
+                    route_transition.get("effect_id"),
+                    route_transition.get("area_id"),
+                    route_transition.get("target_id"),
+                )
+                pre_route_rows = [
+                    row
+                    for row in json.loads(record.pre_operation_route_state_json)
+                    if (
+                        row.get("effect_id"),
+                        row.get("area_id"),
+                        row.get("target_id"),
+                    ) == transition_identity
+                ]
+                post_route_rows = [
+                    row
+                    for row in json.loads(record.post_operation_route_state_json)
+                    if (
+                        row.get("effect_id"),
+                        row.get("area_id"),
+                        row.get("target_id"),
+                    ) == transition_identity
+                ]
+                if (
+                    route_transition.get("transition_kind")
+                    not in {
+                        "movement_blocked",
+                        "movement_progress",
+                        "route_exit",
+                        "explicit_geometry_update",
+                        "effect_end",
+                    }
+                    or len(pre_route_rows) != 1
+                    or len(post_route_rows) != 1
+                    or route_transition.get("old_route_state")
+                    != pre_route_rows[0]
+                    or route_transition.get("new_route_state")
+                    != post_route_rows[0]
+                ):
+                    raise ControlEngineError(
+                        "Route transition old/new states do not match its "
+                        "chronological route snapshots"
+                    )
             if record.record_sha256 != self._issued_record_attestations[index]:
                 raise ControlEngineError(
                     "Final record differs from its engine-owned issuance attestation"
@@ -8298,13 +9208,23 @@ class ControlExecutionSession:
                 raise ControlEngineError(
                     "Final operation post-state does not match its closed event"
                 )
+        for event_id, post_route_state_json in prior_route_post_by_event.items():
+            if (
+                post_route_state_json
+                != closed_snapshots[event_id].post_event_route_state_json
+            ):
+                raise ControlEngineError(
+                    "Final operation post-route state does not match its closed event"
+                )
 
     def _validate_internal_ledgers(self) -> None:
         payloads_by_kind: dict[str, list[Any]] = {}
+        issued_route_transitions: list[Any] = []
         for record in self._issued_records:
-            payloads_by_kind.setdefault(record.record_kind, []).append(
-                json.loads(record.payload_json)
-            )
+            payload = json.loads(record.payload_json)
+            payloads_by_kind.setdefault(record.record_kind, []).append(payload)
+            if isinstance(payload.get("route_transition"), Mapping):
+                issued_route_transitions.append(payload["route_transition"])
 
         comparisons = (
             (
@@ -8321,6 +9241,11 @@ class ControlExecutionSession:
                 "area responses",
                 self._area_records,
                 payloads_by_kind.get("area_response", ()),
+            ),
+            (
+                "area route transitions",
+                self._area_route_transitions,
+                issued_route_transitions,
             ),
             (
                 "Prone responses",
@@ -8370,6 +9295,7 @@ class ControlExecutionSession:
                 "The session must consume and close the complete timeline before result()"
             )
         previous_post = self._initial_state_json
+        previous_route_post = self._initial_area_route_state_json
         for event, snapshot in zip(
             self._schedule.events,
             self._event_snapshots,
@@ -8380,13 +9306,19 @@ class ControlExecutionSession:
                 or snapshot.event_id != event.event_id
                 or snapshot.event_sequence != event.sequence
                 or snapshot.pre_event_state_json != previous_post
+                or snapshot.pre_event_route_state_json != previous_route_post
             ):
                 raise ControlEngineError(
                     "Event snapshots are foreign, stale, or non-chronological"
                 )
             previous_post = snapshot.post_event_state_json
+            previous_route_post = snapshot.post_event_route_state_json
         if previous_post != _canonical_json(self._state.snapshot()):
             raise ControlEngineError("Final state does not match the closed event stream")
+        if previous_route_post != self._area_route_state_json():
+            raise ControlEngineError(
+                "Final area-route state does not match the closed event stream"
+            )
 
     def _validate_reliability(self, value: ReliabilityResult) -> None:
         try:
@@ -8478,6 +9410,13 @@ class ControlExecutionSession:
             != self._initial_state_json
             or _canonical_json(scenario.get("operation_inputs_by_event"))
             != self._operation_inputs_json
+            or _canonical_json(scenario.get("initial_area_route_states"))
+            != self._initial_area_route_state_json
+            or _canonical_json(scenario.get("area_geometry_updates"))
+            != self._area_geometry_updates_json
+            or _canonical_json([
+                update.to_dict() for update in self._area_geometry_updates.values()
+            ]) != self._area_geometry_updates_json
             or _canonical_json(scenario.get("required_operation_plan"))
             != self._required_operation_plan_json
             or _canonical_json(scenario.get("reliability_timeline_bindings"))
@@ -8553,6 +9492,8 @@ class ControlExecutionSession:
             event_snapshots=tuple(
                 snapshot.to_dict() for snapshot in self._event_snapshots
             ),
+            area_route_transitions=tuple(self._area_route_transitions),
+            final_area_route_states=tuple(self._area_route_state_rows()),
         )
 
     def result(self) -> ControlEngineResult:
@@ -8873,6 +9814,8 @@ if __name__ == "__main__":
 
 
 __all__ = [
+    "AreaGeometryUpdate",
+    "AreaRouteGeometry",
     "ControlEngine",
     "ControlEngineError",
     "ControlEngineResult",

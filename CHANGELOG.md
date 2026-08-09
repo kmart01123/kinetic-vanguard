@@ -14,6 +14,7 @@
 - Completed Control Authority v2.1 with 35 modeled rows, 14 maintained profile exclusions, zero unsupported rows, typed event/save/choice/movement/area/persistent-state semantics, and shared TypeScript/Python parity coverage; it remains separate from damage and does not publish a v14.2 control result.
 - Added a fail-closed 28-row SRD control-target supplement for official movement modes, hover, and relevant nonvisual senses while preserving the maintained damage roster byte-for-byte.
 - Corrected both control-engine initiative schedules so the single self-minimizing movement, standing, area-response, and displacement-epoch opportunity precedes active-turn and attack windows, and made engine-owned chronological sessions with canonical scenario identity and issued reliability/state records the only supported final-result path.
+- Made shortest-route geometry and exact remaining distance session-owned across movement opportunities, rejected raw per-event route replacement, and added typed compiled-authority transitions for persistent moving areas with deterministic route-state snapshots and hashes.
 - Codified the standing policy for retiring superseded implementations from current development while preserving released history through frozen branches, tags, Releases, evidence assets, and Git history.
 
 ### Removed

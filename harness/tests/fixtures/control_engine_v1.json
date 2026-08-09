@@ -1371,123 +1371,63 @@
     {
       "id": 49,
       "category": "areas",
-      "invariant": "Frozen Ground difficult terrain reduces route progress without changing Speed.",
-      "operation": "area_response",
+      "invariant": "Frozen Ground route progress is session-owned across movement opportunities.",
+      "operation": "session_area_route",
       "input": {
-        "convention": "shortest_route_v1",
-        "compiled_effect": {
-          "mastery_id": "frozen_ground",
-          "tier": 0
-        },
-        "compiled_branch": {
-          "gate_id": "frozen_ground_t0_activation",
-          "outcome": "no_save"
-        },
-        "target_id": "target",
-        "membership": true,
-        "effect_active": true,
-        "routes": [
-          {
-            "route_id": "ground_exit",
-            "mode": "walk",
-            "distance_to_exit_ft": 40,
-            "compatible": true,
-            "movement_cost_multiplier": 1,
-            "environment": "grounded"
-          }
-        ],
-        "base_speeds_ft": {
-          "walk": 30
-        }
+        "initiative_convention": "fighter_first_v1",
+        "route_distance_ft": 20,
+        "base_speed_ft": 30,
+        "speed_zero_on_first_response": false
       },
       "expected": {
         "paths": {
-          "selected_route.progress_ft": 15,
-          "selected_route.remaining_distance_ft": 25,
-          "selected_route.movement_cost_multiplier": 2,
-          "membership_after": true,
-          "movement_authority.effective_speeds_ft.walk": 30,
-          "movement_authority.active_area_movement_cost_multiplier.numerator": 2,
-          "movement_authority.route_multipliers.0.base_movement_cost_multiplier.numerator": 1,
-          "movement_authority.route_multipliers.0.effective_movement_cost_multiplier.numerator": 2
+          "initial_route.routes.0.distance_to_exit_exact": {
+            "numerator": 20,
+            "denominator": 1
+          },
+          "first_response.selected_route.progress_ft": 15,
+          "first_response.selected_route.remaining_distance_ft": 5,
+          "first_response.movement_authority.effective_speeds_ft.walk": 30,
+          "first_response.movement_authority.active_area_movement_cost_multiplier.numerator": 2,
+          "route_after_first.membership": true,
+          "route_after_first.remaining_distance_ft": 5,
+          "second_response.selected_route.distance_before_ft": 5,
+          "second_response.exited": true,
+          "route_after_second.membership": false,
+          "route_after_second.remaining_distance_ft": 0,
+          "route_after_second.closed_reason": "route_exhausted",
+          "second_response_restates_routes": false
         }
       }
     },
     {
       "id": 50,
       "category": "areas",
-      "invariant": "Speed 0 prevents nominal exit until expiry.",
-      "operation": "area_response",
+      "invariant": "Speed 0 preserves session-owned route distance until expiry.",
+      "operation": "session_area_route",
       "input": {
-        "convention": "shortest_route_v1",
-        "compiled_effect": {
-          "mastery_id": "frozen_ground",
-          "tier": 0
-        },
-        "compiled_lifecycle": {
-          "kind": "speed_zero_expiry_then_exit",
-          "activation": {
-            "gate_id": "frozen_ground_t0_activation",
-            "outcome": "no_save"
-          },
-          "speed_zero": {
-            "gate_id": "frozen_ground_t0_entry_save",
-            "outcome": "save_failure"
-          }
-        },
-        "target_id": "target",
-        "membership": true,
-        "effect_active": true,
-        "routes": [
-          {
-            "route_id": "exit",
-            "mode": "walk",
-            "distance_to_exit_ft": 5,
-            "compatible": true,
-            "movement_cost_multiplier": 1,
-            "environment": "grounded"
-          }
-        ],
-        "base_speeds_ft": {
-          "walk": 30
-        }
+        "initiative_convention": "fighter_first_v1",
+        "route_distance_ft": 20,
+        "base_speed_ft": 30,
+        "speed_zero_on_first_response": true
       },
       "expected": {
         "paths": {
-          "compiled_transitions.activation.gate_id": "frozen_ground_t0_activation",
-          "compiled_transitions.activation.branch_id": "frozen_ground_t0_activation_resolution",
-          "compiled_transitions.activation.event_id": "r1:controller:controller:script:000:activation",
-          "compiled_transitions.activation.applied_component_ids": [
-            "frozen_ground_difficult_terrain"
-          ],
-          "compiled_transitions.speed_zero.gate_id": "frozen_ground_t0_entry_save",
-          "compiled_transitions.speed_zero.branch_id": "frozen_ground_t0_entry_save_failure",
-          "compiled_transitions.speed_zero.event_id": "r1:target:target:script:000:entry",
-          "compiled_transitions.speed_zero.applied_component_ids": [
-            "frozen_ground_speed_zero"
-          ],
-          "speed_zero_expiry_event_id": "r1:target:target:turn:end",
-          "speed_zero_expiry_event_kind": "target_turn_end",
-          "blocked.event_id": "r1:target:target:turn:movement",
-          "blocked.membership_after": true,
-          "blocked.exited": false,
-          "blocked.reason": "movement_unavailable",
-          "blocked.selected_route": null,
-          "blocked.movement_authority.effective_speeds_ft.walk": 0,
-          "expired_component_ids": [
-            "frozen_ground_speed_zero"
-          ],
-          "active_component_ids_after_expiry": [
-            "frozen_ground_difficult_terrain"
-          ],
-          "next_movement.event_id": "r2:target:target:turn:movement",
-          "next_movement.membership_after": false,
-          "next_movement.exited": true,
-          "next_movement.reason": "shortest_legal_route",
-          "next_movement.ended_component_ids": [
-            "frozen_ground_difficult_terrain"
-          ],
-          "active_component_ids_after": []
+          "first_response.reason": "movement_unavailable",
+          "first_response.membership_after": true,
+          "first_response.movement_authority.effective_speeds_ft.walk": 0,
+          "route_after_first.membership": true,
+          "route_after_first.selected_route_id": null,
+          "route_after_first.routes.0.distance_to_exit_exact": {
+            "numerator": 20,
+            "denominator": 1
+          },
+          "second_response.selected_route.distance_before_ft": 20,
+          "second_response.selected_route.progress_ft": 15,
+          "second_response.selected_route.remaining_distance_ft": 5,
+          "route_after_second.membership": true,
+          "route_after_second.remaining_distance_ft": 5,
+          "second_response_restates_routes": false
         }
       }
     },

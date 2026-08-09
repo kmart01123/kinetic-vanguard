@@ -8,10 +8,12 @@ import unittest
 from dataclasses import replace
 from fractions import Fraction
 from types import MappingProxyType
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 from harness.control_catalog import DIAGNOSTIC_FAMILIES, SenseQueryResult
 from harness.control_engine import (
+    AreaGeometryUpdate,
+    AreaRouteGeometry,
     ControlEngine,
     ControlEngineError,
     ControlEngineResult,
@@ -692,6 +694,15 @@ class ControlExecutionSessionTests(unittest.TestCase):
             "pre_event_state": json.loads(record.pre_event_state_json),
             "pre_operation_state": json.loads(record.pre_operation_state_json),
             "post_operation_state": json.loads(record.post_operation_state_json),
+            "pre_event_route_state": json.loads(
+                record.pre_event_route_state_json
+            ),
+            "pre_operation_route_state": json.loads(
+                record.pre_operation_route_state_json
+            ),
+            "post_operation_route_state": json.loads(
+                record.post_operation_route_state_json
+            ),
             "payload": json.loads(payload_json),
         }
         record_json = json.dumps(
@@ -727,6 +738,8 @@ class ControlExecutionSessionTests(unittest.TestCase):
         route_compatible: bool = True,
         include_start_turn_save: bool = False,
         concentration_save_bonus: int | None = 2,
+        raw_second_movement_routes: Sequence[Mapping[str, Any]] | None = None,
+        bind_round_one_normalization: bool = True,
     ):
         program = self.engine.program("frozen_ground_t0_control")
         schedule = self.engine.schedule(
@@ -775,11 +788,24 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 and event.round == 1
                 and event.target_id == target_id
             )
-            operation_inputs[active.event_id] = {
-                "normalization_target_ids": [target_id],
-            }
-            operation_inputs[attack.event_id] = {
-                "normalization_target_ids": [target_id],
+            if bind_round_one_normalization:
+                operation_inputs[active.event_id] = {
+                    "normalization_target_ids": [target_id],
+                }
+                operation_inputs[attack.event_id] = {
+                    "normalization_target_ids": [target_id],
+                }
+        if raw_second_movement_routes is not None:
+            if len(target_ids) != 1:
+                raise AssertionError("raw route override helper supports one target")
+            second_movement = next(
+                event for event in schedule.events
+                if event.kind == "target_movement_opportunity"
+                and event.round == 2
+                and event.target_id == target_ids[0]
+            )
+            operation_inputs[second_movement.event_id] = {
+                "area_routes": [dict(route) for route in raw_second_movement_routes],
             }
         mechanics = {
             target_id: {
@@ -833,6 +859,171 @@ class ControlExecutionSessionTests(unittest.TestCase):
             concentration_save_bonus=concentration_save_bonus,
         )
         return session, schedule, activation
+
+    @staticmethod
+    def _route_geometry(
+        route_id: str,
+        *,
+        distance: int | float,
+        mode: str = "walk",
+        compatible: bool = True,
+        multiplier: int | float = 1,
+        environment: str = "grounded",
+    ) -> AreaRouteGeometry:
+        return AreaRouteGeometry(
+            route_id=route_id,
+            mode=mode,
+            distance_to_exit_ft=distance,
+            compatible=compatible,
+            movement_cost_multiplier=multiplier,
+            environment=environment,
+        )
+
+    def _area_route_row(self, session, target_id: str = "target") -> dict[str, Any]:
+        rows = session.area_route_snapshot(target_id)
+        self.assertEqual(len(rows), 1)
+        return dict(rows[0])
+
+    @staticmethod
+    def _movement_event(schedule, *, round_number: int, target_id: str = "target"):
+        return next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.round == round_number
+            and event.target_id == target_id
+        )
+
+    def _activate_frozen_ground(
+        self,
+        session,
+        activation,
+        target_ids: Sequence[str] = ("target",),
+    ) -> None:
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        for target_id in sorted(target_ids):
+            session.apply_branch(
+                gate_id="frozen_ground_t0_activation",
+                outcome="no_save",
+                target_id=target_id,
+            )
+        session.close_event()
+
+    def _ball_lightning_route_session(
+        self,
+        *,
+        initial_distance: int = 60,
+        update_membership: bool | None = None,
+        update_distance: int = 10,
+        update_route_id: str = "moved_exit",
+    ) -> tuple[Any, Any, Mapping[str, Any]]:
+        program = self.engine.program("ball_lightning_t2_control")
+        controller_events: dict[int, list[dict[str, Any]]] = {
+            1: [{"kind": "activation"}],
+        }
+        if update_membership is not None:
+            controller_events[2] = [{"kind": "instantaneous_resolution"}]
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round=controller_events,
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        target_start = next(
+            event for event in schedule.events
+            if event.kind == "target_turn_start" and event.round == 1
+        )
+        gate = program.gate("ball_lightning_start_turn_save")
+        reliability_event = ReliabilityEvent.create(
+            "ball_lightning_round_1_start_save",
+            gate.trigger,
+            target_ids=("target",),
+            gate_ids=(gate.gate_id,),
+            window_id=target_start.event_id,
+        )
+        operation_inputs = {
+            target_start.event_id: {
+                "reliability_event_ids": [reliability_event.event_id],
+            },
+        }
+        update_event = None
+        geometry_updates: tuple[AreaGeometryUpdate, ...] = ()
+        if update_membership is not None:
+            update_event = next(
+                event for event in schedule.events
+                if event.kind == "instantaneous_resolution"
+            )
+            routes = (
+                (self._route_geometry(
+                    update_route_id,
+                    distance=update_distance,
+                ),)
+                if update_membership else ()
+            )
+            geometry_updates = (AreaGeometryUpdate(
+                effect_id=program.effect_id,
+                area_id="ball_lightning_sphere",
+                target_id="target",
+                event_id=update_event.event_id,
+                event_sequence=update_event.sequence,
+                new_membership=update_membership,
+                routes=routes,
+            ),)
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget("target", 15, {"charisma": 2}),),
+            selector_membership={
+                "ball_lightning_area_targets": ("target",),
+            },
+            selector_context=SelectorContext(),
+            schedule=schedule,
+            target_mechanics={
+                "target": {
+                    "base_speeds_ft": {"walk": 30},
+                    "movement_mode": "walk",
+                    "area_membership": True,
+                    "area_routes": [self._route_geometry(
+                        "initial_exit",
+                        distance=initial_distance,
+                    ).route_input()],
+                },
+            },
+            area_response_convention="shortest_route_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            reliability_events=(reliability_event,),
+            operation_inputs_by_event=operation_inputs,
+            concentration_save_bonus=2,
+            area_geometry_updates=geometry_updates,
+        )
+        return session, schedule, {
+            "activation": activation,
+            "target_start": target_start,
+            "gate": gate,
+            "update": update_event,
+        }
+
+    def _activate_ball_lightning(
+        self,
+        session,
+        events: Mapping[str, Any],
+    ) -> None:
+        activation = events["activation"]
+        target_start = events["target_start"]
+        gate = events["gate"]
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        session.close_event()
+        session.advance_to(target_start.event_id)
+        session.apply_branch(
+            gate_id=gate.gate_id,
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.close_event()
 
     def _mass_levitation_session(self, *, bind_future: bool):
         program = self.engine.program("mass_levitation_t2_control")
@@ -1197,7 +1388,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
             )
 
     def test_malformed_area_route_is_rejected_before_session_mutation(self) -> None:
-        with self.assertRaisesRegex(ControlEngineError, "area_routes are invalid"):
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"target_mechanics\.target\.area_routes\[0\] is invalid: "
+            "route compatibility must be boolean",
+        ):
             self._frozen_ground_session(
                 initial_prone=True,
                 route_compatible=1,  # type: ignore[arg-type]
@@ -2724,6 +2919,546 @@ class ControlExecutionSessionTests(unittest.TestCase):
         self.assertEqual(
             result["final_normalized_state"]["target"]["active_components"],
             [],
+        )
+
+
+    def test_area_route_01_frozen_progress_is_carried_then_exits(self) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            route_distance=20,
+            bind_round_one_normalization=False,
+        )
+        self._activate_frozen_ground(session, activation)
+        first = self._movement_event(schedule, round_number=1)
+        second = self._movement_event(schedule, round_number=2)
+
+        session.advance_to(first.event_id)
+        [first_record] = session.resolve_movement_response(target_id="target")
+        first_payload = first_record.to_dict()["payload"]
+        self.assertEqual(first_payload["selected_route"]["progress_ft"], 15)
+        self.assertEqual(
+            first_payload["selected_route"]["remaining_distance_ft"],
+            5,
+        )
+        carried = self._area_route_row(session)
+        self.assertEqual(carried["selected_route_id"], "target_walk_exit")
+        self.assertEqual(carried["remaining_distance_ft"], 5)
+        session.close_event()
+
+        session.advance_to(second.event_id)
+        [second_record] = session.resolve_movement_response(target_id="target")
+        second_payload = second_record.to_dict()["payload"]
+        self.assertTrue(second_payload["exited"])
+        self.assertEqual(second_payload["selected_route"]["distance_before_ft"], 5)
+        final_route = self._area_route_row(session)
+        self.assertFalse(final_route["membership"])
+        self.assertEqual(final_route["remaining_distance_ft"], 0)
+        self.assertEqual(final_route["closed_reason"], "route_exhausted")
+
+    def test_area_route_02_second_response_requires_no_restatement(self) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            route_distance=20,
+            bind_round_one_normalization=False,
+        )
+        self._activate_frozen_ground(session, activation)
+        first = self._movement_event(schedule, round_number=1)
+        second = self._movement_event(schedule, round_number=2)
+        scenario = session.scenario_record
+        self.assertEqual(
+            scenario["initial_area_route_states"][0]["routes"][0][
+                "distance_to_exit_exact"
+            ],
+            {"numerator": 20, "denominator": 1},
+        )
+        self.assertNotIn(second.event_id, scenario["operation_inputs_by_event"])
+
+        session.advance_to(first.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.advance_to(second.event_id)
+        [record] = session.resolve_movement_response(target_id="target")
+        self.assertTrue(record.to_dict()["payload"]["exited"])
+
+    def test_area_route_03_speed_zero_preserves_full_initial_route(self) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            route_distance=20,
+            include_start_turn_save=True,
+            bind_round_one_normalization=False,
+        )
+        self._activate_frozen_ground(session, activation)
+        target_start = next(
+            event for event in schedule.events
+            if event.kind == "target_turn_start" and event.round == 1
+        )
+        session.advance_to(target_start.event_id)
+        session.apply_branch(
+            gate_id="frozen_ground_t0_start_turn_save",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.close_event()
+        movement = self._movement_event(schedule, round_number=1)
+        session.advance_to(movement.event_id)
+        [record] = session.resolve_movement_response(target_id="target")
+        self.assertEqual(record.to_dict()["payload"]["reason"], "movement_unavailable")
+        route = self._area_route_row(session)
+        self.assertTrue(route["membership"])
+        self.assertIsNone(route["selected_route_id"])
+        self.assertEqual(
+            route["routes"][0]["distance_to_exit_exact"],
+            {"numerator": 20, "denominator": 1},
+        )
+
+    def test_area_route_04_speed_recovery_uses_preserved_distance(self) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            route_distance=20,
+            include_start_turn_save=True,
+            bind_round_one_normalization=False,
+        )
+        self._activate_frozen_ground(session, activation)
+        target_start = next(
+            event for event in schedule.events
+            if event.kind == "target_turn_start" and event.round == 1
+        )
+        session.advance_to(target_start.event_id)
+        session.apply_branch(
+            gate_id="frozen_ground_t0_start_turn_save",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.close_event()
+        first = self._movement_event(schedule, round_number=1)
+        session.advance_to(first.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+
+        second = self._movement_event(schedule, round_number=2)
+        session.advance_to(second.event_id)
+        [record] = session.resolve_movement_response(target_id="target")
+        selected = record.to_dict()["payload"]["selected_route"]
+        self.assertEqual(selected["distance_before_ft"], 20)
+        self.assertEqual(selected["progress_ft"], 15)
+        self.assertEqual(selected["remaining_distance_ft"], 5)
+
+    def test_area_route_05_raw_reset_to_original_distance_is_rejected(self) -> None:
+        reset = self._route_geometry(
+            "target_walk_exit",
+            distance=20,
+        ).route_input()
+        with self.assertRaisesRegex(ControlEngineError, "raw route overrides"):
+            self._frozen_ground_session(
+                route_distance=20,
+                raw_second_movement_routes=(reset,),
+                bind_round_one_normalization=False,
+            )
+
+    def test_area_route_06_raw_remaining_distance_shrink_is_rejected(self) -> None:
+        shrink = self._route_geometry(
+            "target_walk_exit",
+            distance=1,
+        ).route_input()
+        with self.assertRaisesRegex(ControlEngineError, "raw route overrides"):
+            self._frozen_ground_session(
+                route_distance=20,
+                raw_second_movement_routes=(shrink,),
+                bind_round_one_normalization=False,
+            )
+
+    def test_area_route_07_raw_route_switch_is_rejected(self) -> None:
+        switched = self._route_geometry(
+            "different_exit",
+            distance=5,
+        ).route_input()
+        with self.assertRaisesRegex(ControlEngineError, "raw route overrides"):
+            self._frozen_ground_session(
+                route_distance=20,
+                raw_second_movement_routes=(switched,),
+                bind_round_one_normalization=False,
+            )
+
+    def test_area_route_08_compiled_ball_geometry_update_records_old_and_new(self) -> None:
+        session, schedule, events = self._ball_lightning_route_session(
+            initial_distance=60,
+            update_membership=True,
+            update_distance=10,
+            update_route_id="repositioned_exit",
+        )
+        self._activate_ball_lightning(session, events)
+        first = self._movement_event(schedule, round_number=1)
+        session.advance_to(first.event_id)
+        session.resolve_movement_response(target_id="target")
+        self.assertEqual(self._area_route_row(session)["remaining_distance_ft"], 30)
+        session.close_event()
+
+        update_event = events["update"]
+        self.assertIsNotNone(update_event)
+        session.advance_to(update_event.event_id)
+        record = session.apply_area_geometry_update(target_id="target")
+        payload = record.to_dict()["payload"]
+        self.assertEqual(record.record_kind, "area_geometry_update")
+        self.assertEqual(payload["effect_id"], "ball_lightning_t2_control")
+        self.assertEqual(payload["area_id"], "ball_lightning_sphere")
+        self.assertEqual(payload["canonical_reason"], "controller_reposition")
+        self.assertEqual(
+            payload["compiled_movement_authority"]["controller_action"],
+            "bonus_action",
+        )
+        self.assertFalse(payload["moved_area_counts_as_entry"])
+        self.assertEqual(
+            payload["old_route_state"]["remaining_distance_ft"],
+            30,
+        )
+        self.assertEqual(
+            payload["new_route_state"]["routes"][0]["route_id"],
+            "repositioned_exit",
+        )
+        self.assertNotEqual(
+            payload["pre_route_state_sha256"],
+            payload["post_route_state_sha256"],
+        )
+        session.close_event()
+        second = self._movement_event(schedule, round_number=2)
+        session.advance_to(second.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.complete()
+        result = session.result().to_dict()
+        self.assertEqual(
+            [
+                row["transition_kind"]
+                for row in result["area_route_transitions"]
+            ],
+            [
+                "movement_progress",
+                "explicit_geometry_update",
+                "route_exit",
+            ],
+        )
+        [final_route] = result["final_area_route_states"]
+        self.assertFalse(final_route["membership"])
+        self.assertEqual(
+            final_route["routes"][0]["route_id"],
+            "repositioned_exit",
+        )
+
+    def test_area_route_09_foreign_session_geometry_record_is_rejected(self) -> None:
+        sessions: list[tuple[Any, Any]] = []
+        for _index in range(2):
+            session, schedule, events = self._ball_lightning_route_session(
+                update_membership=True,
+            )
+            self._activate_ball_lightning(session, events)
+            first = self._movement_event(schedule, round_number=1)
+            session.advance_to(first.event_id)
+            session.resolve_movement_response(target_id="target")
+            session.close_event()
+            update_event = events["update"]
+            session.advance_to(update_event.event_id)
+            update_record = session.apply_area_geometry_update(target_id="target")
+            session.close_event()
+            second = self._movement_event(schedule, round_number=2)
+            session.advance_to(second.event_id)
+            session.resolve_movement_response(target_id="target")
+            session.close_event()
+            session.complete()
+            sessions.append((session, update_record))
+        first_session, first_update = sessions[0]
+        _second_session, foreign_update = sessions[1]
+        mixed = tuple(
+            foreign_update if record is first_update else record
+            for record in first_session.issued_records()
+        )
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "foreign, stale, or fabricated",
+        ):
+            first_session._assemble_for_test(records=mixed)
+
+    def test_area_route_10_rewritten_geometry_transition_cannot_enter_result(self) -> None:
+        session, schedule, events = self._ball_lightning_route_session(
+            update_membership=True,
+        )
+        self._activate_ball_lightning(session, events)
+        first = self._movement_event(schedule, round_number=1)
+        session.advance_to(first.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        update_event = events["update"]
+        session.advance_to(update_event.event_id)
+        update_record = session.apply_area_geometry_update(target_id="target")
+        session.close_event()
+        second = self._movement_event(schedule, round_number=2)
+        session.advance_to(second.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.complete()
+        payload = update_record.to_dict()["payload"]
+        payload["new_route_state"]["membership"] = False
+        self._rewrite_record_payload(update_record, payload)
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "issuance attestation|route|stale",
+        ):
+            session.result()
+
+    def test_area_route_11_ball_components_end_only_at_carried_zero(self) -> None:
+        session, schedule, events = self._ball_lightning_route_session(
+            initial_distance=45,
+        )
+        self._activate_ball_lightning(session, events)
+        first = self._movement_event(schedule, round_number=1)
+        session.advance_to(first.event_id)
+        [first_record] = session.resolve_movement_response(target_id="target")
+        self.assertEqual(
+            first_record.to_dict()["payload"]["selected_route"][
+                "remaining_distance_ft"
+            ],
+            15,
+        )
+        self.assertEqual(
+            {
+                row["component_id"] for row in session.state_snapshot("target")
+            },
+            {
+                "ball_lightning_attack_disadvantage",
+                "ball_lightning_reaction_denial",
+            },
+        )
+        session.close_event()
+        second = self._movement_event(schedule, round_number=2)
+        session.advance_to(second.event_id)
+        [second_record] = session.resolve_movement_response(target_id="target")
+        payload = second_record.to_dict()["payload"]
+        self.assertTrue(payload["exited"])
+        self.assertEqual(
+            set(payload["ended_component_ids"]),
+            {
+                "ball_lightning_attack_disadvantage",
+                "ball_lightning_reaction_denial",
+            },
+        )
+        self.assertEqual(session.state_snapshot("target"), ())
+
+        exit_session, exit_schedule, exit_events = (
+            self._ball_lightning_route_session(
+                initial_distance=60,
+                update_membership=False,
+            )
+        )
+        self._activate_ball_lightning(exit_session, exit_events)
+        exit_movement = self._movement_event(
+            exit_schedule,
+            round_number=1,
+        )
+        exit_session.advance_to(exit_movement.event_id)
+        [progress_record] = exit_session.resolve_movement_response(
+            target_id="target",
+        )
+        self.assertEqual(
+            progress_record.to_dict()["payload"]["selected_route"][
+                "remaining_distance_ft"
+            ],
+            30,
+        )
+        self.assertEqual(len(exit_session.state_snapshot("target")), 2)
+        exit_session.close_event()
+        update_event = exit_events["update"]
+        exit_session.advance_to(update_event.event_id)
+        exit_record = exit_session.apply_area_geometry_update(
+            target_id="target",
+        )
+        exit_payload = exit_record.to_dict()["payload"]
+        self.assertEqual(
+            set(exit_payload["ended_component_ids"]),
+            {
+                "ball_lightning_attack_disadvantage",
+                "ball_lightning_reaction_denial",
+            },
+        )
+        self.assertFalse(exit_payload["membership_after"])
+        self.assertEqual(
+            exit_payload["new_route_state"]["closed_reason"],
+            "explicit_area_exit",
+        )
+        self.assertEqual(exit_session.state_snapshot("target"), ())
+
+    def test_area_route_12_frozen_failed_save_component_survives_typed_exit(self) -> None:
+        program = self.engine.program_for("frozen_ground", 0)
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            target_events_by_round={
+                "target": {1: [{"kind": "exit", "phase": "after_movement"}]},
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        exit_event = next(event for event in schedule.events if event.kind == "exit")
+        state = self.engine._new_state()
+        for component_id in (
+            "frozen_ground_difficult_terrain",
+            "frozen_ground_speed_zero",
+        ):
+            _activate_component(state, program, program.component(component_id))
+        response = self.engine._resolve_area_response(
+            state=state,
+            schedule=schedule,
+            effect=program,
+            target_ids=("target",),
+            selector_membership=_single_selector_membership(program, "target"),
+            selector_context=_selector_context_for("target"),
+            target_id="target",
+            event_id=exit_event.event_id,
+            area_response_convention="shortest_route_v1",
+            membership=True,
+            effect_active=True,
+            post_movement_membership=False,
+        )
+        self.assertEqual(
+            response["ended_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertEqual(
+            response["retained_component_ids"],
+            ["frozen_ground_speed_zero"],
+        )
+        self.assertEqual(
+            [row.component_id for row in state.active_components("target")],
+            ["frozen_ground_speed_zero"],
+        )
+
+    def test_area_route_13_prone_cost_precedes_carried_progress(self) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            initial_prone=True,
+            route_distance=20,
+            bind_round_one_normalization=False,
+        )
+        self._activate_frozen_ground(session, activation)
+        movement = self._movement_event(schedule, round_number=1)
+        session.advance_to(movement.event_id)
+        [record] = session.resolve_movement_response(target_id="target")
+        selected = record.to_dict()["payload"]["selected_route"]
+        self.assertEqual(selected["prone_response"]["standing_cost_ft"], 15)
+        self.assertEqual(
+            selected["prone_response"]["remaining_movement_ft"],
+            15,
+        )
+        self.assertEqual(selected["progress_ft"], 7.5)
+        self.assertEqual(selected["remaining_distance_ft"], 12.5)
+        route = self._area_route_row(session)
+        self.assertEqual(
+            route["remaining_distance_exact"],
+            {"numerator": 25, "denominator": 2},
+        )
+
+    def test_area_route_14_fixed_occupancy_creates_no_route_state(self) -> None:
+        program = self.engine.program("ball_lightning_t2_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={1: [{"kind": "activation"}]},
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget("target", 15, {"charisma": 2}),),
+            selector_membership={
+                "ball_lightning_area_targets": ("target",),
+            },
+            selector_context=SelectorContext(),
+            schedule=schedule,
+            target_mechanics={"target": {}},
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            concentration_save_bonus=2,
+        )
+        self.assertEqual(session.area_route_snapshot(), ())
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        session.close_event()
+        session.complete()
+        result = session.result().to_dict()
+        self.assertEqual(result["area_route_transitions"], [])
+        self.assertEqual(result["final_area_route_states"], [])
+
+    def test_area_route_15_initiative_conventions_preserve_response_progress(self) -> None:
+        observed: dict[str, list[tuple[bool, int | float]]] = {}
+        for initiative, movement_rounds in (
+            ("fighter_first_v1", (1, 2)),
+            ("target_before_fighter_v1", (2, 3)),
+        ):
+            with self.subTest(initiative=initiative):
+                session, schedule, activation = self._frozen_ground_session(
+                    initiative=initiative,
+                    route_distance=20,
+                    bind_round_one_normalization=False,
+                )
+                self._activate_frozen_ground(session, activation)
+                progress: list[tuple[bool, int | float]] = []
+                for round_number in movement_rounds:
+                    movement = self._movement_event(
+                        schedule,
+                        round_number=round_number,
+                    )
+                    session.advance_to(movement.event_id)
+                    session.resolve_movement_response(target_id="target")
+                    row = self._area_route_row(session)
+                    progress.append((
+                        bool(row["membership"]),
+                        row["remaining_distance_ft"],
+                    ))
+                    session.close_event()
+                observed[initiative] = progress
+        self.assertEqual(
+            observed["fighter_first_v1"],
+            observed["target_before_fighter_v1"],
+        )
+        self.assertEqual(observed["fighter_first_v1"], [(True, 5), (False, 0)])
+
+    def test_area_route_16_target_permutation_preserves_independent_routes(self) -> None:
+        observed: dict[tuple[str, ...], dict[str, tuple[Any, ...]]] = {}
+        for target_ids in (("alpha", "beta"), ("beta", "alpha")):
+            with self.subTest(target_ids=target_ids):
+                session, schedule, activation = self._frozen_ground_session(
+                    target_ids=target_ids,
+                    route_distance=40,
+                    bind_round_one_normalization=False,
+                )
+                self._activate_frozen_ground(session, activation, target_ids)
+                pending = {
+                    self._movement_event(
+                        schedule,
+                        round_number=1,
+                        target_id=target_id,
+                    ).event_id
+                    for target_id in target_ids
+                }
+                while pending:
+                    event = schedule.events[session.cursor + 1]
+                    session.advance(event.event_id)
+                    if event.event_id in pending:
+                        session.resolve_movement_response(
+                            target_id=str(event.target_id),
+                        )
+                        pending.remove(event.event_id)
+                    session.close_event()
+                observed[target_ids] = {
+                    target_id: (
+                        row["membership"],
+                        row["selected_route_id"],
+                        row["remaining_distance_ft"],
+                        row["movement_mode"],
+                        row["environment"],
+                        row["movement_cost_basis"],
+                    )
+                    for target_id in sorted(target_ids)
+                    for row in (self._area_route_row(session, target_id),)
+                }
+        self.assertEqual(
+            observed[("alpha", "beta")],
+            observed[("beta", "alpha")],
         )
 
 
