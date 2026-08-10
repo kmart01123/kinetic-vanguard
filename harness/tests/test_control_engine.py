@@ -1103,7 +1103,8 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session,
         activation,
         target_ids: Sequence[str] = ("target",),
-    ) -> None:
+    ) -> tuple[Any, ...]:
+        records: list[Any] = []
         session.advance_to(activation.event_id)
         session.start_concentration()
         for target_id in sorted(target_ids):
@@ -1116,7 +1117,207 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 activation_record.to_dict()["payload"]["gate_id"],
                 "frozen_ground_t0_activation",
             )
+            records.append(activation_record)
         session.close_event()
+        return tuple(records)
+
+    @staticmethod
+    def _component_rows(
+        session,
+        component_id: str,
+        *,
+        target_id: str = "target",
+    ) -> list[Mapping[str, Any]]:
+        return [
+            row for row in session.state_snapshot(target_id)
+            if row["component_id"] == component_id
+        ]
+
+    @staticmethod
+    def _terrain_mobility_contributions(record) -> list[dict[str, Any]]:
+        return [
+            row
+            for row in record.to_dict()["payload"]["contributions"]
+            if row["primitive_id"] == "mobility_loss_feet"
+            and row["context"].get("cause") == "difficult_terrain"
+        ]
+
+    @staticmethod
+    def _bind_movement_normalization(
+        scenario: Mapping[str, Any],
+        event,
+        *,
+        planned_route_feet: int = 30,
+        target_id: str = "target",
+    ) -> None:
+        scenario["session_kwargs"]["operation_inputs_by_event"][
+            event.event_id
+        ] = {
+            "normalization_target_ids": [target_id],
+            "normalization_context": {
+                "movement_mode": "walk",
+                "movement_mode_speeds_ft": {"walk": 30},
+                "planned_route_feet": planned_route_feet,
+            },
+        }
+
+    def _engine_with_program(self, program) -> ControlEngine:
+        authority = self.engine.authority
+        programs = tuple(
+            program if row.effect_id == program.effect_id else row
+            for row in authority.programs
+        )
+        synthetic_authority = replace(
+            authority,
+            programs=programs,
+            _program_by_id=MappingProxyType({
+                row.effect_id: row for row in programs
+            }),
+            _program_by_key=MappingProxyType({
+                (row.entity_id, row.tier): row for row in programs
+            }),
+        )
+        return ControlEngine(
+            catalog=self.engine.catalog,
+            config=self.engine.config,
+            authority=synthetic_authority,
+            targets=self.engine.targets,
+            target_supplement_digest=self.engine.target_supplement_digest,
+        )
+
+    def _synthetic_frozen_engine(
+        self,
+        *,
+        moving: bool = False,
+        ambient_duration: Mapping[str, Any] | None = None,
+    ) -> ControlEngine:
+        program = self.engine.program("frozen_ground_t0_control")
+        selectors = program.selectors
+        if moving:
+            [ball_selector] = self.engine.program(
+                "ball_lightning_t2_control"
+            ).selectors
+            self.assertIsNotNone(ball_selector.area)
+            movement = ball_selector.area.movement
+            self.assertIsNotNone(movement)
+            updated_selectors = []
+            for selector in selectors:
+                area = selector.area
+                if area is None:
+                    updated_selectors.append(selector)
+                    continue
+                placement = area.placement.to_dict()
+                placement["stationary"] = False
+                area_data = area.data.to_dict()
+                area_data["movement"] = movement.to_dict()
+                area_data["placement"] = placement
+                updated_area = replace(
+                    area,
+                    placement=_frozen_map(placement),
+                    movement=movement,
+                    data=_frozen_map(area_data),
+                )
+                updated_selectors.append(replace(selector, area=updated_area))
+            selectors = tuple(updated_selectors)
+        components = tuple(
+            replace(component, duration=_frozen_map(ambient_duration))
+            if (
+                ambient_duration is not None
+                and component.component_id
+                == "frozen_ground_difficult_terrain"
+            )
+            else component
+            for component in program.components
+        )
+        synthetic_program = replace(
+            program,
+            selectors=selectors,
+            components=components,
+            _selector_by_id=MappingProxyType({
+                selector.selector_id: selector for selector in selectors
+            }),
+            _component_by_id=MappingProxyType({
+                component.component_id: component
+                for component in components
+            }),
+        )
+        return self._engine_with_program(synthetic_program)
+
+    def _moving_frozen_session(
+        self,
+        *,
+        initial_membership: bool,
+        new_membership: bool,
+        initial_route_distance: int = 90,
+        update_route_distance: int = 45,
+    ) -> tuple[Any, Any, Mapping[str, Any]]:
+        engine = self._synthetic_frozen_engine(moving=True)
+        program = engine.program("frozen_ground_t0_control")
+        schedule = engine.schedule(
+            "fighter_first_v1",
+            ("target",),
+            controller_events_by_round={
+                1: ({"kind": "activation"},),
+                2: ({"kind": "instantaneous_resolution"},),
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        update_event = next(
+            event for event in schedule.events
+            if event.kind == "instantaneous_resolution"
+        )
+        update_routes = (
+            (self._route_geometry(
+                "moved_frozen_exit",
+                distance=update_route_distance,
+            ),)
+            if new_membership else ()
+        )
+        update = AreaGeometryUpdate(
+            effect_id=program.effect_id,
+            area_id="frozen_ground_cylinder",
+            target_id="target",
+            event_id=update_event.event_id,
+            event_sequence=update_event.sequence,
+            new_membership=new_membership,
+            routes=update_routes,
+        )
+        mechanics: dict[str, Any] = {
+            "base_speeds_ft": {"walk": 30},
+            "movement_mode": "walk",
+            "area_membership": initial_membership,
+        }
+        if initial_membership:
+            mechanics["area_routes"] = [self._route_geometry(
+                "initial_frozen_exit",
+                distance=initial_route_distance,
+            ).route_input()]
+        session = engine.execution_session(
+            program,
+            targets=(ReliabilityTarget(
+                "target",
+                15,
+                {"constitution": 2, "dexterity": 2},
+            ),),
+            selector_membership={
+                "frozen_ground_area_targets": ("target",),
+            },
+            selector_context=_selector_context_for("target"),
+            schedule=schedule,
+            target_mechanics={"target": mechanics},
+            area_response_convention="shortest_route_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            concentration_save_bonus=2,
+            area_geometry_updates=(update,),
+        )
+        return session, schedule, {
+            "activation": activation,
+            "update": update_event,
+        }
 
     def _ball_lightning_route_session(
         self,
@@ -4434,7 +4635,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         self.assertTrue(self._area_route_row(session)["membership"])
         session.close_event()
 
-        with self.subTest(boundary="dormant_ambient_before_later_entry"):
+        with self.subTest(boundary="filtered_ambient_before_later_entry"):
             delayed_session, delayed_scenario = self._frozen_entry_session(
                 entry_specs_by_target={
                     "target": ((1, "after_movement", "forced_movement"),),
@@ -4458,13 +4659,13 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 )
             )
             delayed_payload = delayed_transition.to_dict()["payload"]
-            self.assertIn(
-                "frozen_ground_difficult_terrain",
+            self.assertEqual(
                 delayed_payload["retained_ambient_component_ids"],
+                [],
             )
             self.assertEqual(
                 delayed_payload["restored_ambient_component_ids"],
-                [],
+                ["frozen_ground_difficult_terrain"],
             )
             self.assertIsNotNone(delayed_gate)
 
@@ -5647,6 +5848,1112 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 transition.to_dict()["payload"]["membership_after"],
             )
             self.assertIsNotNone(gate)
+
+    def test_ambient_membership_01_nonmember_activation_filters_component(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session(
+            entry_specs_by_target={"target": ()},
+        )
+        [activation_record] = self._activate_frozen_ground(
+            session,
+            scenario["activation"],
+        )
+        payload = activation_record.to_dict()["payload"]
+        self.assertEqual(
+            self._component_rows(
+                session,
+                "frozen_ground_difficult_terrain",
+            ),
+            [],
+        )
+        self.assertEqual(payload["filtered_branch"]["applies"], [])
+        self.assertEqual(payload["active_components_after"], [])
+        self.assertEqual(
+            payload["outside_compiled_area_membership_suppressions"],
+            [{
+                "kind": "outside_compiled_area_membership",
+                "effect_id": "frozen_ground_t0_control",
+                "area_id": "frozen_ground_cylinder",
+                "target_id": "target",
+                "source_gate_id": "frozen_ground_t0_activation",
+                "source_branch_id": (
+                    "frozen_ground_t0_activation_resolution"
+                ),
+                "component_id": "frozen_ground_difficult_terrain",
+                "authoritative_membership": False,
+                "event_id": scenario["activation"].event_id,
+                "event_sequence": scenario["activation"].sequence,
+            }],
+        )
+
+    def test_ambient_membership_02_nonmember_normalization_has_no_terrain_loss(
+        self,
+    ) -> None:
+        scenario = self._frozen_entry_scenario(
+            entry_specs_by_target={"target": ()},
+        )
+        movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        self._bind_movement_normalization(scenario, movement)
+        session = scenario["engine"].execution_session(
+            scenario["program"],
+            **scenario["session_kwargs"],
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        session.advance_to(movement.event_id)
+        record = session.normalize(target_id="target")
+        self.assertEqual(self._terrain_mobility_contributions(record), [])
+        self.assertEqual(record.to_dict()["payload"]["contributions"], [])
+        session.close_event()
+
+    def test_ambient_membership_03_nonmember_final_state_has_no_ambient(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session(
+            entry_specs_by_target={"target": ()},
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        session.complete()
+        result = session.result().to_dict()
+        target_state = result["final_normalized_state"].get("target")
+        if target_state is not None:
+            self.assertEqual(target_state["active_components"], [])
+            self.assertEqual(
+                target_state["area_movement_cost_multiplier"],
+                1.0,
+            )
+        self.assertFalse(any(
+            "frozen_ground_difficult_terrain"
+            in row["source_component_ids"]
+            or "frozen_ground_t0_control:frozen_ground_difficult_terrain"
+            in row["source_component_ids"]
+            for family in result["primitive_contributions"].values()
+            for row in family
+        ))
+        [terrain_reliability] = [
+            row for row in result["component_reliability"]
+            if row["component_id"] == "frozen_ground_difficult_terrain"
+        ]
+        zero = {"numerator": 0, "denominator": 1}
+        self.assertEqual(terrain_reliability["initially_applied"], zero)
+        self.assertEqual(terrain_reliability["ever_applied"], zero)
+        self.assertTrue(terrain_reliability["active_by_window"])
+        self.assertTrue(all(
+            window["probability"] == zero
+            for window in terrain_reliability["active_by_window"]
+        ))
+        self.assertEqual(
+            terrain_reliability["activity_interpretation"],
+            "membership_scoped_realized_target_activity",
+        )
+        self.assertEqual(
+            [
+                row["kind"]
+                for row in result["suppression_and_dominance_records"]
+                if row.get("component_id")
+                == "frozen_ground_difficult_terrain"
+            ],
+            ["outside_compiled_area_membership"],
+        )
+        one = {"numerator": 1, "denominator": 1}
+        [activation_gate] = result["gate_probabilities"]
+        [activation_branch] = result["branch_probabilities"]
+        self.assertEqual(
+            activation_gate["gate_id"],
+            "frozen_ground_t0_activation",
+        )
+        self.assertEqual(activation_gate["probability"], one)
+        self.assertEqual(
+            activation_branch["branch_id"],
+            "frozen_ground_t0_activation_resolution",
+        )
+        self.assertEqual(activation_branch["probability"], one)
+        for field_name in (
+            "any_candidate_reliability",
+            "any_component_reliability",
+        ):
+            aggregate = result[field_name]
+            self.assertEqual(
+                aggregate["activity_interpretation"],
+                "structural_gate_application_potential_unscoped_to_"
+                "runtime_membership",
+            )
+            self.assertEqual(aggregate["overall"], one)
+            self.assertEqual(
+                aggregate["by_target"],
+                [{"target_id": "target", "probability": one}],
+            )
+
+    def test_ambient_membership_04_member_activation_applies_ambient(
+        self,
+    ) -> None:
+        session, _schedule, activation = self._frozen_ground_session(
+            bind_round_one_normalization=False,
+        )
+        [activation_record] = self._activate_frozen_ground(
+            session,
+            activation,
+        )
+        [terrain] = self._component_rows(
+            session,
+            "frozen_ground_difficult_terrain",
+        )
+        self.assertEqual(terrain["applied_event_id"], activation.event_id)
+        self.assertEqual(
+            terrain["duration"],
+            {
+                "kind": "concentration",
+                "maximum_value": 1,
+                "unit": "minute",
+            },
+        )
+        self.assertIsNone(terrain["expiry_event_id"])
+        payload = activation_record.to_dict()["payload"]
+        self.assertEqual(
+            payload["filtered_branch"]["applies"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertEqual(
+            payload["outside_compiled_area_membership_suppressions"],
+            [],
+        )
+
+    def test_ambient_membership_05_entry_restores_before_normalization(
+        self,
+    ) -> None:
+        scenario = self._frozen_entry_scenario(
+            routes_by_identity={
+                ("target", 1): (
+                    self._route_geometry("long_exit", distance=45),
+                ),
+            },
+        )
+        movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        self._bind_movement_normalization(scenario, movement)
+        session = scenario["engine"].execution_session(
+            scenario["program"],
+            **scenario["session_kwargs"],
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        transition, gate = self._resolve_bound_frozen_entry(session, entry)
+        self.assertIsNotNone(gate)
+        self.assertEqual(
+            transition.to_dict()["payload"][
+                "restored_ambient_component_ids"
+            ],
+            ["frozen_ground_difficult_terrain"],
+        )
+        session.advance_to(movement.event_id)
+        normalization = session.normalize(target_id="target")
+        [terrain_loss] = self._terrain_mobility_contributions(normalization)
+        self.assertEqual(terrain_loss["quantity"], 30.0)
+        self.assertEqual(
+            terrain_loss["source_component_ids"],
+            [
+                "frozen_ground_t0_control:"
+                "frozen_ground_difficult_terrain"
+            ],
+        )
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+
+    def test_ambient_membership_06_entry_success_restores_only_ambient(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session()
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        transition, gate = self._resolve_bound_frozen_entry(
+            session,
+            entry,
+            outcome="save_success",
+        )
+        self.assertIsNotNone(gate)
+        self.assertEqual(
+            transition.to_dict()["payload"][
+                "restored_ambient_component_ids"
+            ],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertEqual(
+            {
+                row["component_id"]
+                for row in session.state_snapshot("target")
+            },
+            {"frozen_ground_difficult_terrain"},
+        )
+
+    def test_ambient_membership_07_entry_failure_restores_exact_gated_state(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session()
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        transition, gate = self._resolve_bound_frozen_entry(
+            session,
+            entry,
+            outcome="save_failure",
+        )
+        self.assertIsNotNone(gate)
+        self.assertEqual(
+            transition.to_dict()["payload"][
+                "restored_ambient_component_ids"
+            ],
+            ["frozen_ground_difficult_terrain"],
+        )
+        state = {
+            row["component_id"]: row
+            for row in session.state_snapshot("target")
+        }
+        self.assertEqual(
+            set(state),
+            {
+                "frozen_ground_difficult_terrain",
+                "frozen_ground_speed_zero",
+            },
+        )
+        target_turn_end = next(
+            event for event in scenario["schedule"].events
+            if event.kind == "target_turn_end"
+            and event.turn_id == entry.turn_id
+        )
+        self.assertEqual(
+            state["frozen_ground_speed_zero"]["expiry_event_id"],
+            target_turn_end.event_id,
+        )
+
+    def test_ambient_membership_08_exit_removes_before_normalization(
+        self,
+    ) -> None:
+        scenario = self._frozen_entry_scenario()
+        later_movement = self._movement_event(
+            scenario["schedule"],
+            round_number=2,
+        )
+        self._bind_movement_normalization(scenario, later_movement)
+        session = scenario["engine"].execution_session(
+            scenario["program"],
+            **scenario["session_kwargs"],
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        self._resolve_bound_frozen_entry(session, entry)
+        first_movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        session.advance_to(first_movement.event_id)
+        [exit_record] = session.resolve_movement_response(target_id="target")
+        exit_payload = exit_record.to_dict()["payload"]
+        self.assertTrue(exit_payload["exited"])
+        self.assertEqual(
+            exit_payload["ended_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertEqual(
+            self._component_rows(
+                session,
+                "frozen_ground_difficult_terrain",
+            ),
+            [],
+        )
+        session.close_event()
+        session.advance_to(later_movement.event_id)
+        normalization = session.normalize(target_id="target")
+        self.assertEqual(
+            self._terrain_mobility_contributions(normalization),
+            [],
+        )
+        session.close_event()
+
+    def test_ambient_membership_09_same_turn_reentry_restores_once_no_gate(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session(
+            entry_specs_by_target={
+                "target": (
+                    (1, "before_movement", "ordinary_movement"),
+                    (1, "after_movement", "ordinary_movement"),
+                ),
+            },
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        first_entry, second_entry = scenario["entries_by_target"]["target"]
+        first_transition, first_gate = self._resolve_bound_frozen_entry(
+            session,
+            first_entry,
+        )
+        self.assertIsNotNone(first_gate)
+        movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        session.advance_to(movement.event_id)
+        [exit_record] = session.resolve_movement_response(target_id="target")
+        self.assertTrue(exit_record.to_dict()["payload"]["exited"])
+        session.close_event()
+        second_transition, second_gate = self._resolve_bound_frozen_entry(
+            session,
+            second_entry,
+        )
+        self.assertEqual(
+            first_transition.to_dict()["payload"][
+                "restored_ambient_component_ids"
+            ],
+            ["frozen_ground_difficult_terrain"],
+        )
+        second_payload = second_transition.to_dict()["payload"]
+        self.assertEqual(
+            second_payload["restored_ambient_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertFalse(second_payload["frequency_permitted"])
+        self.assertEqual(second_payload["gate_requirement_ids"], [])
+        self.assertIsNone(second_gate)
+        self.assertEqual(
+            len(self._component_rows(
+                session,
+                "frozen_ground_difficult_terrain",
+            )),
+            1,
+        )
+        self.assertEqual(
+            len([
+                record for record in session.issued_records()
+                if record.record_kind == "branch_transition"
+                and record.to_dict()["payload"].get("gate_id")
+                == "frozen_ground_t0_entry_save"
+            ]),
+            1,
+        )
+
+    def test_ambient_membership_10_later_reentry_restores_once_with_gate(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session(
+            entry_specs_by_target={
+                "target": (
+                    (1, "before_movement", "ordinary_movement"),
+                    (2, "before_movement", "ordinary_movement"),
+                ),
+            },
+            routes_by_identity={
+                ("target", 1): (
+                    self._route_geometry("first_exit", distance=5),
+                ),
+                ("target", 2): (
+                    self._route_geometry("second_exit", distance=45),
+                ),
+            },
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        first_entry, second_entry = scenario["entries_by_target"]["target"]
+        first_transition, first_gate = self._resolve_bound_frozen_entry(
+            session,
+            first_entry,
+        )
+        self.assertIsNotNone(first_gate)
+        first_movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        session.advance_to(first_movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        second_transition, second_gate = self._resolve_bound_frozen_entry(
+            session,
+            second_entry,
+        )
+        self.assertEqual(
+            first_transition.to_dict()["payload"][
+                "restored_ambient_component_ids"
+            ],
+            ["frozen_ground_difficult_terrain"],
+        )
+        second_payload = second_transition.to_dict()["payload"]
+        self.assertEqual(
+            second_payload["restored_ambient_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertTrue(second_payload["frequency_permitted"])
+        self.assertEqual(
+            second_payload["gate_requirement_ids"],
+            ["frozen_ground_t0_entry_save"],
+        )
+        self.assertIsNotNone(second_gate)
+        self.assertEqual(
+            len(self._component_rows(
+                session,
+                "frozen_ground_difficult_terrain",
+            )),
+            1,
+        )
+
+    def test_ambient_membership_11_reentry_preserves_activation_expiry(
+        self,
+    ) -> None:
+        engine = self._synthetic_frozen_engine(
+            ambient_duration={
+                "kind": "relative",
+                "owner": "controller",
+                "anchor": "start_turn",
+                "offset_turns": 2,
+            },
+        )
+        session, scenario = self._frozen_entry_session(
+            engine=engine,
+            entry_specs_by_target={
+                "target": (
+                    (1, "before_movement", "ordinary_movement"),
+                    (2, "before_movement", "ordinary_movement"),
+                ),
+            },
+            routes_by_identity={
+                ("target", 1): (
+                    self._route_geometry("first_exit", distance=5),
+                ),
+                ("target", 2): (
+                    self._route_geometry("second_exit", distance=45),
+                ),
+            },
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        first_entry, second_entry = scenario["entries_by_target"]["target"]
+        first_transition, _first_gate = self._resolve_bound_frozen_entry(
+            session,
+            first_entry,
+        )
+        [first_terrain] = self._component_rows(
+            session,
+            "frozen_ground_difficult_terrain",
+        )
+        first_expiry = first_terrain["expiry_event_id"]
+        self.assertEqual(first_expiry, "r3:controller:turn:start")
+        first_movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        session.advance_to(first_movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        second_transition, _second_gate = self._resolve_bound_frozen_entry(
+            session,
+            second_entry,
+        )
+        [restored] = self._component_rows(
+            session,
+            "frozen_ground_difficult_terrain",
+        )
+        self.assertEqual(restored["applied_event_id"], second_entry.event_id)
+        self.assertEqual(restored["expiry_event_id"], first_expiry)
+        self.assertEqual(
+            first_transition.to_dict()["payload"][
+                "restored_ambient_component_ids"
+            ],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertEqual(
+            second_transition.to_dict()["payload"][
+                "restored_ambient_component_ids"
+            ],
+            ["frozen_ground_difficult_terrain"],
+        )
+
+        with self.subTest(boundary="ambient_expired_before_typed_entry"):
+            expired_engine = self._synthetic_frozen_engine(
+                ambient_duration={
+                    "kind": "relative",
+                    "owner": "controller",
+                    "anchor": "start_turn",
+                    "offset_turns": 1,
+                },
+            )
+            expired_session, expired_scenario = self._frozen_entry_session(
+                engine=expired_engine,
+                entry_specs_by_target={
+                    "target": ((
+                        2,
+                        "before_movement",
+                        "ordinary_movement",
+                    ),),
+                },
+            )
+            self._activate_frozen_ground(
+                expired_session,
+                expired_scenario["activation"],
+            )
+            [expired_entry] = expired_scenario["entries_by_target"][
+                "target"
+            ]
+            expired_transition, expired_gate = (
+                self._resolve_bound_frozen_entry(
+                    expired_session,
+                    expired_entry,
+                )
+            )
+            self.assertIsNotNone(expired_gate)
+            expired_payload = expired_transition.to_dict()["payload"]
+            self.assertEqual(expired_payload["ambient_area_component_ids"], [])
+            self.assertEqual(
+                expired_payload["restored_ambient_component_ids"],
+                [],
+            )
+            self.assertEqual(
+                self._component_rows(
+                    expired_session,
+                    "frozen_ground_difficult_terrain",
+                ),
+                [],
+            )
+            expired_movement = self._movement_event(
+                expired_scenario["schedule"],
+                round_number=2,
+            )
+            expired_session.advance_to(expired_movement.event_id)
+            expired_session.resolve_movement_response(target_id="target")
+            expired_session.close_event()
+            expired_session.complete()
+            expired_result = expired_session.result().to_dict()
+            [expired_reliability] = [
+                row for row in expired_result["component_reliability"]
+                if row["component_id"]
+                == "frozen_ground_difficult_terrain"
+            ]
+            zero = {"numerator": 0, "denominator": 1}
+            self.assertEqual(expired_reliability["ever_applied"], zero)
+            [entry_window] = [
+                window
+                for window in expired_reliability["active_by_window"]
+                if window["window_id"] == expired_entry.event_id
+            ]
+            self.assertEqual(entry_window["probability"], zero)
+            self.assertTrue(all(
+                window["probability"] == zero
+                for window in expired_reliability["active_by_window"]
+            ))
+
+    def test_ambient_membership_12_normalize_rejects_injected_nonmember(
+        self,
+    ) -> None:
+        scenario = self._frozen_entry_scenario(
+            entry_specs_by_target={"target": ()},
+        )
+        movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        self._bind_movement_normalization(scenario, movement)
+        session = scenario["engine"].execution_session(
+            scenario["program"],
+            **scenario["session_kwargs"],
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        session.advance_to(movement.event_id)
+        _activate_component(
+            session._state,
+            scenario["program"],
+            scenario["program"].component(
+                "frozen_ground_difficult_terrain"
+            ),
+            event_id="manual:ambient:injection",
+        )
+        before = (
+            json.loads(json.dumps(session._state.snapshot("target"))),
+            session._area_route_state_rows("target"),
+            session.issued_records(),
+            frozenset(session._current_required_operations),
+            session._operation_sequence,
+        )
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"(?:[Aa]mbient|[Aa]rea components).*?"
+            r"(?:membership|nonmember)|(?:membership|nonmember).*?"
+            r"(?:[Aa]mbient|[Aa]rea components)",
+        ):
+            session.normalize(target_id="target")
+        self.assertEqual(
+            (
+                json.loads(json.dumps(session._state.snapshot("target"))),
+                session._area_route_state_rows("target"),
+                session.issued_records(),
+                frozenset(session._current_required_operations),
+                session._operation_sequence,
+            ),
+            before,
+        )
+
+    def test_ambient_membership_13_result_rejects_injected_nonmember(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session(
+            entry_specs_by_target={"target": ()},
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        session.complete()
+        _activate_component(
+            session._state,
+            scenario["program"],
+            scenario["program"].component(
+                "frozen_ground_difficult_terrain"
+            ),
+            event_id="manual:ambient:injection",
+        )
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"(?:[Aa]mbient|[Aa]rea components).*?"
+            r"(?:membership|nonmember)|(?:membership|nonmember).*?"
+            r"(?:[Aa]mbient|[Aa]rea components)",
+        ):
+            session.result()
+        self.assertIsNone(session._cached_result)
+
+    def test_ambient_membership_14_shortest_route_scopes_ambient(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session(
+            routes_by_identity={
+                ("target", 1): (
+                    self._route_geometry("long_exit", distance=45),
+                ),
+            },
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        self.assertEqual(
+            self._component_rows(
+                session,
+                "frozen_ground_difficult_terrain",
+            ),
+            [],
+        )
+        [entry] = scenario["entries_by_target"]["target"]
+        self._resolve_bound_frozen_entry(session, entry)
+        movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        session.advance_to(movement.event_id)
+        [response] = session.resolve_movement_response(target_id="target")
+        selected = response.to_dict()["payload"]["selected_route"]
+        self.assertEqual(selected["movement_cost_multiplier"], 2)
+        self.assertEqual(selected["progress_ft"], 15)
+        self.assertEqual(selected["remaining_distance_ft"], 30)
+        self.assertTrue(self._area_route_row(session)["membership"])
+        session.close_event()
+
+    def test_ambient_membership_15_fixed_occupancy_scopes_without_progress(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session(
+            area_response_convention="fixed_occupancy_v1",
+        )
+        self._activate_frozen_ground(session, scenario["activation"])
+        self.assertEqual(
+            self._component_rows(
+                session,
+                "frozen_ground_difficult_terrain",
+            ),
+            [],
+        )
+        [entry] = scenario["entries_by_target"]["target"]
+        transition, _gate = self._resolve_bound_frozen_entry(session, entry)
+        [route_state] = transition.to_dict()["post_operation_route_state"]
+        self.assertTrue(route_state["membership"])
+        self.assertEqual(route_state["routes"], [])
+        self.assertIsNone(route_state["selected_route_id"])
+        self.assertIsNone(route_state["remaining_distance_ft"])
+        self.assertEqual(
+            len(self._component_rows(
+                session,
+                "frozen_ground_difficult_terrain",
+            )),
+            1,
+        )
+        movement = self._movement_event(
+            scenario["schedule"],
+            round_number=1,
+        )
+        before = session.area_route_snapshot("target")
+        session.advance_to(movement.event_id)
+        [response] = session.resolve_movement_response(target_id="target")
+        payload = response.to_dict()["payload"]
+        self.assertEqual(payload["reason"], "fixed_occupancy")
+        self.assertFalse(payload["exited"])
+        self.assertIsNone(payload["selected_route"])
+        self.assertEqual(session.area_route_snapshot("target"), before)
+        session.close_event()
+
+    def test_ambient_membership_16_moving_exit_removes_ambient(
+        self,
+    ) -> None:
+        session, schedule, events = self._moving_frozen_session(
+            initial_membership=True,
+            new_membership=False,
+        )
+        self._activate_frozen_ground(session, events["activation"])
+        self.assertEqual(
+            len(self._component_rows(
+                session,
+                "frozen_ground_difficult_terrain",
+            )),
+            1,
+        )
+        movement = self._movement_event(schedule, round_number=1)
+        session.advance_to(movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        update = events["update"]
+        session.advance_to(update.event_id)
+        record = session.apply_area_geometry_update(target_id="target")
+        payload = record.to_dict()["payload"]
+        self.assertTrue(payload["membership_before"])
+        self.assertFalse(payload["membership_after"])
+        self.assertEqual(
+            payload["ended_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertEqual(
+            self._component_rows(
+                session,
+                "frozen_ground_difficult_terrain",
+            ),
+            [],
+        )
+        self.assertFalse(self._area_route_row(session)["membership"])
+        session.close_event()
+
+    def test_ambient_membership_17_nontriggering_move_restores_ambient(
+        self,
+    ) -> None:
+        session, schedule, events = self._moving_frozen_session(
+            initial_membership=False,
+            new_membership=True,
+        )
+        self._activate_frozen_ground(session, events["activation"])
+        self.assertEqual(
+            self._component_rows(
+                session,
+                "frozen_ground_difficult_terrain",
+            ),
+            [],
+        )
+        update = events["update"]
+        session.advance_to(update.event_id)
+        before_records = session.issued_records()
+        geometry = session.apply_area_geometry_update(target_id="target")
+        geometry_payload = geometry.to_dict()["payload"]
+        self.assertFalse(geometry_payload["moved_area_counts_as_entry"])
+        self.assertEqual(
+            geometry_payload["restored_ambient_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        [entry_record] = [
+            record
+            for record in session.issued_records()[len(before_records):]
+            if record.record_kind == "area_entry"
+        ]
+        entry_payload = entry_record.to_dict()["payload"]
+        self.assertLess(
+            geometry.operation_sequence,
+            entry_record.operation_sequence,
+        )
+        self.assertEqual(
+            entry_payload["frequency_decision"],
+            "area_movement_does_not_count",
+        )
+        self.assertEqual(entry_payload["gate_requirement_ids"], [])
+        self.assertFalse(entry_payload["frequency_history_consumed"])
+        self.assertEqual(session._area_entry_trigger_history, set())
+        self.assertEqual(
+            len(self._component_rows(
+                session,
+                "frozen_ground_difficult_terrain",
+            )),
+            1,
+        )
+        session.close_event()
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.sequence > update.sequence
+        )
+        session.advance_to(movement.event_id)
+        [response] = session.resolve_movement_response(target_id="target")
+        self.assertEqual(
+            response.to_dict()["payload"]["selected_route"][
+                "movement_cost_multiplier"
+            ],
+            2,
+        )
+        session.close_event()
+
+    def test_ambient_membership_18_target_permutation_is_independent(
+        self,
+    ) -> None:
+        observed: dict[tuple[str, ...], dict[str, Any]] = {}
+        for target_ids in (("alpha", "beta"), ("beta", "alpha")):
+            with self.subTest(target_ids=target_ids):
+                scenario = self._frozen_entry_scenario(
+                    target_ids=target_ids,
+                    entry_specs_by_target={
+                        "alpha": (),
+                        "beta": ((
+                            1,
+                            "before_movement",
+                            "ordinary_movement",
+                        ),),
+                    },
+                    routes_by_identity={
+                        ("beta", 1): (
+                            self._route_geometry(
+                                "beta_entry_exit",
+                                distance=45,
+                            ),
+                        ),
+                    },
+                )
+                alpha_mechanics = scenario["session_kwargs"][
+                    "target_mechanics"
+                ]["alpha"]
+                alpha_mechanics["area_membership"] = True
+                alpha_mechanics["area_routes"] = [self._route_geometry(
+                    "alpha_initial_exit",
+                    distance=90,
+                ).route_input()]
+                session = scenario["engine"].execution_session(
+                    scenario["program"],
+                    **scenario["session_kwargs"],
+                )
+                activation_records = self._activate_frozen_ground(
+                    session,
+                    scenario["activation"],
+                    target_ids,
+                )
+                self.assertEqual(
+                    len(self._component_rows(
+                        session,
+                        "frozen_ground_difficult_terrain",
+                        target_id="alpha",
+                    )),
+                    1,
+                )
+                self.assertEqual(
+                    self._component_rows(
+                        session,
+                        "frozen_ground_difficult_terrain",
+                        target_id="beta",
+                    ),
+                    [],
+                )
+                [beta_entry] = scenario["entries_by_target"]["beta"]
+                while session.cursor + 1 < beta_entry.sequence:
+                    event = scenario["schedule"].events[session.cursor + 1]
+                    session.advance(event.event_id)
+                    if (
+                        event.kind == "target_movement_opportunity"
+                        and event.target_id == "alpha"
+                    ):
+                        session.resolve_movement_response(target_id="alpha")
+                    session.close_event()
+                transition, gate = self._resolve_bound_frozen_entry(
+                    session,
+                    beta_entry,
+                    target_id="beta",
+                )
+                self.assertIsNotNone(gate)
+                self.assertEqual(
+                    transition.to_dict()["payload"][
+                        "restored_ambient_component_ids"
+                    ],
+                    ["frozen_ground_difficult_terrain"],
+                )
+                suppressions = {
+                    record.target_id: record.to_dict()["payload"][
+                        "outside_compiled_area_membership_suppressions"
+                    ]
+                    for record in activation_records
+                }
+                observed[target_ids] = {
+                    "component_counts": {
+                        target_id: len(self._component_rows(
+                            session,
+                            "frozen_ground_difficult_terrain",
+                            target_id=target_id,
+                        ))
+                        for target_id in sorted(target_ids)
+                    },
+                    "membership": {
+                        target_id: self._area_route_row(
+                            session,
+                            target_id,
+                        )["membership"]
+                        for target_id in sorted(target_ids)
+                    },
+                    "suppressed_targets": sorted(
+                        target_id for target_id, rows in suppressions.items()
+                        if rows
+                    ),
+                }
+        self.assertEqual(
+            observed[("alpha", "beta")],
+            observed[("beta", "alpha")],
+        )
+        self.assertEqual(
+            observed[("alpha", "beta")],
+            {
+                "component_counts": {"alpha": 1, "beta": 1},
+                "membership": {"alpha": True, "beta": True},
+                "suppressed_targets": ["beta"],
+            },
+        )
+
+    def test_ambient_membership_19_initiatives_restore_at_exact_entry(
+        self,
+    ) -> None:
+        observed: dict[tuple[str, str], tuple[int, str]] = {}
+        for initiative, entry_round in (
+            ("fighter_first_v1", 1),
+            ("target_before_fighter_v1", 2),
+        ):
+            for convention in (
+                "shortest_route_v1",
+                "fixed_occupancy_v1",
+            ):
+                with self.subTest(
+                    initiative=initiative,
+                    convention=convention,
+                ):
+                    session, scenario = self._frozen_entry_session(
+                        initiative=initiative,
+                        entry_specs_by_target={
+                            "target": ((
+                                entry_round,
+                                "before_movement",
+                                "ordinary_movement",
+                            ),),
+                        },
+                        area_response_convention=convention,
+                    )
+                    self._activate_frozen_ground(
+                        session,
+                        scenario["activation"],
+                    )
+                    self.assertEqual(
+                        self._component_rows(
+                            session,
+                            "frozen_ground_difficult_terrain",
+                        ),
+                        [],
+                    )
+                    [entry] = scenario["entries_by_target"]["target"]
+                    session.advance_to(entry.event_id)
+                    self.assertEqual(
+                        self._component_rows(
+                            session,
+                            "frozen_ground_difficult_terrain",
+                        ),
+                        [],
+                    )
+                    transition = session.resolve_area_entry(
+                        target_id="target",
+                    )
+                    [terrain] = self._component_rows(
+                        session,
+                        "frozen_ground_difficult_terrain",
+                    )
+                    self.assertEqual(
+                        terrain["applied_event_id"],
+                        entry.event_id,
+                    )
+                    gate = session.apply_branch(
+                        gate_id="frozen_ground_t0_entry_save",
+                        outcome="save_success",
+                        target_id="target",
+                    )
+                    self.assertLess(
+                        transition.operation_sequence,
+                        gate.operation_sequence,
+                    )
+                    session.close_event()
+                    movement = self._movement_event(
+                        scenario["schedule"],
+                        round_number=entry_round,
+                    )
+                    session.advance_to(movement.event_id)
+                    [response] = session.resolve_movement_response(
+                        target_id="target",
+                    )
+                    payload = response.to_dict()["payload"]
+                    if convention == "shortest_route_v1":
+                        self.assertEqual(
+                            payload["selected_route"][
+                                "movement_cost_multiplier"
+                            ],
+                            2,
+                        )
+                    else:
+                        self.assertEqual(payload["reason"], "fixed_occupancy")
+                        self.assertIsNone(payload["selected_route"])
+                    session.close_event()
+                    observed[(initiative, convention)] = (
+                        entry.round,
+                        terrain["applied_event_id"],
+                    )
+        self.assertEqual(
+            {
+                key: value[0] for key, value in observed.items()
+            },
+            {
+                ("fighter_first_v1", "shortest_route_v1"): 1,
+                ("fighter_first_v1", "fixed_occupancy_v1"): 1,
+                ("target_before_fighter_v1", "shortest_route_v1"): 2,
+                ("target_before_fighter_v1", "fixed_occupancy_v1"): 2,
+            },
+        )
+
+    def test_ambient_membership_20_existing_regression_inventory_is_preserved(
+        self,
+    ) -> None:
+        test_type = type(self)
+        self.assertEqual(
+            len([
+                name for name in dir(test_type)
+                if name.startswith("test_area_entry_transition_")
+            ]),
+            18,
+        )
+        self.assertEqual(
+            len([
+                name for name in dir(test_type)
+                if name.startswith("test_area_route_")
+            ]),
+            16,
+        )
+        self.assertEqual(
+            len([
+                name for name in dir(test_type)
+                if name.startswith("test_area_membership_")
+                and name[len("test_area_membership_"):].startswith(
+                    tuple(str(index).zfill(2) for index in range(1, 13))
+                )
+            ]),
+            12,
+        )
+        for name in (
+            "test_area_entry_transition_08_same_turn_exit_reentry_does_not_retrigger",
+            "test_area_entry_transition_12_final_replay_accepts_ordered_entry_gate",
+            "test_area_entry_transition_13_final_replay_rejects_gate_without_entry",
+            "test_area_route_01_frozen_progress_is_carried_then_exits",
+            "test_area_membership_03_exit_prunes_later_recurring_gate_requirement",
+            "test_concentration_program_requires_bound_tracker_at_construction",
+        ):
+            self.assertTrue(callable(getattr(test_type, name, None)), name)
 
     def test_zero_area_01_both_conventions_create_and_complete_sessions(self) -> None:
         results = {

@@ -1333,6 +1333,7 @@ class ControlEngine:
         condition_immunities: Iterable[str] = (),
         _active_guard_snapshot: Sequence[Mapping[str, Any]] | None = None,
         _allow_reachable_same_event: bool = False,
+        _suppressed_application_component_ids: Iterable[str] = (),
     ) -> dict[str, Any]:
         """Apply one observed, reachable branch for one selected target.
 
@@ -1425,10 +1426,26 @@ class ControlEngine:
                 for selector_id in component.target_selector_ids
             )
 
+        suppressed_application_component_ids = frozenset(
+            _identifier(
+                component_id,
+                "_suppressed_application_component_ids item",
+            )
+            for component_id in _suppressed_application_component_ids
+        )
+        invalid_suppressions = sorted(
+            suppressed_application_component_ids - set(branch.applies)
+        )
+        if invalid_suppressions:
+            raise ControlEngineError(
+                "Suppressed branch applications are not present in the "
+                f"compiled branch: {invalid_suppressions}"
+            )
         applies = [
             component_id
             for component_id in branch.applies
             if applies_to_target(component_id)
+            and component_id not in suppressed_application_component_ids
         ]
         replaces = [
             component_id
@@ -7758,6 +7775,7 @@ class ControlExecutionSession:
         )
         self._cursor = -1
         self._current_event: TimelineEvent | None = None
+        self._current_event_expiry_complete = False
         self._current_pre_state_json: str | None = None
         self._current_pre_route_state_json: str | None = None
         self._operation_sequence = 0
@@ -8042,7 +8060,16 @@ class ControlExecutionSession:
     ) -> tuple[str, ...]:
         """Return selected area-bound components applied by activation cadence."""
 
+        if area_id not in self._persistent_area_ids:
+            return ()
         bindings = self._engine._compiled_area_bindings(self._program)
+        area_selector_ids = {
+            selector.selector_id
+            for selector in self._program.selectors
+            if selector.area is not None
+            and selector.area.persistent
+            and selector.area.area_id == area_id
+        }
         return tuple(sorted(
             component.component_id
             for component in self._program.components
@@ -8053,10 +8080,275 @@ class ControlExecutionSession:
                 or self._choices[component.choice_id] == component.choice_option_id
             )
             and any(
-                target_id in self._membership[selector_id]
+                selector_id in area_selector_ids
+                and target_id in self._membership[selector_id]
                 for selector_id in component.target_selector_ids
             )
         ))
+
+    def _ambient_component_canonically_suppressed(
+        self,
+        *,
+        component_id: str,
+        target_id: str,
+    ) -> bool:
+        component = self._program.component(component_id)
+        return bool(
+            component.magnitude.kind == "condition"
+            and component.magnitude.data.get("condition")
+            in self._targets_by_id[target_id].condition_immunities
+        )
+
+    def _ambient_activation_evidence(
+        self,
+        *,
+        area_id: str,
+        target_id: str,
+        component_id: str,
+        before_sequence: int | None = None,
+    ) -> tuple[dict[str, Any], ...]:
+        """Return canonical realized-or-membership-filtered activation rows."""
+
+        rows: list[dict[str, Any]] = []
+        for transition in self._event_state_transitions:
+            event_id = transition.get("event_id")
+            gate_id = transition.get("gate_id")
+            if not isinstance(event_id, str) or not isinstance(gate_id, str):
+                continue
+            event = self._schedule.event(event_id)
+            if before_sequence is not None and event.sequence >= before_sequence:
+                continue
+            try:
+                gate = self._program.gate(gate_id)
+            except Exception:
+                continue
+            if (
+                gate.trigger.kind != "activation"
+                or transition.get("operation") != "branch_transition"
+                or transition.get("effect_id") != self._program.effect_id
+                or transition.get("target_id") != target_id
+            ):
+                continue
+            filtered_applies = transition.get("filtered_branch", {}).get(
+                "applies",
+                (),
+            )
+            suppression = next((
+                dict(item)
+                for item in transition.get(
+                    "outside_compiled_area_membership_suppressions",
+                    (),
+                )
+                if item.get("kind") == "outside_compiled_area_membership"
+                and item.get("area_id") == area_id
+                and item.get("component_id") == component_id
+                and item.get("target_id") == target_id
+            ), None)
+            if component_id not in filtered_applies and suppression is None:
+                continue
+            rows.append({
+                "event_id": event.event_id,
+                "event_sequence": event.sequence,
+                "gate_id": gate.gate_id,
+                "branch_id": transition.get("branch_id"),
+                "component_id": component_id,
+                "area_id": area_id,
+                "target_id": target_id,
+                "membership_filtered": suppression is not None,
+            })
+        return tuple(rows)
+
+    def _ambient_evidence_is_live(
+        self,
+        *,
+        component_id: str,
+        target_id: str,
+        evidence: Mapping[str, Any],
+    ) -> bool:
+        component = self._program.component(component_id)
+        expiry_index = resolve_expiry_index(
+            self._schedule,
+            str(evidence["event_id"]),
+            component.duration.to_dict(),
+            target_id=target_id,
+        )
+        if expiry_index is None:
+            return True
+        if self._current_event is not None:
+            if self._current_event_expiry_complete:
+                return expiry_index > self._current_event.sequence
+            return expiry_index >= self._current_event.sequence
+        return expiry_index > self._cursor
+
+    def _activation_gate_pending_for_target(self, target_id: str) -> bool:
+        if self._current_event is None:
+            return False
+        for operation in self._current_required_operations:
+            parts = operation.split(":", 2)
+            if len(parts) < 2 or parts[0] != "branch":
+                continue
+            if len(parts) == 3 and parts[2] != target_id:
+                continue
+            try:
+                gate = self._program.gate(parts[1])
+            except Exception:
+                continue
+            if gate.trigger.kind == "activation":
+                return True
+        return False
+
+    def _validate_ambient_membership_state(self) -> None:
+        """Fail closed when live component state disagrees with area authority."""
+
+        bindings = self._engine._compiled_area_bindings(self._program)
+        active_by_target = {
+            target_id: {
+                component.component_id
+                for component in self._state.active_components(target_id)
+                if component.effect_id == self._program.effect_id
+            }
+            for target_id in self._schedule.target_ids
+        }
+        for target_id, active_ids in active_by_target.items():
+            for component_id in sorted(active_ids & set(bindings)):
+                area_ids = bindings[component_id]
+                if not any(
+                    self._area_route_state_or_none(
+                        target_id,
+                        area_id=area_id,
+                    ) is not None
+                    for area_id in area_ids
+                ):
+                    raise ControlEngineError(
+                        "Active area-bound component lacks authoritative area-route "
+                        f"state: target={target_id!r}, component={component_id!r}"
+                    )
+            for area_id in sorted(self._persistent_area_ids):
+                route_state = self._area_route_state_or_none(
+                    target_id,
+                    area_id=area_id,
+                )
+                if route_state is None:
+                    continue
+                area_active_ids = {
+                    component_id
+                    for component_id in active_ids
+                    if area_id in bindings.get(component_id, ())
+                }
+                ambient_ids = set(self._ambient_area_component_ids(
+                    area_id=area_id,
+                    target_id=target_id,
+                ))
+                active_ambient_ids = ambient_ids & active_ids
+                if not route_state.membership and area_active_ids:
+                    raise ControlEngineError(
+                        "Active ambient or other area components contradict "
+                        "authoritative membership for nonmember "
+                        f"target {target_id!r} and area {area_id!r}: "
+                        f"{sorted(area_active_ids)}"
+                    )
+                area_is_active = bool(
+                    self._area_effect_is_active(area_id)
+                    or (
+                        self._current_event is not None
+                        and self._current_event.kind == "activation"
+                        and not self._activation_gate_pending_for_target(
+                            target_id
+                        )
+                    )
+                )
+                if not area_is_active and active_ambient_ids:
+                    raise ControlEngineError(
+                        "Active ambient area components outlive their compiled "
+                        f"persistent area: {sorted(active_ambient_ids)}"
+                    )
+                if not route_state.membership or not area_is_active:
+                    continue
+                missing: list[str] = []
+                for component_id in sorted(ambient_ids):
+                    if self._ambient_component_canonically_suppressed(
+                        component_id=component_id,
+                        target_id=target_id,
+                    ):
+                        continue
+                    evidence = self._ambient_activation_evidence(
+                        area_id=area_id,
+                        target_id=target_id,
+                        component_id=component_id,
+                    )
+                    if len(evidence) > 1:
+                        raise ControlEngineError(
+                            "Ambient component has ambiguous activation chronology: "
+                            f"target={target_id!r}, component={component_id!r}"
+                        )
+                    if not evidence:
+                        continue
+                    if (
+                        self._ambient_evidence_is_live(
+                            component_id=component_id,
+                            target_id=target_id,
+                            evidence=evidence[0],
+                        )
+                        and component_id not in active_ids
+                    ):
+                        missing.append(component_id)
+                if missing:
+                    raise ControlEngineError(
+                        "Authoritative area member lacks applicable ambient "
+                        f"components for area {area_id!r}: {missing}"
+                    )
+
+    def _live_ambient_area_component_plan(
+        self,
+        *,
+        area_id: str,
+        target_id: str,
+        event_sequence: int,
+    ) -> tuple[tuple[CompiledComponent, str | None, str], ...]:
+        """Resolve canonical activation provenance and unexpired duration."""
+
+        rows: list[tuple[CompiledComponent, str | None, str]] = []
+        for component_id in self._ambient_area_component_ids(
+            area_id=area_id,
+            target_id=target_id,
+        ):
+            if self._ambient_component_canonically_suppressed(
+                component_id=component_id,
+                target_id=target_id,
+            ):
+                continue
+            evidence = self._ambient_activation_evidence(
+                area_id=area_id,
+                target_id=target_id,
+                component_id=component_id,
+                before_sequence=event_sequence,
+            )
+            if len(evidence) > 1:
+                raise ControlEngineError(
+                    f"Ambient area component {component_id!r} requires exactly "
+                    "one prior realized or membership-filtered activation"
+                )
+            if not evidence:
+                continue
+            activation_event_id = str(evidence[0]["event_id"])
+            component = self._program.component(component_id)
+            expiry_index = resolve_expiry_index(
+                self._schedule,
+                activation_event_id,
+                component.duration.to_dict(),
+                target_id=target_id,
+            )
+            if expiry_index is not None and expiry_index < event_sequence:
+                continue
+            rows.append((
+                component,
+                (
+                    self._schedule.events[expiry_index].event_id
+                    if expiry_index is not None else None
+                ),
+                activation_event_id,
+            ))
+        return tuple(rows)
 
     def _ambient_area_restoration_plan(
         self,
@@ -8066,62 +8358,57 @@ class ControlExecutionSession:
     ) -> dict[str, Any]:
         """Preflight exact ambient restoration before membership mutation."""
 
-        ambient_ids = self._ambient_area_component_ids(
+        authority_rows = self._live_ambient_area_component_plan(
             area_id=transition.area_id,
             target_id=transition.target_id,
+            event_sequence=event.sequence,
+        )
+        ambient_ids = tuple(
+            component.component_id
+            for component, _expiry_event_id, _activation_event_id
+            in authority_rows
         )
         active_ids = {
             component.component_id
             for component in self._state.active_components(transition.target_id)
             if component.effect_id == transition.effect_id
         }
-        retained_ids = tuple(
-            component_id
-            for component_id in ambient_ids
-            if component_id in active_ids
+        restore_rows = tuple(
+            row for row in authority_rows
+            if row[0].component_id not in active_ids
         )
-        restore_rows: list[tuple[CompiledComponent, str | None]] = []
-        for component_id in ambient_ids:
-            if component_id in active_ids:
+        occupied_nonindependent_keys = {
+            str(component.stacking.get("key"))
+            for component in self._state.active_components(
+                transition.target_id
+            )
+            if component.effect_id == transition.effect_id
+            and component.stacking.get("mode") != "independent"
+        }
+        planned_nonindependent_keys: set[str] = set()
+        for component, _expiry_event_id, _activation_event_id in restore_rows:
+            stacking = component.stacking.data.to_dict()
+            if stacking.get("mode") == "independent":
                 continue
-            component = self._program.component(component_id)
-            activation_events = tuple(
-                candidate
-                for candidate in self._schedule.events
-                if candidate.sequence < event.sequence
-                and any(
-                    cadence.kind == "activation"
-                    and typed_event_matches(
-                        candidate,
-                        cadence.data.to_dict(),
-                        target_id=transition.target_id,
-                        triggering_turn_id=candidate.turn_id,
-                    )
-                    for cadence in component.cadence_apply
-                )
-            )
-            if len(activation_events) != 1:
+            key = str(stacking.get("key"))
+            if (
+                key in occupied_nonindependent_keys
+                or key in planned_nonindependent_keys
+            ):
                 raise ControlEngineError(
-                    f"Ambient area component {component_id!r} requires exactly "
-                    "one prior canonical activation event"
+                    "Ambient restoration has a nonstacking conflict before "
+                    f"membership mutation: component={component.component_id!r}, "
+                    f"stacking_key={key!r}"
                 )
-            activation_event = activation_events[0]
-            expiry_index = resolve_expiry_index(
-                self._schedule,
-                activation_event.event_id,
-                component.duration.to_dict(),
-                target_id=transition.target_id,
-            )
-            expiry_event_id = (
-                self._schedule.events[expiry_index].event_id
-                if expiry_index is not None
-                else None
-            )
-            restore_rows.append((component, expiry_event_id))
+            planned_nonindependent_keys.add(key)
         return {
             "ambient_component_ids": ambient_ids,
-            "retained_component_ids": retained_ids,
-            "restore_rows": tuple(restore_rows),
+            "retained_component_ids": tuple(
+                component_id
+                for component_id in ambient_ids
+                if component_id in active_ids
+            ),
+            "restore_rows": restore_rows,
         }
 
     def _restore_ambient_area_components(
@@ -8132,7 +8419,7 @@ class ControlExecutionSession:
         event: TimelineEvent,
     ) -> tuple[str, ...]:
         restored: list[str] = []
-        for component, expiry_event_id in plan["restore_rows"]:
+        for component, expiry_event_id, _activation_event_id in plan["restore_rows"]:
             applied = self._state.apply_component(
                 effect_id=self._program.effect_id,
                 component=self._engine._state_component_definition(component),
@@ -8500,6 +8787,7 @@ class ControlExecutionSession:
         kinds: Iterable[str] | None = None,
     ) -> TimelineEvent:
         self._validate_scenario_identity()
+        self._validate_ambient_membership_state()
         event = self._current_event
         if event is None:
             raise ControlEngineError(
@@ -8650,6 +8938,123 @@ class ControlExecutionSession:
             and component.component_id in bindings
         }))
 
+    def _outside_membership_ambient_suppressions(
+        self,
+        *,
+        gate: Any,
+        branch: Any,
+        target_id: str,
+        event: TimelineEvent,
+    ) -> tuple[dict[str, Any], ...]:
+        """Derive activation applications barred by authoritative membership."""
+
+        return self._outside_membership_ambient_suppressions_from_routes(
+            gate=gate,
+            branch=branch,
+            target_id=target_id,
+            event=event,
+            route_rows=self._area_route_state_rows(),
+        )
+
+    def _outside_membership_ambient_suppressions_from_routes(
+        self,
+        *,
+        gate: Any,
+        branch: Any,
+        target_id: str,
+        event: TimelineEvent,
+        route_rows: Sequence[Mapping[str, Any]],
+    ) -> tuple[dict[str, Any], ...]:
+        """Purely derive membership filtering from one attested route snapshot."""
+
+        if gate.trigger.kind != "activation":
+            return ()
+        rows: list[dict[str, Any]] = []
+        for area_id in sorted(self._persistent_area_ids):
+            ambient_ids = set(self._ambient_area_component_ids(
+                area_id=area_id,
+                target_id=target_id,
+            ))
+            component_ids = sorted(ambient_ids & set(branch.applies))
+            if not component_ids:
+                continue
+            matches = [
+                row for row in route_rows
+                if row.get("effect_id") == self._program.effect_id
+                and row.get("area_id") == area_id
+                and row.get("target_id") == target_id
+            ]
+            if len(matches) != 1:
+                raise ControlEngineError(
+                    "Ambient area application lacks authoritative area-route "
+                    f"state for target {target_id!r} and area {area_id!r}"
+                )
+            if matches[0].get("membership") is True:
+                continue
+            if matches[0].get("membership") is not False:
+                raise ControlEngineError(
+                    "Ambient area application has malformed authoritative "
+                    "membership state"
+                )
+            rows.extend({
+                "kind": "outside_compiled_area_membership",
+                "effect_id": self._program.effect_id,
+                "area_id": area_id,
+                "target_id": target_id,
+                "source_gate_id": gate.gate_id,
+                "source_branch_id": branch.branch_id,
+                "component_id": component_id,
+                "authoritative_membership": False,
+                "event_id": event.event_id,
+                "event_sequence": event.sequence,
+            } for component_id in component_ids)
+        return tuple(rows)
+
+    def _validate_branch_area_application_membership(
+        self,
+        *,
+        branch: Any,
+        target_id: str,
+        suppressed_component_ids: Iterable[str],
+    ) -> None:
+        """Reject impossible nonmember area applications before state mutation."""
+
+        suppressed = set(suppressed_component_ids)
+        bindings = self._engine._compiled_area_bindings(self._program)
+        for component_id in branch.applies:
+            component = self._program.component(component_id)
+            if (
+                component.choice_id is not None
+                and self._choices[component.choice_id]
+                != component.choice_option_id
+            ):
+                continue
+            if not any(
+                target_id in self._membership[selector_id]
+                for selector_id in component.target_selector_ids
+            ):
+                continue
+            for area_id in bindings.get(component_id, ()):
+                route_state = self._area_route_state_or_none(
+                    target_id,
+                    area_id=area_id,
+                )
+                if route_state is None:
+                    raise ControlEngineError(
+                        "Area-bound branch application lacks authoritative "
+                        f"area-route state for target {target_id!r}"
+                    )
+                if (
+                    not route_state.membership
+                    and component_id not in suppressed
+                ):
+                    raise ControlEngineError(
+                        "Nonmember area-bound branch application is forbidden "
+                        "before state mutation: "
+                        f"target={target_id!r}, area={area_id!r}, "
+                        f"component={component_id!r}"
+                    )
+
     def _plan_reachable_gate(
         self,
         *,
@@ -8770,6 +9175,7 @@ class ControlExecutionSession:
         """Advance exactly one schedule position; skipping is never implicit."""
 
         self._validate_scenario_identity()
+        self._validate_ambient_membership_state()
         if isinstance(event_id, _SessionEventReference):
             if (
                 event_id._issuer is not self._issuer
@@ -8807,6 +9213,7 @@ class ControlExecutionSession:
             )
 
         self._current_event = event
+        self._current_event_expiry_complete = False
         self._current_pre_state_json = _canonical_json(self._state.snapshot())
         self._current_pre_route_state_json = self._area_route_state_json()
         self._current_required_operations = set(
@@ -8885,24 +9292,6 @@ class ControlExecutionSession:
                     "Active area-bound components lack authoritative live area "
                     f"membership for target {target!r}"
                 )
-            non_ambient_area_component_ids = (
-                set(area_component_ids)
-                - set(self._ambient_area_component_ids(
-                    area_id=route_state.area_id,
-                    target_id=target,
-                ))
-                if route_state is not None else set(area_component_ids)
-            )
-            if (
-                route_state is not None
-                and not route_state.membership
-                and non_ambient_area_component_ids
-            ):
-                raise ControlEngineError(
-                    "Active non-ambient area components lack authoritative live "
-                    f"membership for target {target!r}: "
-                    f"{sorted(non_ambient_area_component_ids)}"
-                )
             live_area_membership = bool(
                 route_state is not None
                 and route_state.membership
@@ -8976,6 +9365,7 @@ class ControlExecutionSession:
         if self._current_pre_state_json is None:  # pragma: no cover
             raise ControlEngineError("Current event has no pre-event snapshot")
         pre_expiry = _canonical_json(self._state.snapshot())
+        self._current_event_expiry_complete = True
         expired = self._state.expire(event.event_id)
         if expired:
             self._issue(
@@ -8994,6 +9384,7 @@ class ControlExecutionSession:
         if event.kind == "activation" and not self._concentration_required:
             self._area_effect_started = True
             self._area_effect_ended = False
+        self._validate_ambient_membership_state()
         self._current_required_operations.discard("component_expiry")
         snapshot = _ClosedEventSnapshot(
             scenario_digest=self._scenario_digest,
@@ -9007,6 +9398,7 @@ class ControlExecutionSession:
         self._event_snapshots.append(snapshot)
         self._cursor = event.sequence
         self._current_event = None
+        self._current_event_expiry_complete = False
         self._current_pre_state_json = None
         self._current_pre_route_state_json = None
         self._current_required_operations = set()
@@ -9128,6 +9520,22 @@ class ControlExecutionSession:
                         after_sequence=event.sequence,
                     ),
                 ))
+        outside_membership_suppressions = (
+            self._outside_membership_ambient_suppressions(
+                gate=gate,
+                branch=branch,
+                target_id=target_id,
+                event=event,
+            )
+        )
+        self._validate_branch_area_application_membership(
+            branch=branch,
+            target_id=target_id,
+            suppressed_component_ids=(
+                row["component_id"]
+                for row in outside_membership_suppressions
+            ),
+        )
         pre = _canonical_json(self._state.snapshot())
         transition = self._engine._apply_resolved_branch(
             state=self._state,
@@ -9150,7 +9558,14 @@ class ControlExecutionSession:
                 gate.gate_id,
                 target_id,
             ) in self._same_event_gate_overrides,
+            _suppressed_application_component_ids=(
+                row["component_id"]
+                for row in outside_membership_suppressions
+            ),
         )
+        transition["outside_compiled_area_membership_suppressions"] = [
+            dict(row) for row in outside_membership_suppressions
+        ]
         self._same_event_gate_overrides.discard((gate.gate_id, target_id))
         if gate.gate_scope == "shared":
             self._shared_gate_outcomes[shared_key] = observed_outcome
@@ -9181,6 +9596,9 @@ class ControlExecutionSession:
             pre_operation_state_json=pre,
             target_id=target_id,
         )
+        if gate.trigger.kind == "activation":
+            self._area_effect_started = True
+            self._area_effect_ended = False
         self._event_state_transitions.append(transition)
         return record
 
@@ -9726,27 +10144,11 @@ class ControlExecutionSession:
             )
         area_component_ids = self._active_area_component_ids(target)
         authoritative_area_state = self._area_route_state_or_none(target)
-        non_ambient_area_component_ids: set[str] = set()
         if area_component_ids:
             if authoritative_area_state is None:
                 raise ControlEngineError(
                     "Active area-bound components lack authoritative live area "
                     f"membership for target {target!r}"
-                )
-            non_ambient_area_component_ids = set(area_component_ids) - set(
-                self._ambient_area_component_ids(
-                    area_id=authoritative_area_state.area_id,
-                    target_id=target,
-                )
-            )
-            if (
-                not authoritative_area_state.membership
-                and non_ambient_area_component_ids
-            ):
-                raise ControlEngineError(
-                    "Active non-ambient area components lack authoritative live "
-                    f"membership for target {target!r}: "
-                    f"{sorted(non_ambient_area_component_ids)}"
                 )
         fixed_area_effect_active: bool | None = None
         fixed_area_response_required = bool(
@@ -10876,10 +11278,16 @@ class ControlExecutionSession:
                     raise ControlEngineError(
                         "Ordinary/forced entry lacks its membership route transition"
                     )
-            ambient_ids = list(self._ambient_area_component_ids(
+            ambient_authority_rows = self._live_ambient_area_component_plan(
                 area_id=bound.area_id,
                 target_id=bound.target_id,
-            ))
+                event_sequence=bound.event_sequence,
+            )
+            ambient_ids = [
+                component.component_id
+                for component, _expiry_event_id, _activation_event_id
+                in ambient_authority_rows
+            ]
             restoration_pre_ids = {
                 row["component_id"]
                 for row in json.loads(restoration_pre_state_json)
@@ -10904,6 +11312,12 @@ class ControlExecutionSession:
             post_by_component_id = {
                 row["component_id"]: row for row in post_rows
             }
+            expected_restored_expiry = {
+                component.component_id: expiry_event_id
+                for component, expiry_event_id, _activation_event_id
+                in ambient_authority_rows
+                if component.component_id in expected_restored_ambient_ids
+            }
             if (
                 payload.get("ambient_area_component_ids") != ambient_ids
                 or payload.get("retained_ambient_component_ids")
@@ -10918,6 +11332,18 @@ class ControlExecutionSession:
                     post_by_component_id[component_id].get("applied_event_id")
                     != record.event_id
                     for component_id in expected_restored_ambient_ids
+                )
+                or any(
+                    post_by_component_id[component_id].get("expiry_event_id")
+                    != expected_restored_expiry[component_id]
+                    for component_id in expected_restored_ambient_ids
+                )
+                or any(
+                    sum(
+                        row.get("component_id") == component_id
+                        for row in post_rows
+                    ) != 1
+                    for component_id in ambient_ids
                 )
             ):
                 raise ControlEngineError(
@@ -11360,6 +11786,372 @@ class ControlExecutionSession:
                 "Session runtime bindings no longer match its canonical scenario"
             )
 
+    def _validate_ambient_membership_history(self) -> None:
+        """Replay typed activation filtering against issued route snapshots."""
+
+        self._validate_ambient_membership_state()
+        branch_records = {
+            (record.event_id, record.target_id, json.loads(record.payload_json).get(
+                "gate_id"
+            )): record
+            for record in self._issued_records
+            if record.record_kind == "branch_transition"
+        }
+        observed: set[tuple[str, str, str]] = set()
+        for transition in self._event_state_transitions:
+            event_id = transition.get("event_id")
+            target_id = transition.get("target_id")
+            gate_id = transition.get("gate_id")
+            branch_id = transition.get("branch_id")
+            if not all(
+                isinstance(value, str)
+                for value in (event_id, target_id, gate_id, branch_id)
+            ):
+                raise ControlEngineError(
+                    "Branch transition lacks canonical ambient replay identity"
+                )
+            event = self._schedule.event(event_id)
+            gate = self._program.gate(gate_id)
+            branch = next((
+                candidate for candidate in gate.branches
+                if candidate.branch_id == branch_id
+            ), None)
+            record = branch_records.get((event_id, target_id, gate_id))
+            if branch is None or record is None:
+                raise ControlEngineError(
+                    "Branch transition lacks its issued compiled branch"
+                )
+            route_rows = json.loads(record.pre_operation_route_state_json)
+            expected_suppressions = list(
+                self._outside_membership_ambient_suppressions_from_routes(
+                    gate=gate,
+                    branch=branch,
+                    target_id=target_id,
+                    event=event,
+                    route_rows=route_rows,
+                )
+            )
+            suppressions = transition.get(
+                "outside_compiled_area_membership_suppressions",
+                _MISSING,
+            )
+            if not isinstance(suppressions, Sequence) or isinstance(
+                suppressions,
+                (str, bytes),
+            ) or list(suppressions) != expected_suppressions:
+                raise ControlEngineError(
+                    "Ambient membership suppression coverage does not replay"
+                )
+            filtered_applies = set(
+                transition.get("filtered_branch", {}).get("applies", ())
+            )
+            active_after = {
+                item.get("component_id")
+                for item in transition.get("active_components_after", ())
+                if item.get("effect_id") == self._program.effect_id
+                and item.get("target_id") == target_id
+            }
+            for area_id in sorted(self._persistent_area_ids):
+                ambient_applications = sorted(
+                    set(branch.applies)
+                    & set(self._ambient_area_component_ids(
+                        area_id=area_id,
+                        target_id=target_id,
+                    ))
+                )
+                if not ambient_applications:
+                    continue
+                route_matches = [
+                    row for row in route_rows
+                    if row.get("effect_id") == self._program.effect_id
+                    and row.get("area_id") == area_id
+                    and row.get("target_id") == target_id
+                ]
+                if len(route_matches) != 1:
+                    raise ControlEngineError(
+                        "Ambient branch replay lacks authoritative route state"
+                    )
+                member = route_matches[0].get("membership")
+                for component_id in ambient_applications:
+                    canonically_suppressed = (
+                        self._ambient_component_canonically_suppressed(
+                            component_id=component_id,
+                            target_id=target_id,
+                        )
+                    )
+                    if (
+                        member is False
+                        and component_id in filtered_applies
+                    ) or (
+                        member is True
+                        and component_id not in filtered_applies
+                    ) or (
+                        member is True
+                        and not canonically_suppressed
+                        and component_id not in active_after
+                    ) or (
+                        member is True
+                        and canonically_suppressed
+                        and component_id in active_after
+                    ):
+                        raise ControlEngineError(
+                            "Ambient member/nonmember branch application does not replay"
+                        )
+            for row in suppressions:
+                expected_keys = {
+                    "kind",
+                    "effect_id",
+                    "area_id",
+                    "target_id",
+                    "source_gate_id",
+                    "source_branch_id",
+                    "component_id",
+                    "authoritative_membership",
+                    "event_id",
+                    "event_sequence",
+                }
+                if not isinstance(row, Mapping) or set(row) != expected_keys:
+                    raise ControlEngineError(
+                        "Ambient membership suppression is malformed"
+                    )
+                event = self._schedule.event(str(row["event_id"]))
+                gate = self._program.gate(str(row["source_gate_id"]))
+                branch = next((
+                    candidate for candidate in gate.branches
+                    if candidate.branch_id == row["source_branch_id"]
+                ), None)
+                identity = (
+                    str(row["event_id"]),
+                    str(row["target_id"]),
+                    str(row["component_id"]),
+                )
+                record = branch_records.get((
+                    str(row["event_id"]),
+                    str(row["target_id"]),
+                    str(row["source_gate_id"]),
+                ))
+                route_rows = (
+                    [] if record is None else json.loads(
+                        record.pre_operation_route_state_json
+                    )
+                )
+                route_matches = [
+                    route for route in route_rows
+                    if route.get("effect_id") == row["effect_id"]
+                    and route.get("area_id") == row["area_id"]
+                    and route.get("target_id") == row["target_id"]
+                ]
+                active_after = {
+                    item.get("component_id")
+                    for item in transition.get("active_components_after", ())
+                    if item.get("effect_id") == self._program.effect_id
+                    and item.get("target_id") == row["target_id"]
+                }
+                if (
+                    identity in observed
+                    or row["kind"] != "outside_compiled_area_membership"
+                    or row["effect_id"] != self._program.effect_id
+                    or event.sequence != row["event_sequence"]
+                    or event.event_id != transition.get("event_id")
+                    or gate.trigger.kind != "activation"
+                    or gate.gate_id != transition.get("gate_id")
+                    or branch is None
+                    or branch.branch_id != transition.get("branch_id")
+                    or row["component_id"] not in branch.applies
+                    or row["component_id"] not in self._ambient_area_component_ids(
+                        area_id=str(row["area_id"]),
+                        target_id=str(row["target_id"]),
+                    )
+                    or row["authoritative_membership"] is not False
+                    or len(route_matches) != 1
+                    or route_matches[0].get("membership") is not False
+                    or row["component_id"] in transition.get(
+                        "filtered_branch",
+                        {},
+                    ).get("applies", ())
+                    or row["component_id"] in active_after
+                ):
+                    raise ControlEngineError(
+                        "Ambient membership suppression does not replay"
+                    )
+                observed.add(identity)
+
+    def _route_membership_for_reliability_window(
+        self,
+        *,
+        area_id: str,
+        target_id: str,
+        window_id: str,
+    ) -> bool:
+        if window_id == "initial":
+            route_rows = json.loads(self._initial_area_route_state_json)
+        else:
+            scenario = self._reliability.scenario
+            if scenario is None:  # pragma: no cover - validated session identity
+                return False
+            reliability_event = next((
+                event
+                for event in scenario.event_script
+                if (event.window_id or event.event_id) == window_id
+            ), None)
+            binding = json.loads(self._reliability_timeline_bindings_json)
+            schedule_event_id = (
+                None
+                if reliability_event is None
+                else binding.get(reliability_event.event_id)
+            )
+            if schedule_event_id is None and any(
+                event.event_id == window_id for event in self._schedule.events
+            ):
+                schedule_event_id = window_id
+            snapshot = next((
+                row for row in self._event_snapshots
+                if row.event_id == schedule_event_id
+            ), None)
+            if snapshot is None:
+                return False
+            route_rows = json.loads(snapshot.post_event_route_state_json)
+        matches = [
+            row for row in route_rows
+            if row.get("effect_id") == self._program.effect_id
+            and row.get("area_id") == area_id
+            and row.get("target_id") == target_id
+        ]
+        if len(matches) != 1:
+            return False
+        return matches[0].get("membership") is True
+
+    def _component_active_for_reliability_window(
+        self,
+        *,
+        component_id: str,
+        target_id: str,
+        window_id: str,
+    ) -> bool:
+        if window_id == "initial":
+            state_rows = json.loads(self._initial_state_json)
+        else:
+            scenario = self._reliability.scenario
+            if scenario is None:  # pragma: no cover - validated session identity
+                return False
+            reliability_event = next((
+                event
+                for event in scenario.event_script
+                if (event.window_id or event.event_id) == window_id
+            ), None)
+            binding = json.loads(self._reliability_timeline_bindings_json)
+            schedule_event_id = (
+                None
+                if reliability_event is None
+                else binding.get(reliability_event.event_id)
+            )
+            if schedule_event_id is None and any(
+                event.event_id == window_id for event in self._schedule.events
+            ):
+                schedule_event_id = window_id
+            snapshot = next((
+                row for row in self._event_snapshots
+                if row.event_id == schedule_event_id
+            ), None)
+            if snapshot is None:
+                return False
+            state_rows = json.loads(snapshot.post_event_state_json)
+        return any(
+            row.get("effect_id") == self._program.effect_id
+            and row.get("target_id") == target_id
+            and row.get("component_id") == component_id
+            for row in state_rows
+        )
+
+    def _membership_scoped_component_reliability(
+        self,
+        rows: Sequence[Mapping[str, Any]],
+    ) -> tuple[dict[str, Any], ...]:
+        scoped: list[dict[str, Any]] = []
+        bindings = self._engine._compiled_area_bindings(self._program)
+        zero = _fraction_record(Fraction())
+        initial_window_ids = {
+            event.window_id or event.event_id
+            for event in self._reliability.scenario.event_script[
+                :self._reliability.scenario.initial_event_count
+            ]
+        }
+        for source in rows:
+            row = dict(_json_safe(source))
+            component_id = str(row["component_id"])
+            target_id = str(row["target_id"])
+            ambient_area_ids = [
+                area_id
+                for area_id in bindings.get(component_id, ())
+                if component_id in self._ambient_area_component_ids(
+                    area_id=area_id,
+                    target_id=target_id,
+                )
+            ]
+            if len(ambient_area_ids) != 1:
+                scoped.append(row)
+                continue
+            area_id = ambient_area_ids[0]
+            corrected_windows: list[dict[str, Any]] = []
+            for window in row.get("active_by_window", ()):
+                window_copy = dict(window)
+                if not self._route_membership_for_reliability_window(
+                    area_id=area_id,
+                    target_id=target_id,
+                    window_id=str(window_copy["window_id"]),
+                ) or not self._component_active_for_reliability_window(
+                    component_id=component_id,
+                    target_id=target_id,
+                    window_id=str(window_copy["window_id"]),
+                ):
+                    window_copy["probability"] = dict(zero)
+                corrected_windows.append(window_copy)
+            initially_active = any(
+                self._component_active_for_reliability_window(
+                    component_id=component_id,
+                    target_id=target_id,
+                    window_id=window_id,
+                )
+                for window_id in initial_window_ids
+            )
+            ever_realized = any(
+                any(
+                    item.get("effect_id") == self._program.effect_id
+                    and item.get("target_id") == target_id
+                    and item.get("component_id") == component_id
+                    for item in (
+                        *json.loads(snapshot.pre_event_state_json),
+                        *json.loads(snapshot.post_event_state_json),
+                    )
+                )
+                for snapshot in self._event_snapshots
+            )
+            if not initially_active:
+                row["initially_applied"] = dict(zero)
+            if not ever_realized:
+                row["ever_applied"] = dict(zero)
+            row["active_by_window"] = corrected_windows
+            corrected_ever = Fraction(
+                int(row["ever_applied"]["numerator"]),
+                int(row["ever_applied"]["denominator"]),
+            )
+            if any(
+                Fraction(
+                    int(window["probability"]["numerator"]),
+                    int(window["probability"]["denominator"]),
+                ) > corrected_ever
+                for window in corrected_windows
+            ):
+                raise ControlEngineError(
+                    "Membership-scoped active component probability exceeds "
+                    "membership-scoped ever-applied probability"
+                )
+            row["activity_interpretation"] = (
+                "membership_scoped_realized_target_activity"
+            )
+            scoped.append(row)
+        return tuple(scoped)
+
     def _assemble_for_test(
         self,
         *,
@@ -11379,6 +12171,7 @@ class ControlExecutionSession:
         self._validate_internal_ledgers()
         self._validate_area_entry_history()
         self._validate_area_gate_execution()
+        self._validate_ambient_membership_history()
         selected_reliability = self._reliability if reliability is None else reliability
         self._validate_reliability(selected_reliability)
         self._validate_concentration_lifecycle()
@@ -11397,8 +12190,39 @@ class ControlExecutionSession:
             concentration_records=self._concentration_records,
             displacement_records=self._displacement_records,
         )
+        ambient_suppressions = tuple(
+            dict(row)
+            for transition in self._event_state_transitions
+            for row in transition.get(
+                "outside_compiled_area_membership_suppressions",
+                (),
+            )
+        )
         return _replace_control_engine_result(
             base,
+            component_reliability=(
+                self._membership_scoped_component_reliability(
+                    base.component_reliability
+                )
+            ),
+            any_candidate_reliability={
+                **dict(_json_safe(base.any_candidate_reliability)),
+                "activity_interpretation": (
+                    "structural_gate_application_potential_unscoped_to_"
+                    "runtime_membership"
+                ),
+            },
+            any_component_reliability={
+                **dict(_json_safe(base.any_component_reliability)),
+                "activity_interpretation": (
+                    "structural_gate_application_potential_unscoped_to_"
+                    "runtime_membership"
+                ),
+            },
+            suppression_and_dominance_records=(
+                *base.suppression_and_dominance_records,
+                *ambient_suppressions,
+            ),
             scenario_digest=self._scenario_digest,
             scenario_record=json.loads(self._scenario_json),
             execution_records=tuple(record.to_dict() for record in selected_records),
@@ -11414,6 +12238,8 @@ class ControlExecutionSession:
     def result(self) -> ControlEngineResult:
         """Issue the deterministic final result after complete closed execution."""
 
+        self._validate_scenario_identity()
+        self._validate_ambient_membership_state()
         if self._cached_result is None:
             self._cached_result = self._assemble_for_test()
         return self._cached_result
