@@ -93,6 +93,33 @@ test("retired migration sources are absent from the active architecture",async()
   assert.match(await readFile("CHANGELOG.md","utf8"),/migration/i);
 });
 
+test("shared control engine has one maintained Python runtime and remains outside damage",async()=>{
+  const runtimeModules=[
+    "harness/control_catalog.py","harness/control_graph.py","harness/control_state.py","harness/control_timeline.py","harness/control_engine.py"
+  ] as const;
+  const expectedInputs:ReadonlyArray<readonly [string,string]>=[
+    ...runtimeModules.map(path=>[path,"harness_source"] as const),
+    ["harness/config/control-engine.json","control_engine_methodology_config"],
+    ["harness/data/srd_control_consequences.json","pinned_srd_control_consequence_catalog"],
+    ["harness/provenance/srd-control-consequences.json","harness_provenance"],
+    ["harness/tests/fixtures/control_engine_v1.json","reviewed_correctness_corpus"],
+    ["harness/tests/test_control_engine_fixtures.py","test_source"],
+    ...["catalog","graph","state","timeline","engine"].map(name=>[`harness/tests/test_control_${name}.py`,"test_source"] as const)
+  ];
+  await Promise.all(expectedInputs.map(([path])=>access(path)));
+  const twinStems=["catalog","graph","state","timeline","engine"] as const;
+  await Promise.all(twinStems.flatMap(stem=>[`src/control-${stem}.ts`,`src/control_${stem}.ts`]).map(assertAbsent));
+  await Promise.all(["tests/fixtures/control-engine-parity.json","tests/fixtures/control_engine_parity.json","tests/control-engine-parity.test.ts","tests/control_engine_parity.test.ts"].map(assertAbsent));
+  const inputs=JSON.parse(await readFile("build/inputs.json","utf8")).inputs as Array<{path:string;role:string}>,inputRoles=new Map(inputs.map(input=>[input.path,input.role]));
+  for(const [path,role] of expectedInputs)assert.equal(inputRoles.get(path),role,path);
+  const runtimeSources=await Promise.all(runtimeModules.map(path=>readFile(path,"utf8")));
+  for(const [index,source] of runtimeSources.entries())assert.doesNotMatch(source,/\b(?:damage_harness|damage_report|readme_damage)\b|config\/benchmark\.json|comparators\/fighter-subclasses\.json/,runtimeModules[index]);
+  const damagePaths=["harness/model.py","harness/damage_harness.py","harness/damage_report.py","harness/readme_damage.py"] as const,damageSources=await Promise.all(damagePaths.map(path=>readFile(path,"utf8")));
+  for(const [index,source] of damageSources.entries())assert.doesNotMatch(source,/(?:from|import)\s+(?:harness\.)?\.?control_(?:catalog|graph|state|timeline|engine)\b/,damagePaths[index]);
+  const scripts=JSON.parse(await readFile("package.json","utf8")).scripts as Record<string,string>;
+  assert.deepEqual(Object.keys(scripts).filter(name=>name.startsWith("control:engine:")).sort(),["control:engine:fixtures","control:engine:validate"]);
+});
+
 test("active CI publication names derive from the canonical rules version",async()=>{
   const [{authority},workflow]=await Promise.all([loadAuthority(),readFile(".github/workflows/ci.yml","utf8")]);
   assert.doesNotMatch(workflow,/\b14\.\d+(?:\.\d+)?\b/);

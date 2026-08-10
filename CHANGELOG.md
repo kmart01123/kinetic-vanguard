@@ -2,12 +2,22 @@
 
 ## Unreleased
 
+### Added
+
+- Added a pinned, provenance-checked SRD 5.2.1 consequence catalog for Blinded, Charmed, Frightened, Incapacitated, Prone, Restrained, and Stunned, plus separate versioned control-engine methodology configuration.
+- Added the shared weight-free Python control consequence, reliability, overlap, state, and timeline engine; its compact validation and 72-case hand-calculated fixture commands cover both initiative schedules, both area-response conventions, and all three displacement functions without producing a Control Value scalar, classification, or optimization.
+
 ### Changed
 
 - Narrowed the maintained benchmark architecture to an explicit damage authority, projection, configuration, comparator, report, README generator, and command boundary.
 - Replaced the generated two-matrix README snapshot with one damage heat table and a static control-methodology status that points v14.1 reproduction to frozen release evidence and identifies the v14.2 redesign sequence.
 - Completed Control Authority v2.1 with 35 modeled rows, 14 maintained profile exclusions, zero unsupported rows, typed event/save/choice/movement/area/persistent-state semantics, and shared TypeScript/Python parity coverage; it remains separate from damage and does not publish a v14.2 control result.
 - Added a fail-closed 28-row SRD control-target supplement for official movement modes, hover, and relevant nonvisual senses while preserving the maintained damage roster byte-for-byte.
+- Corrected both control-engine initiative schedules so the single self-minimizing movement, standing, area-response, and displacement-epoch opportunity precedes active-turn and attack windows, and made engine-owned chronological sessions with canonical scenario identity and issued reliability/state records the only supported final-result path.
+- Made shortest-route geometry, live area membership, and exact remaining distance session-owned across movement opportunities; typed ordinary and forced entries now perform scenario-bound false-to-true membership and route transitions before their same-event gates, with engine-owned once-per-turn frequency and final replay, while typed moving-area updates apply the compiled entry policy without caller-authored membership or history. Membership drives movement and recurring-area gate eligibility even with no active area component, exits and canonical re-entries update later gates, fixed occupancy creates no nominal exit progress, and raw per-event route replacement remains rejected. Zero-area programs accept either inert area convention, while multiple-area ambiguity fails closed.
+- Made activation-cadence ambient area components membership-scoped: activation filters them from nonmembers with typed provenance, entry and re-entry restore still-live components once with activation-derived expiry independently of save frequency without restarting expired duration, exits and effect end remove them, and session invariants reject stale ambient state before movement, normalization, or final assembly under either area convention.
+- Phase-locked required normalization to each target's immutable pre-event component and route state: target-affecting branch, displacement, entry, geometry, movement, and concentration-end mutations now reject atomically while normalization is pending, independent targets remain uncoupled, and final replay rejects stale or empty post-mutation normalization records.
+- Made failed concentration checks genuinely two-phase: the damage-context event now issues an attested pending failure while the tracker, components, ambient membership, and routes remain active, and only its immediate typed concentration-end event may end the tracker, execute compiled end gates and falls, terminate state, close routes, and clear the pending identity. Normalization blocks the failure path before mutation, and final replay rejects missing, duplicate, foreign, stale, rewritten, or discontinuous check/end pairs. Engine and related runtime contract versions remain `1.0.0`; this correction changes no damage inputs or numerical mechanics and ran no analytical benchmark.
 - Codified the standing policy for retiring superseded implementations from current development while preserving released history through frozen branches, tags, Releases, evidence assets, and Git history.
 
 ### Removed

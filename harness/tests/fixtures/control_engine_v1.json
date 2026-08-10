@@ -1,0 +1,2184 @@
+{
+  "format_version": 1,
+  "engine_version": "1.0.0",
+  "cases": [
+    {
+      "id": 1,
+      "category": "catalog_and_senses",
+      "invariant": "Blinded without alternative sight.",
+      "operation": "condition_sense",
+      "input": {
+        "condition_id": "blinded",
+        "nonvisual_senses": [],
+        "context": {
+          "interaction_distance_ft": 10,
+          "total_cover": false,
+          "target_airborne": false,
+          "same_surface_or_liquid": true
+        }
+      },
+      "expected": {
+        "alternative_sight": false,
+        "primitive_ids": [
+          "sight_option_denial",
+          "ability_check_impairment",
+          "offensive_impairment_all_attacks",
+          "defensive_attack_advantage"
+        ]
+      }
+    },
+    {
+      "id": 2,
+      "category": "catalog_and_senses",
+      "invariant": "Blinded with Blindsight inside range.",
+      "operation": "sense_query",
+      "input": {
+        "nonvisual_senses": [
+          {
+            "sense": "blindsight",
+            "range_ft": 30,
+            "limitation": null
+          }
+        ],
+        "context": {
+          "interaction_distance_ft": 20,
+          "total_cover": false,
+          "target_airborne": false,
+          "same_surface_or_liquid": true
+        }
+      },
+      "expected": {
+        "alternative_sight": true,
+        "evidence_contains": "blindsight_within_range_without_total_cover"
+      }
+    },
+    {
+      "id": 3,
+      "category": "catalog_and_senses",
+      "invariant": "Blinded with Blindsight outside range.",
+      "operation": "sense_query",
+      "input": {
+        "nonvisual_senses": [
+          {
+            "sense": "blindsight",
+            "range_ft": 30,
+            "limitation": null
+          }
+        ],
+        "context": {
+          "interaction_distance_ft": 35,
+          "total_cover": false,
+          "target_airborne": false,
+          "same_surface_or_liquid": true
+        }
+      },
+      "expected": {
+        "alternative_sight": false,
+        "evidence_contains": "blindsight_outside_range"
+      }
+    },
+    {
+      "id": 4,
+      "category": "catalog_and_senses",
+      "invariant": "Tremorsense does not cancel Blinded.",
+      "operation": "sense_query",
+      "input": {
+        "nonvisual_senses": [
+          {
+            "sense": "tremorsense",
+            "range_ft": 60,
+            "limitation": null
+          }
+        ],
+        "context": {
+          "interaction_distance_ft": 30,
+          "total_cover": false,
+          "target_airborne": false,
+          "same_surface_or_liquid": true
+        }
+      },
+      "expected": {
+        "alternative_sight": false,
+        "location_detection": true
+      }
+    },
+    {
+      "id": 5,
+      "category": "catalog_and_senses",
+      "invariant": "Tremorsense rejects airborne detection.",
+      "operation": "sense_query",
+      "input": {
+        "nonvisual_senses": [
+          {
+            "sense": "tremorsense",
+            "range_ft": 60,
+            "limitation": null
+          }
+        ],
+        "context": {
+          "interaction_distance_ft": 30,
+          "total_cover": false,
+          "target_airborne": true,
+          "same_surface_or_liquid": true
+        }
+      },
+      "expected": {
+        "alternative_sight": false,
+        "location_detection": false,
+        "location_evidence_contains": "tremorsense_excludes_airborne_target"
+      }
+    },
+    {
+      "id": 6,
+      "category": "catalog_and_senses",
+      "invariant": "Truesight is absent from the nonvisual input boundary.",
+      "operation": "sense_reject",
+      "input": {
+        "nonvisual_senses": [
+          {
+            "sense": "truesight",
+            "range_ft": 120,
+            "limitation": null
+          }
+        ],
+        "context": {
+          "interaction_distance_ft": 10,
+          "total_cover": false,
+          "target_airborne": false,
+          "same_surface_or_liquid": true
+        }
+      },
+      "expected": {
+        "error_contains": "not in the nonvisual input boundary: truesight"
+      }
+    },
+    {
+      "id": 7,
+      "category": "catalog_and_senses",
+      "invariant": "Stunned includes Incapacitated exactly once.",
+      "operation": "condition_expansion",
+      "input": {
+        "condition_id": "stunned"
+      },
+      "expected": {
+        "includes": [
+          "incapacitated"
+        ],
+        "primitive_counts": {
+          "active_turn_denial": 1,
+          "reaction_denial": 1,
+          "speech_denial": 1
+        },
+        "absent_primitive_ids": [
+          "mobility_loss_feet"
+        ]
+      }
+    },
+    {
+      "id": 8,
+      "category": "catalog_and_senses",
+      "invariant": "Condition inclusion cycles are rejected.",
+      "operation": "catalog_cycle",
+      "input": {
+        "edges": [
+          [
+            "blinded",
+            "charmed"
+          ],
+          [
+            "charmed",
+            "blinded"
+          ]
+        ]
+      },
+      "expected": {
+        "error_contains": "Condition inclusion cycle: blinded -> charmed -> blinded"
+      }
+    },
+    {
+      "id": 9,
+      "category": "partial_reliability",
+      "invariant": "Snow Chains hit-gated no-save Speed 0 plus failed-save Restrained.",
+      "operation": "reliability",
+      "input": {
+        "effect_id": "snow_chains_t0_control",
+        "outcomes": {
+          "snow_chains_t0_attack": {
+            "attack_hit": "1",
+            "attack_miss": "0"
+          },
+          "snow_chains_t0_save": {
+            "save_failure": "1",
+            "save_success": "0"
+          }
+        }
+      },
+      "expected": {
+        "ever_applied": {
+          "snow_chains_speed_zero": "1",
+          "snow_chains_restrained": "1"
+        },
+        "any_candidate_probability": "1"
+      }
+    },
+    {
+      "id": 10,
+      "category": "partial_reliability",
+      "invariant": "Snow Chains successful save retains Speed 0.",
+      "operation": "reliability",
+      "input": {
+        "effect_id": "snow_chains_t0_control",
+        "outcomes": {
+          "snow_chains_t0_attack": {
+            "attack_hit": "1",
+            "attack_miss": "0"
+          },
+          "snow_chains_t0_save": {
+            "save_failure": "0",
+            "save_success": "1"
+          }
+        }
+      },
+      "expected": {
+        "ever_applied": {
+          "snow_chains_speed_zero": "1",
+          "snow_chains_restrained": "0"
+        }
+      }
+    },
+    {
+      "id": 11,
+      "category": "partial_reliability",
+      "invariant": "Telekinetic Slam T2 success and failure movement remain distinct.",
+      "operation": "graph_branches",
+      "input": {
+        "effect_id": "telekinetic_slam_t2_control",
+        "gate_id": "telekinetic_slam_t2_save"
+      },
+      "expected": {
+        "applies_by_outcome": {
+          "save_failure": [
+            "telekinetic_slam_failed_save_movement",
+            "telekinetic_slam_speed_zero"
+          ],
+          "save_success": [
+            "telekinetic_slam_successful_save_movement"
+          ]
+        },
+        "distinct_component_ids": [
+          "telekinetic_slam_failed_save_movement",
+          "telekinetic_slam_successful_save_movement"
+        ]
+      }
+    },
+    {
+      "id": 12,
+      "category": "partial_reliability",
+      "invariant": "Absolute Zero T2 has a successful-save Speed-0 remainder.",
+      "operation": "reliability",
+      "input": {
+        "effect_id": "absolute_zero_t2_control",
+        "outcomes": {
+          "absolute_zero_t2_save": {
+            "save_failure": "0",
+            "save_success": "1"
+          }
+        }
+      },
+      "expected": {
+        "ever_applied": {
+          "absolute_zero_speed_zero": "1",
+          "absolute_zero_restrained": "0",
+          "absolute_zero_stunned": "0"
+        }
+      }
+    },
+    {
+      "id": 13,
+      "category": "partial_reliability",
+      "invariant": "Component marginals and any-candidate probability preserve shared-branch correlation.",
+      "operation": "reliability",
+      "input": {
+        "effect_id": "snow_chains_t0_control",
+        "outcomes": {
+          "snow_chains_t0_attack": {
+            "attack_hit": "1/2",
+            "attack_miss": "1/2"
+          },
+          "snow_chains_t0_save": {
+            "save_failure": "1/2",
+            "save_success": "1/2"
+          }
+        }
+      },
+      "expected": {
+        "ever_applied": {
+          "snow_chains_speed_zero": "1/2",
+          "snow_chains_restrained": "1/4"
+        },
+        "any_candidate_probability": "1/2",
+        "final_world_count": 3
+      }
+    },
+    {
+      "id": 14,
+      "category": "partial_reliability",
+      "invariant": "Independent targets do not suppress one another.",
+      "operation": "state_independence",
+      "input": {
+        "target_ids": [
+          "target_a",
+          "target_b"
+        ],
+        "magnitude": {
+          "kind": "reaction_denial",
+          "scope": "all_reactions"
+        },
+        "window_kind": "reaction_window"
+      },
+      "expected": {
+        "primitive_id": "reaction_denial",
+        "contribution_count_per_target": 1,
+        "suppression_count": 0
+      }
+    },
+    {
+      "id": 15,
+      "category": "partial_reliability",
+      "invariant": "Condition immunity removes only the immune condition component, not unrelated components.",
+      "operation": "reliability",
+      "input": {
+        "effect_id": "snow_chains_t0_control",
+        "condition_immunities": [
+          "restrained"
+        ],
+        "outcomes": {
+          "snow_chains_t0_attack": {
+            "attack_hit": "1",
+            "attack_miss": "0"
+          },
+          "snow_chains_t0_save": {
+            "save_failure": "1",
+            "save_success": "0"
+          }
+        }
+      },
+      "expected": {
+        "ever_applied": {
+          "snow_chains_speed_zero": "1",
+          "snow_chains_restrained": "0"
+        },
+        "immunity_component_ids": [
+          "snow_chains_restrained"
+        ],
+        "immunity_conditions": [
+          "restrained"
+        ]
+      }
+    },
+    {
+      "id": 16,
+      "category": "overlap_and_dominance",
+      "invariant": "Restrained plus independent Speed 0 counts mobility denial once.",
+      "operation": "state_window",
+      "input": {
+        "components": [
+          {
+            "component_id": "restrained",
+            "magnitude": {
+              "kind": "condition",
+              "condition": "restrained"
+            }
+          },
+          {
+            "component_id": "direct_speed_zero",
+            "effect_id": "other_effect",
+            "magnitude": {
+              "kind": "speed_zero",
+              "movement_modes": [
+                "walk"
+              ]
+            }
+          }
+        ],
+        "window": {
+          "target_id": "target",
+          "window_id": "movement_1",
+          "window_kind": "target_movement_opportunity",
+          "context": {
+            "base_speeds": {
+              "walk": 30
+            }
+          }
+        }
+      },
+      "expected": {
+        "contribution_counts": {
+          "mobility_loss_feet": 1
+        },
+        "quantities": {
+          "mobility_loss_feet": 30
+        },
+        "source_component_ids": {
+          "mobility_loss_feet": [
+            "fixture_effect:restrained",
+            "other_effect:direct_speed_zero"
+          ]
+        }
+      }
+    },
+    {
+      "id": 17,
+      "category": "overlap_and_dominance",
+      "invariant": "Longer Slow resumes after shorter independent Speed 0 ends.",
+      "operation": "state_speed_resume",
+      "input": {
+        "components": [
+          {
+            "component_id": "slow",
+            "expiry_event_id": "late_expiry",
+            "magnitude": {
+              "kind": "speed_reduction",
+              "reduction": {
+                "kind": "flat_feet",
+                "value": 10
+              },
+              "movement_modes": [
+                "walk"
+              ]
+            }
+          },
+          {
+            "component_id": "speed_zero",
+            "effect_id": "other_effect",
+            "expiry_event_id": "early_expiry",
+            "magnitude": {
+              "kind": "speed_zero",
+              "movement_modes": [
+                "walk"
+              ]
+            }
+          }
+        ],
+        "target_id": "target",
+        "base_speeds": {
+          "walk": 30
+        },
+        "expire_event_id": "early_expiry"
+      },
+      "expected": {
+        "before": {
+          "walk": 0
+        },
+        "after": {
+          "walk": 20
+        },
+        "active_component_ids": [
+          "slow"
+        ]
+      }
+    },
+    {
+      "id": 18,
+      "category": "overlap_and_dominance",
+      "invariant": "Stunned plus direct reaction denial counts reaction denial once.",
+      "operation": "state_window",
+      "input": {
+        "components": [
+          {
+            "component_id": "stunned",
+            "magnitude": {
+              "kind": "condition",
+              "condition": "stunned"
+            }
+          },
+          {
+            "component_id": "direct_reaction_denial",
+            "effect_id": "other_effect",
+            "magnitude": {
+              "kind": "reaction_denial",
+              "scope": "all_reactions"
+            }
+          }
+        ],
+        "window": {
+          "target_id": "target",
+          "window_id": "reaction_1",
+          "window_kind": "reaction_window"
+        }
+      },
+      "expected": {
+        "contribution_counts": {
+          "reaction_denial": 1
+        },
+        "source_component_ids": {
+          "reaction_denial": [
+            "fixture_effect:stunned",
+            "other_effect:direct_reaction_denial"
+          ]
+        },
+        "suppression_reasons_contains": [
+          "identical_primitive_maximum_presence"
+        ]
+      }
+    },
+    {
+      "id": 19,
+      "category": "overlap_and_dominance",
+      "invariant": "Active-turn denial suppresses offensive impairment during that denied target turn.",
+      "operation": "state_window",
+      "input": {
+        "components": [
+          {
+            "component_id": "incapacitated",
+            "magnitude": {
+              "kind": "condition",
+              "condition": "incapacitated"
+            }
+          },
+          {
+            "component_id": "all_attacks",
+            "effect_id": "other_effect",
+            "magnitude": {
+              "kind": "attack_disadvantage",
+              "scope": "all_attacks"
+            }
+          }
+        ],
+        "window": {
+          "target_id": "target",
+          "window_id": "active_turn_1",
+          "window_kind": "target_active_turn_opportunity"
+        }
+      },
+      "expected": {
+        "contribution_ids_contains": [
+          "active_turn_denial"
+        ],
+        "contribution_ids_absent": [
+          "offensive_impairment_all_attacks"
+        ],
+        "suppression_reasons_contains": [
+          "active_turn_denial_removes_attack_opportunity"
+        ]
+      }
+    },
+    {
+      "id": 20,
+      "category": "overlap_and_dominance",
+      "invariant": "Stunned automatic Dexterity failure dominates Restrained Dexterity disadvantage.",
+      "operation": "state_window",
+      "input": {
+        "components": [
+          {
+            "component_id": "stunned",
+            "magnitude": {
+              "kind": "condition",
+              "condition": "stunned"
+            }
+          },
+          {
+            "component_id": "restrained",
+            "effect_id": "other_effect",
+            "magnitude": {
+              "kind": "condition",
+              "condition": "restrained"
+            }
+          }
+        ],
+        "window": {
+          "target_id": "target",
+          "window_id": "dexterity_save",
+          "window_kind": "save_opportunity",
+          "context": {
+            "save_ability": "dexterity"
+          }
+        }
+      },
+      "expected": {
+        "contribution_counts": {
+          "save_auto_failure": 1,
+          "save_disadvantage": 0
+        },
+        "suppression_reasons_contains": [
+          "automatic_failure_dominates_disadvantage"
+        ]
+      }
+    },
+    {
+      "id": 21,
+      "category": "overlap_and_dominance",
+      "invariant": "Blinded plus Restrained does not double-count identical attack effects.",
+      "operation": "state_window",
+      "input": {
+        "components": [
+          {
+            "component_id": "blinded",
+            "magnitude": {
+              "kind": "condition",
+              "condition": "blinded"
+            }
+          },
+          {
+            "component_id": "restrained",
+            "effect_id": "other_effect",
+            "magnitude": {
+              "kind": "condition",
+              "condition": "restrained"
+            }
+          }
+        ],
+        "window": {
+          "target_id": "target",
+          "window_id": "active_turn_1",
+          "window_kind": "target_active_turn_opportunity",
+          "context": {
+            "alternative_sight_resolution": false
+          }
+        }
+      },
+      "expected": {
+        "contribution_counts": {
+          "offensive_impairment_all_attacks": 1
+        },
+        "source_component_ids": {
+          "offensive_impairment_all_attacks": [
+            "fixture_effect:blinded",
+            "other_effect:restrained"
+          ]
+        },
+        "suppression_reasons_contains": [
+          "identical_primitive_maximum_presence"
+        ]
+      }
+    },
+    {
+      "id": 22,
+      "category": "overlap_and_dominance",
+      "invariant": "Reapplication refreshes expiry without immediate duplicate persistent contribution.",
+      "operation": "state_refresh",
+      "input": {
+        "component": {
+          "component_id": "slow",
+          "magnitude": {
+            "kind": "speed_reduction",
+            "reduction": {
+              "kind": "flat_feet",
+              "value": 10
+            },
+            "movement_modes": [
+              "walk"
+            ]
+          }
+        },
+        "first_expiry_event_id": "old_expiry",
+        "second_expiry_event_id": "new_expiry"
+      },
+      "expected": {
+        "active_count": 1,
+        "expiry_event_id": "new_expiry",
+        "immediate_persistent_contribution": false
+      }
+    },
+    {
+      "id": 23,
+      "category": "overlap_and_dominance",
+      "invariant": "Explicit branch replacement overrides generic normalization.",
+      "operation": "state_replacement",
+      "input": {
+        "weak_component": {
+          "component_id": "weak_speed_zero",
+          "magnitude": {
+            "kind": "speed_zero",
+            "movement_modes": [
+              "walk"
+            ]
+          }
+        },
+        "strong_component": {
+          "component_id": "strong_restrained",
+          "magnitude": {
+            "kind": "condition",
+            "condition": "restrained"
+          }
+        },
+        "branch": {
+          "branch_id": "failure",
+          "outcome": "save_failure",
+          "applies": [
+            "strong_restrained"
+          ],
+          "replaces": [
+            "weak_speed_zero"
+          ],
+          "terminates": [],
+          "refreshes": [],
+          "next_gate_ids": []
+        }
+      },
+      "expected": {
+        "active_component_ids": [
+          "strong_restrained"
+        ],
+        "replacement_reason": "explicit_branch_replacement"
+      }
+    },
+    {
+      "id": 24,
+      "category": "overlap_and_dominance",
+      "invariant": "Different targets remain independent.",
+      "operation": "state_independence",
+      "input": {
+        "target_ids": [
+          "target_a",
+          "target_b"
+        ],
+        "magnitude": {
+          "kind": "attack_disadvantage",
+          "scope": "all_attacks"
+        },
+        "window_kind": "target_active_turn_opportunity"
+      },
+      "expected": {
+        "primitive_id": "offensive_impairment_all_attacks",
+        "contribution_count_per_target": 1,
+        "suppression_count": 0
+      }
+    },
+    {
+      "id": 25,
+      "category": "prone",
+      "invariant": "Prone target with positive Speed stands at first movement opportunity.",
+      "operation": "prone_response",
+      "input": {
+        "target_id": "target",
+        "prone": true,
+        "current_speed_ft": 30
+      },
+      "expected": {
+        "stood": true,
+        "prone_after": false,
+        "reason": "first_legal_movement_opportunity"
+      }
+    },
+    {
+      "id": 26,
+      "category": "prone",
+      "invariant": "Standing consumes half current Speed.",
+      "operation": "prone_response",
+      "input": {
+        "target_id": "target",
+        "prone": true,
+        "current_speed_ft": 25
+      },
+      "expected": {
+        "standing_cost_ft": 12,
+        "remaining_movement_ft": 13
+      }
+    },
+    {
+      "id": 27,
+      "category": "prone",
+      "invariant": "Speed 0 prevents standing.",
+      "operation": "prone_response",
+      "input": {
+        "target_id": "target",
+        "prone": true,
+        "current_speed_ft": 0
+      },
+      "expected": {
+        "stood": false,
+        "prone_after": true,
+        "remaining_movement_ft": 0,
+        "reason": "speed_zero"
+      }
+    },
+    {
+      "id": 28,
+      "category": "prone",
+      "invariant": "Prone plus Speed 0 persists until Speed returns or source ends.",
+      "operation": "prone_sequence",
+      "input": {
+        "target_id": "target",
+        "speeds_ft": [
+          0,
+          20
+        ]
+      },
+      "expected": {
+        "stood_by_opportunity": [
+          false,
+          true
+        ],
+        "prone_after_by_opportunity": [
+          true,
+          false
+        ]
+      }
+    },
+    {
+      "id": 29,
+      "category": "prone",
+      "invariant": "Incoming attack consequence differs for within-5-foot and farther-than-5-foot contexts.",
+      "operation": "prone_context",
+      "input": {
+        "distances_ft": [
+          5,
+          10
+        ]
+      },
+      "expected": {
+        "primitive_by_distance": {
+          "5": "defensive_attack_advantage",
+          "10": "prone_incoming_attack_context"
+        },
+        "disposition_by_distance": {
+          "5": "candidate",
+          "10": "retained_unpriced"
+        }
+      }
+    },
+    {
+      "id": 30,
+      "category": "prone",
+      "invariant": "Missing attacker-distance context retains the consequence as unresolved/contextual rather than choosing one.",
+      "operation": "prone_context",
+      "input": {
+        "distances_ft": [
+          null
+        ]
+      },
+      "expected": {
+        "primitive_ids": [
+          "defensive_attack_advantage",
+          "prone_incoming_attack_context"
+        ],
+        "dispositions": [
+          "retained_unpriced"
+        ],
+        "unresolved_context": true
+      }
+    },
+    {
+      "id": 31,
+      "category": "timing_and_initiative",
+      "invariant": "Until controller-start-next under `fighter_first_v1`.",
+      "operation": "timeline_expiry",
+      "input": {
+        "convention": "fighter_first_v1",
+        "applied_event_id": "r1:controller:controller:script:000:activation",
+        "controller_events_by_round": {
+          "1": [
+            {
+              "kind": "activation"
+            }
+          ]
+        },
+        "duration": {
+          "kind": "relative",
+          "owner": "controller",
+          "anchor": "start_turn",
+          "offset_turns": 1
+        }
+      },
+      "expected": {
+        "expiry_event_id": "r2:controller:turn:start"
+      }
+    },
+    {
+      "id": 32,
+      "category": "timing_and_initiative",
+      "invariant": "Until controller-end-next under `fighter_first_v1`.",
+      "operation": "timeline_expiry",
+      "input": {
+        "convention": "fighter_first_v1",
+        "applied_event_id": "r1:controller:controller:script:000:activation",
+        "controller_events_by_round": {
+          "1": [
+            {
+              "kind": "activation"
+            }
+          ]
+        },
+        "duration": {
+          "kind": "relative",
+          "owner": "controller",
+          "anchor": "end_turn",
+          "offset_turns": 1
+        }
+      },
+      "expected": {
+        "expiry_event_id": "r2:controller:turn:end"
+      }
+    },
+    {
+      "id": 33,
+      "category": "timing_and_initiative",
+      "invariant": "The same durations under `target_before_fighter_v1`.",
+      "operation": "timeline_expiry",
+      "input": {
+        "convention": "target_before_fighter_v1",
+        "applied_event_id": "r1:controller:controller:script:000:activation",
+        "controller_events_by_round": {
+          "1": [
+            {
+              "kind": "activation"
+            }
+          ]
+        },
+        "durations": [
+          {
+            "kind": "relative",
+            "owner": "controller",
+            "anchor": "start_turn",
+            "offset_turns": 1
+          },
+          {
+            "kind": "relative",
+            "owner": "controller",
+            "anchor": "end_turn",
+            "offset_turns": 1
+          }
+        ]
+      },
+      "expected": {
+        "expiry_event_ids": [
+          "r2:controller:turn:start",
+          "r2:controller:turn:end"
+        ]
+      }
+    },
+    {
+      "id": 34,
+      "category": "timing_and_initiative",
+      "invariant": "Frozen Ground entry during another creature’s turn expires at that triggering turn’s end.",
+      "operation": "timeline_expiry",
+      "input": {
+        "convention": "fighter_first_v1",
+        "applied_event_id": "r1:controller:controller:script:000:entry",
+        "controller_events_by_round": {
+          "1": [
+            {
+              "kind": "entry",
+              "target_id": "target"
+            }
+          ]
+        },
+        "compiled_duration_component": {
+          "mastery_id": "frozen_ground",
+          "tier": 0,
+          "component_id": "frozen_ground_speed_zero"
+        }
+      },
+      "expected": {
+        "expiry_event_id": "r1:controller:turn:end"
+      }
+    },
+    {
+      "id": 35,
+      "category": "timing_and_initiative",
+      "invariant": "Frozen Ground target-start exposure expires at that target turn's end.",
+      "operation": "timeline_expiry",
+      "input": {
+        "convention": "fighter_first_v1",
+        "applied_event_id": "r1:target:target:script:000:activation",
+        "target_events_by_round": {
+          "target": {
+            "1": [
+              {
+                "kind": "activation",
+                "phase": "start"
+              }
+            ]
+          }
+        },
+        "compiled_duration_component": {
+          "mastery_id": "frozen_ground",
+          "tier": 0,
+          "component_id": "frozen_ground_speed_zero"
+        }
+      },
+      "expected": {
+        "expiry_event_id": "r1:target:target:turn:end"
+      }
+    },
+    {
+      "id": 36,
+      "category": "timing_and_initiative",
+      "invariant": "Initiative order changes a window count where mechanically expected.",
+      "operation": "schedule_order",
+      "input": {
+        "conventions": [
+          "fighter_first_v1",
+          "target_before_fighter_v1"
+        ],
+        "controller_events_by_round": {
+          "3": [
+            {
+              "kind": "activation"
+            }
+          ]
+        },
+        "activation_event_id": "r3:controller:controller:script:000:activation",
+        "window_kind": "target_active_turn_opportunity"
+      },
+      "expected": {
+        "covered_target_window_count": {
+          "fighter_first_v1": 1,
+          "target_before_fighter_v1": 0
+        }
+      }
+    },
+    {
+      "id": 37,
+      "category": "timing_and_initiative",
+      "invariant": "Independent target ordering is permutation-invariant.",
+      "operation": "schedule_permutation",
+      "input": {
+        "convention": "fighter_first_v1",
+        "target_orders": [
+          [
+            "alpha",
+            "beta"
+          ],
+          [
+            "beta",
+            "alpha"
+          ]
+        ],
+        "attack_counts": {
+          "alpha": [
+            1,
+            2,
+            0
+          ],
+          "beta": [
+            0,
+            1,
+            1
+          ]
+        }
+      },
+      "expected": {
+        "per_target_semantic_traces_equal": true,
+        "caller_orders_preserved": true
+      }
+    },
+    {
+      "id": 38,
+      "category": "repeat_saves",
+      "invariant": "Mass Levitation T0 repeat-save success ends state and causes fall.",
+      "operation": "levitation_repeat",
+      "input": {
+        "effect_id": "mass_levitation_t0_control",
+        "initial_gate_id": "mass_levitation_t0_initial_saves",
+        "repeat_gate_id": "mass_levitation_t0_repeat_saves",
+        "outcomes": {
+          "mass_levitation_t0_initial_saves": {
+            "save_failure": "1",
+            "save_success": "0"
+          },
+          "mass_levitation_t0_repeat_saves": {
+            "save_failure": "0",
+            "save_success": "1"
+          }
+        }
+      },
+      "expected": {
+        "active_elevation_at_repeat": "0",
+        "fall_ever_applied": "1",
+        "repeat_survival": "0"
+      }
+    },
+    {
+      "id": 39,
+      "category": "repeat_saves",
+      "invariant": "Mass Levitation T1 repeat save uses Disadvantage.",
+      "operation": "graph_gate",
+      "input": {
+        "effect_id": "mass_levitation_t1_control",
+        "gate_id": "mass_levitation_t1_repeat_saves"
+      },
+      "expected": {
+        "mode": "disadvantage",
+        "role": "repeat"
+      }
+    },
+    {
+      "id": 40,
+      "category": "repeat_saves",
+      "invariant": "Mass Levitation T2 successful repeat save prevents its damage-context continuation.",
+      "operation": "levitation_repeat",
+      "input": {
+        "effect_id": "mass_levitation_t2_control",
+        "initial_gate_id": "mass_levitation_t2_initial_saves",
+        "repeat_gate_id": "mass_levitation_t2_repeat_saves",
+        "damage_gate_id": "mass_levitation_t2_damage_context",
+        "outcomes": {
+          "mass_levitation_t2_initial_saves": {
+            "save_failure": "1",
+            "save_success": "0"
+          },
+          "mass_levitation_t2_repeat_saves": {
+            "save_failure": "0",
+            "save_success": "1"
+          }
+        }
+      },
+      "expected": {
+        "active_elevation_at_repeat": "0",
+        "fall_ever_applied": "1",
+        "damage_gate_probability": "0"
+      }
+    },
+    {
+      "id": 41,
+      "category": "repeat_saves",
+      "invariant": "Failed repeat saves preserve active state.",
+      "operation": "levitation_repeat",
+      "input": {
+        "effect_id": "mass_levitation_t0_control",
+        "initial_gate_id": "mass_levitation_t0_initial_saves",
+        "repeat_gate_id": "mass_levitation_t0_repeat_saves",
+        "outcomes": {
+          "mass_levitation_t0_initial_saves": {
+            "save_failure": "1",
+            "save_success": "0"
+          },
+          "mass_levitation_t0_repeat_saves": {
+            "save_failure": "1",
+            "save_success": "0"
+          }
+        }
+      },
+      "expected": {
+        "active_elevation_at_repeat": "1",
+        "active_restrained_at_repeat": "1",
+        "fall_ever_applied": "0",
+        "repeat_survival": "1"
+      }
+    },
+    {
+      "id": 42,
+      "category": "repeat_saves",
+      "invariant": "Exact three-round survival with a simple hand probability such as 1/2.",
+      "operation": "repeat_survival",
+      "input": {
+        "failure_probability": "1/2",
+        "repeat_count": 3
+      },
+      "expected": {
+        "survival_probability": "1/8",
+        "active_after_each": [
+          "1/2",
+          "1/4",
+          "1/8"
+        ]
+      }
+    },
+    {
+      "id": 43,
+      "category": "concentration",
+      "invariant": "Startup Blood Tax does not cause a check.",
+      "operation": "concentration_scenario",
+      "input": {
+        "save_bonus": 0,
+        "steps": [
+          {
+            "kind": "start",
+            "effect_id": "mass_levitation",
+            "event_id": "activation",
+            "startup_blood_tax": 7
+          }
+        ]
+      },
+      "expected": {
+        "active_effect_id": "mass_levitation",
+        "record_kinds": [
+          "concentration_start"
+        ],
+        "record_paths": {
+          "records.0.check_required": false,
+          "records.0.reason": "startup_blood_tax_exemption"
+        }
+      }
+    },
+    {
+      "id": 44,
+      "category": "concentration",
+      "invariant": "Later Blood Tax causes the correct DC.",
+      "operation": "concentration_scenario",
+      "input": {
+        "save_bonus": 0,
+        "steps": [
+          {
+            "kind": "start",
+            "effect_id": "effect",
+            "event_id": "start"
+          },
+          {
+            "kind": "check",
+            "amount": 40,
+            "source": "later_blood_tax",
+            "event_id": "later_tax",
+            "outcome": "success",
+            "success_probability": "1/2"
+          }
+        ]
+      },
+      "expected": {
+        "active_effect_id": "effect",
+        "record_kinds": [
+          "concentration_start",
+          "concentration_check"
+        ],
+        "record_paths": {
+          "records.1.dc": 20,
+          "records.1.source": "later_blood_tax"
+        }
+      }
+    },
+    {
+      "id": 45,
+      "category": "concentration",
+      "invariant": "Failed later concentration save ends the effect.",
+      "operation": "concentration_scenario",
+      "input": {
+        "save_bonus": 2,
+        "steps": [
+          {
+            "kind": "start",
+            "effect_id": "effect",
+            "event_id": "start"
+          },
+          {
+            "kind": "check",
+            "amount": 12,
+            "source": "damage",
+            "event_id": "damage",
+            "outcome": "failure",
+            "success_probability": "1/2"
+          }
+        ]
+      },
+      "expected": {
+        "active_effect_id": null,
+        "record_kinds": [
+          "concentration_start",
+          "concentration_check",
+          "concentration_end"
+        ],
+        "record_paths": {
+          "records.2.reason": "failed_concentration_save",
+          "records.2.changed": true
+        }
+      }
+    },
+    {
+      "id": 46,
+      "category": "concentration",
+      "invariant": "Starting a second concentration effect ends the first.",
+      "operation": "concentration_scenario",
+      "input": {
+        "compiled_effect": {
+          "mastery_id": "mass_levitation",
+          "tier": 0
+        },
+        "replacement_effect": {
+          "mastery_id": "mass_levitation",
+          "tier": 1
+        },
+        "target_ids": [
+          "target"
+        ],
+        "save_bonus": 0
+      },
+      "expected": {
+        "active_effect_id": "mass_levitation_t1_control",
+        "record_kinds": [
+          "concentration_end",
+          "concentration_start"
+        ],
+        "replacement_reason": "new_concentration_replacement"
+      }
+    },
+    {
+      "id": 47,
+      "category": "concentration",
+      "invariant": "Incapacitated controller event ends concentration.",
+      "operation": "concentration_scenario",
+      "input": {
+        "compiled_effect": {
+          "mastery_id": "mass_levitation",
+          "tier": 0
+        },
+        "target_ids": [
+          "target"
+        ],
+        "save_bonus": 0,
+        "end_reason": "controller_incapacitated"
+      },
+      "expected": {
+        "concentration_component_ids": [
+          "mass_levitation_persistent_elevation",
+          "mass_levitation_restrained"
+        ],
+        "fall_component_ids": [
+          "mass_levitation_fall"
+        ],
+        "fall_target_ids": [
+          "target"
+        ],
+        "fall_origin": "current_position",
+        "fall_damage": null,
+        "fall_altitude_ft": null
+      }
+    },
+    {
+      "id": 48,
+      "category": "concentration",
+      "invariant": "Mass Levitation concentration end causes current-position falls.",
+      "operation": "concentration_scenario",
+      "input": {
+        "compiled_effect": {
+          "mastery_id": "mass_levitation",
+          "tier": 0
+        },
+        "target_ids": [
+          "target_a",
+          "target_b"
+        ],
+        "save_bonus": 0,
+        "end_reason": "voluntary_end"
+      },
+      "expected": {
+        "concentration_component_ids": [
+          "mass_levitation_persistent_elevation",
+          "mass_levitation_restrained"
+        ],
+        "fall_component_ids": [
+          "mass_levitation_fall"
+        ],
+        "fall_target_ids": [
+          "target_a",
+          "target_b"
+        ],
+        "fall_origin": "current_position",
+        "fall_damage": null,
+        "fall_altitude_ft": null
+      }
+    },
+    {
+      "id": 49,
+      "category": "areas",
+      "invariant": "Frozen Ground route progress is session-owned across movement opportunities.",
+      "operation": "session_area_route",
+      "input": {
+        "initiative_convention": "fighter_first_v1",
+        "route_distance_ft": 20,
+        "base_speed_ft": 30,
+        "speed_zero_on_first_response": false
+      },
+      "expected": {
+        "paths": {
+          "initial_route.routes.0.distance_to_exit_exact": {
+            "numerator": 20,
+            "denominator": 1
+          },
+          "first_response.selected_route.progress_ft": 15,
+          "first_response.selected_route.remaining_distance_ft": 5,
+          "first_response.movement_authority.effective_speeds_ft.walk": 30,
+          "first_response.movement_authority.active_area_movement_cost_multiplier.numerator": 2,
+          "route_after_first.membership": true,
+          "route_after_first.remaining_distance_ft": 5,
+          "second_response.selected_route.distance_before_ft": 5,
+          "second_response.exited": true,
+          "route_after_second.membership": false,
+          "route_after_second.remaining_distance_ft": 0,
+          "route_after_second.closed_reason": "route_exhausted",
+          "second_response_restates_routes": false
+        }
+      }
+    },
+    {
+      "id": 50,
+      "category": "areas",
+      "invariant": "Speed 0 preserves session-owned route distance until expiry.",
+      "operation": "session_area_route",
+      "input": {
+        "initiative_convention": "fighter_first_v1",
+        "route_distance_ft": 20,
+        "base_speed_ft": 30,
+        "speed_zero_on_first_response": true
+      },
+      "expected": {
+        "paths": {
+          "first_response.reason": "movement_unavailable",
+          "first_response.membership_after": true,
+          "first_response.movement_authority.effective_speeds_ft.walk": 0,
+          "route_after_first.membership": true,
+          "route_after_first.selected_route_id": null,
+          "route_after_first.routes.0.distance_to_exit_exact": {
+            "numerator": 20,
+            "denominator": 1
+          },
+          "second_response.selected_route.distance_before_ft": 20,
+          "second_response.selected_route.progress_ft": 15,
+          "second_response.selected_route.remaining_distance_ft": 5,
+          "route_after_second.membership": true,
+          "route_after_second.remaining_distance_ft": 5,
+          "second_response_restates_routes": false
+        }
+      }
+    },
+    {
+      "id": 51,
+      "category": "areas",
+      "invariant": "A target exits by the shortest supplied legal route.",
+      "operation": "area_response",
+      "input": {
+        "convention": "shortest_route_v1",
+        "target_id": "target",
+        "membership": true,
+        "effect_active": true,
+        "routes": [
+          {
+            "route_id": "slow_ground",
+            "mode": "walk",
+            "distance_to_exit_ft": 20,
+            "compatible": true,
+            "movement_cost_multiplier": 2,
+            "environment": "grounded"
+          },
+          {
+            "route_id": "fast_air",
+            "mode": "fly",
+            "distance_to_exit_ft": 40,
+            "compatible": true,
+            "movement_cost_multiplier": 1,
+            "environment": "airborne"
+          }
+        ],
+        "effective_speeds_ft": {
+          "walk": 30,
+          "fly": 60
+        }
+      },
+      "expected": {
+        "paths": {
+          "selected_route.route_id": "fast_air",
+          "selected_route.mode": "fly",
+          "exited": true
+        }
+      }
+    },
+    {
+      "id": 52,
+      "category": "areas",
+      "invariant": "Ball Lightning membership drives exit after a successful save applies no components.",
+      "operation": "session_area_membership",
+      "input": {
+        "initiative_convention": "fighter_first_v1",
+        "route_distance_ft": 10,
+        "base_speed_ft": 30
+      },
+      "expected": {
+        "paths": {
+          "success.filtered_branch.applies": [],
+          "active_component_ids_before_movement": [],
+          "movement.exited": true,
+          "movement.ended_component_ids": [],
+          "movement.route_transition.transition_kind": "route_exit",
+          "route_after.membership": false,
+          "route_after.closed_reason": "route_exhausted",
+          "later_recurring_gate_pruned": true
+        }
+      }
+    },
+    {
+      "id": 53,
+      "category": "areas",
+      "invariant": "Frozen Ground’s separately timed failed-save effect does not end merely because the target exits.",
+      "operation": "area_response",
+      "input": {
+        "convention": "shortest_route_v1",
+        "compiled_effect": {
+          "mastery_id": "frozen_ground",
+          "tier": 0
+        },
+        "compiled_lifecycle": {
+          "kind": "typed_target_exit",
+          "activation": {
+            "gate_id": "frozen_ground_t0_activation",
+            "outcome": "no_save"
+          },
+          "speed_zero": {
+            "gate_id": "frozen_ground_t0_entry_save",
+            "outcome": "save_failure"
+          }
+        },
+        "target_id": "target",
+        "membership": true,
+        "effect_active": true,
+        "post_movement_membership": false
+      },
+      "expected": {
+        "paths": {
+          "convention": "shortest_route_v1",
+          "exited": true,
+          "membership_after": false,
+          "reason": "typed_target_exit",
+          "event_id": "r1:target:target:script:001:exit",
+          "compiled_transitions.activation.gate_id": "frozen_ground_t0_activation",
+          "compiled_transitions.speed_zero.gate_id": "frozen_ground_t0_entry_save",
+          "speed_zero_expiry_event_id": "r1:target:target:turn:end",
+          "active_component_ids_after": [
+            "frozen_ground_speed_zero"
+          ]
+        },
+        "ended_component_ids": [
+          "frozen_ground_difficult_terrain"
+        ],
+        "retained_component_ids": [
+          "frozen_ground_speed_zero"
+        ]
+      }
+    },
+    {
+      "id": 54,
+      "category": "areas",
+      "invariant": "Fixed occupancy preserves membership.",
+      "operation": "area_response",
+      "input": {
+        "convention": "fixed_occupancy_v1",
+        "target_id": "target",
+        "membership": true,
+        "effect_active": true,
+        "while_in_area_component_ids": [
+          "area_effect"
+        ]
+      },
+      "expected": {
+        "paths": {
+          "membership_after": true,
+          "exited": false,
+          "reason": "fixed_occupancy",
+          "selected_route": null
+        }
+      }
+    },
+    {
+      "id": 55,
+      "category": "areas",
+      "invariant": "Missing distance-to-exit data fails closed.",
+      "operation": "area_error",
+      "input": {
+        "convention": "shortest_route_v1",
+        "target_id": "target",
+        "membership": true,
+        "effect_active": true,
+        "routes": [
+          {
+            "route_id": "bad",
+            "mode": "walk",
+            "compatible": true,
+            "movement_cost_multiplier": 1,
+            "environment": "grounded"
+          }
+        ],
+        "effective_speeds_ft": {
+          "walk": 30
+        }
+      },
+      "expected": {
+        "error_contains": "distance_to_exit_ft"
+      }
+    },
+    {
+      "id": 56,
+      "category": "areas",
+      "invariant": "Moving-area entry frequency respects `moved_area_counts_as_entry`.",
+      "operation": "area_entry",
+      "input": {
+        "compiled_effect": {
+          "mastery_id": "ball_lightning",
+          "tier": 2
+        },
+        "target_id": "target",
+        "turn_id": "turn_1",
+        "was_member": false,
+        "is_member": true
+      },
+      "expected": {
+        "moved_area_triggered": false,
+        "ordinary_entry_triggered": true,
+        "moved_area_counts_as_entry": false,
+        "gate_opportunity_ids": [
+          "ball_lightning_entry_save"
+        ],
+        "duplicate_triggered": false,
+        "duplicate_reason": "once_per_turn_already_triggered"
+      }
+    },
+    {
+      "id": 57,
+      "category": "displacement",
+      "invariant": "10-foot push gives nonzero output under all three functions.",
+      "operation": "displacement",
+      "input": {
+        "function_ids": [
+          "sqrt_5ft_v1",
+          "log2_5ft_v1",
+          "banded_10ft_v1"
+        ],
+        "steps": [
+          {
+            "kind": "apply",
+            "target_id": "target",
+            "vector_ft": [
+              10,
+              0
+            ],
+            "source_component_id": "push"
+          }
+        ]
+      },
+      "expected": {
+        "positive_function_ids": [
+          "sqrt_5ft_v1",
+          "log2_5ft_v1",
+          "banded_10ft_v1"
+        ],
+        "paths": {
+          "records.0.raw_net_feet": 10
+        }
+      }
+    },
+    {
+      "id": 58,
+      "category": "displacement",
+      "invariant": "10-foot push followed by 10-foot pull in one epoch does not double-count.",
+      "operation": "displacement",
+      "input": {
+        "steps": [
+          {
+            "kind": "apply",
+            "target_id": "target",
+            "vector_ft": [
+              10,
+              0
+            ],
+            "source_component_id": "push"
+          },
+          {
+            "kind": "apply",
+            "target_id": "target",
+            "vector_ft": [
+              -10,
+              0
+            ],
+            "source_component_id": "pull"
+          }
+        ]
+      },
+      "expected": {
+        "paths": {
+          "records.1.raw_net_feet": 0,
+          "records.1.previous_epoch_maximum_feet": 10,
+          "records.1.new_epoch_maximum_feet": 10
+        },
+        "zero_increment_record_indexes": [
+          1
+        ]
+      }
+    },
+    {
+      "id": 59,
+      "category": "displacement",
+      "invariant": "10 then 20 feet in the same direction adds only the incremental maximum.",
+      "operation": "displacement",
+      "input": {
+        "steps": [
+          {
+            "kind": "apply",
+            "target_id": "target",
+            "vector_ft": [
+              10,
+              0
+            ],
+            "source_component_id": "first_push"
+          },
+          {
+            "kind": "apply",
+            "target_id": "target",
+            "vector_ft": [
+              10,
+              0
+            ],
+            "source_component_id": "second_push"
+          }
+        ]
+      },
+      "expected": {
+        "paths": {
+          "records.1.raw_net_feet": 20,
+          "records.1.previous_epoch_maximum_feet": 10,
+          "records.1.new_epoch_maximum_feet": 20
+        },
+        "function_increments": {
+          "records.1.banded_10ft_v1": 1
+        },
+        "approximate_function_increments": {
+          "records.1.sqrt_5ft_v1": 0.5857864376269049,
+          "records.1.log2_5ft_v1": 0.7369655941662061
+        }
+      }
+    },
+    {
+      "id": 60,
+      "category": "displacement",
+      "invariant": "Perpendicular vectors use net vector distance rather than total path.",
+      "operation": "displacement",
+      "input": {
+        "steps": [
+          {
+            "kind": "apply",
+            "target_id": "target",
+            "vector_ft": [
+              10,
+              0
+            ],
+            "source_component_id": "east"
+          },
+          {
+            "kind": "apply",
+            "target_id": "target",
+            "vector_ft": [
+              0,
+              10
+            ],
+            "source_component_id": "north"
+          }
+        ]
+      },
+      "expected": {
+        "paths": {
+          "records.1.net_vector_ft": [
+            10,
+            10,
+            0
+          ]
+        },
+        "approximate_paths": {
+          "records.1.raw_net_feet": 14.142135623730951
+        },
+        "less_than": {
+          "records.1.raw_net_feet": 20
+        }
+      }
+    },
+    {
+      "id": 61,
+      "category": "displacement",
+      "invariant": "A legal self-movement response resets the epoch.",
+      "operation": "displacement",
+      "input": {
+        "steps": [
+          {
+            "kind": "apply",
+            "target_id": "target",
+            "vector_ft": [
+              10,
+              0
+            ],
+            "source_component_id": "push"
+          },
+          {
+            "kind": "self_movement",
+            "target_id": "target",
+            "legal": true
+          },
+          {
+            "kind": "apply",
+            "target_id": "target",
+            "vector_ft": [
+              10,
+              0
+            ],
+            "source_component_id": "new_push"
+          }
+        ]
+      },
+      "expected": {
+        "paths": {
+          "records.1.reset": true,
+          "records.1.new_epoch": 2,
+          "records.2.epoch": 2,
+          "records.2.previous_epoch_maximum_feet": 0
+        }
+      }
+    },
+    {
+      "id": 62,
+      "category": "displacement",
+      "invariant": "Speed 0 prevents epoch reset.",
+      "operation": "displacement",
+      "input": {
+        "steps": [
+          {
+            "kind": "apply",
+            "target_id": "target",
+            "vector_ft": [
+              10,
+              0
+            ],
+            "source_component_id": "push"
+          },
+          {
+            "kind": "self_movement",
+            "target_id": "target",
+            "legal": true,
+            "speed_zero": true
+          }
+        ]
+      },
+      "expected": {
+        "paths": {
+          "records.1.reset": false,
+          "records.1.reason": "speed_zero",
+          "states.target.epoch": 1,
+          "states.target.maximum_feet": 10
+        }
+      }
+    },
+    {
+      "id": 63,
+      "category": "displacement",
+      "invariant": "No cliff, hazard, opportunity attack, falling damage, or ally-combo value appears.",
+      "operation": "displacement_scope",
+      "input": {
+        "steps": [
+          {
+            "kind": "apply",
+            "target_id": "target",
+            "vector_ft": [
+              0,
+              0,
+              10
+            ],
+            "source_component_id": "vertical_lift"
+          }
+        ]
+      },
+      "expected": {
+        "forbidden_tokens": [
+          "cliff",
+          "hazard",
+          "opportunity attack",
+          "falling damage",
+          "ally combo"
+        ]
+      }
+    },
+    {
+      "id": 64,
+      "category": "weight_and_scope_boundary",
+      "invariant": "Engine result contains no final primitive weights.",
+      "operation": "result_boundary",
+      "input": {
+        "mastery_id": "telekinetic_shove",
+        "tier": 0
+      },
+      "expected": {
+        "forbidden_fields": [
+          "weight",
+          "primitive_weight",
+          "final_primitive_weights"
+        ]
+      }
+    },
+    {
+      "id": 65,
+      "category": "weight_and_scope_boundary",
+      "invariant": "Engine result contains no combined Control Value.",
+      "operation": "result_boundary",
+      "input": {
+        "mastery_id": "telekinetic_shove",
+        "tier": 0
+      },
+      "expected": {
+        "forbidden_fields": [
+          "control_value",
+          "combined_control_value"
+        ]
+      }
+    },
+    {
+      "id": 66,
+      "category": "weight_and_scope_boundary",
+      "invariant": "Engine result contains no HOT/IDEAL/COLD/SENSITIVE field.",
+      "operation": "result_boundary",
+      "input": {
+        "mastery_id": "telekinetic_shove",
+        "tier": 0
+      },
+      "expected": {
+        "forbidden_fields": [
+          "HOT",
+          "IDEAL",
+          "COLD",
+          "SENSITIVE"
+        ]
+      }
+    },
+    {
+      "id": 67,
+      "category": "weight_and_scope_boundary",
+      "invariant": "Engine performs no action, tier, target, resource, or comparator optimization.",
+      "operation": "signature_boundary",
+      "input": {
+        "mastery_id": "telekinetic_shove",
+        "tier": 0,
+        "function_names": [
+          "evaluate_reliability",
+          "build_schedule",
+          "area_response"
+        ]
+      },
+      "expected": {
+        "forbidden_parameters": [
+          "action_choice",
+          "tier_choice",
+          "target_choice",
+          "resource_choice",
+          "comparator",
+          "optimize"
+        ],
+        "action_optimization": false,
+        "forbidden_fields": [
+          "optimized_action",
+          "optimized_tier",
+          "optimized_target",
+          "optimized_resource",
+          "optimized_comparator"
+        ]
+      }
+    },
+    {
+      "id": 68,
+      "category": "timing_and_initiative",
+      "invariant": "Both initiative conventions put the first movement response after start processing and before active and attack windows.",
+      "operation": "schedule_target_turn_order",
+      "input": {
+        "conventions": [
+          "fighter_first_v1",
+          "target_before_fighter_v1"
+        ],
+        "target_events_by_round": {
+          "target": {
+            "1": [
+              {
+                "kind": "save_opportunity",
+                "phase": "start"
+              },
+              {
+                "kind": "entry",
+                "phase": "before_movement"
+              },
+              {
+                "kind": "exit",
+                "phase": "after_movement"
+              }
+            ]
+          }
+        },
+        "attack_counts": {
+          "target": [
+            2,
+            0,
+            0
+          ]
+        }
+      },
+      "expected": {
+        "first_turn_kinds": [
+          "target_turn_start",
+          "reaction_window",
+          "save_opportunity",
+          "entry",
+          "target_movement_opportunity",
+          "exit",
+          "target_active_turn_opportunity",
+          "target_attack_opportunity",
+          "target_attack_opportunity",
+          "target_turn_end"
+        ],
+        "reaction_opens_at_turn_start": true,
+        "movement_opportunities_per_turn": 1
+      }
+    },
+    {
+      "id": 69,
+      "category": "prone",
+      "invariant": "Standing and route progress share one pre-attack movement budget.",
+      "operation": "area_response",
+      "input": {
+        "convention": "shortest_route_v1",
+        "target_id": "target",
+        "membership": true,
+        "effect_active": true,
+        "routes": [
+          {
+            "route_id": "ground_exit",
+            "mode": "walk",
+            "distance_to_exit_ft": 20,
+            "compatible": true,
+            "movement_cost_multiplier": 1,
+            "environment": "grounded"
+          }
+        ],
+        "effective_speeds_ft": {
+          "walk": 30
+        },
+        "prone": true
+      },
+      "expected": {
+        "paths": {
+          "selected_route.prone_response.stood": true,
+          "selected_route.prone_response.prone_after": false,
+          "selected_route.prone_response.standing_cost_ft": 15,
+          "selected_route.prone_response.remaining_movement_ft": 15,
+          "selected_route.progress_ft": 15,
+          "selected_route.remaining_distance_ft": 5,
+          "exited": false
+        }
+      }
+    },
+    {
+      "id": 70,
+      "category": "areas",
+      "invariant": "Frozen Ground can be exited on the immediate legal movement response without changing Speed.",
+      "operation": "area_response",
+      "input": {
+        "convention": "shortest_route_v1",
+        "target_id": "target",
+        "membership": true,
+        "effect_active": true,
+        "routes": [
+          {
+            "route_id": "frozen_exit",
+            "mode": "walk",
+            "distance_to_exit_ft": 15,
+            "compatible": true,
+            "movement_cost_multiplier": 2,
+            "environment": "grounded"
+          }
+        ],
+        "effective_speeds_ft": {
+          "walk": 30
+        },
+        "while_in_area_component_ids": [
+          "frozen_ground_difficult_terrain"
+        ],
+        "independent_component_ids": [
+          "independently_timed_component"
+        ]
+      },
+      "expected": {
+        "paths": {
+          "selected_route.progress_ft": 15,
+          "membership_after": false,
+          "exited": true
+        },
+        "ended_component_ids": [
+          "frozen_ground_difficult_terrain"
+        ],
+        "retained_component_ids": [
+          "independently_timed_component"
+        ],
+        "effective_speeds_unchanged": {
+          "walk": 30
+        }
+      }
+    },
+    {
+      "id": 71,
+      "category": "areas",
+      "invariant": "Ball Lightning while-in-area consequences end on the immediate legal exit response.",
+      "operation": "area_response",
+      "input": {
+        "convention": "shortest_route_v1",
+        "target_id": "target",
+        "membership": true,
+        "effect_active": true,
+        "routes": [
+          {
+            "route_id": "ball_lightning_exit",
+            "mode": "walk",
+            "distance_to_exit_ft": 10,
+            "compatible": true,
+            "movement_cost_multiplier": 1,
+            "environment": "grounded"
+          }
+        ],
+        "effective_speeds_ft": {
+          "walk": 30
+        },
+        "while_in_area_component_ids": [
+          "ball_lightning_attack_disadvantage",
+          "ball_lightning_reaction_denial"
+        ]
+      },
+      "expected": {
+        "paths": {
+          "membership_after": false,
+          "exited": true
+        },
+        "ended_component_ids": [
+          "ball_lightning_attack_disadvantage",
+          "ball_lightning_reaction_denial"
+        ]
+      }
+    },
+    {
+      "id": 72,
+      "category": "prone",
+      "invariant": "Speed 0 preserves Prone and area exposure at the pre-attack movement response.",
+      "operation": "area_response",
+      "input": {
+        "convention": "shortest_route_v1",
+        "target_id": "target",
+        "membership": true,
+        "effect_active": true,
+        "routes": [
+          {
+            "route_id": "blocked_exit",
+            "mode": "walk",
+            "distance_to_exit_ft": 5,
+            "compatible": true,
+            "movement_cost_multiplier": 1,
+            "environment": "grounded"
+          }
+        ],
+        "effective_speeds_ft": {
+          "walk": 30
+        },
+        "speed_zero": true,
+        "prone": true,
+        "while_in_area_component_ids": [
+          "area_exposure"
+        ]
+      },
+      "expected": {
+        "paths": {
+          "membership_after": true,
+          "exited": false,
+          "selected_route": null,
+          "reason": "movement_unavailable",
+          "prone_after": true
+        },
+        "ended_component_ids": []
+      }
+    }
+  ]
+}

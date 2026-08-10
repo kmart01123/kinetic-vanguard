@@ -70,10 +70,10 @@ jobs:
       - name: Test
         run: npm test
 
-      - name: Validate damage authority, Control Authority v2, and control-target inputs
+      - name: Validate damage authority, Control Authority v2, control-target inputs, and shared control engine
         run: npm run harness:validate
 
-      - name: Test maintained damage, Control Authority v2, and control-target contracts
+      - name: Test maintained damage, Control Authority v2, control-target, and shared control-engine contracts
         run: npm run test:harness
 
       - name: Build prototype
