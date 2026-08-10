@@ -745,6 +745,8 @@ class ControlExecutionSessionTests(unittest.TestCase):
         concentration_save_bonus: int | None = 2,
         raw_second_movement_routes: Sequence[Mapping[str, Any]] | None = None,
         bind_round_one_normalization: bool = True,
+        bind_movement_normalization: bool = False,
+        area_response_convention: str = "shortest_route_v1",
     ):
         program = self.engine.program("frozen_ground_t0_control")
         schedule = self.engine.schedule(
@@ -781,6 +783,12 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 "reliability_event_ids": [reliability_event.event_id],
             }
         for target_id in target_ids:
+            movement = next(
+                event for event in schedule.events
+                if event.kind == "target_movement_opportunity"
+                and event.target_id == target_id
+                and event.sequence > activation.sequence
+            )
             active = next(
                 event for event in schedule.events
                 if event.kind == "target_active_turn_opportunity"
@@ -799,6 +807,15 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 }
                 operation_inputs[attack.event_id] = {
                     "normalization_target_ids": [target_id],
+                }
+            if bind_movement_normalization:
+                operation_inputs[movement.event_id] = {
+                    "normalization_target_ids": [target_id],
+                    "normalization_context": {
+                        "movement_mode": "walk",
+                        "movement_mode_speeds_ft": {"walk": 30},
+                        "planned_route_feet": 30,
+                    },
                 }
         if raw_second_movement_routes is not None:
             if len(target_ids) != 1:
@@ -840,6 +857,9 @@ class ControlExecutionSessionTests(unittest.TestCase):
             }
             for target_id in target_ids
         }
+        if area_response_convention != "shortest_route_v1":
+            for target_mechanics in mechanics.values():
+                target_mechanics.pop("area_routes", None)
         session = self.engine.execution_session(
             program,
             targets=tuple(
@@ -856,7 +876,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
             selector_context=SelectorContext(),
             schedule=schedule,
             target_mechanics=mechanics,
-            area_response_convention="shortest_route_v1",
+            area_response_convention=area_response_convention,
             displacement_function_id="sqrt_5ft_v1",
             probability_context=ProbabilityContext(save_dc=15),
             reliability_events=reliability_events,
@@ -1141,6 +1161,103 @@ class ControlExecutionSessionTests(unittest.TestCase):
             if row["primitive_id"] == "mobility_loss_feet"
             and row["context"].get("cause") == "difficult_terrain"
         ]
+
+    @staticmethod
+    def _session_mutation_fingerprint(session) -> str:
+        """Canonical snapshot of every mutation surface guarded by phase order."""
+
+        concentration = session._concentration_tracker
+        return json.dumps(
+            {
+                "state": session._state.snapshot(),
+                "route": json.loads(session._area_route_state_json()),
+                "movement_response_required": (
+                    session._movement_response_required
+                ),
+                "movement_response_consumed": (
+                    session._movement_response_consumed
+                ),
+                "epochs": session._epochs.to_dict(),
+                "audit_ledger": session._state.audit_ledger,
+                "refresh_records": session._state.refresh_records,
+                "replacement_records": session._state.replacement_records,
+                "suppression_records": [
+                    row.to_dict()
+                    for row in session._state.suppression_records
+                ],
+                "issued_records": [
+                    row.to_dict() for row in session.issued_records()
+                ],
+                "operation_sequence": session._operation_sequence,
+                "required_operations": sorted(
+                    session._current_required_operations
+                ),
+                "frequency_history": sorted(
+                    session._area_entry_trigger_history
+                ),
+                "concentration": (
+                    None if concentration is None else concentration.to_dict()
+                ),
+                "pending_concentration_end": (
+                    session._pending_concentration_end
+                ),
+                "pending_displacements": sorted(
+                    session._pending_displacements
+                ),
+                "displaced_targets": sorted(session._displaced_targets),
+                "area_records": session._area_records,
+                "area_route_transitions": session._area_route_transitions,
+                "prone_records": session._prone_records,
+                "displacement_records": session._displacement_records,
+                "normalization_count": len(
+                    session._normalization_results
+                ),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+
+    @staticmethod
+    def _issue_normalization_without_session_phase_guard(
+        session,
+        *,
+        target_id: str,
+    ):
+        """Create an invalid issued record solely to exercise final replay."""
+
+        event = session.current_event
+        if event is None:
+            raise AssertionError("normalization forgery requires an open event")
+        context = session._bound_input(
+            "normalization_context",
+            target_id=target_id,
+            default={},
+        )
+        pre = json.dumps(
+            session._state.snapshot(),
+            sort_keys=True,
+            separators=(",", ":"),
+            allow_nan=False,
+        )
+        result = session._engine._normalize_scheduled_window(
+            state=session._state,
+            schedule=session.schedule,
+            target_id=target_id,
+            event_id=event.event_id,
+            context=context,
+        )
+        session._normalization_results.append(result)
+        session._current_required_operations.discard(
+            f"normalization:{target_id}"
+        )
+        session._current_required_operations.discard("normalization")
+        return session._issue(
+            record_kind="normalization",
+            payload=result,
+            pre_operation_state_json=pre,
+            target_id=target_id,
+        )
 
     @staticmethod
     def _bind_movement_normalization(
@@ -2617,24 +2734,36 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 target_id="target",
             )
 
-    def test_required_branch_cannot_be_skipped_backdated_or_normalized_after_apply(self) -> None:
+    def test_required_branch_cannot_be_skipped_and_normalization_precedes_mutation(
+        self,
+    ) -> None:
         session, schedule, save_event = self._absolute_zero_session(
             save_inputs={"normalization_target_ids": ["target"]},
         )
         session.advance_to(save_event.event_id)
         with self.assertRaisesRegex(ControlEngineError, "unresolved required"):
             session.close_event()
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"[Nn]ormalization.*(before|pending|unresolved|required)|"
+            r"(pending|required|unresolved).*normalization",
+        ):
+            session.apply_branch(
+                gate_id="absolute_zero_t0_save",
+                outcome="save_failure",
+                target_id="target",
+            )
+        normalization = session.normalize(target_id="target")
+        self.assertEqual(
+            normalization.to_dict()["payload"]["contributions"],
+            [],
+        )
         session.apply_branch(
             gate_id="absolute_zero_t0_save",
             outcome="save_failure",
             target_id="target",
         )
-        with self.assertRaisesRegex(ControlEngineError, "same-event component"):
-            session.normalize(target_id="target")
-        # The failed normalization remains unresolved, so this execution cannot
-        # be repaired by sorting or by silently closing the event.
-        with self.assertRaisesRegex(ControlEngineError, "normalization"):
-            session.close_event()
+        session.close_event()
 
         backdated, backdated_schedule, backdated_save = self._absolute_zero_session()
         self._finish_absolute_zero(backdated, backdated_save)
@@ -5848,6 +5977,656 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 transition.to_dict()["payload"]["membership_after"],
             )
             self.assertIsNotNone(gate)
+
+    def test_normalization_phase_01_frozen_exit_normalizes_terrain_before_movement(
+        self,
+    ) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            route_distance=5,
+            bind_round_one_normalization=False,
+            bind_movement_normalization=True,
+        )
+        self._activate_frozen_ground(session, activation)
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.target_id == "target"
+            and event.sequence > activation.sequence
+        )
+        session.advance_to(movement.event_id)
+        normalization = session.normalize(target_id="target")
+        [terrain] = self._terrain_mobility_contributions(normalization)
+        self.assertEqual(terrain["quantity"], 30.0)
+        self.assertEqual(
+            terrain["source_component_ids"],
+            [
+                "frozen_ground_t0_control:"
+                "frozen_ground_difficult_terrain"
+            ],
+        )
+        [response] = session.resolve_movement_response(target_id="target")
+        payload = response.to_dict()["payload"]
+        self.assertTrue(payload["exited"])
+        self.assertEqual(
+            payload["ended_component_ids"],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertLess(
+            normalization.operation_sequence,
+            response.operation_sequence,
+        )
+        session.close_event()
+
+    def test_normalization_phase_02_pending_normalization_blocks_movement(
+        self,
+    ) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            bind_round_one_normalization=False,
+            bind_movement_normalization=True,
+        )
+        self._activate_frozen_ground(session, activation)
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.target_id == "target"
+            and event.sequence > activation.sequence
+        )
+        session.advance_to(movement.event_id)
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"[Nn]ormalization.*(before|pending|unresolved|required)|"
+            r"(pending|required|unresolved).*normalization",
+        ):
+            session.resolve_movement_response(target_id="target")
+
+    def test_normalization_phase_03_rejected_movement_is_fully_atomic(
+        self,
+    ) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            bind_round_one_normalization=False,
+            bind_movement_normalization=True,
+        )
+        self._activate_frozen_ground(session, activation)
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.target_id == "target"
+            and event.sequence > activation.sequence
+        )
+        session.advance_to(movement.event_id)
+        before = self._session_mutation_fingerprint(session)
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"[Nn]ormalization.*(before|pending|unresolved|required)|"
+            r"(pending|required|unresolved).*normalization",
+        ):
+            session.resolve_movement_response(target_id="target")
+        self.assertEqual(self._session_mutation_fingerprint(session), before)
+
+    def test_normalization_phase_04_movement_succeeds_after_normalization(
+        self,
+    ) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            route_distance=5,
+            bind_round_one_normalization=False,
+            bind_movement_normalization=True,
+        )
+        self._activate_frozen_ground(session, activation)
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.target_id == "target"
+            and event.sequence > activation.sequence
+        )
+        session.advance_to(movement.event_id)
+        session.normalize(target_id="target")
+        self.assertNotIn(
+            "normalization:target",
+            session._current_required_operations,
+        )
+        [response] = session.resolve_movement_response(target_id="target")
+        self.assertTrue(response.to_dict()["payload"]["exited"])
+        session.close_event()
+
+    def test_normalization_phase_05_source_removal_changes_event_basis(
+        self,
+    ) -> None:
+        session, schedule, save = self._absolute_zero_session(
+            normalize_movement=True,
+        )
+        session.advance_to(save.event_id)
+        session.apply_branch(
+            gate_id="absolute_zero_t0_save",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.close_event()
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+        )
+        session.advance_to(movement.event_id)
+        session._state.terminate(
+            target_id="target",
+            component_id="absolute_zero_speed_zero",
+            effect_id="absolute_zero_t0_control",
+            event_id=movement.event_id,
+            reason="test_only_same_event_removal",
+        )
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"[Nn]ormalization.*(unchanged|pre-event|event basis|basis)",
+        ):
+            session.normalize(target_id="target")
+
+    def test_normalization_phase_06_replacement_and_refresh_change_event_basis(
+        self,
+    ) -> None:
+        for mutation in ("replacement", "refresh"):
+            with self.subTest(mutation=mutation):
+                session, schedule, save = self._absolute_zero_session(
+                    normalize_movement=True,
+                )
+                session.advance_to(save.event_id)
+                session.apply_branch(
+                    gate_id="absolute_zero_t0_save",
+                    outcome="save_failure",
+                    target_id="target",
+                )
+                session.close_event()
+                movement = next(
+                    event for event in schedule.events
+                    if event.kind == "target_movement_opportunity"
+                )
+                session.advance_to(movement.event_id)
+                if mutation == "refresh":
+                    attack = next(
+                        event for event in schedule.events
+                        if event.kind == "target_attack_opportunity"
+                    )
+                    session._state.refresh(
+                        target_id="target",
+                        component_id="absolute_zero_speed_zero",
+                        effect_id="absolute_zero_t0_control",
+                        event_id=movement.event_id,
+                        expiry_event_id=attack.event_id,
+                    )
+                else:
+                    [original] = session._state.active_components("target")
+                    session._state.terminate(
+                        target_id="target",
+                        component_id=original.component_id,
+                        effect_id=original.effect_id,
+                        event_id=movement.event_id,
+                        reason="test_only_same_event_replacement",
+                    )
+                    component = self.engine.program(
+                        "absolute_zero_t0_control"
+                    ).component("absolute_zero_speed_zero")
+                    session._state.apply_component(
+                        effect_id="absolute_zero_t0_control",
+                        component={
+                            "component_id": component.component_id,
+                            "magnitude": component.magnitude.data.to_dict(),
+                            "duration": component.duration.to_dict(),
+                            "stacking": component.stacking.data.to_dict(),
+                        },
+                        target_id="target",
+                        source_actor_id="replacement_controller",
+                        event_id=movement.event_id,
+                        invocation_id="test_only_replacement",
+                        expiry_event_id=original.expiry_event_id,
+                    )
+                with self.assertRaisesRegex(
+                    ControlEngineError,
+                    r"[Nn]ormalization.*(unchanged|pre-event|event basis|basis)",
+                ):
+                    session.normalize(target_id="target")
+
+    def test_normalization_phase_07_consumable_token_change_rejects_normalization(
+        self,
+    ) -> None:
+        session, schedule, save = self._absolute_zero_session(
+            normalize_attack=True,
+        )
+        session.advance_to(save.event_id)
+        session.apply_branch(
+            gate_id="absolute_zero_t0_save",
+            outcome="save_success",
+            target_id="target",
+        )
+        session.close_event()
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+        )
+        session.advance_to(movement.event_id)
+        session._state.apply_component(
+            effect_id="test_only_token_effect",
+            component={
+                "component_id": "test_only_next_attack",
+                "magnitude": {
+                    "kind": "attack_disadvantage",
+                    "scope": "next_attack",
+                    "count": 1,
+                },
+                "duration": {"kind": "until_next_attack"},
+                "stacking": {
+                    "key": "test_only_next_attack",
+                    "mode": "nonstacking",
+                    "refresh": "none",
+                },
+            },
+            target_id="target",
+            source_actor_id="controller",
+            event_id=movement.event_id,
+            invocation_id="test_only_token",
+        )
+        session.close_event()
+        attack = next(
+            event for event in schedule.events
+            if event.kind == "target_attack_opportunity"
+        )
+        session.advance_to(attack.event_id)
+        [token] = [
+            component
+            for component in session._state.active_components("target")
+            if component.component_id == "test_only_next_attack"
+        ]
+        self.assertEqual(token.remaining_tokens, 1)
+        token.remaining_tokens = 0
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"[Nn]ormalization.*(unchanged|pre-event|event basis|basis)",
+        ):
+            session.normalize(target_id="target")
+
+    def test_normalization_phase_08_route_only_change_rejects_normalization(
+        self,
+    ) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            route_distance=5,
+            bind_round_one_normalization=False,
+            bind_movement_normalization=True,
+        )
+        self._activate_frozen_ground(session, activation)
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.target_id == "target"
+            and event.sequence > activation.sequence
+        )
+        session.advance_to(movement.event_id)
+        state_before = session.state_snapshot("target")
+        route = session._area_route_state_or_none("target")
+        self.assertIsNotNone(route)
+        assert route is not None
+        [geometry] = route.routes
+        changed_geometry = replace(
+            geometry,
+            distance_to_exit_ft=Fraction(4),
+        )
+        session._set_area_route_state(replace(
+            route,
+            routes=(changed_geometry,),
+            selected_route_id=changed_geometry.route_id,
+            movement_mode=changed_geometry.mode,
+            environment=changed_geometry.environment,
+            remaining_distance_ft=Fraction(4),
+            last_update_event_id=movement.event_id,
+            last_update_event_sequence=movement.sequence,
+        ))
+        self.assertEqual(session.state_snapshot("target"), state_before)
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"[Nn]ormalization.*(unchanged|pre-event|event basis|basis)",
+        ):
+            session.normalize(target_id="target")
+
+    def test_normalization_phase_09_independent_target_mutation_does_not_block(
+        self,
+    ) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            target_ids=("alpha", "beta"),
+            route_distance=45,
+            bind_round_one_normalization=False,
+            bind_movement_normalization=True,
+        )
+        self._activate_frozen_ground(
+            session,
+            activation,
+            target_ids=("alpha", "beta"),
+        )
+        movements = [
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.sequence > activation.sequence
+        ]
+        alpha_movement = next(
+            event for event in movements if event.target_id == "alpha"
+        )
+        beta_movement = next(
+            event for event in movements if event.target_id == "beta"
+        )
+        session.advance_to(alpha_movement.event_id)
+        session.normalize(target_id="alpha")
+        session.resolve_movement_response(target_id="alpha")
+        session.close_event()
+        session.advance_to(beta_movement.event_id)
+        self.assertIn(
+            "normalization:beta",
+            session._current_required_operations,
+        )
+        self.assertNotIn(
+            "normalization:alpha",
+            session._current_required_operations,
+        )
+        self.assertIsNone(
+            session._require_pending_normalization_complete_before_mutation(
+                "alpha"
+            )
+        )
+        session._state.refresh(
+            target_id="alpha",
+            component_id="frozen_ground_difficult_terrain",
+            effect_id="frozen_ground_t0_control",
+            event_id=beta_movement.event_id,
+            expiry_event_id=next(
+                event.event_id for event in schedule.events
+                if event.sequence > beta_movement.sequence
+            ),
+        )
+        normalization = session.normalize(target_id="beta")
+        [terrain] = self._terrain_mobility_contributions(normalization)
+        self.assertEqual(terrain["target_id"], "beta")
+        self.assertEqual(terrain["quantity"], 30.0)
+
+    def test_normalization_phase_10_final_replay_rejects_forged_target_basis(
+        self,
+    ) -> None:
+        session, _schedule, save = self._absolute_zero_session(
+            normalize_movement=True,
+        )
+        normalization = self._finish_absolute_zero_with_normalization(
+            session,
+            save,
+        )
+        forged = json.loads(normalization.pre_operation_state_json)
+        [target_row] = [
+            row for row in forged if row["target_id"] == "target"
+        ]
+        target_row["remaining_tokens"] = 1
+        object.__setattr__(
+            normalization,
+            "pre_operation_state_json",
+            json.dumps(
+                forged,
+                sort_keys=True,
+                separators=(",", ":"),
+                allow_nan=False,
+            ),
+        )
+        self._rewrite_record_payload(
+            normalization,
+            normalization.to_dict()["payload"],
+        )
+        session._issued_record_attestations[
+            normalization.operation_sequence - 1
+        ] = normalization.record_sha256
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"Final normalization record requires the unchanged pre-event",
+        ):
+            session._validate_normalization_record_basis(normalization)
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"[Nn]ormalization.*(unchanged|pre-event|event basis|basis)|"
+            r"Same-event operation state chain",
+        ):
+            session.result()
+
+    def test_normalization_phase_11_final_replay_rejects_empty_after_removal(
+        self,
+    ) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            route_distance=5,
+            bind_round_one_normalization=False,
+            bind_movement_normalization=True,
+        )
+        self._activate_frozen_ground(session, activation)
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.target_id == "target"
+            and event.sequence > activation.sequence
+        )
+        session.advance_to(movement.event_id)
+        session._current_required_operations.discard(
+            "normalization:target"
+        )
+        [response] = session.resolve_movement_response(target_id="target")
+        self.assertTrue(response.to_dict()["payload"]["exited"])
+        normalization = self._issue_normalization_without_session_phase_guard(
+            session,
+            target_id="target",
+        )
+        self.assertEqual(
+            normalization.to_dict()["payload"]["contributions"],
+            [],
+        )
+        session.close_event()
+        session.complete()
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"[Nn]ormalization.*(unchanged|pre-event|event basis|basis)",
+        ):
+            session.result()
+
+    def test_normalization_phase_12_unchanged_area_state_succeeds(
+        self,
+    ) -> None:
+        session, schedule, activation = self._frozen_ground_session(
+            route_distance=45,
+            bind_round_one_normalization=False,
+            bind_movement_normalization=True,
+        )
+        self._activate_frozen_ground(session, activation)
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.target_id == "target"
+            and event.sequence > activation.sequence
+        )
+        session.advance_to(movement.event_id)
+        normalization = session.normalize(target_id="target")
+        record = normalization.to_dict()
+        self.assertEqual(
+            [
+                row for row in record["pre_operation_state"]
+                if row["target_id"] == "target"
+            ],
+            [
+                row for row in record["pre_event_state"]
+                if row["target_id"] == "target"
+            ],
+        )
+        self.assertEqual(
+            [
+                row for row in record["pre_operation_route_state"]
+                if row["target_id"] == "target"
+            ],
+            [
+                row for row in record["pre_event_route_state"]
+                if row["target_id"] == "target"
+            ],
+        )
+
+    def test_normalization_phase_13_non_area_effect_still_normalizes(
+        self,
+    ) -> None:
+        session, _schedule, save = self._absolute_zero_session(
+            normalize_movement=True,
+        )
+        normalization = self._finish_absolute_zero_with_normalization(
+            session,
+            save,
+        )
+        primitives = {
+            row["primitive_id"]
+            for row in normalization.to_dict()["payload"]["contributions"]
+        }
+        self.assertIn("mobility_loss_feet", primitives)
+        session.result()
+
+    def test_normalization_phase_14_both_initiatives_enforce_event_basis(
+        self,
+    ) -> None:
+        for initiative in (
+            "fighter_first_v1",
+            "target_before_fighter_v1",
+        ):
+            with self.subTest(initiative=initiative):
+                session, schedule, activation = self._frozen_ground_session(
+                    initiative=initiative,
+                    route_distance=5,
+                    bind_round_one_normalization=False,
+                    bind_movement_normalization=True,
+                )
+                self._activate_frozen_ground(session, activation)
+                movement = next(
+                    event for event in schedule.events
+                    if event.kind == "target_movement_opportunity"
+                    and event.target_id == "target"
+                    and event.sequence > activation.sequence
+                )
+                session.advance_to(movement.event_id)
+                with self.assertRaisesRegex(
+                    ControlEngineError,
+                    r"[Nn]ormalization.*(before|pending|unresolved|required)|"
+                    r"(pending|required|unresolved).*normalization",
+                ):
+                    session.resolve_movement_response(target_id="target")
+                session.normalize(target_id="target")
+                [response] = session.resolve_movement_response(
+                    target_id="target"
+                )
+                self.assertTrue(response.to_dict()["payload"]["exited"])
+                session.close_event()
+
+    def test_normalization_phase_15_both_area_conventions_enforce_event_basis(
+        self,
+    ) -> None:
+        for convention in (
+            "shortest_route_v1",
+            "fixed_occupancy_v1",
+        ):
+            with self.subTest(convention=convention):
+                session, schedule, activation = self._frozen_ground_session(
+                    route_distance=5,
+                    bind_round_one_normalization=False,
+                    bind_movement_normalization=True,
+                    area_response_convention=convention,
+                )
+                self._activate_frozen_ground(session, activation)
+                movement = next(
+                    event for event in schedule.events
+                    if event.kind == "target_movement_opportunity"
+                    and event.target_id == "target"
+                    and event.sequence > activation.sequence
+                )
+                session.advance_to(movement.event_id)
+                with self.assertRaisesRegex(
+                    ControlEngineError,
+                    r"[Nn]ormalization.*(before|pending|unresolved|required)|"
+                    r"(pending|required|unresolved).*normalization",
+                ):
+                    session.resolve_movement_response(target_id="target")
+                session.normalize(target_id="target")
+                [response] = session.resolve_movement_response(
+                    target_id="target"
+                )
+                payload = response.to_dict()["payload"]
+                if convention == "shortest_route_v1":
+                    self.assertTrue(payload["exited"])
+                else:
+                    self.assertEqual(payload["reason"], "fixed_occupancy")
+                    self.assertFalse(payload["exited"])
+                session.close_event()
+
+    def test_normalization_phase_16_all_ambient_membership_tests_remain_present(
+        self,
+    ) -> None:
+        names = dir(type(self))
+        for index in range(1, 21):
+            prefix = f"test_ambient_membership_{index:02d}_"
+            self.assertEqual(
+                [name for name in names if name.startswith(prefix)],
+                [next(name for name in names if name.startswith(prefix))],
+                prefix,
+            )
+        self.assertEqual(
+            len([
+                name for name in names
+                if name.startswith("test_ambient_membership_")
+            ]),
+            20,
+        )
+
+    def test_normalization_phase_17_regression_families_remain_present(
+        self,
+    ) -> None:
+        session_type = type(self)
+        self.assertEqual(
+            len([
+                name for name in dir(session_type)
+                if name.startswith("test_area_entry_transition_")
+            ]),
+            18,
+        )
+        self.assertEqual(
+            len([
+                name for name in dir(session_type)
+                if name.startswith("test_area_route_")
+            ]),
+            16,
+        )
+        session_sentinels = (
+            "test_area_entry_transition_12_final_replay_accepts_ordered_entry_gate",
+            "test_area_entry_transition_13_final_replay_rejects_gate_without_entry",
+            "test_area_route_01_frozen_progress_is_carried_then_exits",
+            "test_area_route_10_rewritten_geometry_transition_cannot_enter_result",
+            "test_concentration_program_requires_bound_tracker_at_construction",
+            "test_mass_levitation_concentration_end_owns_compiled_end_gate",
+            "test_prone_stands_before_attack_and_outgoing_impairment_is_absent",
+            "test_prone_standing_cost_precedes_frozen_ground_route_progress",
+            "test_displacement_prone_and_epoch_share_one_movement_budget",
+            "test_negative_06_exact_stream_position_cannot_mix_same_scenario_executions",
+            "test_negative_07_reliability_with_different_selector_membership_is_rejected",
+            "test_benign_payload_rewrite_fails_engine_owned_issuance_attestation",
+        )
+        for name in session_sentinels:
+            self.assertTrue(callable(getattr(session_type, name, None)), name)
+        integration_sentinels = (
+            "test_concentration_replacement_executes_old_compiled_end_gate",
+            "test_failed_concentration_check_executes_fall_and_final_ledger_agrees",
+            "test_typed_self_movement_boundaries_enter_public_result",
+            "test_horizontal_displacement_requires_exact_caller_geometry",
+        )
+        for name in integration_sentinels:
+            self.assertTrue(
+                callable(getattr(ControlEngineIntegrationBridgeTests, name, None)),
+                name,
+            )
+        facade_sentinels = (
+            "test_version_block_carries_every_selected_identity_and_digest",
+            "test_exact_reliability_serialization_retains_fraction_records",
+            "test_facade_assembles_all_required_result_surfaces_weight_free",
+        )
+        for name in facade_sentinels:
+            self.assertTrue(
+                callable(getattr(ControlEngineFacadeTests, name, None)),
+                name,
+            )
 
     def test_ambient_membership_01_nonmember_activation_filters_component(
         self,

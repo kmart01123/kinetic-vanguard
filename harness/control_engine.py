@@ -8753,6 +8753,114 @@ class ControlExecutionSession:
     def _operation_inputs(self, event_id: str) -> dict[str, Any]:
         return json.loads(self._operation_inputs_json).get(event_id, {})
 
+    @staticmethod
+    def _target_snapshot_slice_json(
+        snapshot_json: str,
+        target_id: str,
+    ) -> str:
+        """Return one target's exact canonical slice from a state snapshot."""
+
+        return _canonical_json([
+            row
+            for row in json.loads(snapshot_json)
+            if row.get("target_id") == target_id
+        ])
+
+    @staticmethod
+    def _target_route_snapshot_slice_json(
+        snapshot_json: str,
+        target_id: str,
+    ) -> str:
+        """Return one target's exact canonical slice from a route snapshot."""
+
+        return _canonical_json([
+            row
+            for row in json.loads(snapshot_json)
+            if row.get("target_id") == target_id
+        ])
+
+    def _require_pending_normalization_complete_before_mutation(
+        self,
+        *target_ids: str,
+    ) -> None:
+        """Phase-lock target mutations behind their required normalization."""
+
+        targets = {
+            _identifier(target_id, "normalization mutation target_id")
+            for target_id in target_ids
+        }
+        blocked = sorted(
+            target_id
+            for target_id in targets
+            if f"normalization:{target_id}"
+            in self._current_required_operations
+        )
+        if "normalization" in self._current_required_operations:
+            blocked = sorted(targets)
+        if blocked:
+            raise ControlEngineError(
+                "Pending required normalization must complete before "
+                "mechanically relevant target or route mutation: "
+                f"{blocked}"
+            )
+
+    def _require_unchanged_pre_event_normalization_basis(
+        self,
+        target_id: str,
+    ) -> None:
+        """Require the complete target and route basis captured at event open."""
+
+        if self._current_pre_state_json is None:  # pragma: no cover - invariant
+            raise ControlEngineError("Current event has no pre-event snapshot")
+        if self._current_pre_route_state_json is None:  # pragma: no cover
+            raise ControlEngineError(
+                "Current event has no pre-event route snapshot"
+            )
+        target = _identifier(target_id, "normalization target_id")
+        pre_event_target_json = self._target_snapshot_slice_json(
+            self._current_pre_state_json,
+            target,
+        )
+        current_target_json = _canonical_json(self._state.snapshot(target))
+        pre_event_route_json = self._target_route_snapshot_slice_json(
+            self._current_pre_route_state_json,
+            target,
+        )
+        current_route_json = _canonical_json(
+            self._area_route_state_rows(target)
+        )
+        if (
+            current_target_json != pre_event_target_json
+            or current_route_json != pre_event_route_json
+        ):
+            raise ControlEngineError(
+                "Normalization requires the unchanged pre-event target and "
+                "route state"
+            )
+
+    def _effect_mutation_target_ids(
+        self,
+        *,
+        additional_target_ids: Iterable[str] = (),
+    ) -> tuple[str, ...]:
+        """Return targets one program-wide end transition can mutate."""
+
+        targets = {
+            component.target_id
+            for component in self._state.active_components()
+            if component.effect_id == self._program.effect_id
+        }
+        targets.update(
+            state.target_id
+            for state in self._area_route_states.values()
+            if state.effect_id == self._program.effect_id and state.membership
+        )
+        targets.update(
+            _identifier(target_id, "effect mutation target_id")
+            for target_id in additional_target_ids
+        )
+        return tuple(sorted(targets))
+
     def _bound_input(
         self,
         name: str,
@@ -9424,6 +9532,19 @@ class ControlExecutionSession:
     ) -> _IssuedControlRecord:
         event = self._require_current(target_id=target_id)
         gate = self._program.gate(_identifier(gate_id, "gate_id"))
+        mutation_target_ids = {target_id}
+        if gate.gate_scope == "shared":
+            for operation in self._current_required_operations:
+                parts = operation.split(":", 2)
+                if (
+                    len(parts) == 3
+                    and parts[0] == "branch"
+                    and parts[1] == gate.gate_id
+                ):
+                    mutation_target_ids.add(parts[2])
+        self._require_pending_normalization_complete_before_mutation(
+            *mutation_target_ids
+        )
         if gate.trigger.kind == "concentration_end":
             raise ControlEngineError(
                 "Concentration-end gates are owned by end_concentration()"
@@ -9615,6 +9736,7 @@ class ControlExecutionSession:
         )
         if not isinstance(context, Mapping):
             raise ControlEngineError("normalization_context must be an object")
+        self._require_unchanged_pre_event_normalization_basis(target_id)
         pre = _canonical_json(self._state.snapshot())
         pre_event_rows = json.loads(self._current_pre_state_json or "[]")
         active_sources = {
@@ -9622,16 +9744,6 @@ class ControlExecutionSession:
             for row in pre_event_rows
             if row.get("target_id") == target_id
         }
-        current_sources = {
-            f"{component.effect_id}:{component.component_id}"
-            for component in self._state.active_components(target_id)
-        }
-        later_sources = sorted(current_sources - active_sources)
-        if later_sources:
-            raise ControlEngineError(
-                "Cannot normalize an earlier event pre-state after a later "
-                f"same-event component application: {later_sources}"
-            )
         result = self._engine._normalize_scheduled_window(
             state=self._state,
             schedule=self._schedule,
@@ -9668,6 +9780,9 @@ class ControlExecutionSession:
         component_id: str,
     ) -> _IssuedControlRecord:
         event = self._require_current(target_id=target_id)
+        self._require_pending_normalization_complete_before_mutation(
+            target_id
+        )
         component = self._program.component(_identifier(component_id, "component_id"))
         identity = (target_id, component.component_id)
         if identity not in self._pending_displacements:
@@ -9704,6 +9819,9 @@ class ControlExecutionSession:
 
     def resolve_area_entry(self, *, target_id: str) -> _IssuedControlRecord:
         event = self._require_current(target_id=target_id, kinds={"entry"})
+        self._require_pending_normalization_complete_before_mutation(
+            target_id
+        )
         target = _identifier(target_id, "target_id")
         transition = self._area_entry_transitions.get((event.event_id, target))
         if transition is None or transition.cause == "area_movement":
@@ -9824,6 +9942,9 @@ class ControlExecutionSession:
         event = self._require_current(
             target_id=target_id,
             kinds={"instantaneous_resolution"},
+        )
+        self._require_pending_normalization_complete_before_mutation(
+            target_id
         )
         target = _identifier(target_id, "target_id")
         update = self._area_geometry_updates.get((event.event_id, target))
@@ -10107,6 +10228,9 @@ class ControlExecutionSession:
         event = self._require_current(
             target_id=target_id,
             kinds={"target_movement_opportunity"},
+        )
+        self._require_pending_normalization_complete_before_mutation(
+            target_id
         )
         if self._movement_response_consumed:
             raise ControlEngineError(
@@ -10606,6 +10730,15 @@ class ControlExecutionSession:
                 event_id=event.event_id,
                 reason=self._bound_input("concentration_end_reason"),
             )
+        self._require_pending_normalization_complete_before_mutation(
+            *self._effect_mutation_target_ids(
+                additional_target_ids=(
+                    target_id
+                    for _gate_id, target_id, _outcome
+                    in planned_end_transitions
+                ),
+            )
+        )
         planned_gate_labels = {
             f"concentration_end:{gate_id}:{target_id}"
             for gate_id, target_id, _outcome in planned_end_transitions
@@ -10709,6 +10842,34 @@ class ControlExecutionSession:
             raise ControlEngineError(
                 "The scenario does not bind a concentration save bonus"
             )
+        context = self._engine._active_concentration_context(
+            tracker=tracker,
+            effect=self._program,
+            schedule=self._schedule,
+            selector_membership=self._membership,
+            selector_context=self._selector_context,
+            invocation_id=self._invocation_id,
+            source_actor_id=self._source_actor_id,
+            choices=self._choices,
+        )
+        expiry_event_id = self._engine._recomputed_concentration_expiry_event_id(
+            context
+        )
+        if expiry_event_id == event.event_id:
+            plans = self._engine._concentration_end_plan(
+                state=self._state,
+                context=context,
+                event_id=event.event_id,
+                reason="duration_expiry",
+            )
+            self._require_pending_normalization_complete_before_mutation(
+                *self._effect_mutation_target_ids(
+                    additional_target_ids=(
+                        target_id
+                        for _gate_id, target_id, _outcome in plans
+                    ),
+                )
+            )
         pre = _canonical_json(self._state.snapshot())
         lifecycle = self._engine._reconcile_concentration_duration(
             state=self._state,
@@ -10738,6 +10899,40 @@ class ControlExecutionSession:
                 reason="effect_ended",
             )
         return issued
+
+    def _validate_normalization_record_basis(
+        self,
+        record: _IssuedControlRecord,
+    ) -> None:
+        """Prove a normalization was issued from its target's event basis."""
+
+        target_id = record.target_id
+        if target_id is None:
+            raise ControlEngineError(
+                "Final normalization record must identify one target"
+            )
+        if (
+            self._target_snapshot_slice_json(
+                record.pre_operation_state_json,
+                target_id,
+            )
+            != self._target_snapshot_slice_json(
+                record.pre_event_state_json,
+                target_id,
+            )
+            or self._target_route_snapshot_slice_json(
+                record.pre_operation_route_state_json,
+                target_id,
+            )
+            != self._target_route_snapshot_slice_json(
+                record.pre_event_route_state_json,
+                target_id,
+            )
+        ):
+            raise ControlEngineError(
+                "Final normalization record requires the unchanged pre-event "
+                "target and route state"
+            )
 
     def _validate_issued_records(
         self,
@@ -10919,6 +11114,7 @@ class ControlExecutionSession:
                             f"pre-event state: {missing}"
                         )
             if record.record_kind == "normalization":
+                self._validate_normalization_record_basis(record)
                 allowed_windows = {
                     value
                     for value in (
