@@ -1167,6 +1167,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
         """Canonical snapshot of every mutation surface guarded by phase order."""
 
         concentration = session._concentration_tracker
+        pending_failure = getattr(
+            session,
+            "_pending_concentration_failure",
+            None,
+        )
         return json.dumps(
             {
                 "state": session._state.snapshot(),
@@ -1198,8 +1203,10 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 "concentration": (
                     None if concentration is None else concentration.to_dict()
                 ),
-                "pending_concentration_end": (
-                    session._pending_concentration_end
+                "pending_concentration_failure": (
+                    None
+                    if pending_failure is None
+                    else pending_failure.to_dict()
                 ),
                 "pending_displacements": sorted(
                     session._pending_displacements
@@ -1859,6 +1866,391 @@ class ControlExecutionSessionTests(unittest.TestCase):
             concentration_save_bonus=2,
         )
         return session, schedule, events
+
+    def _concentration_two_phase_frozen_session(
+        self,
+        *,
+        outcome: str = "failure",
+        source: str = "damage",
+        amount: int = 20,
+        success_probability: Mapping[str, int] | None = None,
+        roll_kernel: Sequence[Mapping[str, Any]] | None = None,
+        startup_blood_tax: int = 0,
+        require_normalization: bool = False,
+        invalid_end_binding: bool = False,
+        non_immediate_end_binding: bool = False,
+        area_response_convention: str = "shortest_route_v1",
+    ):
+        """Bind one public failed-check pair around live Frozen Ground state."""
+
+        program = self.engine.program("frozen_ground_t0_control")
+        controller_events: list[dict[str, Any]] = [
+            {"kind": "activation"},
+            {
+                "kind": "damage_context",
+                "target_id": "target",
+                "window_id": "frozen_two_phase_damage_window",
+            },
+        ]
+        if non_immediate_end_binding:
+            controller_events.append({"kind": "instantaneous_resolution"})
+        controller_events.append({"kind": "concentration_end"})
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={1: controller_events},
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        damage = next(
+            event for event in schedule.events if event.kind == "damage_context"
+        )
+        end = next(
+            event for event in schedule.events
+            if event.kind == "concentration_end"
+        )
+        damage_inputs: dict[str, Any] = {
+            "required_operations": ["concentration_check"],
+            "concentration_amount": amount,
+            "concentration_source": source,
+            "concentration_outcome": outcome,
+        }
+        if roll_kernel is not None:
+            damage_inputs["concentration_roll_kernel"] = [
+                dict(row) for row in roll_kernel
+            ]
+        else:
+            damage_inputs["concentration_success_probability"] = dict(
+                success_probability
+                if success_probability is not None
+                else {"numerator": 1, "denominator": 2}
+            )
+        if outcome == "failure":
+            damage_inputs["concentration_end_event_id"] = (
+                "unknown:concentration:end"
+                if invalid_end_binding
+                else end.event_id
+            )
+        if require_normalization:
+            damage_inputs["normalization_target_ids"] = ["target"]
+        operation_inputs: dict[str, dict[str, Any]] = {
+            damage.event_id: damage_inputs,
+            end.event_id: {"concentration_end_reason": "voluntary_end"},
+        }
+        if startup_blood_tax:
+            operation_inputs[activation.event_id] = {
+                "startup_blood_tax": startup_blood_tax,
+            }
+        target_mechanics: dict[str, Any] = {
+            "initial_conditions": [],
+            "base_speeds_ft": {"walk": 30},
+            "movement_mode": "walk",
+            "area_membership": True,
+        }
+        if area_response_convention == "shortest_route_v1":
+            target_mechanics["area_routes"] = [{
+                "route_id": "target_walk_exit",
+                "mode": "walk",
+                "distance_to_exit_ft": 30,
+                "compatible": True,
+                "movement_cost_multiplier": 1,
+                "environment": "grounded",
+            }]
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget(
+                "target",
+                15,
+                {"constitution": 2, "dexterity": 2},
+            ),),
+            selector_membership={
+                "frozen_ground_area_targets": ("target",),
+            },
+            selector_context=SelectorContext(),
+            schedule=schedule,
+            target_mechanics={"target": target_mechanics},
+            area_response_convention=area_response_convention,
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            operation_inputs_by_event=operation_inputs,
+            concentration_save_bonus=2,
+        )
+        return session, {
+            "activation": activation,
+            "damage": damage,
+            "end": end,
+        }
+
+    def _open_failed_frozen_concentration_check(self, **kwargs: Any):
+        session, events = self._concentration_two_phase_frozen_session(**kwargs)
+        self._activate_frozen_ground(session, events["activation"])
+        session.advance_to(events["damage"].event_id)
+        check = session.check_concentration()
+        return session, events, check
+
+    @staticmethod
+    def _consume_pending_concentration_end(session, events):
+        session.close_event()
+        session.advance_to(events["end"].event_id)
+        end = session.end_concentration()
+        return end
+
+    def _concentration_two_phase_mass_session(self):
+        """Bind Mass Levitation lift, damage, and immediate typed end."""
+
+        program = self.engine.program("mass_levitation_t2_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [
+                    {"kind": "activation"},
+                    {"kind": "save_opportunity", "target_id": "target"},
+                ],
+                2: [
+                    {
+                        "kind": "damage_context",
+                        "target_id": "target",
+                        "window_id": "mass_two_phase_damage_window",
+                    },
+                    {"kind": "concentration_end"},
+                ],
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        save = next(
+            event for event in schedule.events
+            if event.kind == "save_opportunity"
+        )
+        damage = next(
+            event for event in schedule.events if event.kind == "damage_context"
+        )
+        end = next(
+            event for event in schedule.events
+            if event.kind == "concentration_end"
+        )
+        repeat = next(
+            event for event in schedule.events
+            if event.kind == "target_turn_start" and event.round == 1
+        )
+        first_movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.round == 1
+        )
+        reposition = next(
+            event for event in schedule.events
+            if event.kind == "controller_turn_start" and event.round == 2
+        )
+        reliability_specs = (
+            (
+                "mass_two_phase_initial",
+                "mass_levitation_t2_initial_saves",
+                save,
+            ),
+            (
+                "mass_two_phase_repeat",
+                "mass_levitation_t2_repeat_saves",
+                repeat,
+            ),
+            (
+                "mass_two_phase_damage_gate",
+                "mass_levitation_t2_damage_context",
+                repeat,
+            ),
+            (
+                "mass_two_phase_reposition",
+                "mass_levitation_t2_controller_reposition",
+                reposition,
+            ),
+            (
+                "mass_two_phase_end",
+                "mass_levitation_t2_concentration_end",
+                end,
+            ),
+        )
+        reliability_events: list[ReliabilityEvent] = []
+        operation_inputs: dict[str, dict[str, Any]] = {}
+        for event_id, gate_id, event in reliability_specs:
+            gate = program.gate(gate_id)
+            reliability_event = ReliabilityEvent.create(
+                event_id,
+                gate.trigger,
+                target_ids=("target",),
+                gate_ids=(gate.gate_id,),
+                window_id=(
+                    "mass_two_phase_damage_gate_window"
+                    if event_id == "mass_two_phase_damage_gate"
+                    else event.event_id
+                ),
+            )
+            reliability_events.append(reliability_event)
+            operation_inputs.setdefault(event.event_id, {}).setdefault(
+                "reliability_event_ids",
+                [],
+            ).append(reliability_event.event_id)
+        operation_inputs.setdefault(damage.event_id, {}).update({
+            "required_operations": ["concentration_check"],
+            "concentration_amount": 20,
+            "concentration_source": "damage",
+            "concentration_outcome": "failure",
+            "concentration_success_probability": {
+                "numerator": 1,
+                "denominator": 2,
+            },
+            "concentration_end_event_id": end.event_id,
+        })
+        operation_inputs[reposition.event_id]["displacement_vectors"] = {
+            "mass_levitation_reposition": [10, 0, 0],
+        }
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget("target", 15, {"strength": 2}),),
+            selector_membership={"mass_levitation_targets": ("target",)},
+            selector_context=_selector_context_for("target"),
+            schedule=schedule,
+            target_mechanics={
+                "target": {
+                    "base_speeds_ft": {"walk": 30},
+                    "movement_mode": "walk",
+                },
+            },
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            reliability_events=tuple(reliability_events),
+            operation_inputs_by_event=operation_inputs,
+            concentration_save_bonus=2,
+        )
+        return session, {
+            "activation": activation,
+            "save": save,
+            "repeat": repeat,
+            "first_movement": first_movement,
+            "reposition": reposition,
+            "damage": damage,
+            "end": end,
+        }
+
+    def _one_round_ball_lightning_public_session(self):
+        """Build a public area session that expires at round-two startup."""
+
+        canonical = self.engine.program("ball_lightning_t2_control")
+        maximum_duration = {"value": 1, "unit": "round"}
+        concentration = canonical.concentration.to_dict()
+        concentration["maximum_duration"] = maximum_duration
+        program = replace(
+            canonical,
+            concentration=_frozen_map(concentration),
+        )
+        programs = tuple(
+            program if row.effect_id == program.effect_id else row
+            for row in self.engine.authority.programs
+        )
+        authority = replace(
+            self.engine.authority,
+            programs=programs,
+            _program_by_id=MappingProxyType({
+                row.effect_id: row for row in programs
+            }),
+            _program_by_key=MappingProxyType({
+                (row.entity_id, row.tier): row for row in programs
+            }),
+        )
+        engine = ControlEngine(
+            catalog=self.engine.catalog,
+            config=self.engine.config,
+            authority=authority,
+            targets=self.engine.targets,
+            target_supplement_digest=self.engine.target_supplement_digest,
+        )
+        schedule = engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{"kind": "activation"}],
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        early = next(
+            event for event in schedule.events
+            if event.kind == "controller_turn_end" and event.round == 1
+        )
+        start_turn = next(
+            event for event in schedule.events
+            if event.kind == "target_turn_start" and event.round == 1
+        )
+        movement = next(
+            event for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.round == 1
+        )
+        expiry = next(
+            event for event in schedule.events
+            if event.kind == "controller_turn_start" and event.round == 2
+        )
+        gate = program.gate("ball_lightning_start_turn_save")
+        reliability_event = ReliabilityEvent.create(
+            "one_round_ball_start_turn",
+            gate.trigger,
+            target_ids=("target",),
+            gate_ids=(gate.gate_id,),
+            window_id=start_turn.event_id,
+        )
+        operation_inputs: dict[str, dict[str, Any]] = {
+            early.event_id: {
+                "required_operations": [
+                    "concentration_duration_reconciliation",
+                ],
+            },
+            start_turn.event_id: {
+                "reliability_event_ids": [reliability_event.event_id],
+            },
+            expiry.event_id: {
+                "required_operations": [
+                    "concentration_duration_reconciliation",
+                ],
+            },
+        }
+        session = engine.execution_session(
+            program,
+            targets=(ReliabilityTarget(
+                "target",
+                15,
+                {"charisma": 2},
+            ),),
+            selector_membership={"ball_lightning_area_targets": ("target",)},
+            selector_context=_selector_context_for("target"),
+            schedule=schedule,
+            target_mechanics={
+                "target": {
+                    "base_speeds_ft": {"walk": 30},
+                    "movement_mode": "walk",
+                    "area_membership": True,
+                },
+            },
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            reliability_events=(reliability_event,),
+            operation_inputs_by_event=operation_inputs,
+            concentration_save_bonus=2,
+        )
+        return session, {
+            "activation": activation,
+            "early": early,
+            "start_turn": start_turn,
+            "movement": movement,
+            "expiry": expiry,
+        }
 
     def _completed_absolute_zero_session(self):
         session, _schedule, save = self._absolute_zero_session()
@@ -6627,6 +7019,581 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 callable(getattr(ControlEngineFacadeTests, name, None)),
                 name,
             )
+
+    def test_concentration_two_phase_01_frozen_failure_issues_at_damage(
+        self,
+    ) -> None:
+        session, events, check = self._open_failed_frozen_concentration_check()
+        self.assertEqual(check.record_kind, "concentration_check_pending_end")
+        self.assertEqual(check.event_id, events["damage"].event_id)
+        self.assertEqual(
+            check.to_dict()["payload"]["kind"],
+            "concentration_check_pending_end",
+        )
+        self.assertIs(session.current_event, events["damage"])
+
+    def test_concentration_two_phase_02_failed_check_keeps_ambient_state_live(
+        self,
+    ) -> None:
+        session, events, _check = self._open_failed_frozen_concentration_check()
+        tracker = session._concentration_tracker
+        self.assertIsNotNone(tracker)
+        assert tracker is not None
+        self.assertEqual(tracker.active_effect_id, "frozen_ground_t0_control")
+        self.assertTrue(
+            session._area_effect_is_active("frozen_ground_cylinder")
+        )
+        [route] = session.area_route_snapshot("target")
+        self.assertTrue(route["membership"])
+        self.assertIsNone(route["closed_reason"])
+        self.assertEqual(
+            [row["component_id"] for row in session.state_snapshot("target")],
+            ["frozen_ground_difficult_terrain"],
+        )
+        self.assertEqual(session._area_route_transitions, [])
+        pending = session._pending_concentration_failure
+        self.assertIsNotNone(pending)
+        assert pending is not None
+        self.assertEqual(pending.end_event_id, events["end"].event_id)
+        self.assertEqual(
+            [row["kind"] for row in tracker.records],
+            ["concentration_start", "concentration_check"],
+        )
+        self.assertEqual(
+            len([
+                record for record in session.issued_records()
+                if record.record_kind == "concentration_check_pending_end"
+            ]),
+            1,
+        )
+
+    def test_concentration_two_phase_03_typed_end_terminates_once_and_replays(
+        self,
+    ) -> None:
+        session, events, _check = self._open_failed_frozen_concentration_check()
+        before_state = session.state_snapshot("target")
+        before_route = session.area_route_snapshot("target")
+        end = self._consume_pending_concentration_end(session, events)
+        tracker = session._concentration_tracker
+        self.assertIsNotNone(tracker)
+        assert tracker is not None
+        self.assertIsNone(tracker.active_effect_id)
+        self.assertEqual(session.state_snapshot("target"), ())
+        [route] = session.area_route_snapshot("target")
+        self.assertFalse(route["membership"])
+        self.assertEqual(route["closed_reason"], "effect_ended")
+        self.assertFalse(
+            session._area_effect_is_active("frozen_ground_cylinder")
+        )
+        self.assertIsNone(session._pending_concentration_failure)
+        self.assertEqual(
+            len([
+                row for row in tracker.records
+                if row["kind"] == "concentration_end"
+            ]),
+            1,
+        )
+        payload = end.to_dict()["payload"]
+        [applied] = payload["applied_end_transitions"]
+        self.assertEqual(applied["concentration_end_gate_transitions"], [])
+        self.assertEqual(applied["active_components_after"], [])
+        self.assertNotEqual(session.state_snapshot("target"), before_state)
+        self.assertNotEqual(session.area_route_snapshot("target"), before_route)
+        session.close_event()
+        session.complete()
+        result = session.result().to_dict()
+        final_target = result["final_normalized_state"]["target"]
+        self.assertEqual(final_target["active_components"], [])
+        self.assertEqual(final_target["conditions"], [])
+        self.assertEqual(final_target["area_movement_cost_multiplier"], 1.0)
+        self.assertEqual(
+            [
+                record.record_kind for record in session.issued_records()
+                if record.record_kind.startswith("concentration_")
+            ],
+            [
+                "concentration_start",
+                "concentration_check_pending_end",
+                "concentration_end",
+            ],
+        )
+
+    def test_concentration_two_phase_04_normalization_blocks_failure_atomically(
+        self,
+    ) -> None:
+        session, events = self._concentration_two_phase_frozen_session(
+            require_normalization=True,
+        )
+        self._activate_frozen_ground(session, events["activation"])
+        session.advance_to(events["damage"].event_id)
+        before = self._session_mutation_fingerprint(session)
+        with self.assertRaisesRegex(ControlEngineError, "normalization"):
+            session.check_concentration()
+        self.assertEqual(self._session_mutation_fingerprint(session), before)
+
+    def test_concentration_two_phase_05_failure_resumes_after_normalization(
+        self,
+    ) -> None:
+        session, events = self._concentration_two_phase_frozen_session(
+            require_normalization=True,
+        )
+        self._activate_frozen_ground(session, events["activation"])
+        session.advance_to(events["damage"].event_id)
+        normalization = session.normalize(target_id="target")
+        self.assertEqual(normalization.record_kind, "normalization")
+        check = session.check_concentration()
+        self.assertEqual(check.record_kind, "concentration_check_pending_end")
+        end = self._consume_pending_concentration_end(session, events)
+        self.assertEqual(end.record_kind, "concentration_end")
+        session.close_event()
+        session.complete()
+        session.result()
+
+    def test_concentration_two_phase_06_non_immediate_binding_is_atomic(
+        self,
+    ) -> None:
+        cases = (
+            (
+                "unknown_event_id",
+                {"invalid_end_binding": True},
+                r"known immediate typed end|unknown.*event",
+            ),
+            (
+                "known_non_immediate_event",
+                {"non_immediate_end_binding": True},
+                r"immediate.*typed end|immediate typed end",
+            ),
+        )
+        for label, kwargs, message in cases:
+            with self.subTest(binding=label):
+                session, events = self._concentration_two_phase_frozen_session(
+                    **kwargs,
+                )
+                self._activate_frozen_ground(session, events["activation"])
+                session.advance_to(events["damage"].event_id)
+                before = self._session_mutation_fingerprint(session)
+                with self.assertRaisesRegex(ControlEngineError, message):
+                    session.check_concentration()
+                self.assertEqual(
+                    self._session_mutation_fingerprint(session),
+                    before,
+                )
+
+    def test_concentration_two_phase_07_failed_check_cannot_issue_twice(
+        self,
+    ) -> None:
+        session, _events, _check = self._open_failed_frozen_concentration_check()
+        before = self._session_mutation_fingerprint(session)
+        with self.assertRaises(ControlEngineError):
+            session.check_concentration()
+        self.assertEqual(self._session_mutation_fingerprint(session), before)
+        self.assertEqual(
+            len([
+                row for row in session._concentration_tracker.records
+                if row["kind"] == "concentration_check"
+            ]),
+            1,
+        )
+
+    def test_concentration_two_phase_08_pending_end_cannot_be_consumed_twice(
+        self,
+    ) -> None:
+        session, events, _check = self._open_failed_frozen_concentration_check()
+        self._consume_pending_concentration_end(session, events)
+        before = self._session_mutation_fingerprint(session)
+        with self.assertRaises(ControlEngineError):
+            session.end_concentration()
+        self.assertEqual(self._session_mutation_fingerprint(session), before)
+
+    def test_concentration_two_phase_09_pending_identity_is_fail_closed(
+        self,
+    ) -> None:
+        for corruption in ("foreign", "stale", "rewritten"):
+            with self.subTest(corruption=corruption):
+                session, events, _check = (
+                    self._open_failed_frozen_concentration_check()
+                )
+                original = session._pending_concentration_failure
+                self.assertIsNotNone(original)
+                assert original is not None
+                if corruption == "foreign":
+                    foreign, _foreign_events, _foreign_check = (
+                        self._open_failed_frozen_concentration_check()
+                    )
+                    forged = foreign._pending_concentration_failure
+                    self.assertIsNotNone(forged)
+                elif corruption == "stale":
+                    forged = replace(
+                        original,
+                        end_event_sequence=original.end_event_sequence + 1,
+                    )
+                else:
+                    forged = replace(
+                        original,
+                        end_event_id=events["activation"].event_id,
+                    )
+                session.close_event()
+                session.advance_to(events["end"].event_id)
+                session._pending_concentration_failure = forged
+                before = self._session_mutation_fingerprint(session)
+                with self.assertRaisesRegex(
+                    ControlEngineError,
+                    r"foreign|stale|rewritten|pending.*identity|attestation",
+                ):
+                    session.end_concentration()
+                self.assertEqual(
+                    self._session_mutation_fingerprint(session),
+                    before,
+                )
+
+    def test_concentration_two_phase_10_success_has_no_pending_end(
+        self,
+    ) -> None:
+        session, events = self._concentration_two_phase_frozen_session(
+            outcome="success",
+        )
+        self._activate_frozen_ground(session, events["activation"])
+        session.advance_to(events["damage"].event_id)
+        check = session.check_concentration()
+        tracker = session._concentration_tracker
+        self.assertIsNotNone(tracker)
+        assert tracker is not None
+        self.assertEqual(check.record_kind, "concentration_check")
+        self.assertEqual(tracker.active_effect_id, "frozen_ground_t0_control")
+        self.assertIsNone(session._pending_concentration_failure)
+        self.assertEqual(
+            [row["kind"] for row in tracker.records],
+            ["concentration_start", "concentration_check"],
+        )
+        session.close_event()
+        session.advance_to(events["end"].event_id)
+        session.end_concentration()
+        session.close_event()
+        session.complete()
+        session.result()
+
+    def test_concentration_two_phase_11_mass_fall_occurs_only_at_typed_end(
+        self,
+    ) -> None:
+        session, events = self._concentration_two_phase_mass_session()
+        session.advance_to(events["activation"].event_id)
+        session.start_concentration()
+        session.close_event()
+        session.advance_to(events["save"].event_id)
+        session.apply_branch(
+            gate_id="mass_levitation_t2_initial_saves",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.resolve_displacement(
+            target_id="target",
+            component_id="mass_levitation_initial_lift",
+        )
+        session.close_event()
+        session.advance_to(events["repeat"].event_id)
+        session.apply_branch(
+            gate_id="mass_levitation_t2_repeat_saves",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.apply_branch(
+            gate_id="mass_levitation_t2_damage_context",
+            outcome="damage_context",
+            target_id="target",
+        )
+        session.close_event()
+        session.advance_to(events["first_movement"].event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.advance_to(events["reposition"].event_id)
+        session.apply_branch(
+            gate_id="mass_levitation_t2_controller_reposition",
+            outcome="no_save",
+            target_id="target",
+        )
+        session.resolve_displacement(
+            target_id="target",
+            component_id="mass_levitation_reposition",
+        )
+        session.close_event()
+        session.advance_to(events["damage"].event_id)
+        before_state = session.state_snapshot("target")
+        session.check_concentration()
+        self.assertEqual(session.state_snapshot("target"), before_state)
+        self.assertEqual(
+            [
+                row["kind"] for row in session._concentration_tracker.records
+            ],
+            ["concentration_start", "concentration_check"],
+        )
+        self.assertFalse(any(
+            row.get("primitive_id") == "fall_transition"
+            for record in session._displacement_records
+            for row in record.get("contributions", ())
+        ))
+        end = self._consume_pending_concentration_end(session, events)
+        payload = end.to_dict()["payload"]
+        [applied] = payload["applied_end_transitions"]
+        [gate] = applied["concentration_end_gate_transitions"]
+        self.assertEqual(gate["gate_id"], "mass_levitation_t2_concentration_end")
+        [compiled_fall] = gate["instantaneous_contributions"]
+        self.assertEqual(compiled_fall["primitive_id"], "fall_transition")
+        self.assertEqual(
+            compiled_fall["context"]["origin"],
+            "current_position",
+        )
+        [fall] = applied["fall_transitions"]
+        self.assertEqual(fall["origin"], "current_position")
+        self.assertEqual(session.state_snapshot("target"), ())
+        self.assertEqual(
+            len([
+                row for row in session._concentration_tracker.records
+                if row["kind"] == "concentration_end"
+            ]),
+            1,
+        )
+        session.close_event()
+        later_movement = next(
+            event for event in session.schedule.events
+            if event.kind == "target_movement_opportunity"
+            and event.sequence > events["end"].sequence
+        )
+        session.advance_to(later_movement.event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.complete()
+        session.result()
+
+    def test_concentration_two_phase_12_startup_blood_tax_stays_exempt(
+        self,
+    ) -> None:
+        session, events = self._concentration_two_phase_frozen_session(
+            startup_blood_tax=17,
+        )
+        self._activate_frozen_ground(session, events["activation"])
+        tracker = session._concentration_tracker
+        self.assertIsNotNone(tracker)
+        assert tracker is not None
+        [start] = tracker.records
+        self.assertEqual(start["startup_blood_tax"], 17)
+        self.assertFalse(start["check_required"])
+        self.assertEqual(start["reason"], "startup_blood_tax_exemption")
+        session.advance_to(events["damage"].event_id)
+        session.check_concentration()
+        self.assertEqual(
+            [row["kind"] for row in tracker.records],
+            ["concentration_start", "concentration_check"],
+        )
+        self._consume_pending_concentration_end(session, events)
+
+    def test_concentration_two_phase_13_later_blood_tax_is_exact(
+        self,
+    ) -> None:
+        roll_kernel = [
+            {
+                "roll": roll,
+                "probability": {"numerator": 1, "denominator": 20},
+            }
+            for roll in range(1, 21)
+        ]
+        session, events, _check = self._open_failed_frozen_concentration_check(
+            source="later_blood_tax",
+            amount=24,
+            roll_kernel=roll_kernel,
+        )
+        pending = session._pending_concentration_failure
+        self.assertIsNotNone(pending)
+        assert pending is not None
+        check_record = pending.to_dict()["check_record"]
+        self.assertEqual(check_record["source"], "later_blood_tax")
+        self.assertEqual(check_record["amount"], 24)
+        self.assertEqual(check_record["dc"], 12)
+        self.assertEqual(check_record["save_bonus"], 2)
+        self.assertEqual(
+            check_record["success_probability"],
+            {"numerator": 11, "denominator": 20},
+        )
+        self.assertEqual(
+            check_record["failure_probability"],
+            {"numerator": 9, "denominator": 20},
+        )
+        self._consume_pending_concentration_end(session, events)
+
+    def test_concentration_two_phase_14_replacement_coverage_is_preserved(
+        self,
+    ) -> None:
+        bridge = ControlEngineIntegrationBridgeTests()
+        bridge.engine = self.engine
+        scenario = bridge._mass_levitation_concentration_scenario(tier=0)
+        replacement_program = self.engine.program_for("mass_levitation", 1)
+        replacement = self.engine._start_concentration(
+            state=scenario["state"],
+            tracker=scenario["tracker"],
+            effect=replacement_program,
+            event_id=scenario["activations"][1].event_id,
+            replacement_end_event_id=scenario["end_events"][0].event_id,
+            schedule=scenario["schedule"],
+            selector_membership=_single_selector_membership(
+                replacement_program,
+                "target",
+            ),
+            selector_context=_selector_context_for("target"),
+            invocation_id="mass_levitation_t1_invocation",
+            source_actor_id="controller",
+        )
+        self.assertEqual(
+            [row["kind"] for row in replacement["tracker_records"]],
+            ["concentration_end", "concentration_start"],
+        )
+        [ended] = replacement["applied_end_transitions"]
+        self.assertEqual(ended["reason"], "new_concentration_replacement")
+        [gate] = ended["concentration_end_gate_transitions"]
+        self.assertEqual(gate["gate_id"], "mass_levitation_t0_concentration_end")
+        [fall] = gate["instantaneous_contributions"]
+        self.assertEqual(fall["primitive_id"], "fall_transition")
+        self.assertEqual(scenario["state"].active_components("target"), ())
+        self.assertEqual(
+            scenario["tracker"].active_effect_id,
+            replacement_program.effect_id,
+        )
+
+    def test_concentration_two_phase_15_expiry_coverage_is_preserved(
+        self,
+    ) -> None:
+        session, events = self._one_round_ball_lightning_public_session()
+        session.advance_to(events["activation"].event_id)
+        session.start_concentration()
+        session.close_event()
+        session.advance_to(events["early"].event_id)
+        early = session.reconcile_concentration_duration().to_dict()["payload"]
+        self.assertEqual(early["status"], "before_expiry")
+        self.assertFalse(early["ended"])
+        self.assertEqual(
+            session._concentration_tracker.active_effect_id,
+            "ball_lightning_t2_control",
+        )
+        session.close_event()
+        session.advance_to(events["start_turn"].event_id)
+        session.apply_branch(
+            gate_id="ball_lightning_start_turn_save",
+            outcome="save_failure",
+            target_id="target",
+        )
+        self.assertEqual(
+            {
+                row["component_id"]
+                for row in session.state_snapshot("target")
+            },
+            {
+                "ball_lightning_reaction_denial",
+                "ball_lightning_attack_disadvantage",
+            },
+        )
+        session.close_event()
+        session.advance_to(events["movement"].event_id)
+        session.resolve_movement_response(target_id="target")
+        session.close_event()
+        session.advance_to(events["expiry"].event_id)
+        expiry = session.reconcile_concentration_duration().to_dict()["payload"]
+        self.assertEqual(expiry["kind"], "concentration_end")
+        self.assertTrue(expiry["changed"])
+        self.assertEqual(expiry["reason"], "duration_expiry")
+        self.assertEqual(expiry["event_id"], events["expiry"].event_id)
+        self.assertEqual(expiry["concentration_end_gate_transitions"], [])
+        self.assertIsNone(session._concentration_tracker.active_effect_id)
+        self.assertEqual(session.state_snapshot("target"), ())
+        [route] = session.area_route_snapshot("target")
+        self.assertFalse(route["membership"])
+        self.assertEqual(route["closed_reason"], "effect_ended")
+        session.close_event()
+        session.complete()
+        result = session.result().to_dict()
+        self.assertEqual(
+            len([
+                row for row in session.issued_records()
+                if row.record_kind
+                == "concentration_duration_reconciliation"
+            ]),
+            2,
+        )
+        self.assertEqual(
+            [row["kind"] for row in result["concentration_records"]],
+            [
+                "concentration_start_lifecycle",
+                "concentration_duration_reconciliation",
+                "concentration_end",
+            ],
+        )
+
+    def test_concentration_two_phase_16_both_area_conventions_hold_boundary(
+        self,
+    ) -> None:
+        for convention in ("shortest_route_v1", "fixed_occupancy_v1"):
+            with self.subTest(convention=convention):
+                session, events, _check = (
+                    self._open_failed_frozen_concentration_check(
+                        area_response_convention=convention,
+                    )
+                )
+                before_route = session.area_route_snapshot("target")
+                self.assertTrue(before_route[0]["membership"])
+                self.assertEqual(
+                    session._concentration_tracker.active_effect_id,
+                    "frozen_ground_t0_control",
+                )
+                self._consume_pending_concentration_end(session, events)
+                [after_route] = session.area_route_snapshot("target")
+                self.assertFalse(after_route["membership"])
+                self.assertEqual(after_route["closed_reason"], "effect_ended")
+                self.assertIsNone(
+                    session._concentration_tracker.active_effect_id
+                )
+
+    def test_concentration_two_phase_17_normalization_suite_remains_exact(
+        self,
+    ) -> None:
+        names = [
+            name for name in dir(type(self))
+            if name.startswith("test_normalization_phase_")
+        ]
+        self.assertEqual(len(names), 17)
+        for index in range(1, 18):
+            self.assertEqual(
+                len([
+                    name for name in names
+                    if name.startswith(f"test_normalization_phase_{index:02d}_")
+                ]),
+                1,
+            )
+
+    def test_concentration_two_phase_18_regression_families_remain_exact(
+        self,
+    ) -> None:
+        names = dir(type(self))
+        self.assertEqual(len([
+            name for name in names
+            if name.startswith("test_concentration_two_phase_")
+        ]), 18)
+        self.assertEqual(len([
+            name for name in names
+            if name.startswith("test_ambient_membership_")
+        ]), 20)
+        self.assertEqual(len([
+            name for name in names
+            if name.startswith("test_area_entry_transition_")
+        ]), 18)
+        self.assertEqual(len([
+            name for name in names
+            if name.startswith("test_area_route_")
+        ]), 16)
+        for name in (
+            "test_prone_stands_before_attack_and_outgoing_impairment_is_absent",
+            "test_prone_standing_cost_precedes_frozen_ground_route_progress",
+            "test_displacement_prone_and_epoch_share_one_movement_budget",
+            "test_negative_07_reliability_with_different_selector_membership_is_rejected",
+            "test_benign_payload_rewrite_fails_engine_owned_issuance_attestation",
+        ):
+            self.assertTrue(callable(getattr(type(self), name, None)), name)
 
     def test_ambient_membership_01_nonmember_activation_filters_component(
         self,

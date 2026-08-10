@@ -13,6 +13,7 @@ import argparse
 import hashlib
 import json
 import math
+from copy import deepcopy
 from dataclasses import dataclass, field, fields, is_dataclass, replace
 from fractions import Fraction
 from pathlib import Path
@@ -781,6 +782,68 @@ class _ConcentrationAuthorityContext:
     concentration_end_gate_ids: tuple[str, ...]
     fall_component_ids: tuple[str, ...]
     duration_boundary: Mapping[str, Any]
+
+
+@dataclass(frozen=True)
+class _PendingConcentrationFailure:
+    """Session-issued proof of one deferred failed-check termination."""
+
+    scenario_digest: str
+    effect_id: str
+    invocation_id: str
+    source_actor_id: str
+    damage_event_id: str
+    damage_event_sequence: int
+    end_event_id: str
+    end_event_sequence: int
+    check_operation_sequence: int
+    check_record_json: str
+    tracker_pre_state_json: str
+    tracker_post_check_state_json: str
+    tracker_end_record_json: str
+    authority_metadata_json: str
+    end_plan: tuple[tuple[str, str, str], ...]
+    affected_target_ids: tuple[str, ...]
+    pending_sha256: str
+    _issuer: object = field(repr=False, compare=False)
+
+    def identity(self) -> dict[str, Any]:
+        return {
+            "scenario_digest": self.scenario_digest,
+            "effect_id": self.effect_id,
+            "invocation_id": self.invocation_id,
+            "source_actor_id": self.source_actor_id,
+            "damage_event_id": self.damage_event_id,
+            "damage_event_sequence": self.damage_event_sequence,
+            "end_event_id": self.end_event_id,
+            "end_event_sequence": self.end_event_sequence,
+            "check_operation_sequence": self.check_operation_sequence,
+            "check_record": json.loads(self.check_record_json),
+            "tracker_pre_state": json.loads(self.tracker_pre_state_json),
+            "tracker_post_check_state": json.loads(
+                self.tracker_post_check_state_json
+            ),
+            "tracker_end_record": json.loads(self.tracker_end_record_json),
+            "authority_metadata": json.loads(self.authority_metadata_json),
+            "compiled_end_plan": [
+                {
+                    "gate_id": gate_id,
+                    "target_id": target_id,
+                    "outcome": outcome,
+                }
+                for gate_id, target_id, outcome in self.end_plan
+            ],
+            "affected_target_ids": list(self.affected_target_ids),
+        }
+
+    def computed_sha256(self) -> str:
+        return _sha256_record(self.identity())
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            **self.identity(),
+            "pending_sha256": self.pending_sha256,
+        }
 
 
 @dataclass(frozen=True)
@@ -7797,7 +7860,13 @@ class ControlExecutionSession:
         self._movement_response_consumed = False
         self._current_required_operations: set[str] = set()
         self._future_required_operations: dict[str, set[str]] = {}
-        self._pending_concentration_end: dict[str, Any] | None = None
+        self._pending_concentration_failure: (
+            _PendingConcentrationFailure | None
+        ) = None
+        self._pending_concentration_failure_original: (
+            _PendingConcentrationFailure | None
+        ) = None
+        self._pending_concentration_failure_attestation: str | None = None
         self._area_effect_started = False
         self._area_effect_ended = False
         self._shared_gate_outcomes: dict[tuple[str, str], str] = {}
@@ -8861,6 +8930,263 @@ class ControlExecutionSession:
         )
         return tuple(sorted(targets))
 
+    def _concentration_end_mutation_target_ids(
+        self,
+        *,
+        context: _ConcentrationAuthorityContext,
+        plans: Iterable[tuple[str, str, str]],
+    ) -> tuple[str, ...]:
+        """Return only targets the compiled concentration end can mutate."""
+
+        cleanup_ids = set(context.concentration_component_ids) | set(
+            context.area_component_ids
+        )
+        targets = {
+            component.target_id
+            for component in self._state.active_components()
+            if component.effect_id == context.program.effect_id
+            and component.component_id in cleanup_ids
+        }
+        targets.update(
+            state.target_id
+            for state in self._area_route_states.values()
+            if state.effect_id == context.program.effect_id
+            and state.area_id in context.area_ids
+            and state.membership
+        )
+        targets.update(target_id for _gate_id, target_id, _outcome in plans)
+        return tuple(sorted(targets))
+
+    @staticmethod
+    def _concentration_tracker_state_json(
+        tracker: ConcentrationTracker,
+    ) -> str:
+        """Serialize the complete active tracker slot, including end authority."""
+
+        return _canonical_json({
+            "active_effect_id": tracker.active_effect_id,
+            "active_metadata": deepcopy(tracker._active_metadata),
+            "save_bonus": tracker.save_bonus,
+            "records": deepcopy(tracker.records),
+        })
+
+    def _preview_failed_concentration_tracker_records(
+        self,
+        *,
+        tracker: ConcentrationTracker,
+        amount: int | float,
+        source: str,
+        damage_event_id: str,
+        end_event_id: str,
+        success_probability: Any | None,
+        roll_kernel: Sequence[Mapping[str, Any]] | None,
+    ) -> tuple[dict[str, Any], dict[str, Any], str, str]:
+        """Validate a failure on an isolated tracker without ending the live slot."""
+
+        tracker_pre_state_json = self._concentration_tracker_state_json(tracker)
+        simulated = deepcopy(tracker)
+        first_record_index = len(simulated.records)
+        check_record = simulated.check(
+            amount=amount,
+            source=source,
+            event_id=damage_event_id,
+            outcome="failure",
+            success_probability=success_probability,
+            roll_kernel=roll_kernel,
+        )
+        generated = simulated.records[first_record_index:]
+        if (
+            len(generated) != 2
+            or generated[0] != check_record
+            or generated[0].get("kind") != "concentration_check"
+            or generated[1].get("kind") != "concentration_end"
+            or generated[1].get("reason") != "failed_concentration_save"
+            or generated[1].get("event_id") != damage_event_id
+        ):
+            raise ControlEngineError(
+                "Tracker did not preview the canonical failed-check lifecycle"
+            )
+        end_record = dict(_json_safe(generated[1]))
+        end_record["event_id"] = end_event_id
+        tracker_pre_state = json.loads(tracker_pre_state_json)
+        tracker_post_check_state = {
+            **tracker_pre_state,
+            "records": [
+                *tracker_pre_state["records"],
+                dict(_json_safe(check_record)),
+            ],
+        }
+        return (
+            dict(_json_safe(check_record)),
+            end_record,
+            tracker_pre_state_json,
+            _canonical_json(tracker_post_check_state),
+        )
+
+    @staticmethod
+    def _require_failed_tracker_end_matches_context(
+        record: Mapping[str, Any],
+        *,
+        context: _ConcentrationAuthorityContext,
+        end_event_id: str,
+    ) -> None:
+        expected = {
+            "kind": "concentration_end",
+            "event_id": end_event_id,
+            "effect_id": context.program.effect_id,
+            "reason": "failed_concentration_save",
+            "changed": True,
+            "ended_component_ids": list(context.concentration_component_ids),
+            "ended_area_ids": list(context.area_ids),
+            "execute_concentration_end_gates": True,
+            "fall_transitions": [],
+        }
+        if dict(_json_safe(record)) != expected:
+            raise ControlEngineError(
+                "Failed concentration tracker end does not match compiled authority"
+            )
+
+    def _new_pending_concentration_failure(
+        self,
+        *,
+        event: TimelineEvent,
+        end_event: TimelineEvent,
+        check_record: Mapping[str, Any],
+        tracker_pre_state_json: str,
+        tracker_post_check_state_json: str,
+        tracker_end_record: Mapping[str, Any],
+        context: _ConcentrationAuthorityContext,
+        plans: Sequence[tuple[str, str, str]],
+        affected_target_ids: Sequence[str],
+    ) -> _PendingConcentrationFailure:
+        pending = _PendingConcentrationFailure(
+            scenario_digest=self._scenario_digest,
+            effect_id=self._program.effect_id,
+            invocation_id=self._invocation_id,
+            source_actor_id=self._source_actor_id,
+            damage_event_id=event.event_id,
+            damage_event_sequence=event.sequence,
+            end_event_id=end_event.event_id,
+            end_event_sequence=end_event.sequence,
+            check_operation_sequence=self._operation_sequence + 1,
+            check_record_json=_canonical_json(check_record),
+            tracker_pre_state_json=tracker_pre_state_json,
+            tracker_post_check_state_json=tracker_post_check_state_json,
+            tracker_end_record_json=_canonical_json(tracker_end_record),
+            authority_metadata_json=_canonical_json(
+                self._engine._concentration_authority_metadata(context)
+            ),
+            end_plan=tuple(tuple(plan) for plan in plans),
+            affected_target_ids=tuple(sorted(affected_target_ids)),
+            pending_sha256="",
+            _issuer=self._issuer,
+        )
+        return replace(pending, pending_sha256=pending.computed_sha256())
+
+    def _require_locally_issued_pending_concentration_failure(
+        self,
+        pending: _PendingConcentrationFailure,
+        *,
+        event: TimelineEvent,
+        tracker: ConcentrationTracker,
+    ) -> None:
+        """Reject a foreign, stale, or rewritten pending failure before mutation."""
+
+        try:
+            computed_sha256 = pending.computed_sha256()
+        except Exception as error:
+            raise ControlEngineError(
+                "Pending concentration failure is malformed or rewritten"
+            ) from error
+        if (
+            not isinstance(pending, _PendingConcentrationFailure)
+            or pending is not self._pending_concentration_failure_original
+            or pending._issuer is not self._issuer
+            or pending.scenario_digest != self._scenario_digest
+            or pending.effect_id != self._program.effect_id
+            or pending.invocation_id != self._invocation_id
+            or pending.source_actor_id != self._source_actor_id
+            or pending.pending_sha256 != computed_sha256
+            or self._pending_concentration_failure_attestation
+            != pending.pending_sha256
+        ):
+            raise ControlEngineError(
+                "Pending concentration failure is foreign, stale, or rewritten"
+            )
+        if (
+            pending.end_event_id != event.event_id
+            or pending.end_event_sequence != event.sequence
+            or event.kind != "concentration_end"
+        ):
+            raise ControlEngineError(
+                "Pending concentration failure belongs to a different typed end event"
+            )
+        damage_event = self._schedule.event(pending.damage_event_id)
+        if (
+            damage_event.sequence != pending.damage_event_sequence
+            or damage_event.kind != "damage_context"
+            or event.sequence != damage_event.sequence + 1
+        ):
+            raise ControlEngineError(
+                "Pending concentration failure does not bind an immediate typed end"
+            )
+        malformed_plan = (
+            not isinstance(pending.end_plan, tuple)
+            or any(
+                not isinstance(plan, tuple)
+                or len(plan) != 3
+                or not all(isinstance(value, str) and value for value in plan)
+                for plan in pending.end_plan
+            )
+        )
+        if (
+            tuple(sorted(set(pending.affected_target_ids)))
+            != pending.affected_target_ids
+            or set(pending.affected_target_ids) - set(self._schedule.target_ids)
+            or malformed_plan
+            or len(set(pending.end_plan)) != len(pending.end_plan)
+        ):
+            raise ControlEngineError(
+                "Pending concentration failure has malformed affected targets or plan"
+            )
+        for value in (
+            pending.check_record_json,
+            pending.tracker_pre_state_json,
+            pending.tracker_post_check_state_json,
+            pending.tracker_end_record_json,
+            pending.authority_metadata_json,
+        ):
+            if _canonical_json(json.loads(value)) != value:
+                raise ControlEngineError(
+                    "Pending concentration failure serialization is not canonical"
+                )
+        if (
+            self._concentration_tracker_state_json(tracker)
+            != pending.tracker_post_check_state_json
+        ):
+            raise ControlEngineError(
+                "Pending concentration failure tracker continuity is stale"
+            )
+        record_index = pending.check_operation_sequence - 1
+        if record_index < 0 or record_index >= len(self._issued_records):
+            raise ControlEngineError(
+                "Pending concentration failure lacks its issued check record"
+            )
+        issued = self._issued_records[record_index]
+        self._require_locally_issued_record(issued)
+        if (
+            issued.record_kind != "concentration_check_pending_end"
+            or issued.event_id != pending.damage_event_id
+            or issued.event_sequence != pending.damage_event_sequence
+            or json.loads(issued.payload_json) != {
+                "kind": "concentration_check_pending_end",
+                "pending_failure": pending.to_dict(),
+            }
+        ):
+            raise ControlEngineError(
+                "Pending concentration failure does not match its issued check"
+            )
+
     def _bound_input(
         self,
         name: str,
@@ -9423,11 +9749,6 @@ class ControlExecutionSession:
                 or target in self._displaced_targets
             )
         if (
-            self._pending_concentration_end is not None
-            and self._pending_concentration_end["event_id"] == event.event_id
-        ):
-            self._pending_concentration_end["current"] = True
-        if (
             event.kind == "concentration_end"
             and self._concentration_tracker is not None
             and self._concentration_tracker.active_effect_id
@@ -9461,8 +9782,9 @@ class ControlExecutionSession:
         if self._movement_response_required and not self._movement_response_consumed:
             unresolved.append("target movement response")
         if (
-            self._pending_concentration_end is not None
-            and self._pending_concentration_end.get("current")
+            self._pending_concentration_failure is not None
+            and self._pending_concentration_failure.end_event_id
+            == event.event_id
         ):
             unresolved.append("concentration end")
         if unresolved:
@@ -10599,8 +10921,14 @@ class ControlExecutionSession:
             raise ControlEngineError(
                 "The scenario does not bind a concentration save bonus"
             )
-        if self._pending_concentration_end is not None:
-            raise ControlEngineError("A concentration end is already pending")
+        if self._pending_concentration_failure is not None:
+            raise ControlEngineError(
+                "A failed concentration check is already pending its typed end"
+            )
+        if "concentration_check" not in self._current_required_operations:
+            raise ControlEngineError(
+                "A concentration check is not required at the current event"
+            )
         amount = self._bound_input("concentration_amount")
         source = self._bound_input("concentration_source")
         outcome = self._bound_input("concentration_outcome")
@@ -10642,7 +10970,13 @@ class ControlExecutionSession:
             self._bound_input("concentration_end_event_id"),
             "concentration_end_event_id",
         )
-        end_event = self._schedule.event(end_event_id)
+        try:
+            end_event = self._schedule.event(end_event_id)
+        except TimelineError as error:
+            raise ControlEngineError(
+                "unknown concentration end event; a failed check must bind "
+                "the immediate typed end"
+            ) from error
         if end_event.sequence != event.sequence + 1 or end_event.kind != "concentration_end":
             raise ControlEngineError(
                 "A failed concentration check must bind the immediate typed end event"
@@ -10663,39 +10997,64 @@ class ControlExecutionSession:
             event_id=end_event_id,
             reason="failed_concentration_save",
         )
-        first_record_index = len(tracker.records)
-        check_record = tracker.check(
+        affected_target_ids = self._concentration_end_mutation_target_ids(
+            context=context,
+            plans=plans,
+        )
+        self._require_pending_normalization_complete_before_mutation(
+            *affected_target_ids
+        )
+        (
+            check_record,
+            tracker_end_record,
+            tracker_pre_state_json,
+            tracker_post_check_state_json,
+        ) = self._preview_failed_concentration_tracker_records(
+            tracker=tracker,
             amount=amount,
             source=source,
-            event_id=event.event_id,
-            outcome="failure",
+            damage_event_id=event.event_id,
+            end_event_id=end_event.event_id,
             success_probability=success_probability,
             roll_kernel=roll_kernel,
         )
-        generated = tracker.records[first_record_index:]
-        if len(generated) != 2 or generated[1].get("kind") != "concentration_end":
+        self._require_failed_tracker_end_matches_context(
+            tracker_end_record,
+            context=context,
+            end_event_id=end_event.event_id,
+        )
+        pending = self._new_pending_concentration_failure(
+            event=event,
+            end_event=end_event,
+            check_record=check_record,
+            tracker_pre_state_json=tracker_pre_state_json,
+            tracker_post_check_state_json=tracker_post_check_state_json,
+            tracker_end_record=tracker_end_record,
+            context=context,
+            plans=plans,
+            affected_target_ids=affected_target_ids,
+        )
+        tracker.records.append(deepcopy(check_record))
+        if (
+            self._concentration_tracker_state_json(tracker)
+            != tracker_post_check_state_json
+        ):
             raise ControlEngineError(
-                "Tracker did not emit the failed concentration lifecycle"
+                "Tracker did not commit the previewed failed check"
             )
-        generated[1]["event_id"] = end_event_id
-        self._pending_concentration_end = {
-            "event_id": end_event_id,
-            "context": context,
-            "plans": plans,
-            "check_record": check_record,
-            "tracker_records": [dict(_json_safe(row)) for row in generated],
-            "current": False,
-        }
-        self._current_required_operations.discard("concentration_check")
-        return self._issue(
+        issued = self._issue(
             record_kind="concentration_check_pending_end",
             payload={
                 "kind": "concentration_check_pending_end",
-                "check_record": check_record,
-                "end_event_id": end_event_id,
+                "pending_failure": pending.to_dict(),
             },
             pre_operation_state_json=pre,
         )
+        self._pending_concentration_failure = pending
+        self._pending_concentration_failure_original = pending
+        self._pending_concentration_failure_attestation = pending.pending_sha256
+        self._current_required_operations.discard("concentration_check")
+        return issued
 
     def end_concentration(self) -> _IssuedControlRecord:
         event = self._require_current()
@@ -10710,9 +11069,42 @@ class ControlExecutionSession:
             for operation in self._current_required_operations
             if operation.startswith("concentration_end:")
         }
-        pending = self._pending_concentration_end
+        pending = self._pending_concentration_failure
         if pending is not None:
-            planned_end_transitions = tuple(pending["plans"])
+            self._require_locally_issued_pending_concentration_failure(
+                pending,
+                event=event,
+                tracker=tracker,
+            )
+            context = self._engine._active_concentration_context(
+                tracker=tracker,
+                effect=self._program,
+                schedule=self._schedule,
+                selector_membership=self._membership,
+                selector_context=self._selector_context,
+                invocation_id=self._invocation_id,
+                source_actor_id=self._source_actor_id,
+                choices=self._choices,
+            )
+            if (
+                _canonical_json(
+                    self._engine._concentration_authority_metadata(context)
+                )
+                != pending.authority_metadata_json
+            ):
+                raise ControlEngineError(
+                    "Pending concentration failure authority context is stale"
+                )
+            planned_end_transitions = self._engine._concentration_end_plan(
+                state=self._state,
+                context=context,
+                event_id=event.event_id,
+                reason="failed_concentration_save",
+            )
+            if tuple(planned_end_transitions) != pending.end_plan:
+                raise ControlEngineError(
+                    "Pending concentration failure end plan is stale or rewritten"
+                )
         else:
             context = self._engine._active_concentration_context(
                 tracker=tracker,
@@ -10724,20 +11116,30 @@ class ControlExecutionSession:
                 source_actor_id=self._source_actor_id,
                 choices=self._choices,
             )
+            end_reason = self._bound_input("concentration_end_reason")
+            if end_reason == "failed_concentration_save":
+                raise ControlEngineError(
+                    "A failed concentration end requires its matching pending check"
+                )
             planned_end_transitions = self._engine._concentration_end_plan(
                 state=self._state,
                 context=context,
                 event_id=event.event_id,
-                reason=self._bound_input("concentration_end_reason"),
+                reason=end_reason,
+            )
+        affected_target_ids = self._concentration_end_mutation_target_ids(
+            context=context,
+            plans=planned_end_transitions,
+        )
+        if (
+            pending is not None
+            and affected_target_ids != pending.affected_target_ids
+        ):
+            raise ControlEngineError(
+                "Pending concentration failure affected targets are stale"
             )
         self._require_pending_normalization_complete_before_mutation(
-            *self._effect_mutation_target_ids(
-                additional_target_ids=(
-                    target_id
-                    for _gate_id, target_id, _outcome
-                    in planned_end_transitions
-                ),
-            )
+            *affected_target_ids
         )
         planned_gate_labels = {
             f"concentration_end:{gate_id}:{target_id}"
@@ -10750,21 +11152,70 @@ class ControlExecutionSession:
                 f"planned={sorted(planned_gate_labels)}"
             )
         if pending is not None:
-            if pending["event_id"] != event.event_id:
+            simulated = deepcopy(tracker)
+            previewed_end_record = simulated.end(
+                reason="failed_concentration_save",
+                event_id=event.event_id,
+            )
+            self._require_failed_tracker_end_matches_context(
+                previewed_end_record,
+                context=context,
+                end_event_id=event.event_id,
+            )
+            if (
+                _canonical_json(previewed_end_record)
+                != pending.tracker_end_record_json
+            ):
                 raise ControlEngineError(
-                    "Pending concentration end belongs to a different event"
+                    "Pending concentration failure tracker end is stale"
+                )
+            previewed_transition = self._engine._apply_concentration_end_record(
+                state=deepcopy(self._state),
+                record=previewed_end_record,
+                context=context,
+                plans=planned_end_transitions,
+            )
+            previewed_plan = tuple(
+                (
+                    transition.get("gate_id"),
+                    transition.get("target_id"),
+                    transition.get("filtered_branch", {}).get("outcome"),
+                )
+                for transition in previewed_transition.get(
+                    "concentration_end_gate_transitions",
+                    (),
+                )
+                if isinstance(transition, Mapping)
+            )
+            if previewed_plan != tuple(planned_end_transitions):
+                raise ControlEngineError(
+                    "Previewed concentration-end gates differ from the exact "
+                    "compiled pending plan"
+                )
+            end_record = tracker.end(
+                reason="failed_concentration_save",
+                event_id=event.event_id,
+            )
+            if end_record != previewed_end_record:  # pragma: no cover - invariant
+                raise ControlEngineError(
+                    "Tracker end differed from its validated preview"
                 )
             transition = self._engine._apply_concentration_end_record(
                 state=self._state,
-                record=pending["tracker_records"][1],
-                context=pending["context"],
-                plans=pending["plans"],
+                record=end_record,
+                context=context,
+                plans=planned_end_transitions,
             )
+            if transition != previewed_transition:  # pragma: no cover - invariant
+                raise ControlEngineError(
+                    "Concentration end differed from its validated state preview"
+                )
             self._engine._concentration_contexts.pop(tracker, None)
+            check_record = json.loads(pending.check_record_json)
             lifecycle = {
                 "kind": "concentration_check_lifecycle",
-                "check_record": pending["check_record"],
-                "tracker_records": pending["tracker_records"],
+                "check_record": check_record,
+                "tracker_records": [check_record, end_record],
                 "applied_end_transitions": [transition],
                 "active_effect_id": None,
                 "active_components_after": self._state.snapshot(),
@@ -10774,7 +11225,6 @@ class ControlExecutionSession:
                 "concentration_check_lifecycle",
                 lifecycle,
             )
-            self._pending_concentration_end = None
         else:
             lifecycle = self._engine._end_concentration(
                 state=self._state,
@@ -10785,7 +11235,7 @@ class ControlExecutionSession:
                 selector_context=self._selector_context,
                 invocation_id=self._invocation_id,
                 source_actor_id=self._source_actor_id,
-                reason=self._bound_input("concentration_end_reason"),
+                reason=end_reason,
                 event_id=event.event_id,
                 choices=self._choices,
             )
@@ -10833,6 +11283,10 @@ class ControlExecutionSession:
             event=event,
             reason="effect_ended",
         )
+        if pending is not None:
+            self._pending_concentration_failure = None
+            self._pending_concentration_failure_original = None
+            self._pending_concentration_failure_attestation = None
         return issued
 
     def reconcile_concentration_duration(self) -> _IssuedControlRecord:
@@ -10841,6 +11295,11 @@ class ControlExecutionSession:
         if tracker is None:
             raise ControlEngineError(
                 "The scenario does not bind a concentration save bonus"
+            )
+        if self._pending_concentration_failure is not None:
+            raise ControlEngineError(
+                "A pending failed check must end at its bound typed event before "
+                "duration reconciliation"
             )
         context = self._engine._active_concentration_context(
             tracker=tracker,
@@ -10933,6 +11392,237 @@ class ControlExecutionSession:
                 "Final normalization record requires the unchanged pre-event "
                 "target and route state"
             )
+
+    def _validated_pending_concentration_failure_payload(
+        self,
+        record: _IssuedControlRecord,
+    ) -> dict[str, Any]:
+        """Replay one issued failed-check pending identity without live state."""
+
+        payload = json.loads(record.payload_json)
+        if set(payload) != {"kind", "pending_failure"} or payload.get(
+            "kind"
+        ) != "concentration_check_pending_end":
+            raise ControlEngineError(
+                "Final pending concentration-check payload is malformed"
+            )
+        pending = payload.get("pending_failure")
+        expected_identity_keys = {
+            "scenario_digest",
+            "effect_id",
+            "invocation_id",
+            "source_actor_id",
+            "damage_event_id",
+            "damage_event_sequence",
+            "end_event_id",
+            "end_event_sequence",
+            "check_operation_sequence",
+            "check_record",
+            "tracker_pre_state",
+            "tracker_post_check_state",
+            "tracker_end_record",
+            "authority_metadata",
+            "compiled_end_plan",
+            "affected_target_ids",
+        }
+        if not isinstance(pending, Mapping) or set(pending) != (
+            expected_identity_keys | {"pending_sha256"}
+        ):
+            raise ControlEngineError(
+                "Final pending concentration failure identity is malformed"
+            )
+        identity = {
+            key: pending[key] for key in expected_identity_keys
+        }
+        if (
+            pending["pending_sha256"] != _sha256_record(identity)
+            or pending["scenario_digest"] != self._scenario_digest
+            or pending["effect_id"] != self._program.effect_id
+            or pending["invocation_id"] != self._invocation_id
+            or pending["source_actor_id"] != self._source_actor_id
+            or pending["damage_event_id"] != record.event_id
+            or pending["damage_event_sequence"] != record.event_sequence
+            or pending["check_operation_sequence"] != record.operation_sequence
+        ):
+            raise ControlEngineError(
+                "Final pending concentration failure provenance is stale"
+            )
+        try:
+            damage_event = self._schedule.event(
+                str(pending["damage_event_id"])
+            )
+            end_event = self._schedule.event(str(pending["end_event_id"]))
+        except TimelineError as error:
+            raise ControlEngineError(
+                "Final failed check references an unknown bound event"
+            ) from error
+        if (
+            damage_event.kind != "damage_context"
+            or end_event.kind != "concentration_end"
+            or end_event.sequence != damage_event.sequence + 1
+            or pending["end_event_sequence"] != end_event.sequence
+        ):
+            raise ControlEngineError(
+                "Final failed check does not bind the immediate typed end event"
+            )
+        affected_target_ids = pending["affected_target_ids"]
+        if (
+            not isinstance(affected_target_ids, list)
+            or any(
+                not isinstance(target_id, str) or not target_id
+                for target_id in affected_target_ids
+            )
+            or affected_target_ids != sorted(set(affected_target_ids))
+            or set(affected_target_ids) - set(self._schedule.target_ids)
+        ):
+            raise ControlEngineError(
+                "Final pending failure affected targets are malformed"
+            )
+        plan = pending["compiled_end_plan"]
+        if not isinstance(plan, list) or any(
+            not isinstance(row, Mapping)
+            or set(row) != {"gate_id", "target_id", "outcome"}
+            or not all(
+                isinstance(row.get(key), str) and row.get(key)
+                for key in ("gate_id", "target_id", "outcome")
+            )
+            for row in plan
+        ):
+            raise ControlEngineError(
+                "Final pending concentration failure end plan is malformed"
+            )
+        plan_identities = [
+            (row["gate_id"], row["target_id"], row["outcome"])
+            for row in plan
+        ]
+        if len(plan_identities) != len(set(plan_identities)):
+            raise ControlEngineError(
+                "Final pending concentration failure end plan is duplicated"
+            )
+        tracker_pre = pending["tracker_pre_state"]
+        tracker_post = pending["tracker_post_check_state"]
+        tracker_keys = {
+            "active_effect_id",
+            "active_metadata",
+            "save_bonus",
+            "records",
+        }
+        if (
+            not isinstance(tracker_pre, Mapping)
+            or not isinstance(tracker_post, Mapping)
+            or set(tracker_pre) != tracker_keys
+            or set(tracker_post) != tracker_keys
+            or not isinstance(tracker_pre["active_metadata"], Mapping)
+            or not isinstance(tracker_post["active_metadata"], Mapping)
+            or not isinstance(tracker_pre["save_bonus"], int)
+            or isinstance(tracker_pre["save_bonus"], bool)
+            or not isinstance(tracker_pre["records"], list)
+            or not isinstance(tracker_post["records"], list)
+            or tracker_pre["active_effect_id"] != self._program.effect_id
+            or tracker_post["active_effect_id"] != self._program.effect_id
+            or tracker_pre["active_metadata"] != tracker_post["active_metadata"]
+            or tracker_pre["save_bonus"] != tracker_post["save_bonus"]
+            or tracker_post["records"]
+            != [*tracker_pre["records"], pending["check_record"]]
+        ):
+            raise ControlEngineError(
+                "Final failed-check tracker pre/post chain is discontinuous"
+            )
+        check_record = pending["check_record"]
+        if not isinstance(check_record, Mapping):
+            raise ControlEngineError(
+                "Final failed concentration check record is malformed"
+            )
+        try:
+            preview = ConcentrationTracker(
+                save_bonus=tracker_pre["save_bonus"]
+            )
+        except TimelineError as error:
+            raise ControlEngineError(
+                "Final failed-check tracker pre-state is malformed"
+            ) from error
+        preview.active_effect_id = tracker_pre["active_effect_id"]
+        preview._active_metadata = deepcopy(tracker_pre["active_metadata"])
+        preview.records = deepcopy(tracker_pre["records"])
+        kernel = check_record.get("kernel")
+        preview_kwargs: dict[str, Any] = {}
+        if isinstance(kernel, Mapping) and kernel.get("kind") == "branch_probability":
+            probability = kernel.get("success_probability", {})
+            try:
+                preview_kwargs["success_probability"] = Fraction(
+                    probability["numerator"],
+                    probability["denominator"],
+                )
+            except Exception as error:
+                raise ControlEngineError(
+                    "Final failed-check branch probability is malformed"
+                ) from error
+        elif isinstance(kernel, Mapping) and kernel.get("kind") == "exact_roll_kernel":
+            try:
+                preview_kwargs["roll_kernel"] = [
+                    {
+                        "roll": row["roll"],
+                        "probability": Fraction(
+                            row["probability"]["numerator"],
+                            row["probability"]["denominator"],
+                        ),
+                    }
+                    for row in kernel["rows"]
+                ]
+            except Exception as error:
+                raise ControlEngineError(
+                    "Final failed-check exact kernel is malformed"
+                ) from error
+        else:
+            raise ControlEngineError(
+                "Final failed concentration check kernel is malformed"
+            )
+        first_record_index = len(preview.records)
+        try:
+            previewed_check = preview.check(
+                amount=check_record.get("amount"),
+                source=check_record.get("source"),
+                event_id=str(pending["damage_event_id"]),
+                outcome="failure",
+                **preview_kwargs,
+            )
+        except (TimelineError, TypeError, ValueError) as error:
+            raise ControlEngineError(
+                f"Final failed concentration check does not replay: {error}"
+            ) from error
+        generated = preview.records[first_record_index:]
+        previewed_end = dict(_json_safe(generated[1]))
+        previewed_end["event_id"] = end_event.event_id
+        if (
+            previewed_check != check_record
+            or check_record.get("outcome") != "failure"
+            or previewed_end != pending["tracker_end_record"]
+        ):
+            raise ControlEngineError(
+                "Final failed concentration check or end template does not replay"
+            )
+        context = self._engine._build_concentration_context(
+            effect=self._program,
+            schedule=self._schedule,
+            selector_membership=self._membership,
+            selector_context=self._selector_context,
+            invocation_id=self._invocation_id,
+            source_actor_id=self._source_actor_id,
+            start_event_id=str(self._concentration_start_event_id),
+            choices=self._choices,
+        )
+        if pending["authority_metadata"] != (
+            self._engine._concentration_authority_metadata(context)
+        ):
+            raise ControlEngineError(
+                "Final pending concentration authority is stale"
+            )
+        self._require_failed_tracker_end_matches_context(
+            pending["tracker_end_record"],
+            context=context,
+            end_event_id=end_event.event_id,
+        )
+        return dict(pending)
 
     def _validate_issued_records(
         self,
@@ -11144,6 +11834,18 @@ class ControlExecutionSession:
                             raise ControlEngineError(
                                 "Primitive contribution source was not active in the pre-state"
                             )
+            if record.record_kind == "concentration_check_pending_end":
+                self._validated_pending_concentration_failure_payload(record)
+                if (
+                    record.pre_operation_state_json
+                    != record.post_operation_state_json
+                    or record.pre_operation_route_state_json
+                    != record.post_operation_route_state_json
+                ):
+                    raise ControlEngineError(
+                        "A failed concentration check must not mutate component "
+                        "or route state at its damage event"
+                    )
             route_transition = payload.get("route_transition")
             if route_transition is not None:
                 if not isinstance(route_transition, Mapping):
@@ -11294,6 +11996,35 @@ class ControlExecutionSession:
             if _canonical_json(internal_rows) != _canonical_json(issued_rows):
                 raise ControlEngineError(
                     f"Internal {label} do not match the issued record stream"
+                )
+        pending_checks = payloads_by_kind.get(
+            "concentration_check_pending_end",
+            (),
+        )
+        completed_failed_checks = [
+            row for row in self._concentration_records
+            if row.get("kind") == "concentration_check_lifecycle"
+            and row.get("check_record", {}).get("outcome") == "failure"
+        ]
+        if len(pending_checks) != len(completed_failed_checks):
+            raise ControlEngineError(
+                "Internal pending concentration checks do not match completed "
+                "failure lifecycles"
+            )
+        for pending_payload in pending_checks:
+            pending = pending_payload.get("pending_failure", {})
+            matches = [
+                lifecycle for lifecycle in completed_failed_checks
+                if lifecycle.get("check_record") == pending.get("check_record")
+                and lifecycle.get("tracker_records") == [
+                    pending.get("check_record"),
+                    pending.get("tracker_end_record"),
+                ]
+            ]
+            if len(matches) != 1:
+                raise ControlEngineError(
+                    "Internal failed-check pending record has no exact completed "
+                    "concentration lifecycle"
                 )
         if self._repeat_save_records:
             raise ControlEngineError(
@@ -11849,6 +12580,360 @@ class ControlExecutionSession:
                 raise ControlEngineError(
                     "Active concentration lifecycle has stale authority context"
                 ) from error
+        if (
+            self._pending_concentration_failure is not None
+            or self._pending_concentration_failure_original is not None
+            or self._pending_concentration_failure_attestation is not None
+        ):
+            raise ControlEngineError(
+                "Final concentration lifecycle retains a pending failed check"
+            )
+
+        pending_records = tuple(
+            record
+            for record in self._issued_records
+            if record.record_kind == "concentration_check_pending_end"
+        )
+        failed_end_records: list[_IssuedControlRecord] = []
+        for record in self._issued_records:
+            if record.record_kind != "concentration_end":
+                continue
+            payload = json.loads(record.payload_json)
+            if (
+                payload.get("kind") == "concentration_end"
+                and payload.get("reason") == "failed_concentration_save"
+            ):
+                raise ControlEngineError(
+                    "A failed concentration end has no matching pending check"
+                )
+            check_record = payload.get("check_record")
+            if (
+                payload.get("kind") == "concentration_check_lifecycle"
+                and isinstance(check_record, Mapping)
+                and check_record.get("outcome") == "failure"
+            ):
+                failed_end_records.append(record)
+        if len(pending_records) != len(failed_end_records):
+            raise ControlEngineError(
+                "Failed concentration checks and typed ends are not one-to-one"
+            )
+
+        matched_end_operations: set[int] = set()
+        final_tracker_state: Mapping[str, Any] | None = None
+        for pending_record in pending_records:
+            pending = self._validated_pending_concentration_failure_payload(
+                pending_record
+            )
+            check_record = pending["check_record"]
+            tracker_end_record = pending["tracker_end_record"]
+            matches = [
+                record
+                for record in failed_end_records
+                if record.event_id == pending["end_event_id"]
+                and json.loads(record.payload_json).get("check_record")
+                == check_record
+            ]
+            if len(matches) != 1:
+                raise ControlEngineError(
+                    "A failed concentration check does not have exactly one "
+                    "matching typed end"
+                )
+            end_record = matches[0]
+            if (
+                end_record.operation_sequence in matched_end_operations
+                or end_record.operation_sequence
+                <= pending_record.operation_sequence
+                or end_record.event_sequence != pending["end_event_sequence"]
+                or end_record.event_sequence
+                != pending_record.event_sequence + 1
+            ):
+                raise ControlEngineError(
+                    "Failed concentration check/end chronology is duplicated or stale"
+                )
+            matched_end_operations.add(end_record.operation_sequence)
+            lifecycle = json.loads(end_record.payload_json)
+            if (
+                set(lifecycle) != {
+                    "kind",
+                    "check_record",
+                    "tracker_records",
+                    "applied_end_transitions",
+                    "active_effect_id",
+                    "active_components_after",
+                }
+                or lifecycle["tracker_records"]
+                != [check_record, tracker_end_record]
+                or lifecycle["active_effect_id"] is not None
+                or not isinstance(lifecycle["applied_end_transitions"], list)
+                or len(lifecycle["applied_end_transitions"]) != 1
+            ):
+                raise ControlEngineError(
+                    "Failed concentration check/end tracker lifecycle is malformed"
+                )
+
+            check_state_rows = json.loads(
+                pending_record.post_operation_state_json
+            )
+            check_route_rows = json.loads(
+                pending_record.post_operation_route_state_json
+            )
+            program_check_rows = [
+                row for row in check_state_rows
+                if row.get("effect_id") == self._program.effect_id
+            ]
+            program_end_pre_rows = [
+                row for row in json.loads(end_record.pre_operation_state_json)
+                if row.get("effect_id") == self._program.effect_id
+            ]
+            program_check_routes = [
+                row for row in check_route_rows
+                if row.get("effect_id") == self._program.effect_id
+            ]
+            program_end_pre_routes = [
+                row
+                for row in json.loads(end_record.pre_operation_route_state_json)
+                if row.get("effect_id") == self._program.effect_id
+            ]
+            if (
+                program_check_rows != program_end_pre_rows
+                or program_check_routes != program_end_pre_routes
+                or end_record.pre_operation_route_state_json
+                != end_record.post_operation_route_state_json
+            ):
+                raise ControlEngineError(
+                    "Concentration component or route state ended before the "
+                    "typed concentration-end event"
+                )
+
+            context = self._engine._build_concentration_context(
+                effect=self._program,
+                schedule=self._schedule,
+                selector_membership=self._membership,
+                selector_context=self._selector_context,
+                invocation_id=self._invocation_id,
+                source_actor_id=self._source_actor_id,
+                start_event_id=str(self._concentration_start_event_id),
+                choices=self._choices,
+            )
+            end_event = self._schedule.event(str(pending["end_event_id"]))
+            active_ids_by_target = {
+                target_id: {
+                    row["component_id"]
+                    for row in program_check_rows
+                    if row.get("target_id") == target_id
+                }
+                for target_id in self._schedule.target_ids
+            }
+            expected_plan: list[dict[str, str]] = []
+            planned_targets: set[str] = set()
+            for gate_id in context.concentration_end_gate_ids:
+                gate = context.program.gate(gate_id)
+                branch = gate.branches[0]
+                for target_id in context.schedule.target_ids:
+                    if not any(
+                        target_id in context.selector_membership[selector_id]
+                        for selector_id in gate.selector_ids
+                    ):
+                        continue
+                    if not set(gate.requires_active_component_ids).issubset(
+                        active_ids_by_target[target_id]
+                    ):
+                        continue
+                    if target_id in planned_targets or (
+                        end_event.target_id is not None
+                        and end_event.target_id != target_id
+                    ) or not typed_event_matches(
+                        end_event,
+                        gate.trigger.data.to_dict(),
+                        target_id=target_id,
+                        triggering_turn_id=end_event.turn_id,
+                    ):
+                        raise ControlEngineError(
+                            "Final concentration end plan does not match compiled authority"
+                        )
+                    self._engine._gate_reachability(
+                        state=self._state,
+                        program=context.program,
+                        gate_id=gate.gate_id,
+                        target_id=target_id,
+                        invocation_id=context.invocation_id,
+                        event_id=end_event.event_id,
+                        schedule=context.schedule,
+                    )
+                    planned_targets.add(target_id)
+                    expected_plan.append({
+                        "gate_id": gate.gate_id,
+                        "target_id": target_id,
+                        "outcome": branch.outcome,
+                    })
+            if expected_plan != pending["compiled_end_plan"]:
+                raise ControlEngineError(
+                    "Final pending end plan differs from compiled authority"
+                )
+            derived_affected_targets = sorted({
+                row["target_id"]
+                for row in program_check_rows
+                if row.get("component_id") in (
+                    set(pending["authority_metadata"][
+                        "concentration_component_ids"
+                    ])
+                    | set(pending["authority_metadata"]["area_component_ids"])
+                )
+            } | {
+                row["target_id"]
+                for row in program_check_routes
+                if row.get("membership") is True
+                and row.get("area_id")
+                in pending["authority_metadata"]["area_ids"]
+            } | {
+                row["target_id"] for row in expected_plan
+            })
+            if derived_affected_targets != pending["affected_target_ids"]:
+                raise ControlEngineError(
+                    "Final pending affected targets differ from attested state"
+                )
+
+            [applied_end] = lifecycle["applied_end_transitions"]
+            if (
+                not isinstance(applied_end, Mapping)
+                or applied_end.get("event_id") != end_record.event_id
+                or applied_end.get("reason") != "failed_concentration_save"
+                or applied_end.get("authority_metadata")
+                != pending["authority_metadata"]
+            ):
+                raise ControlEngineError(
+                    "Final failed concentration transition is stale"
+                )
+            actual_plan = [
+                {
+                    "gate_id": transition.get("gate_id"),
+                    "target_id": transition.get("target_id"),
+                    "outcome": transition.get("filtered_branch", {}).get(
+                        "outcome"
+                    ),
+                }
+                for transition in applied_end.get(
+                    "concentration_end_gate_transitions",
+                    (),
+                )
+                if isinstance(transition, Mapping)
+            ]
+            if actual_plan != expected_plan:
+                raise ControlEngineError(
+                    "Executed concentration-end gates differ from compiled plan"
+                )
+            for planned in expected_plan:
+                matching_audits = [
+                    row for row in self._state.audit_ledger
+                    if row.get("operation") == "branch_transition"
+                    and row.get("event_id") == end_record.event_id
+                    and row.get("gate_id") == planned["gate_id"]
+                    and row.get("target_id") == planned["target_id"]
+                    and row.get("filtered_branch", {}).get("outcome")
+                    == planned["outcome"]
+                ]
+                if len(matching_audits) != 1:
+                    raise ControlEngineError(
+                        "Compiled concentration-end gate did not execute exactly once"
+                    )
+
+            cleanup_ids = set(
+                pending["authority_metadata"]["concentration_component_ids"]
+            ) | set(pending["authority_metadata"]["area_component_ids"])
+            program_end_post_rows = [
+                row for row in json.loads(end_record.post_operation_state_json)
+                if row.get("effect_id") == self._program.effect_id
+            ]
+            if any(
+                row.get("component_id") in cleanup_ids
+                for row in program_end_post_rows
+            ):
+                raise ControlEngineError(
+                    "Concentration or area-bound component survived its typed end"
+                )
+            pre_instances = {
+                row["instance_id"]: row for row in program_end_pre_rows
+            }
+            post_instance_ids = {
+                row["instance_id"] for row in program_end_post_rows
+            }
+            expected_ended_instances = [
+                {
+                    "target_id": row["target_id"],
+                    "component_id": row["component_id"],
+                    "instance_id": instance_id,
+                }
+                for instance_id, row in sorted(pre_instances.items())
+                if instance_id not in post_instance_ids
+            ]
+            if applied_end.get("ended_state_instances") != expected_ended_instances:
+                raise ControlEngineError(
+                    "Typed concentration end instance termination does not replay"
+                )
+
+            expected_route_identities = {
+                (
+                    row["effect_id"],
+                    row["area_id"],
+                    row["target_id"],
+                )
+                for row in program_end_pre_routes
+                if row.get("membership") is True
+            }
+            observed_route_identities = set()
+            for route_record in self._issued_records:
+                if (
+                    route_record.record_kind != "area_route_transition"
+                    or route_record.event_id != end_record.event_id
+                    or route_record.operation_sequence
+                    <= end_record.operation_sequence
+                ):
+                    continue
+                route_payload = json.loads(route_record.payload_json)
+                transition = route_payload.get("route_transition", {})
+                if transition.get("transition_kind") != "effect_end":
+                    continue
+                identity = (
+                    transition.get("effect_id"),
+                    transition.get("area_id"),
+                    transition.get("target_id"),
+                )
+                if (
+                    identity in observed_route_identities
+                    or transition.get("old_route_state", {}).get("membership")
+                    is not True
+                    or transition.get("new_route_state", {}).get("membership")
+                    is not False
+                ):
+                    raise ControlEngineError(
+                        "Typed concentration-end route closure is duplicated or stale"
+                    )
+                observed_route_identities.add(identity)
+            if observed_route_identities != expected_route_identities:
+                raise ControlEngineError(
+                    "Typed concentration end did not close every live area route"
+                )
+
+            tracker_post = deepcopy(pending["tracker_post_check_state"])
+            tracker_post["active_effect_id"] = None
+            tracker_post["active_metadata"] = {}
+            tracker_post["records"] = [
+                *tracker_post["records"],
+                tracker_end_record,
+            ]
+            if final_tracker_state is not None:
+                raise ControlEngineError(
+                    "Final execution contains duplicate failed concentration lifecycles"
+                )
+            final_tracker_state = tracker_post
+        if (
+            final_tracker_state is not None
+            and json.loads(self._concentration_tracker_state_json(tracker))
+            != final_tracker_state
+        ):
+            raise ControlEngineError(
+                "Final concentration tracker does not continue the failed-check chain"
+            )
 
     def _validate_scenario_identity(self) -> None:
         if hashlib.sha256(self._scenario_json.encode("utf-8")).hexdigest() != (
