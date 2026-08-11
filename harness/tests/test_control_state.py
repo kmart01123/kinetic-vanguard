@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import unittest
+from copy import deepcopy
 
 from harness.control_catalog import SenseQueryResult
 
@@ -9,6 +10,7 @@ from harness.control_state import (
     NORMALIZATION_RULES_VERSION,
     ControlState,
     ControlStateError,
+    condition_instance_id_for,
     concentration_check_dc,
 )
 from harness.control_timeline import build_schedule
@@ -53,6 +55,11 @@ def apply(
     invocation: str = "invocation_1",
     immunities: set[str] | None = None,
     source_actor: str = "controller",
+    application_sequence: int | None = None,
+    condition_instance_id: str | None = None,
+    source_program_id: str | None = None,
+    issuance_id: str | None = None,
+    provenance_id: str | None = None,
 ) -> object:
     return state.apply_component(
         effect_id=effect,
@@ -63,12 +70,31 @@ def apply(
         invocation_id=invocation,
         expiry_event_id=expiry,
         condition_immunities=immunities or set(),
+        application_sequence=application_sequence,
+        condition_instance_id=condition_instance_id,
+        source_program_id=source_program_id,
+        issuance_id=issuance_id,
+        provenance_id=provenance_id,
     )
+
+
+def condition_catalog(
+    inclusions: dict[str, tuple[str, ...] | list[str]],
+) -> dict[str, object]:
+    return {
+        "conditions": {
+            condition_id: {
+                "includes": list(includes),
+                "primitives": [],
+            }
+            for condition_id, includes in inclusions.items()
+        }
+    }
 
 
 class ControlStateTransitionTests(unittest.TestCase):
     def test_normalization_contract_is_explicitly_versioned(self) -> None:
-        self.assertEqual(NORMALIZATION_RULES_VERSION, "1.0.0")
+        self.assertEqual(NORMALIZATION_RULES_VERSION, "2.0.0")
 
     def test_condition_immunity_removes_only_condition_component(self) -> None:
         state = ControlState()
@@ -181,6 +207,502 @@ class ControlStateTransitionTests(unittest.TestCase):
         self.assertEqual([item.effect_id for item in state.active_components()], ["effect_b"])
 
 
+class ConditionInstanceLifecycleTests(unittest.TestCase):
+    def test_source_relative_conditions_reject_self_source_before_mutation(self) -> None:
+        for condition_id in ("charmed", "frightened"):
+            with self.subTest(condition_id=condition_id):
+                state = ControlState(
+                    catalog=condition_catalog({condition_id: ()})
+                )
+                with self.assertRaisesRegex(ControlStateError, "non-self source"):
+                    apply(
+                        state,
+                        component(
+                            condition_id,
+                            {"kind": "condition", "condition": condition_id},
+                        ),
+                        source_actor="target_a",
+                    )
+                self.assertEqual(state.instance_registry(), ())
+                self.assertEqual(state.snapshot(), [])
+
+    def test_atomic_preview_clone_shares_catalog_but_not_mutable_state(self) -> None:
+        state = ControlState(catalog=condition_catalog({"blinded": ()}))
+        preview = deepcopy(state)
+        self.assertIs(preview._catalog, state._catalog)
+        apply(
+            preview,
+            component("blinded", {"kind": "condition", "condition": "blinded"}),
+            application_sequence=2,
+        )
+        self.assertEqual(state.instance_registry(), ())
+        self.assertEqual(len(preview.instance_registry()), 1)
+
+    def test_independent_same_condition_sources_are_distinct_but_derive_once(self) -> None:
+        state = ControlState(
+            catalog=condition_catalog({"restrained": ()})
+        )
+        restrained = component(
+            "restrained",
+            {"kind": "condition", "condition": "restrained"},
+        )
+        apply(
+            state,
+            restrained,
+            source_actor="source_a",
+            application_sequence=3,
+            issuance_id="issuance_a",
+            provenance_id="provenance_a",
+        )
+        apply(
+            state,
+            restrained,
+            source_actor="source_b",
+            application_sequence=4,
+            issuance_id="issuance_b",
+            provenance_id="provenance_b",
+        )
+
+        instances = state.active_condition_instances("target_a")
+        self.assertEqual(len(instances), 2)
+        self.assertEqual(
+            {item.source_actor_id for item in instances},
+            {"source_a", "source_b"},
+        )
+        self.assertEqual(len({item.instance_id for item in instances}), 2)
+        self.assertEqual(
+            state.derived_current_conditions("target_a"),
+            ("restrained",),
+        )
+        self.assertEqual(
+            state.final_normalized_state()["target_a"]["conditions"],
+            ["restrained"],
+        )
+        self.assertEqual(len(state.active_components("target_a")), 2)
+
+    def test_included_condition_has_separate_queryable_identity_and_lineage(self) -> None:
+        state = ControlState(
+            catalog=condition_catalog({
+                "stunned": ("incapacitated",),
+                "incapacitated": (),
+            })
+        )
+        stunned = component(
+            "stunned",
+            {"kind": "condition", "condition": "stunned"},
+        )
+        active = apply(
+            state,
+            stunned,
+            source_actor="stunning_source",
+            application_sequence=7,
+            source_program_id="stun_program",
+            issuance_id="stun_issuance",
+            provenance_id="stun_provenance",
+        )
+
+        by_condition = {
+            item.condition_id: item
+            for item in state.active_condition_instances("target_a")
+        }
+        self.assertEqual(set(by_condition), {"stunned", "incapacitated"})
+        self.assertEqual(
+            by_condition["incapacitated"].parent_condition_instance_id,
+            by_condition["stunned"].instance_id,
+        )
+        self.assertEqual(
+            active.condition_instance_id,
+            by_condition["stunned"].instance_id,
+        )
+        self.assertEqual(
+            state.derived_current_conditions("target_a"),
+            ("incapacitated", "stunned"),
+        )
+        lineage = state.lineage_records("target_a")
+        self.assertEqual(len(lineage), 1)
+        self.assertEqual(lineage[0]["parent_condition_id"], "stunned")
+        self.assertEqual(lineage[0]["child_condition_id"], "incapacitated")
+        self.assertEqual(lineage[0]["issuance_id"], "stun_issuance")
+
+    def test_parent_end_cleans_only_its_child_and_independent_child_survives(self) -> None:
+        state = ControlState(
+            catalog=condition_catalog({
+                "stunned": ("incapacitated",),
+                "incapacitated": (),
+            })
+        )
+        stunned_component = component(
+            "stunned",
+            {"kind": "condition", "condition": "stunned"},
+        )
+        incapacitated_component = component(
+            "incapacitated",
+            {"kind": "condition", "condition": "incapacitated"},
+        )
+        apply(
+            state,
+            stunned_component,
+            effect="stun_effect",
+            source_actor="stun_source",
+            application_sequence=1,
+            issuance_id="stun_issuance",
+            provenance_id="stun_provenance",
+        )
+        apply(
+            state,
+            incapacitated_component,
+            effect="independent_effect",
+            source_actor="independent_source",
+            application_sequence=2,
+            issuance_id="independent_issuance",
+            provenance_id="independent_provenance",
+        )
+        stunned_root = next(
+            item
+            for item in state.active_condition_instances("target_a")
+            if item.condition_id == "stunned"
+        )
+
+        ended = state.end_condition_instance(
+            stunned_root.instance_id,
+            event_id="stun_source_end",
+            event_sequence=3,
+            reason="source_end",
+            expected_source_actor_id="stun_source",
+            expected_issuance_id="stun_issuance",
+        )
+
+        self.assertEqual(
+            {item.condition_id for item in ended},
+            {"stunned", "incapacitated"},
+        )
+        remaining = state.active_condition_instances("target_a")
+        self.assertEqual(len(remaining), 1)
+        self.assertEqual(remaining[0].condition_id, "incapacitated")
+        self.assertEqual(remaining[0].source_actor_id, "independent_source")
+        self.assertEqual(
+            state.derived_current_conditions("target_a"),
+            ("incapacitated",),
+        )
+        self.assertEqual(
+            [item.effect_id for item in state.active_components("target_a")],
+            ["independent_effect"],
+        )
+        ended_rows = [
+            row
+            for row in state.instance_registry("target_a")
+            if row["status"] == "ended"
+        ]
+        self.assertEqual(len(ended_rows), 2)
+        self.assertTrue(all(row["end_reason"] == "source_end" for row in ended_rows))
+
+    def test_cycle_duplicate_lineage_and_broken_chain_fail_atomically(self) -> None:
+        invalid_catalogs = (
+            (
+                "cycle",
+                condition_catalog({"alpha": ("beta",), "beta": ("alpha",)}),
+                "Condition inclusion cycle",
+            ),
+            (
+                "duplicate direct child",
+                {
+                    "conditions": {
+                        "alpha": {
+                            "includes": ["beta", "beta"],
+                            "primitives": [],
+                        },
+                        "beta": {"includes": [], "primitives": []},
+                    }
+                },
+                "duplicate lineage",
+            ),
+            (
+                "duplicate diamond child",
+                condition_catalog({
+                    "alpha": ("left", "right"),
+                    "left": ("shared",),
+                    "right": ("shared",),
+                    "shared": (),
+                }),
+                "repeats condition",
+            ),
+            (
+                "broken child",
+                condition_catalog({"alpha": ("missing",)}),
+                "Broken condition inclusion",
+            ),
+        )
+        definition = component(
+            "alpha",
+            {"kind": "condition", "condition": "alpha"},
+        )
+        for label, catalog, message in invalid_catalogs:
+            with self.subTest(label=label):
+                state = ControlState(catalog=catalog)
+                with self.assertRaisesRegex(ControlStateError, message):
+                    apply(
+                        state,
+                        definition,
+                        application_sequence=1,
+                        issuance_id="issuance",
+                        provenance_id="provenance",
+                    )
+                self.assertFalse(state.active_components())
+                self.assertEqual(state.instance_registry(), ())
+                self.assertFalse(state.audit_ledger)
+
+    def test_exact_identity_rejects_rewrite_duplicate_wrong_source_and_double_end(self) -> None:
+        catalog = condition_catalog({"prone": ()})
+        prone = component(
+            "prone",
+            {"kind": "condition", "condition": "prone"},
+            mode="independent",
+        )
+        expected_id = condition_instance_id_for(
+            condition_id="prone",
+            target_id="target_a",
+            source_actor_id="source",
+            source_program_id="program",
+            source_effect_id="test_effect",
+            source_invocation_id="invocation_1",
+            source_component_id="prone",
+            application_event_id="event_apply",
+            application_sequence=5,
+            duration=prone["duration"],
+            expiry_event_id="event_expire",
+            issuance_id="issuance",
+            provenance_id="provenance",
+        )
+        state = ControlState(catalog=catalog)
+        active = apply(
+            state,
+            prone,
+            source_actor="source",
+            application_sequence=5,
+            condition_instance_id=expected_id,
+            source_program_id="program",
+            issuance_id="issuance",
+            provenance_id="provenance",
+        )
+        self.assertEqual(active.condition_instance_id, expected_id)
+
+        rewritten = f"{expected_id[:-1]}{'0' if expected_id[-1] != '0' else '1'}"
+        with self.assertRaisesRegex(ControlStateError, "Unknown or stale"):
+            state.end_condition_instance(
+                rewritten,
+                event_id="end",
+                event_sequence=6,
+                reason="source_end",
+                expected_source_actor_id="source",
+            )
+        with self.assertRaisesRegex(ControlStateError, "source actor mismatch"):
+            state.end_condition_instance(
+                expected_id,
+                event_id="end",
+                event_sequence=6,
+                reason="source_end",
+                expected_source_actor_id="wrong_source",
+            )
+        with self.assertRaisesRegex(ControlStateError, "issuance mismatch"):
+            state.end_condition_instance(
+                expected_id,
+                event_id="end",
+                event_sequence=6,
+                reason="source_end",
+                expected_source_actor_id="source",
+                expected_issuance_id="wrong_issuance",
+            )
+        state.end_condition_instance(
+            expected_id,
+            event_id="end",
+            event_sequence=6,
+            reason="source_end",
+            expected_source_actor_id="source",
+            expected_issuance_id="issuance",
+        )
+        with self.assertRaisesRegex(ControlStateError, "already ended"):
+            state.end_condition_instance(
+                expected_id,
+                event_id="second_end",
+                event_sequence=7,
+                reason="source_end",
+                expected_source_actor_id="source",
+            )
+
+        duplicate_state = ControlState(catalog=catalog)
+        apply(
+            duplicate_state,
+            prone,
+            source_actor="source",
+            application_sequence=5,
+            condition_instance_id=expected_id,
+            source_program_id="program",
+            issuance_id="issuance",
+            provenance_id="provenance",
+        )
+        with self.assertRaisesRegex(ControlStateError, "Duplicate condition instance ID"):
+            apply(
+                duplicate_state,
+                prone,
+                source_actor="source",
+                application_sequence=5,
+                condition_instance_id=expected_id,
+                source_program_id="program",
+                issuance_id="issuance",
+                provenance_id="provenance",
+            )
+        self.assertEqual(len(duplicate_state.instance_registry()), 1)
+
+        rewritten_state = ControlState(catalog=catalog)
+        with self.assertRaisesRegex(ControlStateError, "does not match"):
+            apply(
+                rewritten_state,
+                prone,
+                source_actor="source",
+                application_sequence=5,
+                condition_instance_id="condition_rewritten",
+                source_program_id="program",
+                issuance_id="issuance",
+                provenance_id="provenance",
+            )
+        self.assertEqual(rewritten_state.instance_registry(), ())
+
+    def test_condition_duration_refresh_ends_old_identity_and_applies_new_one(self) -> None:
+        state = ControlState(catalog=condition_catalog({"prone": ()}))
+        prone = component(
+            "prone",
+            {"kind": "condition", "condition": "prone"},
+        )
+        first = apply(
+            state,
+            prone,
+            expiry="old_expiry",
+            application_sequence=1,
+            issuance_id="first_issuance",
+            provenance_id="first_provenance",
+        )
+        second = apply(
+            state,
+            prone,
+            event="refresh_event",
+            expiry="new_expiry",
+            application_sequence=2,
+            issuance_id="second_issuance",
+            provenance_id="second_provenance",
+        )
+
+        self.assertNotEqual(
+            first.condition_instance_id,
+            second.condition_instance_id,
+        )
+        registry = {
+            row["instance_id"]: row for row in state.instance_registry()
+        }
+        self.assertEqual(
+            registry[first.condition_instance_id]["status"],
+            "ended",
+        )
+        self.assertEqual(
+            registry[first.condition_instance_id]["expiry_event_id"],
+            "old_expiry",
+        )
+        self.assertEqual(
+            registry[first.condition_instance_id]["end_reason"],
+            "duration_refresh",
+        )
+        self.assertEqual(
+            registry[second.condition_instance_id]["status"],
+            "active",
+        )
+        self.assertEqual(
+            registry[second.condition_instance_id]["expiry_event_id"],
+            "new_expiry",
+        )
+        self.assertEqual(len(state.active_components()), 1)
+
+        old_expiry_identity = condition_instance_id_for(
+            condition_id="prone",
+            target_id="target_a",
+            source_actor_id="controller",
+            source_program_id="test_effect",
+            source_effect_id="test_effect",
+            source_invocation_id="invocation_1",
+            source_component_id="prone",
+            application_event_id="event_apply",
+            application_sequence=1,
+            duration=prone["duration"],
+            expiry_event_id="old_expiry",
+            issuance_id="first_issuance",
+            provenance_id="first_provenance",
+        )
+        changed_expiry_identity = condition_instance_id_for(
+            condition_id="prone",
+            target_id="target_a",
+            source_actor_id="controller",
+            source_program_id="test_effect",
+            source_effect_id="test_effect",
+            source_invocation_id="invocation_1",
+            source_component_id="prone",
+            application_event_id="event_apply",
+            application_sequence=1,
+            duration=prone["duration"],
+            expiry_event_id="rewritten_expiry",
+            issuance_id="first_issuance",
+            provenance_id="first_provenance",
+        )
+        self.assertEqual(first.condition_instance_id, old_expiry_identity)
+        self.assertNotEqual(old_expiry_identity, changed_expiry_identity)
+
+    def test_registry_lineage_and_lifecycle_serialization_is_deterministic(self) -> None:
+        catalog = condition_catalog({"alpha": (), "beta": ()})
+        alpha = component(
+            "alpha",
+            {"kind": "condition", "condition": "alpha"},
+        )
+        beta = component(
+            "beta",
+            {"kind": "condition", "condition": "beta"},
+        )
+
+        def populated(order: tuple[str, ...]) -> ControlState:
+            state = ControlState(catalog=catalog)
+            definitions = {"alpha": alpha, "beta": beta}
+            for condition_id in order:
+                sequence = 1 if condition_id == "alpha" else 2
+                apply(
+                    state,
+                    definitions[condition_id],
+                    effect=f"{condition_id}_effect",
+                    source_actor=f"{condition_id}_source",
+                    application_sequence=sequence,
+                    issuance_id=f"{condition_id}_issuance",
+                    provenance_id=f"{condition_id}_provenance",
+                )
+            return state
+
+        first = populated(("alpha", "beta"))
+        second = populated(("beta", "alpha"))
+        first_serialized = json.dumps(
+            {
+                "registry": first.instance_registry(),
+                "lineage": first.lineage_records(),
+                "lifecycle": first.condition_lifecycle_records(),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        second_serialized = json.dumps(
+            {
+                "registry": second.instance_registry(),
+                "lineage": second.lineage_records(),
+                "lifecycle": second.condition_lifecycle_records(),
+            },
+            sort_keys=True,
+            separators=(",", ":"),
+        )
+        self.assertEqual(first_serialized, second_serialized)
+
+
 class MobilityNormalizationTests(unittest.TestCase):
     def test_restrained_and_independent_speed_zero_produce_one_effective_loss(self) -> None:
         state = ControlState()
@@ -253,7 +775,7 @@ class MobilityNormalizationTests(unittest.TestCase):
                     },
                 )
                 apply(state, reduction, effect="slow_effect")
-                apply(
+                applied_denial = apply(
                     state,
                     denial,
                     effect="denial_effect",
@@ -270,7 +792,9 @@ class MobilityNormalizationTests(unittest.TestCase):
                     if item.primitive_id == "mobility_loss_feet"
                 )
                 dominant_source = (
-                    f"denial_effect:{denial['component_id']}"
+                    f"condition_instance:{applied_denial.condition_instance_id}"
+                    if applied_denial.condition_instance_id is not None
+                    else f"denial_effect:{denial['component_id']}"
                 )
                 self.assertEqual(mobility.quantity, 30)
                 self.assertEqual(
@@ -522,16 +1046,32 @@ class DirectPrimitiveNormalizationTests(unittest.TestCase):
             "restrained",
             {"kind": "condition", "condition": "restrained"},
         )
-        apply(state, restrained, effect="effect_a", source_actor="source_a")
-        apply(state, restrained, effect="effect_b", source_actor="source_b")
+        effect_a = apply(
+            state,
+            restrained,
+            effect="effect_a",
+            source_actor="source_a",
+        )
+        effect_b = apply(
+            state,
+            restrained,
+            effect="effect_b",
+            source_actor="source_b",
+        )
         result = state.normalize_for_window(
             target_id="target_a",
-            window_id="restrained_turn",
-            window_kind="target_active_turn_opportunity",
+            window_id="restrained_attack",
+            window_kind="target_attack_opportunity",
         )
         self.assertEqual(len(result.contributions), 1)
         contribution = result.contributions[0]
-        self.assertEqual(set(contribution.source_component_ids), {"effect_a:restrained", "effect_b:restrained"})
+        self.assertEqual(
+            set(contribution.source_component_ids),
+            {
+                f"condition_instance:{effect_a.condition_instance_id}",
+                f"condition_instance:{effect_b.condition_instance_id}",
+            },
+        )
         self.assertNotIn("source_actor_id", contribution.context)
 
     def test_authority_dominance_compares_qualified_source_ids(self) -> None:
@@ -570,7 +1110,7 @@ class DirectPrimitiveNormalizationTests(unittest.TestCase):
         first = state.normalize_for_window(
             target_id="target_a",
             window_id="attack_1",
-            window_kind="target_attack_opportunity",
+            window_kind="controller_attack_opportunity",
         )
         self.assertEqual(first.contributions[0].primitive_id, "offensive_impairment_next_attack")
         self.assertFalse(state.active_components())
@@ -581,7 +1121,7 @@ class DirectPrimitiveNormalizationTests(unittest.TestCase):
         )
         self.assertFalse(second.contributions)
 
-    def test_all_attacks_emits_once_for_a_scheduled_turn_with_two_attacks(self) -> None:
+    def test_all_attacks_emits_for_each_scheduled_attack_opportunity(self) -> None:
         state = ControlState()
         apply(
             state,
@@ -626,9 +1166,12 @@ class DirectPrimitiveNormalizationTests(unittest.TestCase):
             for item in contributions
             if item.primitive_id == "offensive_impairment_all_attacks"
         ]
-        self.assertEqual(len(all_attacks), 1)
-        self.assertEqual(all_attacks[0].unit, "affected_target_turn")
-        self.assertEqual(all_attacks[0].event_or_window_id, windows[0].window_id)
+        self.assertEqual(len(all_attacks), 2)
+        self.assertTrue(all(item.unit == "attack_opportunity" for item in all_attacks))
+        self.assertEqual(
+            [item.event_or_window_id for item in all_attacks],
+            [windows[1].window_id, windows[2].window_id],
+        )
 
     def test_active_turn_denial_suppresses_scripted_attacks_without_consuming_tokens(self) -> None:
         state = ControlState()
@@ -661,14 +1204,7 @@ class DirectPrimitiveNormalizationTests(unittest.TestCase):
             "offensive_impairment_all_attacks",
             {item.primitive_id for item in denied_turn.contributions},
         )
-        self.assertEqual(
-            {
-                row.primitive_id
-                for row in denied_turn.suppressions
-                if row.reason == "active_turn_denial_removes_attack_opportunity"
-            },
-            {"offensive_impairment_all_attacks"},
-        )
+        self.assertFalse(denied_turn.suppressions)
         denied_attack = state.normalize_for_window(
             target_id="target_a",
             window_id="impossible_attack",
@@ -677,7 +1213,10 @@ class DirectPrimitiveNormalizationTests(unittest.TestCase):
         self.assertFalse(denied_attack.contributions)
         self.assertEqual(
             {row.primitive_id for row in denied_attack.suppressions},
-            {"offensive_impairment_next_attack"},
+            {
+                "offensive_impairment_all_attacks",
+                "offensive_impairment_next_attack",
+            },
         )
         next_attack = next(
             item for item in state.active_components("target_a")
@@ -695,10 +1234,7 @@ class DirectPrimitiveNormalizationTests(unittest.TestCase):
             window_id="resumed_turn",
             window_kind="target_active_turn_opportunity",
         )
-        self.assertEqual(
-            {item.primitive_id for item in resumed_turn.contributions},
-            {"offensive_impairment_all_attacks"},
-        )
+        self.assertFalse(resumed_turn.contributions)
         resumed = state.normalize_for_window(
             target_id="target_a",
             window_id="legal_attack",
@@ -706,7 +1242,10 @@ class DirectPrimitiveNormalizationTests(unittest.TestCase):
         )
         self.assertEqual(
             {item.primitive_id for item in resumed.contributions},
-            {"offensive_impairment_next_attack"},
+            {
+                "offensive_impairment_all_attacks",
+                "offensive_impairment_next_attack",
+            },
         )
         self.assertNotIn(
             "next_attack",
@@ -757,6 +1296,82 @@ class DirectPrimitiveNormalizationTests(unittest.TestCase):
 
 
 class CatalogPrimitiveNormalizationTests(unittest.TestCase):
+    def test_included_and_direct_incapacitated_consequences_do_not_amplify(self) -> None:
+        state = ControlState()
+        stunned = apply(
+            state,
+            component("stunned", {"kind": "condition", "condition": "stunned"}),
+            effect="stun_effect",
+            source_actor="stun_source",
+            application_sequence=1,
+            issuance_id="stun_issuance",
+            provenance_id="stun_provenance",
+        )
+        independent = apply(
+            state,
+            component(
+                "incapacitated",
+                {"kind": "condition", "condition": "incapacitated"},
+            ),
+            effect="independent_effect",
+            event="independent_apply",
+            invocation="invocation_2",
+            source_actor="independent_source",
+            application_sequence=2,
+            issuance_id="independent_issuance",
+            provenance_id="independent_provenance",
+        )
+        instances = {
+            item.instance_id: item
+            for item in state.active_condition_instances("target_a")
+        }
+        included = next(
+            item
+            for item in instances.values()
+            if item.parent_condition_instance_id == stunned.condition_instance_id
+            and item.condition_id == "incapacitated"
+        )
+        self.assertEqual(included.source_actor_id, "stun_source")
+        self.assertEqual(
+            instances[independent.condition_instance_id].source_actor_id,
+            "independent_source",
+        )
+
+        result = state.normalize_for_window(
+            target_id="target_a",
+            window_id="shared_reaction_window",
+            window_kind="reaction_window",
+        )
+        reaction_denials = [
+            item
+            for item in result.contributions
+            if item.primitive_id == "reaction_denial"
+        ]
+        self.assertEqual(len(reaction_denials), 1)
+        self.assertEqual(reaction_denials[0].quantity, 1.0)
+        expected_sources = {
+            f"condition_instance:{included.instance_id}",
+            f"condition_instance:{independent.condition_instance_id}",
+        }
+        self.assertEqual(
+            set(reaction_denials[0].source_component_ids),
+            expected_sources,
+        )
+        overlap = [
+            item
+            for item in result.suppressions
+            if item.primitive_id == "reaction_denial"
+            and item.reason == "identical_primitive_maximum_presence"
+        ]
+        self.assertEqual(len(overlap), 1)
+        self.assertEqual(
+            set(
+                overlap[0].dominant_source_component_ids
+                + overlap[0].suppressed_source_component_ids
+            ),
+            expected_sources,
+        )
+
     def test_save_opportunity_filters_other_abilities_before_dominance(self) -> None:
         state = ControlState()
         apply(
@@ -787,7 +1402,7 @@ class CatalogPrimitiveNormalizationTests(unittest.TestCase):
             ["automatic_failure_dominates_disadvantage"],
         )
 
-    def test_blinded_attack_effects_require_exact_alternative_sight_context(self) -> None:
+    def test_blinded_attack_effects_persist_with_alternative_sight(self) -> None:
         state = ControlState()
         apply(
             state,
@@ -795,14 +1410,14 @@ class CatalogPrimitiveNormalizationTests(unittest.TestCase):
         )
         without_sight = state.normalize_for_window(
             target_id="target_a",
-            window_id="turn_without_sight",
-            window_kind="target_active_turn_opportunity",
+            window_id="attack_without_sight",
+            window_kind="target_attack_opportunity",
             context={"alternative_sight_resolution": False},
         )
         with_sight = state.normalize_for_window(
             target_id="target_a",
-            window_id="turn_with_sight",
-            window_kind="target_active_turn_opportunity",
+            window_id="attack_with_sight",
+            window_kind="target_attack_opportunity",
             context={"alternative_sight_resolution": True},
         )
         self.assertEqual(
@@ -813,19 +1428,19 @@ class CatalogPrimitiveNormalizationTests(unittest.TestCase):
             ],
             ["offensive_impairment_all_attacks"],
         )
-        self.assertNotIn(
+        self.assertIn(
             "offensive_impairment_all_attacks",
             {item.primitive_id for item in with_sight.contributions},
         )
 
-    def test_known_attack_boolean_dominates_unresolved_duplicate(self) -> None:
+    def test_identical_unconditional_attack_boole_collapse_without_amplifying(self) -> None:
         state = ControlState()
-        apply(
+        blinded = apply(
             state,
             component("blinded", {"kind": "condition", "condition": "blinded"}),
             effect="blind_effect",
         )
-        apply(
+        restrained = apply(
             state,
             component(
                 "restrained",
@@ -835,7 +1450,7 @@ class CatalogPrimitiveNormalizationTests(unittest.TestCase):
             invocation="invocation_2",
         )
         expected = {
-            "target_active_turn_opportunity": "offensive_impairment_all_attacks",
+            "target_attack_opportunity": "offensive_impairment_all_attacks",
             "incoming_attack_opportunity": "defensive_attack_advantage",
         }
         for window_kind, primitive_id in expected.items():
@@ -855,21 +1470,24 @@ class CatalogPrimitiveNormalizationTests(unittest.TestCase):
                     "retained_unpriced",
                 )
                 self.assertEqual(
-                    matching[0].source_component_ids,
-                    ("restrained_effect:restrained",),
+                    set(matching[0].source_component_ids),
+                    {
+                        f"condition_instance:{blinded.condition_instance_id}",
+                        f"condition_instance:{restrained.condition_instance_id}",
+                    },
                 )
                 suppression = next(
                     item for item in result.suppressions
                     if item.reason
-                    == "known_primitive_dominates_unresolved_duplicate"
+                    == "identical_primitive_maximum_presence"
                 )
                 self.assertEqual(
                     suppression.dominant_source_component_ids,
-                    ("restrained_effect:restrained",),
+                    (f"condition_instance:{blinded.condition_instance_id}",),
                 )
                 self.assertEqual(
                     suppression.suppressed_source_component_ids,
-                    ("blind_effect:blinded",),
+                    (f"condition_instance:{restrained.condition_instance_id}",),
                 )
 
 
@@ -950,7 +1568,7 @@ class CanonicalContextAndSenseTests(unittest.TestCase):
 
     def test_charmed_contribution_uses_active_source_actor_id(self) -> None:
         state = ControlState()
-        apply(
+        charmed = apply(
             state,
             component("charmed", {"kind": "condition", "condition": "charmed"}),
             effect="charm_effect",
@@ -958,19 +1576,22 @@ class CanonicalContextAndSenseTests(unittest.TestCase):
         )
         result = state.normalize_for_window(
             target_id="target_a",
-            window_id="charmed_turn",
-            window_kind="target_active_turn_opportunity",
+            window_id="charmed_action",
+            window_kind="action_proposal",
             context={"source_actor_id": "untrusted_caller_value"},
         )
         restriction = next(item for item in result.contributions)
         self.assertEqual(restriction.context["source_actor_id"], "charmer_a")
-        self.assertEqual(restriction.source_component_ids, ("charm_effect:charmed",))
+        self.assertEqual(
+            restriction.source_component_ids,
+            (f"condition_instance:{charmed.condition_instance_id}",),
+        )
         self.assertNotIn("source_context_by_actor_id", restriction.context)
 
     def test_frightened_uses_context_for_its_own_source_actor(self) -> None:
         state = ControlState()
         fear = component("frightened", {"kind": "condition", "condition": "frightened"})
-        apply(
+        fear_a = apply(
             state,
             fear,
             effect="fear_a",
@@ -984,8 +1605,8 @@ class CanonicalContextAndSenseTests(unittest.TestCase):
         )
         result = state.normalize_for_window(
             target_id="target_a",
-            window_id="frightened_turn",
-            window_kind="target_active_turn_opportunity",
+            window_id="frightened_attack",
+            window_kind="target_attack_opportunity",
             context={
                 "source_context_by_actor_id": {
                     "source_a": {"source_in_line_of_sight": True},
@@ -1000,7 +1621,10 @@ class CanonicalContextAndSenseTests(unittest.TestCase):
         ]
         self.assertEqual(len(impairments), 1)
         impairment = impairments[0]
-        self.assertEqual(impairment.source_component_ids, ("fear_a:frightened",))
+        self.assertEqual(
+            impairment.source_component_ids,
+            (f"condition_instance:{fear_a.condition_instance_id}",),
+        )
         self.assertEqual(impairment.context["source_actor_id"], "source_a")
         self.assertIs(impairment.context["source_in_line_of_sight"], True)
         self.assertNotIn("source_context_by_actor_id", impairment.context)
@@ -1011,13 +1635,13 @@ class CanonicalContextAndSenseTests(unittest.TestCase):
             "frightened",
             {"kind": "condition", "condition": "frightened"},
         )
-        apply(
+        fear_a = apply(
             state,
             fear,
             effect="fear_a",
             source_actor="source_a",
         )
-        apply(
+        fear_b = apply(
             state,
             fear,
             effect="fear_b",
@@ -1026,8 +1650,8 @@ class CanonicalContextAndSenseTests(unittest.TestCase):
         )
         result = state.normalize_for_window(
             target_id="target_a",
-            window_id="both_frightened_sources_visible_turn",
-            window_kind="target_active_turn_opportunity",
+            window_id="both_frightened_sources_visible_attack",
+            window_kind="target_attack_opportunity",
             context={
                 "source_context_by_actor_id": {
                     "source_a": {"source_in_line_of_sight": True},
@@ -1042,7 +1666,10 @@ class CanonicalContextAndSenseTests(unittest.TestCase):
         self.assertEqual(len(impairments), 1)
         self.assertEqual(
             set(impairments[0].source_component_ids),
-            {"fear_a:frightened", "fear_b:frightened"},
+            {
+                f"condition_instance:{fear_a.condition_instance_id}",
+                f"condition_instance:{fear_b.condition_instance_id}",
+            },
         )
         self.assertNotIn("source_actor_id", impairments[0].context)
         self.assertEqual(
@@ -1131,11 +1758,31 @@ class CanonicalContextAndSenseTests(unittest.TestCase):
             location_detection_missing_context=(),
         )
         cases = {
-            "target_active_turn_opportunity": "offensive_impairment_all_attacks",
-            "incoming_attack_opportunity": "defensive_attack_advantage",
-            "sight_opportunity": "sight_option_denial",
+            "target_attack_opportunity": (
+                "offensive_impairment_all_attacks",
+                "denial",
+                "candidate",
+                False,
+            ),
+            "incoming_attack_opportunity": (
+                "defensive_attack_advantage",
+                "enablement",
+                "candidate",
+                False,
+            ),
+            "sight_opportunity": (
+                "sight_option_denial",
+                "retained_unpriced",
+                "retained_unpriced",
+                True,
+            ),
         }
-        for window_kind, primitive_id in cases.items():
+        for window_kind, (
+            primitive_id,
+            family,
+            disposition,
+            unresolved,
+        ) in cases.items():
             with self.subTest(window_kind=window_kind):
                 result = state.normalize_for_window(
                     target_id="target_a",
@@ -1147,17 +1794,28 @@ class CanonicalContextAndSenseTests(unittest.TestCase):
                     item for item in result.contributions
                     if item.primitive_id == primitive_id
                 )
-                self.assertEqual(contribution.family, "retained_unpriced")
-                self.assertEqual(contribution.disposition, "retained_unpriced")
-                self.assertTrue(contribution.context["unresolved_requirements"])
+                self.assertEqual(contribution.family, family)
+                self.assertEqual(contribution.disposition, disposition)
+                self.assertEqual(
+                    bool(contribution.context.get("unresolved_requirements")),
+                    unresolved,
+                )
 
-        attack = state.normalize_for_window(
+        generic_attack = state.normalize_for_window(
             target_id="target_a",
-            window_id="unresolved_target_attack_opportunity",
-            window_kind="target_attack_opportunity",
+            window_id="unresolved_generic_attack_opportunity",
+            window_kind="attack_opportunity",
             context={"sense_resolution": resolution},
         )
-        self.assertFalse(attack.contributions)
+        self.assertEqual(
+            {
+                item.primitive_id for item in generic_attack.contributions
+            },
+            {
+                "defensive_attack_advantage",
+                "offensive_impairment_all_attacks",
+            },
+        )
 
 if __name__ == "__main__":
     unittest.main()

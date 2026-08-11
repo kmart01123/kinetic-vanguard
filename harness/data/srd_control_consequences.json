@@ -1,20 +1,19 @@
 {
   "format_version": 1,
-  "catalog_version": "1.0.0",
-  "primitive_contract_version": "1.0.0",
+  "catalog_version": "2.0.0",
+  "primitive_contract_version": "2.0.0",
   "diagnostic_families": ["denial", "enablement", "retained_unpriced"],
   "statuses": ["candidate", "retained_unpriced"],
   "units": [
     "target_turn_window",
     "reaction_window",
-    "attack_opportunity_token",
-    "affected_target_turn",
+    "attack_opportunity",
+    "action_proposal",
     "sight_dependent_opportunity_window",
     "feet_unavailable_at_movement_opportunity",
     "denied_movement_mode_window",
     "selected_displacement_function_units",
     "contextual_target_turn_window",
-    "relevant_incoming_attack_opportunity",
     "defense_point_opportunity",
     "save_opportunity",
     "relevant_controller_allied_opportunity_window",
@@ -25,20 +24,20 @@
     "elevated_state_window",
     "current_position_transition",
     "location_detection_opportunity",
-    "incoming_attack_opportunity"
+    "initiative_opportunity"
   ],
   "primitive_contract": [
     {"primitive_id": "active_turn_denial", "family": "denial", "unit": "target_turn_window", "default_status": "candidate", "allowed_statuses": ["candidate"]},
     {"primitive_id": "reaction_denial", "family": "denial", "unit": "reaction_window", "default_status": "candidate", "allowed_statuses": ["candidate"]},
-    {"primitive_id": "offensive_impairment_next_attack", "family": "denial", "unit": "attack_opportunity_token", "default_status": "candidate", "allowed_statuses": ["candidate"]},
-    {"primitive_id": "offensive_impairment_all_attacks", "family": "denial", "unit": "affected_target_turn", "default_status": "candidate", "allowed_statuses": ["candidate"]},
-    {"primitive_id": "target_choice_restriction", "family": "denial", "unit": "affected_target_turn", "default_status": "candidate", "allowed_statuses": ["candidate"]},
+    {"primitive_id": "offensive_impairment_next_attack", "family": "denial", "unit": "attack_opportunity", "default_status": "candidate", "allowed_statuses": ["candidate"]},
+    {"primitive_id": "offensive_impairment_all_attacks", "family": "denial", "unit": "attack_opportunity", "default_status": "candidate", "allowed_statuses": ["candidate"]},
+    {"primitive_id": "target_choice_restriction", "family": "denial", "unit": "action_proposal", "default_status": "candidate", "allowed_statuses": ["candidate"]},
     {"primitive_id": "sight_option_denial", "family": "denial", "unit": "sight_dependent_opportunity_window", "default_status": "candidate", "allowed_statuses": ["candidate"]},
     {"primitive_id": "mobility_loss_feet", "family": "denial", "unit": "feet_unavailable_at_movement_opportunity", "default_status": "candidate", "allowed_statuses": ["candidate"]},
     {"primitive_id": "movement_mode_denial", "family": "denial", "unit": "denied_movement_mode_window", "default_status": "candidate", "allowed_statuses": ["candidate"]},
     {"primitive_id": "forced_displacement", "family": "denial", "unit": "selected_displacement_function_units", "default_status": "candidate", "allowed_statuses": ["candidate"]},
     {"primitive_id": "geometry_sensitive_approach_restriction", "family": "denial", "unit": "contextual_target_turn_window", "default_status": "candidate", "allowed_statuses": ["candidate"]},
-    {"primitive_id": "defensive_attack_advantage", "family": "enablement", "unit": "relevant_incoming_attack_opportunity", "default_status": "candidate", "allowed_statuses": ["candidate"]},
+    {"primitive_id": "defensive_attack_advantage", "family": "enablement", "unit": "attack_opportunity", "default_status": "candidate", "allowed_statuses": ["candidate"]},
     {"primitive_id": "defense_numerical_reduction", "family": "enablement", "unit": "defense_point_opportunity", "default_status": "candidate", "allowed_statuses": ["candidate"]},
     {"primitive_id": "save_disadvantage", "family": "enablement", "unit": "save_opportunity", "default_status": "candidate", "allowed_statuses": ["candidate"]},
     {"primitive_id": "save_auto_failure", "family": "enablement", "unit": "save_opportunity", "default_status": "candidate", "allowed_statuses": ["candidate"]},
@@ -50,7 +49,8 @@
     {"primitive_id": "persistent_elevation", "family": "retained_unpriced", "unit": "elevated_state_window", "default_status": "retained_unpriced", "allowed_statuses": ["retained_unpriced"]},
     {"primitive_id": "fall_transition", "family": "retained_unpriced", "unit": "current_position_transition", "default_status": "retained_unpriced", "allowed_statuses": ["retained_unpriced"]},
     {"primitive_id": "nonsight_location_awareness", "family": "retained_unpriced", "unit": "location_detection_opportunity", "default_status": "retained_unpriced", "allowed_statuses": ["retained_unpriced"]},
-    {"primitive_id": "prone_incoming_attack_context", "family": "retained_unpriced", "unit": "incoming_attack_opportunity", "default_status": "retained_unpriced", "allowed_statuses": ["retained_unpriced"]}
+    {"primitive_id": "prone_incoming_attack_context", "family": "retained_unpriced", "unit": "attack_opportunity", "default_status": "retained_unpriced", "allowed_statuses": ["retained_unpriced"]},
+    {"primitive_id": "initiative_disadvantage", "family": "retained_unpriced", "unit": "initiative_opportunity", "default_status": "retained_unpriced", "allowed_statuses": ["retained_unpriced"]}
   ],
   "context_requirement_registry": [
     "alternative_sight_resolution",
@@ -101,21 +101,21 @@
         {
           "primitive_id": "offensive_impairment_all_attacks",
           "family": "denial",
-          "unit": "affected_target_turn",
+          "unit": "attack_opportunity",
           "status": "candidate",
-          "predicates": [{"predicate_id": "alternative_sight_available", "value": false}],
+          "predicates": [],
           "qualifiers": [{"qualifier_id": "attack_scope", "value": "all_attacks"}],
-          "context_requirements": ["alternative_sight_resolution"],
+          "context_requirements": [],
           "dominates": []
         },
         {
           "primitive_id": "defensive_attack_advantage",
           "family": "enablement",
-          "unit": "relevant_incoming_attack_opportunity",
+          "unit": "attack_opportunity",
           "status": "candidate",
-          "predicates": [{"predicate_id": "alternative_sight_available", "value": false}],
+          "predicates": [],
           "qualifiers": [],
-          "context_requirements": ["alternative_sight_resolution"],
+          "context_requirements": [],
           "dominates": []
         }
       ]
@@ -132,12 +132,12 @@
         {
           "primitive_id": "target_choice_restriction",
           "family": "denial",
-          "unit": "affected_target_turn",
+          "unit": "action_proposal",
           "status": "candidate",
           "predicates": [],
           "qualifiers": [
             {"qualifier_id": "restricted_target_relation", "value": "charmer"},
-            {"qualifier_id": "restricted_choice_kinds", "value": ["attack", "harmful_effect"]}
+            {"qualifier_id": "restricted_choice_kinds", "value": ["attack", "damaging_ability", "damaging_magical_effect"]}
           ],
           "context_requirements": ["source_actor_id"],
           "dominates": []
@@ -166,7 +166,7 @@
         {
           "primitive_id": "offensive_impairment_all_attacks",
           "family": "denial",
-          "unit": "affected_target_turn",
+          "unit": "attack_opportunity",
           "status": "candidate",
           "predicates": [{"predicate_id": "source_in_line_of_sight", "value": true}],
           "qualifiers": [{"qualifier_id": "attack_scope", "value": "all_attacks"}],
@@ -225,6 +225,16 @@
           "dominates": []
         },
         {
+          "primitive_id": "initiative_disadvantage",
+          "family": "retained_unpriced",
+          "unit": "initiative_opportunity",
+          "status": "retained_unpriced",
+          "predicates": [],
+          "qualifiers": [],
+          "context_requirements": [],
+          "dominates": []
+        },
+        {
           "primitive_id": "concentration_break",
           "family": "retained_unpriced",
           "unit": "concentration_state_transition",
@@ -266,25 +276,37 @@
       "default_diagnostic_family": "denial",
       "response_mechanics": [
         {
-          "response_id": "prone_movement_options",
-          "timing": "each_movement_opportunity",
-          "requirements": [],
-          "effects": ["crawl_is_remaining_movement_option"]
+          "response_id": "remain_prone",
+          "timing": "explicit_operation_proposal",
+          "requirements": ["currently_prone"],
+          "effects": ["retain_prone", "spend_no_action", "spend_no_speed"]
         },
         {
           "response_id": "stand_from_prone",
-          "timing": "first_legal_movement_opportunity",
-          "requirements": ["effective_speed_positive"],
+          "timing": "explicit_operation_proposal",
+          "requirements": ["currently_prone", "actor_owned_movement_opportunity", "current_speed_positive"],
           "effects": ["spend_half_current_speed_rounded_down", "end_prone", "retain_remaining_movement"]
+        },
+        {
+          "response_id": "voluntarily_drop_prone",
+          "timing": "explicit_operation_proposal",
+          "requirements": ["currently_not_prone", "actor_owned_movement_opportunity", "current_speed_positive"],
+          "effects": ["spend_no_action", "spend_no_speed", "apply_prone"]
+        },
+        {
+          "response_id": "crawl_while_prone",
+          "timing": "explicit_operation_proposal",
+          "requirements": ["currently_prone", "actor_owned_movement_opportunity"],
+          "effects": ["retain_prone", "spend_one_extra_foot_per_foot", "spend_two_extra_feet_per_foot_in_difficult_terrain"]
         }
       ],
-      "end_mechanics": ["legal_stand", "source_end"],
+      "end_mechanics": ["explicit_stand_operation", "source_end"],
       "context_requirements": ["effective_speed_ft", "attacker_distance_ft", "target_airborne", "hover_or_explicit_fall_prevention"],
       "primitives": [
         {
           "primitive_id": "offensive_impairment_all_attacks",
           "family": "denial",
-          "unit": "affected_target_turn",
+          "unit": "attack_opportunity",
           "status": "candidate",
           "predicates": [],
           "qualifiers": [{"qualifier_id": "attack_scope", "value": "all_attacks"}],
@@ -294,7 +316,7 @@
         {
           "primitive_id": "defensive_attack_advantage",
           "family": "enablement",
-          "unit": "relevant_incoming_attack_opportunity",
+          "unit": "attack_opportunity",
           "status": "candidate",
           "predicates": [{"predicate_id": "attacker_distance_band", "value": "within_5_feet"}],
           "qualifiers": [],
@@ -304,7 +326,7 @@
         {
           "primitive_id": "prone_incoming_attack_context",
           "family": "retained_unpriced",
-          "unit": "incoming_attack_opportunity",
+          "unit": "attack_opportunity",
           "status": "retained_unpriced",
           "predicates": [{"predicate_id": "attacker_distance_band", "value": "farther_than_5_feet"}],
           "qualifiers": [{"qualifier_id": "incoming_attack_effect", "value": "disadvantage"}],
@@ -351,7 +373,7 @@
         {
           "primitive_id": "defensive_attack_advantage",
           "family": "enablement",
-          "unit": "relevant_incoming_attack_opportunity",
+          "unit": "attack_opportunity",
           "status": "candidate",
           "predicates": [],
           "qualifiers": [],
@@ -361,7 +383,7 @@
         {
           "primitive_id": "offensive_impairment_all_attacks",
           "family": "denial",
-          "unit": "affected_target_turn",
+          "unit": "attack_opportunity",
           "status": "candidate",
           "predicates": [],
           "qualifiers": [{"qualifier_id": "attack_scope", "value": "all_attacks"}],
@@ -412,7 +434,7 @@
         {
           "primitive_id": "defensive_attack_advantage",
           "family": "enablement",
-          "unit": "relevant_incoming_attack_opportunity",
+          "unit": "attack_opportunity",
           "status": "candidate",
           "predicates": [],
           "qualifiers": [],

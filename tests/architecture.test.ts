@@ -102,11 +102,12 @@ test("shared control engine has one maintained Python runtime and remains outsid
     ["harness/config/control-engine.json","control_engine_methodology_config"],
     ["harness/data/srd_control_consequences.json","pinned_srd_control_consequence_catalog"],
     ["harness/provenance/srd-control-consequences.json","harness_provenance"],
-    ["harness/tests/fixtures/control_engine_v1.json","reviewed_correctness_corpus"],
+    ["harness/tests/fixtures/control_engine_v2.json","reviewed_correctness_corpus"],
     ["harness/tests/test_control_engine_fixtures.py","test_source"],
     ...["catalog","graph","state","timeline","engine"].map(name=>[`harness/tests/test_control_${name}.py`,"test_source"] as const)
   ];
   await Promise.all(expectedInputs.map(([path])=>access(path)));
+  await assertAbsent("harness/tests/fixtures/control_engine_v1.json");
   const twinStems=["catalog","graph","state","timeline","engine"] as const;
   await Promise.all(twinStems.flatMap(stem=>[`src/control-${stem}.ts`,`src/control_${stem}.ts`]).map(assertAbsent));
   await Promise.all(["tests/fixtures/control-engine-parity.json","tests/fixtures/control_engine_parity.json","tests/control-engine-parity.test.ts","tests/control_engine_parity.test.ts"].map(assertAbsent));

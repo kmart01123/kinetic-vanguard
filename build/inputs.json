@@ -17,7 +17,7 @@
     {"path":"review/content-evidence-policy-registry.json","role":"content_evidence_policy_registry"},
     {"path":"tests/filtered-search-correctness.yaml","role":"reviewed_correctness_corpus"},
     {"path":"tests/fixtures/control-authority-v2-parity.json","role":"reviewed_correctness_corpus"},
-    {"path":"harness/tests/fixtures/control_engine_v1.json","role":"reviewed_correctness_corpus"},
+    {"path":"harness/tests/fixtures/control_engine_v2.json","role":"reviewed_correctness_corpus"},
     {"path":"tests/accessibility-scanner-config.json","role":"accessibility_config"},
     {"path":"tests/accessibility-manual-script.md","role":"accessibility_manual_script"},
     {"path":"tests/accessibility-matrix.yaml","role":"accessibility_matrix"},

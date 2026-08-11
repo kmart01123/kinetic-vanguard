@@ -36,7 +36,117 @@ from harness.control_graph import (
     SelectorContext,
     _frozen_map,
 )
+from harness.control_state import condition_instance_id_for
 from harness.control_timeline import ConcentrationTracker, TimelineError
+
+
+def _initial_condition_instances(
+    target_id: str,
+    condition_ids: Sequence[str] = (),
+) -> list[dict[str, Any]]:
+    """Build canonical, explicit initial condition lifecycle records."""
+
+    records: list[dict[str, Any]] = []
+    for index, condition_id in enumerate(dict.fromkeys(condition_ids)):
+        identity = {
+            "condition_id": condition_id,
+            "target_id": target_id,
+            "source_actor_id": f"initial_condition_source_for_{target_id}",
+            "source_program_id": "test_initial_conditions",
+            "source_effect_id": f"initial_{condition_id}_effect",
+            "source_invocation_id": (
+                f"initial_{target_id}_{condition_id}_{index}_invocation"
+            ),
+            "source_component_id": f"initial_{condition_id}",
+            "application_event_id": "session_initial_state",
+            "application_sequence": -1,
+            "duration": {"kind": "until_condition_response"},
+            "expiry_event_id": None,
+            "issuance_id": (
+                f"initial_{target_id}_{condition_id}_{index}_issuance"
+            ),
+            "provenance_id": (
+                f"initial_{target_id}_{condition_id}_{index}_provenance"
+            ),
+        }
+        records.append({
+            "instance_id": condition_instance_id_for(**identity),
+            **identity,
+        })
+    return records
+
+
+def _resolve_prone_operation(
+    session,
+    *,
+    target_id: str,
+    kind: str,
+):
+    proposal = session.enumerate_prone_operations(target_id=target_id)
+    operations = proposal.to_dict()["payload"]["operations"]
+    operation = next(
+        (candidate for candidate in operations if candidate["kind"] == kind),
+        None,
+    )
+    if operation is None:
+        raise AssertionError(
+            f"Prone operation {kind!r} was not enumerated: {operations!r}"
+        )
+    return session.resolve_movement_response(
+        target_id=target_id,
+        prone_proposal=proposal,
+        prone_operation=operation,
+    )
+
+
+def _resolve_save_roll(
+    session,
+    *,
+    actor_id: str = "target",
+    ability: str = "constitution",
+):
+    return session.resolve_save_opportunity(
+        actor_id=actor_id,
+        ability=ability,
+    )
+
+
+def _resolve_target_attack_roll(
+    session,
+    *,
+    attacker_id: str = "target",
+    defender_id: str = "controller",
+    context: Mapping[str, Any] | None = None,
+):
+    return session.resolve_attack_opportunity(
+        attacker_id=attacker_id,
+        defender_id=defender_id,
+        context=context,
+    )
+
+
+def _resolve_gate_opportunity(
+    session,
+    *,
+    gate_id: str,
+    target_id: str,
+):
+    """Resolve the exact public roll opportunity bound to a compiled gate."""
+
+    gate = session._program.gate(gate_id)
+    if gate.resolution_kind == "saving_throw":
+        return session.resolve_save_opportunity(
+            actor_id=target_id,
+            ability=str(gate.ability),
+        )
+    if gate.resolution_kind == "attack_roll":
+        return session.resolve_attack_opportunity(
+            attacker_id=session._source_actor_id,
+            defender_id=target_id,
+        )
+    raise AssertionError(
+        f"Gate {gate_id!r} has no roll opportunity: {gate.resolution_kind!r}"
+    )
 
 
 def _reliability_for_targets(
@@ -132,11 +242,11 @@ class ControlEngineFacadeTests(unittest.TestCase):
         ).to_dict()
         self.assertEqual(identity["engine_version"], ENGINE_VERSION)
         self.assertEqual(identity["authority_projection_version"], "2.1.0")
-        self.assertEqual(identity["consequence_catalog_version"], "1.0.0")
-        self.assertEqual(identity["primitive_contract_version"], "1.0.0")
-        self.assertEqual(identity["normalization_rules_version"], "1.0.0")
-        self.assertEqual(identity["timeline_engine_version"], "1.0.0")
-        self.assertEqual(identity["engine_config_version"], "1.0.0")
+        self.assertEqual(identity["consequence_catalog_version"], "2.0.0")
+        self.assertEqual(identity["primitive_contract_version"], "2.0.0")
+        self.assertEqual(identity["normalization_rules_version"], "2.0.0")
+        self.assertEqual(identity["timeline_engine_version"], "2.0.0")
+        self.assertEqual(identity["engine_config_version"], "2.0.0")
         for key in (
             "engine_implementation_digest",
             "authority_projection_digest",
@@ -376,7 +486,7 @@ class ControlEngineFacadeTests(unittest.TestCase):
                 context={"reaction_available": True},
             )
 
-    def test_all_attacks_is_one_public_affected_turn_not_per_attack(self) -> None:
+    def test_all_attacks_is_one_contribution_per_attack_opportunity(self) -> None:
         program = self.engine.program("electron_burst_t2_control")
         state = self.engine._new_state()
         _activate_component(
@@ -408,15 +518,19 @@ class ControlEngineFacadeTests(unittest.TestCase):
             )
             for event in (active_turn, *attacks)
         ]
+        self.assertFalse(any(
+            contribution.primitive_id == "offensive_impairment_all_attacks"
+            for contribution in normalizations[0].contributions
+        ))
         self.assertEqual(
             [
-                contribution.primitive_id
+                contribution.event_or_window_id
                 for result in normalizations[1:]
                 for contribution in result.contributions
                 if contribution.primitive_id
                 == "offensive_impairment_all_attacks"
             ],
-            [],
+            [event.window_id for event in attacks],
         )
         assembled = self.engine._assemble_result_legacy(
             effect=program,
@@ -431,9 +545,15 @@ class ControlEngineFacadeTests(unittest.TestCase):
             row for row in assembled["primitive_contributions"]["denial"]
             if row["primitive_id"] == "offensive_impairment_all_attacks"
         ]
-        self.assertEqual(len(rows), 1)
-        self.assertEqual(rows[0]["unit"], "affected_target_turn")
-        self.assertEqual(rows[0]["event_or_window_id"], active_turn.window_id)
+        self.assertEqual(len(rows), 2)
+        self.assertEqual(
+            [row["unit"] for row in rows],
+            ["attack_opportunity", "attack_opportunity"],
+        )
+        self.assertEqual(
+            [row["event_or_window_id"] for row in rows],
+            [event.window_id for event in attacks],
+        )
 
     def test_result_model_rejects_all_nested_weight_and_temperature_keys(self) -> None:
         program = self.engine.authority.programs[0]
@@ -581,6 +701,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         save_inputs: Mapping[str, Any] | None = None,
         normalize_movement: bool = False,
         normalize_attack: bool = False,
+        include_attack: bool = False,
         target_mechanics: Mapping[str, Any] | None = None,
         kernel: Any = None,
         area_response_convention: str = "fixed_occupancy_v1",
@@ -597,7 +718,10 @@ class ControlExecutionSessionTests(unittest.TestCase):
                     "window_id": "initial_save_window",
                 }],
             },
-            target_attack_counts={target_id: [1, 0, 0]},
+            target_attack_counts={
+                target_id: [1, 0, 0]
+                if normalize_attack or include_attack else 0
+            },
         )
         save_event = next(
             event for event in schedule.events
@@ -651,9 +775,1219 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         return session, schedule, save_event
 
+    def _condition_bridge_session(
+        self,
+        *,
+        target_ids: tuple[str, ...] = ("target",),
+        controller_events: Sequence[Mapping[str, Any]] = (),
+        target_events_by_round: (
+            Mapping[str, Mapping[int, Sequence[Mapping[str, Any]]]] | None
+        ) = None,
+        target_attack_counts: Mapping[str, Sequence[int] | int] | None = None,
+        initial_conditions: Mapping[str, Sequence[str]] | None = None,
+        source_actor_id: str = "controller",
+        standalone_fall_bindings: (
+            Mapping[str, Mapping[str, Mapping[str, Any]]] | None
+        ) = None,
+    ):
+        program = self.engine.program("frozen_ground_t0_control")
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            target_ids,
+            controller_events_by_round={
+                1: [{"kind": "activation"}, *map(dict, controller_events)],
+            },
+            target_events_by_round=target_events_by_round,
+            target_attack_counts=(
+                {target_id: 0 for target_id in target_ids}
+                if target_attack_counts is None
+                else target_attack_counts
+            ),
+        )
+        initial = dict(initial_conditions or {})
+        fall_bindings = dict(standalone_fall_bindings or {})
+        operation_inputs = {
+            event.event_id: {
+                "fall_context": dict(
+                    fall_bindings[str(event.target_id)]["fall_context"]
+                ),
+                "fall_source": dict(
+                    fall_bindings[str(event.target_id)]["fall_source"]
+                ),
+            }
+            for event in schedule.events
+            if event.kind == "fall_transition"
+            and event.target_id in fall_bindings
+        }
+        session = self.engine.execution_session(
+            program,
+            targets=tuple(
+                ReliabilityTarget(
+                    target_id,
+                    15,
+                    {
+                        "strength": 2,
+                        "dexterity": 2,
+                        "constitution": 2,
+                        "intelligence": 2,
+                        "wisdom": 2,
+                        "charisma": 2,
+                    },
+                )
+                for target_id in target_ids
+            ),
+            selector_membership={
+                "frozen_ground_area_targets": (target_ids[0],),
+            },
+            selector_context=_selector_context_for(*target_ids),
+            schedule=schedule,
+            target_mechanics={
+                target_id: {
+                    "initial_condition_instances": _initial_condition_instances(
+                        target_id,
+                        initial.get(target_id, ()),
+                    ),
+                    "base_speeds_ft": {"walk": 30, "fly": 30},
+                    "movement_mode": "walk",
+                    "area_membership": False,
+                }
+                for target_id in target_ids
+            },
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            concentration_save_bonus=2,
+            source_actor_id=source_actor_id,
+            operation_inputs_by_event=operation_inputs or None,
+        )
+        activation = next(
+            event for event in schedule.events if event.kind == "activation"
+        )
+        session.advance_to(activation.event_id)
+        session.start_concentration()
+        session.apply_branch(
+            gate_id="frozen_ground_t0_activation",
+            outcome="no_save",
+            target_id=target_ids[0],
+        )
+        session.close_event()
+        return session, schedule
+
+    @staticmethod
+    def _apply_condition_at(
+        session,
+        event,
+        *,
+        condition_id: str,
+        source_actor_id: str,
+        source_component_id: str,
+        fall_context: Mapping[str, Any] | None = None,
+    ):
+        session.advance_to(event.event_id)
+        proposal = session.propose_condition_application(
+            condition_id=condition_id,
+            target_id=str(event.target_id),
+            source_actor_id=source_actor_id,
+            source_program_id="condition_bridge_test_program",
+            source_effect_id=f"{source_component_id}_effect",
+            source_invocation_id=f"{source_component_id}_invocation",
+            source_component_id=source_component_id,
+            duration={"kind": "until_condition_response"},
+            provenance_id=f"{source_component_id}_provenance",
+            fall_context=fall_context,
+        )
+        record = session.apply_condition_application(proposal)
+        session.close_event()
+        return proposal, record
+
+    def test_condition_bridge_preserves_exact_sources_lineage_and_replay(self) -> None:
+        deterministic_events = ({
+            "kind": "condition_application",
+            "target_id": "target",
+        },)
+        first, first_schedule = self._condition_bridge_session(
+            controller_events=deterministic_events,
+        )
+        second, second_schedule = self._condition_bridge_session(
+            controller_events=deterministic_events,
+        )
+        first_event = next(
+            event for event in first_schedule.events
+            if event.kind == "condition_application"
+        )
+        second_event = next(
+            event for event in second_schedule.events
+            if event.kind == "condition_application"
+        )
+        first.advance_to(first_event.event_id)
+        second.advance_to(second_event.event_id)
+        proposal_kwargs = {
+            "condition_id": "stunned",
+            "target_id": "target",
+            "source_actor_id": "controller",
+            "source_program_id": "condition_bridge_test_program",
+            "source_effect_id": "deterministic_stunned_effect",
+            "source_invocation_id": "deterministic_stunned_invocation",
+            "source_component_id": "deterministic_stunned",
+            "duration": {"kind": "until_condition_response"},
+            "provenance_id": "deterministic_stunned_provenance",
+            "fall_context": {
+                "airborne": False,
+                "can_hover": False,
+                "explicit_prevents_fall": False,
+                "fly_speed_ft": 30,
+            },
+        }
+        first_proposal = first.propose_condition_application(**proposal_kwargs)
+        second_proposal = second.propose_condition_application(**proposal_kwargs)
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "session|foreign|stale",
+        ):
+            first.apply_condition_application(second_proposal)
+        first.apply_condition_application(first_proposal)
+        second.apply_condition_application(second_proposal)
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "foreign, stale, consumed, or rewritten",
+        ):
+            first.apply_condition_application(first_proposal)
+        first.close_event()
+        second.close_event()
+        first.complete()
+        second.complete()
+        self.assertEqual(
+            json.dumps(first.result().to_dict(), sort_keys=True),
+            json.dumps(second.result().to_dict(), sort_keys=True),
+        )
+        deterministic_registry = first.condition_instance_snapshot("target")
+        self.assertEqual(
+            {row["condition_id"] for row in deterministic_registry},
+            {"stunned", "incapacitated"},
+        )
+
+        controller_events = tuple(
+            {"kind": "condition_application", "target_id": "target"}
+            for _ in range(6)
+        ) + ({"kind": "condition_end", "target_id": "target"},)
+        session, schedule = self._condition_bridge_session(
+            target_ids=("target", "source_b"),
+            controller_events=controller_events,
+        )
+        applications = [
+            event for event in schedule.events
+            if event.kind == "condition_application"
+        ]
+        grounded = {
+            "airborne": False,
+            "can_hover": False,
+            "explicit_prevents_fall": False,
+            "fly_speed_ft": 30,
+        }
+        specifications = (
+            ("charmed", "controller", "charmed_controller", None),
+            ("charmed", "source_b", "charmed_source_b", None),
+            ("frightened", "controller", "frightened_controller", None),
+            ("frightened", "source_b", "frightened_source_b", None),
+            ("stunned", "controller", "stunned_controller", grounded),
+            ("incapacitated", "source_b", "incapacitated_source_b", grounded),
+        )
+        for event, (condition, source, component, fall_context) in zip(
+            applications,
+            specifications,
+            strict=True,
+        ):
+            self._apply_condition_at(
+                session,
+                event,
+                condition_id=condition,
+                source_actor_id=source,
+                source_component_id=component,
+                fall_context=fall_context,
+            )
+        active = [
+            dict(row) for row in session.condition_instance_snapshot("target")
+            if row["status"] == "active"
+        ]
+        for condition_id in ("charmed", "frightened"):
+            self.assertEqual(
+                {
+                    row["source_actor_id"] for row in active
+                    if row["condition_id"] == condition_id
+                },
+                {"controller", "source_b"},
+            )
+        stunned = next(
+            row for row in active
+            if row["condition_id"] == "stunned"
+        )
+        linked_incapacitated = next(
+            row for row in active
+            if row["parent_condition_instance_id"] == stunned["instance_id"]
+        )
+        independent_incapacitated = next(
+            row for row in active
+            if row["condition_id"] == "incapacitated"
+            and row["parent_condition_instance_id"] is None
+        )
+        end_event = next(
+            event for event in schedule.events if event.kind == "condition_end"
+        )
+        session.advance_to(end_event.event_id)
+        with self.assertRaisesRegex(ControlEngineError, "issuance mismatch"):
+            session.end_condition_instance(
+                condition_instance_id=stunned["instance_id"],
+                expected_source_actor_id="controller",
+                expected_issuance_id="wrong_issuance",
+            )
+        with self.assertRaisesRegex(ControlEngineError, "source actor mismatch"):
+            session.end_condition_instance(
+                condition_instance_id=stunned["instance_id"],
+                expected_source_actor_id="source_b",
+            )
+        ended = session.end_condition_instance(
+            condition_instance_id=stunned["instance_id"],
+            expected_source_actor_id="controller",
+            expected_issuance_id=stunned["issuance_id"],
+        ).to_dict()["payload"]
+        self.assertEqual(
+            {
+                row["instance_id"]
+                for row in ended["ended_condition_instances"]
+            },
+            {
+                stunned["instance_id"],
+                linked_incapacitated["instance_id"],
+            },
+        )
+        with self.assertRaisesRegex(ControlEngineError, "already ended"):
+            session.end_condition_instance(
+                condition_instance_id=stunned["instance_id"],
+                expected_source_actor_id="controller",
+            )
+        retained = {
+            row["instance_id"]: row
+            for row in session.condition_instance_snapshot("target")
+        }
+        self.assertEqual(
+            retained[independent_incapacitated["instance_id"]]["status"],
+            "active",
+        )
+        self.assertEqual(retained[stunned["instance_id"]]["status"], "ended")
+        self.assertEqual(
+            retained[linked_incapacitated["instance_id"]]["status"],
+            "ended",
+        )
+        session.close_event()
+
+    def test_source_relative_action_legality_is_proposal_driven(self) -> None:
+        target_actions = [
+            {"kind": "action_proposal", "phase": "start"}
+            for _ in range(4)
+        ]
+        session, schedule = self._condition_bridge_session(
+            target_ids=("target", "other"),
+            controller_events=({
+                "kind": "condition_application",
+                "target_id": "target",
+            },),
+            target_events_by_round={"target": {1: target_actions}},
+        )
+        condition_event = next(
+            event for event in schedule.events
+            if event.kind == "condition_application"
+        )
+        self._apply_condition_at(
+            session,
+            condition_event,
+            condition_id="charmed",
+            source_actor_id="controller",
+            source_component_id="source_relative_charmed",
+        )
+        proposals = [
+            event for event in schedule.events if event.kind == "action_proposal"
+        ]
+        cases = (
+            ("controller", "attack", False),
+            ("controller", "damaging_magical_effect", False),
+            ("controller", "non_damaging_effect", True),
+            ("other", "attack", True),
+        )
+        for event, (proposal_target, category, allowed) in zip(
+            proposals,
+            cases,
+            strict=True,
+        ):
+            session.advance_to(event.event_id)
+            payload = session.resolve_action_proposal(
+                actor_id="target",
+                proposal_target_id=proposal_target,
+                action_economy="action",
+                category=category,
+            ).to_dict()["payload"]
+            self.assertEqual(payload["allowed"], allowed)
+            self.assertEqual(payload["resolution_created"], allowed)
+            session.close_event()
+
+        denied_session, denied_schedule = self._condition_bridge_session(
+            target_events_by_round={
+                "target": {
+                    1: [
+                        {"kind": "action_proposal", "phase": "start"}
+                        for _ in range(3)
+                    ],
+                },
+            },
+            initial_conditions={"target": ("incapacitated",)},
+        )
+        denied_events = [
+            event for event in denied_schedule.events
+            if event.kind == "action_proposal"
+        ]
+        for event, action_economy in zip(
+            denied_events,
+            ("action", "bonus_action", "reaction"),
+            strict=True,
+        ):
+            denied_session.advance_to(event.event_id)
+            payload = denied_session.resolve_action_proposal(
+                actor_id="target",
+                proposal_target_id=None,
+                action_economy=action_economy,
+                category="other",
+            ).to_dict()["payload"]
+            self.assertFalse(payload["allowed"])
+            self.assertEqual(
+                payload["denial_reasons"][0]["reason"],
+                "incapacitated_action_economy_denial",
+            )
+            denied_session.close_event()
+
+    def test_attack_and_save_opportunities_resolve_condition_modes_exactly(self) -> None:
+        attack_session, attack_schedule = self._condition_bridge_session(
+            controller_events=({
+                "kind": "controller_attack_opportunity",
+                "target_id": "target",
+            },),
+            target_attack_counts={"target": [2, 0, 0]},
+            initial_conditions={"target": ("blinded",)},
+        )
+        attack_events = [
+            event for event in attack_schedule.events
+            if event.kind in {
+                "controller_attack_opportunity",
+                "target_attack_opportunity",
+            }
+        ]
+        incoming = attack_events[0]
+        attack_session.advance_to(incoming.event_id)
+        incoming_payload = attack_session.resolve_attack_opportunity(
+            attacker_id="controller",
+            defender_id="target",
+        ).to_dict()["payload"]
+        self.assertEqual(incoming_payload["roll_mode"], "advantage")
+        attack_session.close_event()
+
+        alternative_sight = SenseQueryResult(
+            alternative_sight=True,
+            location_detection=True,
+            alternative_sight_evidence=("blindsight",),
+            location_detection_evidence=("blindsight",),
+            alternative_sight_missing_context=(),
+            location_detection_missing_context=(),
+        )
+        outgoing_modes = []
+        for index, event in enumerate(attack_events[1:]):
+            attack_session.advance_to(event.event_id)
+            payload = attack_session.resolve_attack_opportunity(
+                attacker_id="target",
+                defender_id="controller",
+                context={"sense_resolution": alternative_sight.as_dict()},
+                advantage_source_ids=(
+                    ("external_advantage",) if index == 0 else ()
+                ),
+            ).to_dict()["payload"]
+            outgoing_modes.append(payload["roll_mode"])
+            self.assertEqual(len(payload["disadvantage_sources"]), 1)
+            attack_session.close_event()
+        self.assertEqual(outgoing_modes, ["normal", "disadvantage"])
+
+        restrained, restrained_schedule = self._condition_bridge_session(
+            target_events_by_round={
+                "target": {
+                    1: [
+                        {"kind": "save_opportunity", "phase": "start"},
+                        {"kind": "save_opportunity", "phase": "start"},
+                    ],
+                },
+            },
+            initial_conditions={"target": ("restrained",)},
+        )
+        restrained_saves = [
+            event for event in restrained_schedule.events
+            if event.kind == "save_opportunity"
+        ]
+        save_modes = []
+        for event, ability in zip(
+            restrained_saves,
+            ("dexterity", "wisdom"),
+            strict=True,
+        ):
+            restrained.advance_to(event.event_id)
+            payload = restrained.resolve_save_opportunity(
+                actor_id="target",
+                ability=ability,
+            ).to_dict()["payload"]
+            save_modes.append(payload["roll_mode"])
+            restrained.close_event()
+        self.assertEqual(save_modes, ["disadvantage", "normal"])
+
+        stunned, stunned_schedule = self._condition_bridge_session(
+            target_events_by_round={
+                "target": {
+                    1: [{"kind": "save_opportunity", "phase": "start"}],
+                },
+            },
+            initial_conditions={"target": ("stunned",)},
+        )
+        stunned_save = next(
+            event for event in stunned_schedule.events
+            if event.kind == "save_opportunity"
+        )
+        stunned.advance_to(stunned_save.event_id)
+        auto_failure = stunned.resolve_save_opportunity(
+            actor_id="target",
+            ability="strength",
+        ).to_dict()["payload"]
+        self.assertTrue(auto_failure["automatic_failure"])
+        self.assertFalse(auto_failure["roll_created"])
+        self.assertFalse(auto_failure["probability_branch_created"])
+        self.assertIsNone(auto_failure["roll_mode"])
+        stunned.close_event()
+
+    def test_condition_concentration_and_fall_transitions_are_one_way(self) -> None:
+        concentration, concentration_schedule = self._condition_bridge_session(
+            controller_events=(
+                {"kind": "condition_application", "target_id": "target"},
+                {"kind": "condition_end", "target_id": "target"},
+            ),
+            source_actor_id="target",
+        )
+        condition_event = next(
+            event for event in concentration_schedule.events
+            if event.kind == "condition_application"
+        )
+        proposal, application = self._apply_condition_at(
+            concentration,
+            condition_event,
+            condition_id="incapacitated",
+            source_actor_id="controller",
+            source_component_id="concentration_incapacitated",
+            fall_context={
+                "airborne": False,
+                "can_hover": False,
+                "explicit_prevents_fall": False,
+                "fly_speed_ft": 30,
+            },
+        )
+        application_payload = application.to_dict()["payload"]
+        self.assertIsNotNone(
+            application_payload["condition_concentration_end"]
+        )
+        self.assertIsNone(concentration._concentration_tracker.active_effect_id)
+        root_id = application_payload["root_condition_instance_id"]
+        issuance_id = proposal.to_dict()["payload"]["condition_instance"][
+            "issuance_id"
+        ]
+        end_event = next(
+            event for event in concentration_schedule.events
+            if event.kind == "condition_end"
+        )
+        concentration.advance_to(end_event.event_id)
+        concentration.end_condition_instance(
+            condition_instance_id=root_id,
+            expected_source_actor_id="controller",
+            expected_issuance_id=issuance_id,
+        )
+        self.assertIsNone(concentration._concentration_tracker.active_effect_id)
+        concentration.close_event()
+
+        falls, fall_schedule = self._condition_bridge_session(
+            controller_events=({
+                "kind": "condition_application",
+                "target_id": "target",
+            },),
+        )
+        fall_event = next(
+            event for event in fall_schedule.events
+            if event.kind == "condition_application"
+        )
+        falls.advance_to(fall_event.event_id)
+        airborne = {
+            "airborne": True,
+            "can_hover": False,
+            "explicit_prevents_fall": False,
+            "fly_speed_ft": 30,
+        }
+        condition_falls = []
+        for condition_id in ("prone", "incapacitated"):
+            proposal = falls.propose_condition_application(
+                condition_id=condition_id,
+                target_id="target",
+                source_actor_id="controller",
+                source_program_id="condition_bridge_test_program",
+                source_effect_id=f"fall_{condition_id}_effect",
+                source_invocation_id=f"fall_{condition_id}_invocation",
+                source_component_id=f"fall_{condition_id}",
+                duration={"kind": "until_condition_response"},
+                provenance_id=f"fall_{condition_id}_provenance",
+                fall_context=airborne,
+            )
+            condition_falls.append(
+                falls.apply_condition_application(proposal).to_dict()[
+                    "payload"
+                ]["fall_transition"]
+            )
+        self.assertTrue(condition_falls[0]["executed"])
+        self.assertEqual(condition_falls[0]["transition"]["reason"], "prone")
+        self.assertFalse(condition_falls[1]["executed"])
+        self.assertTrue(condition_falls[1]["duplicate_trigger_collapsed"])
+        self.assertEqual(
+            condition_falls[1]["transition"]["reason"],
+            "incapacitated",
+        )
+        falls.close_event()
+
+        source = {
+            "source_actor_id": "controller",
+            "source_effect_id": "fly_speed_zero_effect",
+            "source_component_id": "fly_speed_zero",
+            "source_issuance_id": "fly_speed_zero_issuance",
+        }
+        fall_bindings = {
+            "target": {
+                "fall_context": {
+                    "airborne": True,
+                    "can_hover": False,
+                    "explicit_prevents_fall": False,
+                    "fly_speed_ft": 0,
+                },
+                "fall_source": source,
+            },
+            "hovering": {
+                "fall_context": {
+                    "airborne": True,
+                    "can_hover": True,
+                    "explicit_prevents_fall": False,
+                    "fly_speed_ft": 0,
+                },
+                "fall_source": source,
+            },
+        }
+        standalone, standalone_schedule = self._condition_bridge_session(
+            target_ids=("target", "hovering"),
+            controller_events=(
+                {"kind": "fall_transition", "target_id": "target"},
+                {"kind": "fall_transition", "target_id": "hovering"},
+            ),
+            standalone_fall_bindings=fall_bindings,
+        )
+        fall_results = {}
+        for event in (
+            event for event in standalone_schedule.events
+            if event.kind == "fall_transition"
+        ):
+            target_id = str(event.target_id)
+            standalone.advance_to(event.event_id)
+            fall_results[target_id] = standalone.resolve_fall_transition(
+                target_id=target_id,
+                **source,
+                fall_context=fall_bindings[target_id]["fall_context"],
+            ).to_dict()["payload"]
+            standalone.close_event()
+        self.assertTrue(fall_results["target"]["executed"])
+        self.assertEqual(
+            fall_results["target"]["transition"]["reason"],
+            "fly_speed_zero",
+        )
+        self.assertFalse(fall_results["hovering"]["executed"])
+        self.assertEqual(
+            fall_results["hovering"]["transition"]["reason"],
+            "hover_or_explicit_prevention",
+        )
+
+    def test_independent_incapacitated_application_executes_its_own_fall(
+        self,
+    ) -> None:
+        session, schedule = self._condition_bridge_session(
+            controller_events=({
+                "kind": "condition_application",
+                "target_id": "target",
+            },),
+        )
+        event = next(
+            candidate
+            for candidate in schedule.events
+            if candidate.kind == "condition_application"
+        )
+        _proposal, application = self._apply_condition_at(
+            session,
+            event,
+            condition_id="incapacitated",
+            source_actor_id="controller",
+            source_component_id="independent_incapacitated_fall",
+            fall_context={
+                "airborne": True,
+                "can_hover": False,
+                "explicit_prevents_fall": False,
+                "fly_speed_ft": 30,
+            },
+        )
+
+        payload = application.to_dict()["payload"]
+        root_id = payload["root_condition_instance_id"]
+        [created] = payload["created_condition_instances"]
+        self.assertEqual(created["instance_id"], root_id)
+        self.assertIsNone(created["parent_condition_instance_id"])
+        fall = payload["fall_transition"]
+        self.assertTrue(fall["executed"])
+        self.assertFalse(fall["duplicate_trigger_collapsed"])
+        self.assertEqual(fall["transition"]["reason"], "incapacitated")
+        self.assertEqual(fall["trigger_condition_instance_ids"], [root_id])
+        self.assertEqual(fall["trigger_fly_speed_zero_source_component_ids"], [])
+        self.assertEqual(fall["source_actor_ids"], ["controller"])
+        self.assertEqual(
+            fall["source_effect_ids"],
+            ["independent_incapacitated_fall_effect"],
+        )
+        self.assertEqual(
+            fall["source_component_ids"],
+            ["independent_incapacitated_fall"],
+        )
+
+    def test_compiled_fly_speed_zero_branch_emits_state_derived_fall(
+        self,
+    ) -> None:
+        cases = (
+            ("unprevented", False, False, True, "fly_speed_zero"),
+            (
+                "hover",
+                True,
+                False,
+                False,
+                "hover_or_explicit_prevention",
+            ),
+            (
+                "explicit_prevention",
+                False,
+                True,
+                False,
+                "hover_or_explicit_prevention",
+            ),
+        )
+        for label, can_hover, explicit_prevention, executed, reason in cases:
+            with self.subTest(label=label):
+                fall_context = {
+                    "airborne": True,
+                    "can_hover": can_hover,
+                    "explicit_prevents_fall": explicit_prevention,
+                    "fly_speed_ft": 30,
+                }
+                session, schedule, activation = self._frozen_ground_session(
+                    base_speeds={"walk": 30, "fly": 30},
+                    include_start_turn_save=True,
+                    bind_round_one_normalization=False,
+                    area_response_convention="fixed_occupancy_v1",
+                    start_turn_fall_context=fall_context,
+                )
+                session.advance_to(activation.event_id)
+                session.start_concentration()
+                session.apply_branch(
+                    gate_id="frozen_ground_t0_activation",
+                    outcome="no_save",
+                    target_id="target",
+                )
+                session.close_event()
+                target_start = next(
+                    event
+                    for event in schedule.events
+                    if event.kind == "target_turn_start" and event.round == 1
+                )
+                session.advance_to(target_start.event_id)
+                before_authority = self.engine._movement_state_authority(
+                    state=session._state,
+                    target_id="target",
+                    base_speeds_ft={"walk": 30, "fly": 30},
+                    mixed_speed_operation_order=None,
+                )
+                self.assertEqual(
+                    before_authority["effective_speeds_ft"]["fly"],
+                    30,
+                )
+                _resolve_gate_opportunity(
+                    session,
+                    gate_id="frozen_ground_t0_start_turn_save",
+                    target_id="target",
+                )
+                branch = session.apply_branch(
+                    gate_id="frozen_ground_t0_start_turn_save",
+                    outcome="save_failure",
+                    target_id="target",
+                )
+                after_authority = self.engine._movement_state_authority(
+                    state=session._state,
+                    target_id="target",
+                    base_speeds_ft={"walk": 30, "fly": 30},
+                    mixed_speed_operation_order=None,
+                )
+                self.assertEqual(after_authority["effective_speeds_ft"]["fly"], 0)
+                self.assertEqual(
+                    after_authority["source_component_ids"],
+                    ["frozen_ground_speed_zero"],
+                )
+
+                fall = branch.to_dict()["payload"]["fall_transition"]
+                self.assertIsNotNone(fall)
+                self.assertEqual(fall["executed"], executed)
+                self.assertEqual(fall["transition"]["reason"], reason)
+                self.assertEqual(fall["trigger_condition_instance_ids"], [])
+                self.assertEqual(
+                    fall["trigger_fly_speed_zero_source_component_ids"],
+                    ["frozen_ground_speed_zero"],
+                )
+                self.assertEqual(fall["source_actor_ids"], ["controller"])
+                self.assertEqual(
+                    fall["source_effect_ids"],
+                    ["frozen_ground_t0_control"],
+                )
+                self.assertEqual(
+                    fall["source_component_ids"],
+                    ["frozen_ground_speed_zero"],
+                )
+                session.close_event()
+
+    def _synchronize_rewritten_record_for_replay_test(
+        self,
+        session,
+        record,
+        payload: Mapping[str, Any],
+    ) -> None:
+        """Move a forged payload past issuance checks into semantic replay."""
+
+        self._rewrite_record_payload(record, payload)
+        session._issued_record_attestations[
+            record.operation_sequence - 1
+        ] = record.record_sha256
+
+    def test_replay_rejects_fabricated_save_roll_mode(self) -> None:
+        session, _schedule, save_event = self._absolute_zero_session()
+        self._finish_absolute_zero(session, save_event)
+        opportunity = next(
+            record
+            for record in session.issued_records()
+            if record.record_kind == "opportunity_roll"
+        )
+        payload = opportunity.to_dict()["payload"]
+        self.assertEqual(payload["roll_mode"], "normal")
+        payload["roll_mode"] = "advantage"
+        self._synchronize_rewritten_record_for_replay_test(
+            session,
+            opportunity,
+            payload,
+        )
+        session._opportunity_roll_records[0] = payload
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"opportunity|roll|mode|replay|fabricated",
+        ):
+            session.result()
+
+    def test_replay_rejects_charmed_attack_legality_flipped_allowed(
+        self,
+    ) -> None:
+        session, schedule = self._condition_bridge_session(
+            controller_events=({
+                "kind": "condition_application",
+                "target_id": "target",
+            },),
+            target_attack_counts={"target": [1, 0, 0]},
+        )
+        condition_event = next(
+            event
+            for event in schedule.events
+            if event.kind == "condition_application"
+        )
+        self._apply_condition_at(
+            session,
+            condition_event,
+            condition_id="charmed",
+            source_actor_id="controller",
+            source_component_id="replay_charmed",
+        )
+        attack_event = next(
+            event
+            for event in schedule.events
+            if event.kind == "target_attack_opportunity"
+        )
+        session.advance_to(attack_event.event_id)
+        opportunity = session.resolve_attack_opportunity(
+            attacker_id="target",
+            defender_id="controller",
+        )
+        session.close_event()
+        session.complete()
+        payload = opportunity.to_dict()["payload"]
+        self.assertFalse(payload["legality"]["allowed"])
+        self.assertFalse(payload["roll_created"])
+        payload["legality"]["allowed"] = True
+        payload["legality"]["denial_reasons"] = []
+        payload["roll_created"] = True
+        payload["roll_mode"] = "normal"
+        self._synchronize_rewritten_record_for_replay_test(
+            session,
+            opportunity,
+            payload,
+        )
+        session._opportunity_roll_records[-1] = payload
+        session._source_relative_legality_records[-1] = {
+            **payload["legality"],
+            "event_id": payload["event_id"],
+            "event_sequence": payload["event_sequence"],
+            "resolution_created": True,
+        }
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"legality|[Cc]harmed|attack|opportunity|replay",
+        ):
+            session.result()
+
+    def test_replay_rejects_fall_execution_transition_mismatch(self) -> None:
+        source = {
+            "source_actor_id": "controller",
+            "source_effect_id": "replay_fly_speed_zero_effect",
+            "source_component_id": "replay_fly_speed_zero",
+            "source_issuance_id": "replay_fly_speed_zero_issuance",
+        }
+        fall_context = {
+            "airborne": True,
+            "can_hover": False,
+            "explicit_prevents_fall": False,
+            "fly_speed_ft": 0,
+        }
+        session, schedule = self._condition_bridge_session(
+            controller_events=({
+                "kind": "fall_transition",
+                "target_id": "target",
+            },),
+            standalone_fall_bindings={
+                "target": {
+                    "fall_context": fall_context,
+                    "fall_source": source,
+                },
+            },
+        )
+        fall_event = next(
+            event for event in schedule.events
+            if event.kind == "fall_transition"
+        )
+        session.advance_to(fall_event.event_id)
+        fall_record = session.resolve_fall_transition(
+            target_id="target",
+            fall_context=fall_context,
+            **source,
+        )
+        session.close_event()
+        session.complete()
+        payload = fall_record.to_dict()["payload"]
+        self.assertTrue(payload["executed"])
+        self.assertTrue(payload["transition"]["falls"])
+        payload["executed"] = False
+        self._synchronize_rewritten_record_for_replay_test(
+            session,
+            fall_record,
+            payload,
+        )
+        session._fall_transition_records[-1] = payload
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"[Ff]all|transition|replay",
+        ):
+            session.result()
+
+    def test_replay_rejects_duplicate_executed_fall_for_same_event_target(
+        self,
+    ) -> None:
+        session, schedule = self._condition_bridge_session(
+            controller_events=({
+                "kind": "condition_application",
+                "target_id": "target",
+            },),
+        )
+        event = next(
+            candidate
+            for candidate in schedule.events
+            if candidate.kind == "condition_application"
+        )
+        session.advance_to(event.event_id)
+        airborne = {
+            "airborne": True,
+            "can_hover": False,
+            "explicit_prevents_fall": False,
+            "fly_speed_ft": 30,
+        }
+        application_records = []
+        for condition_id in ("prone", "incapacitated"):
+            proposal = session.propose_condition_application(
+                condition_id=condition_id,
+                target_id="target",
+                source_actor_id="controller",
+                source_program_id="replay_fall_program",
+                source_effect_id=f"replay_{condition_id}_effect",
+                source_invocation_id=f"replay_{condition_id}_invocation",
+                source_component_id=f"replay_{condition_id}_component",
+                duration={"kind": "until_condition_response"},
+                provenance_id=f"replay_{condition_id}_provenance",
+                fall_context=airborne,
+            )
+            application_records.append(
+                session.apply_condition_application(proposal)
+            )
+        session.close_event()
+        while session.cursor + 1 < len(schedule.events):
+            current = schedule.events[session.cursor + 1]
+            session.advance(current.event_id)
+            if current.kind == "target_movement_opportunity":
+                _resolve_prone_operation(
+                    session,
+                    target_id="target",
+                    kind="remain_prone",
+                )
+            session.close_event()
+
+        self.assertEqual(
+            [
+                (row["executed"], row["duplicate_trigger_collapsed"])
+                for row in session._fall_transition_records[:2]
+            ],
+            [(True, False), (False, True)],
+        )
+        second_application = application_records[1]
+        payload = second_application.to_dict()["payload"]
+        forged_fall = payload["fall_transition"]
+        forged_fall["executed"] = True
+        forged_fall["duplicate_trigger_collapsed"] = False
+        self._synchronize_rewritten_record_for_replay_test(
+            session,
+            second_application,
+            payload,
+        )
+        condition_index = next(
+            index
+            for index, row in enumerate(session._condition_operation_records)
+            if row.get("root_condition_instance_id")
+            == payload["root_condition_instance_id"]
+        )
+        session._condition_operation_records[condition_index] = payload
+        fall_index = next(
+            index
+            for index, row in enumerate(session._fall_transition_records)
+            if row.get("transition", {}).get("reason") == "incapacitated"
+        )
+        session._fall_transition_records[fall_index] = forged_fall
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"[Ff]all|duplicate|transition|replay",
+        ):
+            session.result()
+
+    def test_replay_rejects_forged_condition_concentration_identity_and_restoration(
+        self,
+    ) -> None:
+        session, schedule = self._condition_bridge_session(
+            controller_events=({
+                "kind": "condition_application",
+                "target_id": "target",
+            },),
+            source_actor_id="target",
+        )
+        condition_event = next(
+            event
+            for event in schedule.events
+            if event.kind == "condition_application"
+        )
+        _proposal, application = self._apply_condition_at(
+            session,
+            condition_event,
+            condition_id="incapacitated",
+            source_actor_id="controller",
+            source_component_id="replay_concentration_incapacitated",
+            fall_context={
+                "airborne": False,
+                "can_hover": False,
+                "explicit_prevents_fall": False,
+                "fly_speed_ft": 30,
+            },
+        )
+        session.complete()
+        payload = application.to_dict()["payload"]
+        concentration_end = payload["condition_concentration_end"]
+        self.assertEqual(concentration_end["owner_actor_id"], "target")
+        self.assertIsNone(concentration_end["active_effect_id"])
+        concentration_end["owner_actor_id"] = "forged_owner"
+        concentration_end["active_effect_id"] = session._program.effect_id
+        self._synchronize_rewritten_record_for_replay_test(
+            session,
+            application,
+            payload,
+        )
+        [condition_index] = [
+            index
+            for index, row in enumerate(session._condition_operation_records)
+            if row.get("kind") == "condition_application"
+        ]
+        session._condition_operation_records[condition_index] = payload
+        session._condition_concentration_records[0] = concentration_end
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"condition.*concentration|concentration.*condition|owner|active_effect",
+        ):
+            session.result()
+
+    def test_replay_rejects_condition_lifecycle_field_mismatch(self) -> None:
+        session, schedule = self._condition_bridge_session(
+            controller_events=({
+                "kind": "condition_application",
+                "target_id": "target",
+            },),
+        )
+        condition_event = next(
+            event
+            for event in schedule.events
+            if event.kind == "condition_application"
+        )
+        self._apply_condition_at(
+            session,
+            condition_event,
+            condition_id="charmed",
+            source_actor_id="controller",
+            source_component_id="replay_lifecycle_charmed",
+        )
+        session.complete()
+        [application_lifecycle] = session._state._condition_lifecycle
+        self.assertEqual(application_lifecycle["source_actor_id"], "controller")
+        application_lifecycle["source_actor_id"] = "forged_source"
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"condition.*lifecycle|lifecycle.*condition|source",
+        ):
+            session.result()
+
+    def test_replay_rejects_synchronized_impossible_prone_transition(
+        self,
+    ) -> None:
+        session, schedule = self._condition_bridge_session(
+            initial_conditions={"target": ("prone",)},
+        )
+        movement = next(
+            event
+            for event in schedule.events
+            if event.kind == "target_movement_opportunity"
+        )
+        session.advance_to(movement.event_id)
+        [stand_record] = _resolve_prone_operation(
+            session,
+            target_id="target",
+            kind="stand",
+        )
+        session.close_event()
+        session.complete()
+        payload = stand_record.to_dict()["payload"]
+        self.assertFalse(payload["prone_after"])
+        payload["prone_after"] = True
+        self._synchronize_rewritten_record_for_replay_test(
+            session,
+            stand_record,
+            payload,
+        )
+        session._prone_records[0] = payload
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "Prone transition is impossible",
+        ):
+            session.result()
+
+    def test_frightened_attack_without_source_line_of_sight_context_issues_no_roll(
+        self,
+    ) -> None:
+        session, schedule = self._condition_bridge_session(
+            target_attack_counts={"target": [1, 0, 0]},
+            initial_conditions={"target": ("frightened",)},
+        )
+        attack = next(
+            event
+            for event in schedule.events
+            if event.kind == "target_attack_opportunity"
+        )
+        session.advance_to(attack.event_id)
+        issued_before = len(session.issued_records())
+        rolls_before = len(session._opportunity_roll_records)
+        legality_before = len(session._source_relative_legality_records)
+        state_before = session.state_snapshot("target")
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            "Condition opportunity context is unresolved",
+        ):
+            session.resolve_attack_opportunity(
+                attacker_id="target",
+                defender_id="controller",
+            )
+
+        self.assertEqual(len(session.issued_records()), issued_before)
+        self.assertEqual(len(session._opportunity_roll_records), rolls_before)
+        self.assertEqual(
+            len(session._source_relative_legality_records),
+            legality_before,
+        )
+        self.assertEqual(session.state_snapshot("target"), state_before)
+
+    def test_replay_rejects_noncanonical_record_payload_serialization(
+        self,
+    ) -> None:
+        session, _schedule, save_event = self._absolute_zero_session()
+        branch = self._finish_absolute_zero(session, save_event)
+        payload = json.loads(branch.payload_json)
+        noncanonical_payload_json = json.dumps(
+            payload,
+            indent=2,
+            sort_keys=False,
+            allow_nan=False,
+        )
+        self.assertNotEqual(noncanonical_payload_json, branch.payload_json)
+        object.__setattr__(branch, "payload_json", noncanonical_payload_json)
+        object.__setattr__(
+            branch,
+            "payload_sha256",
+            hashlib.sha256(noncanonical_payload_json.encode("utf-8")).hexdigest(),
+        )
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"record payload is stale or malformed",
+        ):
+            session.result()
+
     @staticmethod
     def _finish_absolute_zero(session, save_event, *, outcome="save_success"):
         session.advance_to(save_event.event_id)
+        _resolve_save_roll(session)
         record = session.apply_branch(
             gate_id="absolute_zero_t0_save",
             outcome=outcome,
@@ -665,6 +1999,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
 
     def _finish_absolute_zero_with_normalization(self, session, save_event):
         session.advance_to(save_event.event_id)
+        _resolve_save_roll(session)
         session.apply_branch(
             gate_id="absolute_zero_t0_save",
             outcome="save_failure",
@@ -747,13 +2082,17 @@ class ControlExecutionSessionTests(unittest.TestCase):
         bind_round_one_normalization: bool = True,
         bind_movement_normalization: bool = False,
         area_response_convention: str = "shortest_route_v1",
+        start_turn_fall_context: Mapping[str, Any] | None = None,
     ):
         program = self.engine.program("frozen_ground_t0_control")
         schedule = self.engine.schedule(
             initiative,
             target_ids,
             controller_events_by_round={1: [{"kind": "activation"}]},
-            target_attack_counts={target_id: [1, 0, 0] for target_id in target_ids},
+            target_attack_counts={
+                target_id: [1, 0, 0] if bind_round_one_normalization else 0
+                for target_id in target_ids
+            },
         )
         activation = next(
             event for event in schedule.events if event.kind == "activation"
@@ -782,6 +2121,10 @@ class ControlExecutionSessionTests(unittest.TestCase):
             operation_inputs[target_start.event_id] = {
                 "reliability_event_ids": [reliability_event.event_id],
             }
+            if start_turn_fall_context is not None:
+                operation_inputs[target_start.event_id]["fall_context"] = dict(
+                    start_turn_fall_context
+                )
         for target_id in target_ids:
             movement = next(
                 event for event in schedule.events
@@ -795,13 +2138,13 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 and event.round == 1
                 and event.target_id == target_id
             )
-            attack = next(
-                event for event in schedule.events
-                if event.kind == "target_attack_opportunity"
-                and event.round == 1
-                and event.target_id == target_id
-            )
             if bind_round_one_normalization:
+                attack = next(
+                    event for event in schedule.events
+                    if event.kind == "target_attack_opportunity"
+                    and event.round == 1
+                    and event.target_id == target_id
+                )
                 operation_inputs[active.event_id] = {
                     "normalization_target_ids": [target_id],
                 }
@@ -831,10 +2174,13 @@ class ControlExecutionSessionTests(unittest.TestCase):
             }
         mechanics = {
             target_id: {
-                "initial_conditions": list(dict.fromkeys((
-                    *(("prone",) if initial_prone else ()),
-                    *initial_conditions,
-                ))),
+                "initial_condition_instances": _initial_condition_instances(
+                    target_id,
+                    (
+                        *(("prone",) if initial_prone else ()),
+                        *initial_conditions,
+                    ),
+                ),
                 "base_speeds_ft": dict(
                     base_speeds
                     if base_speeds is not None
@@ -1101,6 +2447,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
         payload = entry_record.to_dict()["payload"]
         gate_record = None
         if payload["gate_requirement_ids"]:
+            _resolve_gate_opportunity(
+                session,
+                gate_id="frozen_ground_t0_entry_save",
+                target_id=target_id,
+            )
             gate_record = session.apply_branch(
                 gate_id="frozen_ground_t0_entry_save",
                 outcome=outcome,
@@ -1552,6 +2903,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session.start_concentration()
         session.close_event()
         session.advance_to(target_start.event_id)
+        _resolve_gate_opportunity(
+            session,
+            gate_id=gate.gate_id,
+            target_id="target",
+        )
         session.apply_branch(
             gate_id=gate.gate_id,
             outcome="save_failure",
@@ -1570,6 +2926,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         speed_zero_first_movement: Sequence[str] = (),
         initial_conditions: Mapping[str, Sequence[str]] | None = None,
         geometry_update: tuple[int, str, bool, int] | None = None,
+        include_attacks: bool = False,
     ) -> tuple[Any, Any, Mapping[str, Any]]:
         program = self.engine.program("ball_lightning_t2_control")
         controller_events: dict[int, list[dict[str, Any]]] = {
@@ -1584,7 +2941,10 @@ class ControlExecutionSessionTests(unittest.TestCase):
             initiative,
             target_ids,
             controller_events_by_round=controller_events,
-            target_attack_counts={target_id: [1, 0, 0] for target_id in target_ids},
+            target_attack_counts={
+                target_id: [1, 0, 0] if include_attacks else 0
+                for target_id in target_ids
+            },
         )
         activation = next(
             event for event in schedule.events if event.kind == "activation"
@@ -1633,7 +2993,10 @@ class ControlExecutionSessionTests(unittest.TestCase):
             mechanics: dict[str, Any] = {
                 "base_speeds_ft": {"walk": 30},
                 "movement_mode": "walk",
-                "initial_conditions": list(initial_conditions.get(target_id, ())),
+                "initial_condition_instances": _initial_condition_instances(
+                    target_id,
+                    initial_conditions.get(target_id, ()),
+                ),
             }
             if area_response_convention == "shortest_route_v1":
                 mechanics["area_membership"] = member
@@ -1714,6 +3077,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
     @staticmethod
     def _apply_ball_start_save(session, event, *, target_id: str, outcome: str):
         session.advance_to(event.event_id)
+        _resolve_gate_opportunity(
+            session,
+            gate_id="ball_lightning_start_turn_save",
+            target_id=target_id,
+        )
         record = session.apply_branch(
             gate_id="ball_lightning_start_turn_save",
             outcome=outcome,
@@ -1732,6 +3100,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
             area_response_convention=area_response_convention,
         )
         session.advance_to(save.event_id)
+        _resolve_save_roll(session)
         session.apply_branch(
             gate_id="absolute_zero_t0_save",
             outcome="save_failure",
@@ -1751,6 +3120,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         session.advance_to(attack.event_id)
         session.normalize(target_id="target")
+        _resolve_target_attack_roll(session)
         session.close_event()
         session.complete()
         return session.result().to_dict()
@@ -1944,7 +3314,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 "startup_blood_tax": startup_blood_tax,
             }
         target_mechanics: dict[str, Any] = {
-            "initial_conditions": [],
+            "initial_condition_instances": _initial_condition_instances("target"),
             "base_speeds_ft": {"walk": 30},
             "movement_mode": "walk",
             "area_membership": True,
@@ -2291,10 +3661,18 @@ class ControlExecutionSessionTests(unittest.TestCase):
             choices={"explosion_implosion_mode": option},
         )
         session.advance_to(hit.event_id)
+        session.resolve_attack_opportunity(
+            attacker_id="controller",
+            defender_id="primary",
+        )
         session.apply_branch(
             gate_id="explosion_implosion_t0_attack",
             outcome="attack_hit",
             target_id="primary",
+        )
+        session.resolve_save_opportunity(
+            actor_id="primary",
+            ability="strength",
         )
         session.apply_branch(
             gate_id="explosion_implosion_t0_primary_save",
@@ -2360,7 +3738,9 @@ class ControlExecutionSessionTests(unittest.TestCase):
                         target_mechanics={"invalid": value},
                     )
 
-        valid, _schedule, _save = self._absolute_zero_session()
+        valid, _schedule, _save = self._absolute_zero_session(
+            include_attack=True,
+        )
         program = self.engine.program("absolute_zero_t0_control")
         with self.assertRaisesRegex(
             ControlEngineError,
@@ -2859,6 +4239,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session.start_concentration()
         session.close_event()
         session.advance_to(events["save"].event_id)
+        _resolve_save_roll(session, ability="strength")
         before_state = session.state_snapshot()
         before_records = session.issued_records()
         before_required = set(session._current_required_operations)
@@ -2888,6 +4269,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session.start_concentration()
         session.close_event()
         session.advance_to(events["save"].event_id)
+        _resolve_save_roll(session, ability="strength")
         session.apply_branch(
             gate_id="mass_levitation_t2_initial_saves",
             outcome="save_failure",
@@ -2899,6 +4281,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         session.close_event()
         session.advance_to(events["repeat"].event_id)
+        _resolve_gate_opportunity(
+            session,
+            gate_id="mass_levitation_t2_repeat_saves",
+            target_id="target",
+        )
         session.apply_branch(
             gate_id="mass_levitation_t2_repeat_saves",
             outcome="save_failure",
@@ -2980,8 +4367,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
             session.advance(schedule.events[0].event_id)
 
     def test_negative_01_branch_against_earlier_event_after_cursor_advanced(self) -> None:
-        session, _schedule, save_event = self._absolute_zero_session()
+        session, _schedule, save_event = self._absolute_zero_session(
+            include_attack=True,
+        )
         session.advance_to(save_event.event_id)
+        _resolve_save_roll(session)
         session.apply_branch(
             gate_id="absolute_zero_t0_save",
             outcome="save_success",
@@ -3035,8 +4425,10 @@ class ControlExecutionSessionTests(unittest.TestCase):
             probability_context=ProbabilityContext(save_dc=15),
         )
         session.advance_to(attack.event_id)
+        _resolve_target_attack_roll(session)
         session.close_event()
         session.advance_to(save.event_id)
+        _resolve_save_roll(session)
         session.apply_branch(
             gate_id="absolute_zero_t0_save",
             outcome="save_failure",
@@ -3112,6 +4504,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session.start_concentration()
         session.close_event()
         session.advance_to(save.event_id)
+        _resolve_save_roll(session, ability="strength")
         session.apply_branch(
             gate_id="mass_levitation_t2_initial_saves",
             outcome="save_success",
@@ -3135,6 +4528,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session.advance_to(save_event.event_id)
         with self.assertRaisesRegex(ControlEngineError, "unresolved required"):
             session.close_event()
+        _resolve_save_roll(session)
         with self.assertRaisesRegex(
             ControlEngineError,
             r"[Nn]ormalization.*(before|pending|unresolved|required)|"
@@ -3172,15 +4566,18 @@ class ControlExecutionSessionTests(unittest.TestCase):
         second, _schedule_2, second_save = self._absolute_zero_session()
         first_record = self._finish_absolute_zero(first, first_save)
         second_record = self._finish_absolute_zero(second, second_save)
+        first_records = first.issued_records()
+        second_records = second.issued_records()
         with self.assertRaisesRegex(ControlEngineError, "foreign, stale, or fabricated"):
-            first._assemble_for_test(records=(second_record,))
-        with self.assertRaisesRegex(ControlEngineError, "complete session-issued"):
+            first._assemble_for_test(records=second_records)
+        with self.assertRaisesRegex(ControlEngineError, "foreign, stale, or fabricated"):
             first._assemble_for_test(records=(
-                first_record,
+                first_records[0],
                 second_record,
             ))
         with self.assertRaisesRegex(ControlEngineError, "foreign, stale, or fabricated"):
             first._assemble_for_test(records=(
+                first_records[0],
                 replace(first_record, record_kind="normalization"),
             ))
         with self.assertRaisesRegex(ControlEngineError, "complete session-issued"):
@@ -3197,7 +4594,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         stale, _stale_schedule, stale_save = self._absolute_zero_session()
         self._finish_absolute_zero(stale, stale_save)
         stale._scenario_json = stale._scenario_json.replace(
-            "control_execution_session_v1",
+            "control_execution_session_v2",
             "control_execution_session_stale",
         )
         with self.assertRaisesRegex(ControlEngineError, "scenario digest is stale"):
@@ -3289,6 +4686,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 and event.round == 1
             ):
                 session.normalize(target_id=str(event.target_id))
+                if event.kind == "target_attack_opportunity":
+                    _resolve_target_attack_roll(
+                        session,
+                        attacker_id=str(event.target_id),
+                    )
             session.close_event()
         alternate = self.engine.reliability(
             session._program,
@@ -3509,7 +4911,10 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session, schedule, save_event = self._absolute_zero_session(
             normalize_attack=True,
             target_mechanics={
-                "initial_conditions": ["prone"],
+                "initial_condition_instances": _initial_condition_instances(
+                    "target",
+                    ("prone",),
+                ),
                 "base_speeds_ft": {"walk": 30},
                 "movement_mode": "walk",
             },
@@ -3523,6 +4928,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
             if event.kind == "target_attack_opportunity" and event.round == 1
         )
         session.advance_to(save_event.event_id)
+        _resolve_save_roll(session)
         session.apply_branch(
             gate_id="absolute_zero_t0_save",
             outcome="save_success",
@@ -3530,7 +4936,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         session.close_event()
         session.advance_to(movement.event_id)
-        [stand_record] = session.resolve_movement_response(target_id="target")
+        [stand_record] = _resolve_prone_operation(
+            session,
+            target_id="target",
+            kind="stand",
+        )
         stand = stand_record.to_dict()["payload"]
         self.assertTrue(stand["stood"])
         self.assertEqual(stand["standing_cost_ft"], 15)
@@ -3543,6 +4953,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session.close_event()
         session.advance_to(attack.event_id)
         attack_record = session.normalize(target_id="target")
+        _resolve_target_attack_roll(session)
         primitives = {
             row["primitive_id"]
             for row in attack_record.to_dict()["payload"]["contributions"]
@@ -3571,8 +4982,13 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         session.close_event()
         session.advance_to(movement.event_id)
-        [record] = session.resolve_movement_response(target_id="target")
+        record, prone_record = _resolve_prone_operation(
+            session,
+            target_id="target",
+            kind="stand",
+        )
         response = record.to_dict()["payload"]
+        self.assertEqual(prone_record.record_kind, "prone_operation")
         route = response["selected_route"]
         self.assertTrue(route["prone_response"]["stood"])
         self.assertEqual(route["prone_response"]["standing_cost_ft"], 15)
@@ -3582,7 +4998,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         self.assertEqual(route["remaining_distance_ft"], 2.5)
         self.assertFalse(response["exited"])
 
-    def test_prone_stands_when_area_route_is_incompatible_and_independent_survives(self) -> None:
+    def test_prone_remains_when_area_route_is_incompatible_and_independent_survives(self) -> None:
         session, schedule, activation = self._frozen_ground_session(
             initial_prone=True,
             initial_conditions=("blinded",),
@@ -3603,19 +5019,24 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         session.close_event()
         session.advance_to(movement.event_id)
-        [area_record] = session.resolve_movement_response(target_id="target")
+        area_record, prone_record = _resolve_prone_operation(
+            session,
+            target_id="target",
+            kind="remain_prone",
+        )
         area = area_record.to_dict()["payload"]
-        stand = area["prone_response"]
-        self.assertTrue(stand["stood"])
-        self.assertEqual(stand["standing_cost_ft"], 15)
-        self.assertEqual(area["events"][0]["movement_mode"], "walk")
+        self.assertEqual(prone_record.record_kind, "prone_operation")
+        response = prone_record.to_dict()["payload"]
+        self.assertFalse(response["stood"])
+        self.assertTrue(response["prone_after"])
+        self.assertEqual(response["standing_cost_ft"], 0)
         self.assertFalse(area["exited"])
-        self.assertEqual(area["reason"], "movement_unavailable")
+        self.assertEqual(area["reason"], "remain_prone")
         self.assertIn("initial_blinded", area["retained_component_ids"])
         active_ids = {
             row["component_id"] for row in session.state_snapshot("target")
         }
-        self.assertNotIn("initial_prone", active_ids)
+        self.assertIn("initial_prone", active_ids)
         self.assertIn("initial_blinded", active_ids)
         self.assertIn("frozen_ground_difficult_terrain", active_ids)
 
@@ -3649,6 +5070,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         session.close_event()
         session.advance_to(target_start.event_id)
+        _resolve_gate_opportunity(
+            session,
+            gate_id="frozen_ground_t0_start_turn_save",
+            target_id="target",
+        )
         session.apply_branch(
             gate_id="frozen_ground_t0_start_turn_save",
             outcome="save_failure",
@@ -3656,11 +5082,16 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         session.close_event()
         session.advance_to(movement.event_id)
-        [movement_record] = session.resolve_movement_response(target_id="target")
+        movement_record, prone_record = _resolve_prone_operation(
+            session,
+            target_id="target",
+            kind="remain_prone",
+        )
         movement_payload = movement_record.to_dict()["payload"]
+        self.assertEqual(prone_record.record_kind, "prone_operation")
         self.assertFalse(movement_payload["exited"])
         self.assertTrue(movement_payload["prone_after"])
-        self.assertEqual(movement_payload["reason"], "movement_unavailable")
+        self.assertEqual(movement_payload["reason"], "remain_prone")
         self.assertEqual(
             movement_payload["movement_authority"]["effective_speeds_ft"],
             {"walk": 0},
@@ -3671,6 +5102,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session.close_event()
         session.advance_to(attack.event_id)
         attack_record = session.normalize(target_id="target")
+        _resolve_target_attack_roll(session)
         session.close_event()
         active_ids = {
             row["component_id"] for row in session.state_snapshot("target")
@@ -3686,8 +5118,8 @@ class ControlExecutionSessionTests(unittest.TestCase):
             row["primitive_id"]
             for row in attack_record.to_dict()["payload"]["contributions"]
         }
-        self.assertIn("offensive_impairment_all_attacks", active_primitives)
-        self.assertNotIn("offensive_impairment_all_attacks", attack_primitives)
+        self.assertNotIn("offensive_impairment_all_attacks", active_primitives)
+        self.assertIn("offensive_impairment_all_attacks", attack_primitives)
 
     def test_ball_lightning_exits_pre_attack_at_real_initiative_round(self) -> None:
         observed_rounds: dict[str, int] = {}
@@ -3701,7 +5133,12 @@ class ControlExecutionSessionTests(unittest.TestCase):
                     initiative,
                     ["target"],
                     controller_events_by_round={1: [{"kind": "activation"}]},
-                    target_attack_counts={"target": [1, 1, 0]},
+                    target_attack_counts={
+                        "target": [
+                            1 if round_number == expected_round else 0
+                            for round_number in range(1, 4)
+                        ]
+                    },
                 )
                 activation = next(
                     event for event in schedule.events
@@ -3783,6 +5220,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 session.start_concentration()
                 session.close_event()
                 session.advance_to(target_start.event_id)
+                _resolve_gate_opportunity(
+                    session,
+                    gate_id=gate.gate_id,
+                    target_id="target",
+                )
                 session.apply_branch(
                     gate_id=gate.gate_id,
                     outcome="save_failure",
@@ -3808,6 +5250,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 session.close_event()
                 session.advance_to(attack.event_id)
                 attack_record = session.normalize(target_id="target")
+                _resolve_target_attack_roll(session)
                 session.close_event()
                 self.assertEqual(
                     active_record.to_dict()["payload"]["contributions"],
@@ -3875,6 +5318,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
                         and event.round == 1
                     ):
                         session.normalize(target_id=str(event.target_id))
+                        if event.kind == "target_attack_opportunity":
+                            _resolve_target_attack_roll(
+                                session,
+                                attacker_id=str(event.target_id),
+                            )
                     session.close_event()
                 result = session.result().to_dict()
                 final_by_order[target_ids] = {
@@ -3917,7 +5365,10 @@ class ControlExecutionSessionTests(unittest.TestCase):
             schedule=schedule,
             target_mechanics={
                 "target": {
-                    "initial_conditions": ["prone"],
+                    "initial_condition_instances": _initial_condition_instances(
+                        "target",
+                        ("prone",),
+                    ),
                     "base_speeds_ft": {"walk": 30},
                     "movement_mode": "walk",
                 },
@@ -3934,6 +5385,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
             },
         )
         session.advance_to(save.event_id)
+        _resolve_save_roll(session, ability="strength")
         session.apply_branch(
             gate_id="telekinetic_slam_t0_save",
             outcome="save_failure",
@@ -3945,8 +5397,10 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         session.close_event()
         session.advance_to(movement.event_id)
-        prone_record, epoch_record = session.resolve_movement_response(
+        prone_record, epoch_record = _resolve_prone_operation(
+            session,
             target_id="target",
+            kind="stand",
         )
         self.assertTrue(prone_record.to_dict()["payload"]["stood"])
         epoch = epoch_record.to_dict()["payload"]["record"]
@@ -4036,6 +5490,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session.close_event()
         session.advance_to(attack.event_id)
         attack_record = session.normalize(target_id="target")
+        _resolve_target_attack_roll(session)
         session.close_event()
         self.assertEqual(active_record.to_dict()["payload"]["contributions"], [])
         self.assertEqual(attack_record.to_dict()["payload"]["contributions"], [])
@@ -4117,6 +5572,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
             if event.kind == "target_turn_start" and event.round == 1
         )
         session.advance_to(target_start.event_id)
+        _resolve_gate_opportunity(
+            session,
+            gate_id="frozen_ground_t0_start_turn_save",
+            target_id="target",
+        )
         session.apply_branch(
             gate_id="frozen_ground_t0_start_turn_save",
             outcome="save_failure",
@@ -4147,6 +5607,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
             if event.kind == "target_turn_start" and event.round == 1
         )
         session.advance_to(target_start.event_id)
+        _resolve_gate_opportunity(
+            session,
+            gate_id="frozen_ground_t0_start_turn_save",
+            target_id="target",
+        )
         session.apply_branch(
             gate_id="frozen_ground_t0_start_turn_save",
             outcome="save_failure",
@@ -4461,7 +5926,12 @@ class ControlExecutionSessionTests(unittest.TestCase):
         self._activate_frozen_ground(session, activation)
         movement = self._movement_event(schedule, round_number=1)
         session.advance_to(movement.event_id)
-        [record] = session.resolve_movement_response(target_id="target")
+        record, prone_record = _resolve_prone_operation(
+            session,
+            target_id="target",
+            kind="stand",
+        )
+        self.assertEqual(prone_record.record_kind, "prone_operation")
         selected = record.to_dict()["payload"]["selected_route"]
         self.assertEqual(selected["prone_response"]["standing_cost_ft"], 15)
         self.assertEqual(
@@ -4621,7 +6091,9 @@ class ControlExecutionSessionTests(unittest.TestCase):
     def test_area_membership_02_successful_exit_precedes_active_and_attack_windows(
         self,
     ) -> None:
-        session, schedule, events = self._ball_membership_session()
+        session, schedule, events = self._ball_membership_session(
+            include_attacks=True,
+        )
         self._start_ball_concentration(session, events["activation"])
         [first_start] = events["starts_by_target"]["target"][:1]
         self._apply_ball_start_save(
@@ -4660,11 +6132,13 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session.close_event()
         session.advance_to(attack.event_id)
         attack_record = session.normalize(target_id="target")
+        _resolve_target_attack_roll(session)
         self.assertEqual(
             attack_record.to_dict()["payload"]["contributions"],
             [],
         )
         self.assertEqual(session.state_snapshot("target"), ())
+        session.close_event()
 
     def test_area_membership_03_exit_prunes_later_recurring_gate_requirement(
         self,
@@ -4946,16 +6420,27 @@ class ControlExecutionSessionTests(unittest.TestCase):
                     event = schedule.events[session.cursor + 1]
                     session.advance(event.event_id)
                     if event.event_id in first_starts:
+                        target_id = first_starts[event.event_id]
+                        _resolve_gate_opportunity(
+                            session,
+                            gate_id="ball_lightning_start_turn_save",
+                            target_id=target_id,
+                        )
                         session.apply_branch(
                             gate_id="ball_lightning_start_turn_save",
                             outcome="save_success",
-                            target_id=first_starts[event.event_id],
+                            target_id=target_id,
                         )
                     elif event.event_id in second_starts:
                         target_id = second_starts[event.event_id]
                         member = self._area_route_row(session, target_id)["membership"]
                         later_gate_eligible[target_id] = bool(member)
                         if member:
+                            _resolve_gate_opportunity(
+                                session,
+                                gate_id="ball_lightning_start_turn_save",
+                                target_id=target_id,
+                            )
                             session.apply_branch(
                                 gate_id="ball_lightning_start_turn_save",
                                 outcome="save_success",
@@ -5103,6 +6588,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 session.advance_to(first_start.event_id)
                 requirement = "branch:ball_lightning_start_turn_save:target"
                 self.assertIn(requirement, session._current_required_operations)
+                _resolve_gate_opportunity(
+                    session,
+                    gate_id="ball_lightning_start_turn_save",
+                    target_id="target",
+                )
                 session._current_required_operations.discard(requirement)
                 session.close_event()
                 if convention == "shortest_route_v1":
@@ -5143,6 +6633,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
         self.assertEqual(
             payload["gate_requirement_ids"],
             ["frozen_ground_t0_entry_save"],
+        )
+        _resolve_gate_opportunity(
+            session,
+            gate_id="frozen_ground_t0_entry_save",
+            target_id="target",
         )
         gate = session.apply_branch(
             gate_id="frozen_ground_t0_entry_save",
@@ -5231,6 +6726,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session.advance_to(entry.event_id)
         transition = session.resolve_area_entry(target_id="target")
         state_before_save = session.state_snapshot("target")
+        _resolve_gate_opportunity(
+            session,
+            gate_id="frozen_ground_t0_entry_save",
+            target_id="target",
+        )
         session.apply_branch(
             gate_id="frozen_ground_t0_entry_save",
             outcome="save_success",
@@ -5451,6 +6951,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
         self.assertEqual(payload["entry_policy"]["frequency"], "once_per_turn")
         self.assertTrue(payload["frequency_permitted"])
         self.assertEqual(len(payload["gate_requirement_ids"]), 1)
+        _resolve_gate_opportunity(
+            session,
+            gate_id="frozen_ground_t0_entry_save",
+            target_id="target",
+        )
         session.apply_branch(
             gate_id="frozen_ground_t0_entry_save",
             outcome="save_success",
@@ -5765,6 +7270,60 @@ class ControlExecutionSessionTests(unittest.TestCase):
             ):
                 rewritten_session.result()
 
+    def test_entry_save_rejects_target_state_mutation_after_attestation(
+        self,
+    ) -> None:
+        session, scenario = self._frozen_entry_session()
+        self._activate_frozen_ground(session, scenario["activation"])
+        [entry] = scenario["entries_by_target"]["target"]
+        session.advance_to(entry.event_id)
+        entry_record = session.resolve_area_entry(target_id="target")
+        self.assertTrue(
+            entry_record.to_dict()["payload"]["gate_requirement_ids"]
+        )
+
+        session._state.apply_component(
+            effect_id="test_only_entry_basis_mutation",
+            component={
+                "component_id": "test_only_entry_basis_reaction_denial",
+                "magnitude": {
+                    "kind": "reaction_denial",
+                    "scope": "all_reactions",
+                },
+                "duration": {"kind": "until_condition_response"},
+                "stacking": {
+                    "key": "test_only_entry_basis_reaction_denial",
+                    "mode": "nonstacking",
+                    "refresh": "none",
+                },
+            },
+            target_id="target",
+            source_actor_id="controller",
+            event_id=entry.event_id,
+            invocation_id="test_only_entry_basis_mutation",
+        )
+        before_rejection = (
+            session._operation_sequence,
+            session.issued_records(),
+            frozenset(session._current_required_operations),
+        )
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"unchanged attested post-entry condition state",
+        ):
+            session.resolve_save_opportunity(
+                actor_id="target",
+                ability="constitution",
+            )
+        self.assertEqual(
+            (
+                session._operation_sequence,
+                session.issued_records(),
+                frozenset(session._current_required_operations),
+            ),
+            before_rejection,
+        )
+
     def test_area_entry_transition_12_final_replay_accepts_ordered_entry_gate(
         self,
     ) -> None:
@@ -5787,11 +7346,15 @@ class ControlExecutionSessionTests(unittest.TestCase):
         ]
         self.assertEqual(
             [row["record_kind"] for row in event_records],
-            ["area_entry", "branch_transition"],
+            ["area_entry", "opportunity_roll", "branch_transition"],
         )
         self.assertLess(
             event_records[0]["operation_sequence"],
             event_records[1]["operation_sequence"],
+        )
+        self.assertLess(
+            event_records[1]["operation_sequence"],
+            event_records[2]["operation_sequence"],
         )
         self.assertFalse(
             event_records[0]["pre_event_route_state"][0]["membership"]
@@ -6023,6 +7586,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         requirement = "branch:ball_lightning_entry_save:target"
         self.assertIn(requirement, session._current_required_operations)
+        _resolve_gate_opportunity(
+            session,
+            gate_id="ball_lightning_entry_save",
+            target_id="target",
+        )
         gate_record = session.apply_branch(
             gate_id="ball_lightning_entry_save",
             outcome="save_success",
@@ -6115,6 +7683,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
                         entry_payloads[event.target_id] = record.to_dict()[
                             "payload"
                         ]
+                        _resolve_gate_opportunity(
+                            session,
+                            gate_id="frozen_ground_t0_entry_save",
+                            target_id=str(event.target_id),
+                        )
                         session.apply_branch(
                             gate_id="frozen_ground_t0_entry_save",
                             outcome="save_success",
@@ -6326,8 +7899,8 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 area_response_convention="fixed_occupancy_v1",
             )
             scenario["session_kwargs"]["target_mechanics"]["target"][
-                "initial_conditions"
-            ] = ["prone"]
+                "initial_condition_instances"
+            ] = _initial_condition_instances("target", ("prone",))
             session = scenario["engine"].execution_session(
                 scenario["program"],
                 **scenario["session_kwargs"],
@@ -6339,13 +7912,15 @@ class ControlExecutionSessionTests(unittest.TestCase):
             )
             pre_route = session.area_route_snapshot("target")
             session.advance_to(movement.event_id)
-            [prone_record] = session.resolve_movement_response(
+            [prone_record] = _resolve_prone_operation(
+                session,
                 target_id="target",
+                kind="stand",
             )
             prone_payload = prone_record.to_dict()["payload"]
             self.assertEqual(
                 prone_record.record_kind,
-                "prone_movement_response",
+                "prone_operation",
             )
             self.assertTrue(prone_payload["stood"])
             self.assertEqual(prone_payload["standing_cost_ft"], 15)
@@ -6487,6 +8062,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
             normalize_movement=True,
         )
         session.advance_to(save.event_id)
+        _resolve_save_roll(session)
         session.apply_branch(
             gate_id="absolute_zero_t0_save",
             outcome="save_failure",
@@ -6518,8 +8094,10 @@ class ControlExecutionSessionTests(unittest.TestCase):
             with self.subTest(mutation=mutation):
                 session, schedule, save = self._absolute_zero_session(
                     normalize_movement=True,
+                    include_attack=True,
                 )
                 session.advance_to(save.event_id)
+                _resolve_save_roll(session)
                 session.apply_branch(
                     gate_id="absolute_zero_t0_save",
                     outcome="save_failure",
@@ -6582,6 +8160,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
             normalize_attack=True,
         )
         session.advance_to(save.event_id)
+        _resolve_save_roll(session)
         session.apply_branch(
             gate_id="absolute_zero_t0_save",
             outcome="save_success",
@@ -7280,6 +8859,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session.start_concentration()
         session.close_event()
         session.advance_to(events["save"].event_id)
+        _resolve_save_roll(session, ability="strength")
         session.apply_branch(
             gate_id="mass_levitation_t2_initial_saves",
             outcome="save_failure",
@@ -7291,6 +8871,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         session.close_event()
         session.advance_to(events["repeat"].event_id)
+        _resolve_gate_opportunity(
+            session,
+            gate_id="mass_levitation_t2_repeat_saves",
+            target_id="target",
+        )
         session.apply_branch(
             gate_id="mass_levitation_t2_repeat_saves",
             outcome="save_failure",
@@ -7474,6 +9059,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         session.close_event()
         session.advance_to(events["start_turn"].event_id)
+        _resolve_gate_opportunity(
+            session,
+            gate_id="ball_lightning_start_turn_save",
+            target_id="target",
+        )
         session.apply_branch(
             gate_id="ball_lightning_start_turn_save",
             outcome="save_failure",
@@ -8617,6 +10207,11 @@ class ControlExecutionSessionTests(unittest.TestCase):
                         terrain["applied_event_id"],
                         entry.event_id,
                     )
+                    _resolve_gate_opportunity(
+                        session,
+                        gate_id="frozen_ground_t0_entry_save",
+                        target_id="target",
+                    )
                     gate = session.apply_branch(
                         gate_id="frozen_ground_t0_entry_save",
                         outcome="save_success",
@@ -8757,6 +10352,9 @@ class ControlExecutionSessionTests(unittest.TestCase):
             scenario["area_response_convention"] = "selected_convention"
             scenario["versions"]["area_response_convention"] = (
                 "selected_convention"
+            )
+            scenario["versions"]["area_response_convention_version"] = (
+                "selected_convention_version"
             )
         self.assertEqual(shortest_scenario, fixed_scenario)
 
@@ -9433,6 +11031,8 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 event_id=activation.event_id,
                 base_speeds_ft={"walk": 30},
                 movement_mode="walk",
+                prone_operation={"kind": "stand"},
+                movement_budget_ft=30,
             )
         with self.assertRaisesRegex(TimelineError, "resolve exactly once"):
             self.engine._resolve_prone_movement(
@@ -9442,8 +11042,21 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 event_id="fixture:not_in_schedule",
                 base_speeds_ft={"walk": 30},
                 movement_mode="walk",
+                prone_operation={"kind": "stand"},
+                movement_budget_ft=30,
             )
         self.assertEqual(state.snapshot(), before_rejected)
+        with self.assertRaisesRegex(TimelineError, "Speed 0"):
+            self.engine._resolve_prone_movement(
+                state=state,
+                schedule=schedule,
+                target_id="target",
+                event_id=movement_events[0].event_id,
+                base_speeds_ft={"walk": 30},
+                movement_mode="walk",
+                prone_operation={"kind": "stand"},
+                movement_budget_ft=30,
+            )
         blocked = self.engine._resolve_prone_movement(
             state=state,
             schedule=schedule,
@@ -9451,9 +11064,11 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             event_id=movement_events[0].event_id,
             base_speeds_ft={"walk": 30},
             movement_mode="walk",
+            prone_operation={"kind": "remain_prone"},
+            movement_budget_ft=30,
         )
         self.assertFalse(blocked["stood"])
-        self.assertEqual(blocked["reason"], "speed_zero")
+        self.assertEqual(blocked["reason"], "remain_prone")
         self.assertEqual(
             blocked["movement_authority"]["effective_speeds_ft"],
             {"walk": 0},
@@ -9479,6 +11094,8 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             event_id=movement_events[1].event_id,
             base_speeds_ft={"walk": 30},
             movement_mode="walk",
+            prone_operation={"kind": "stand"},
+            movement_budget_ft=30,
         )
         self.assertTrue(stood["stood"])
         self.assertEqual(state.active_components("target"), ())
@@ -9595,6 +11212,8 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             event_id=movement.event_id,
             base_speeds_ft={"walk": 30},
             movement_mode="walk",
+            prone_operation={"kind": "stand"},
+            movement_budget_ft=30,
         )
         for component in program.components:
             _activate_component(state, program, component)
@@ -9630,7 +11249,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             prone_records=(prone_record, prone_record),
             area_records=(area_record, area_record),
         ).to_dict()
-        self.assertEqual(len(assembled["prone_standing_records"]), 1)
+        self.assertEqual(len(assembled["prone_operation_records"]), 1)
         self.assertEqual(
             len(assembled["area_membership_and_route_records"]),
             1,
@@ -10130,7 +11749,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             selector_membership=membership,
             selector_context=_selector_context_for("target"),
         )
-        tracker = ConcentrationTracker(save_bonus=0)
+        tracker = ConcentrationTracker(owner_actor_id="controller", save_bonus=0)
         start = self.engine._start_concentration(
             state=state,
             tracker=tracker,
@@ -10603,7 +12222,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         state = self.engine._new_state()
         for component in program.components:
             _activate_component(state, program, component)
-        tracker = ConcentrationTracker(save_bonus=0)
+        tracker = ConcentrationTracker(owner_actor_id="controller", save_bonus=0)
         membership = _single_selector_membership(program, "target")
         start = self.engine._start_concentration(
             state=state,
@@ -10724,7 +12343,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             selector_membership=membership,
             selector_context=selector_context,
         )
-        tracker = ConcentrationTracker(save_bonus=0)
+        tracker = ConcentrationTracker(owner_actor_id="controller", save_bonus=0)
         before_snapshot = state.snapshot()
         with self.assertRaisesRegex(ControlEngineError, "loaded authority"):
             engine._start_concentration(

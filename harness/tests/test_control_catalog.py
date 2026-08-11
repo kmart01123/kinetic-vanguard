@@ -44,6 +44,8 @@ class SrdConsequenceTests(unittest.TestCase):
         cls.catalog = load_control_catalog()
 
     def test_srd_consequence_scope_versions_and_pages_are_exact(self) -> None:
+        self.assertEqual(CATALOG_VERSION, "2.0.0")
+        self.assertEqual(PRIMITIVE_CONTRACT_VERSION, "2.0.0")
         self.assertEqual(self.catalog.catalog_version, CATALOG_VERSION)
         self.assertEqual(self.catalog.primitive_contract_version, PRIMITIVE_CONTRACT_VERSION)
         self.assertEqual(
@@ -84,6 +86,7 @@ class SrdConsequenceTests(unittest.TestCase):
                 "fall_transition",
                 "nonsight_location_awareness",
                 "prone_incoming_attack_context",
+                "initiative_disadvantage",
             },
         )
 
@@ -98,12 +101,20 @@ class SrdConsequenceTests(unittest.TestCase):
                 "defensive_attack_advantage",
             ],
         )
-        sight_dependent = [item for item in specs if item.primitive_id != "sight_option_denial"]
-        self.assertTrue(all(item.predicate_values["alternative_sight_available"] is False for item in specs))
-        ability = next(item for item in sight_dependent if item.primitive_id == "ability_check_impairment")
+        by_id = {item.primitive_id: item for item in specs}
+        sight = by_id["sight_option_denial"]
+        ability = by_id["ability_check_impairment"]
+        outgoing = by_id["offensive_impairment_all_attacks"]
+        incoming = by_id["defensive_attack_advantage"]
+        self.assertIs(sight.predicate_values["alternative_sight_available"], False)
+        self.assertIs(ability.predicate_values["alternative_sight_available"], False)
         self.assertEqual(ability.status, "retained_unpriced")
         self.assertEqual(ability.qualifier_values["ability_check_effect"], "automatic_failure")
         self.assertTrue(ability.predicate_values["ability_check_depends_on_sight"])
+        for attack_fact in (outgoing, incoming):
+            self.assertEqual(attack_fact.unit, "attack_opportunity")
+            self.assertNotIn("alternative_sight_available", attack_fact.predicate_values)
+            self.assertNotIn("alternative_sight_resolution", attack_fact.context_requirements)
 
     def test_srd_charmed_is_source_specific_and_not_turn_denial(self) -> None:
         specs = expand_condition(self.catalog, "charmed")
@@ -112,8 +123,12 @@ class SrdConsequenceTests(unittest.TestCase):
             ["target_choice_restriction", "social_interaction_advantage"],
         )
         self.assertNotIn("active_turn_denial", {item.primitive_id for item in specs})
+        self.assertEqual(specs[0].unit, "action_proposal")
         self.assertEqual(specs[0].qualifier_values["restricted_target_relation"], "charmer")
-        self.assertEqual(specs[0].qualifier_values["restricted_choice_kinds"], ("attack", "harmful_effect"))
+        self.assertEqual(
+            specs[0].qualifier_values["restricted_choice_kinds"],
+            ("attack", "damaging_ability", "damaging_magical_effect"),
+        )
         self.assertEqual(specs[1].status, "retained_unpriced")
         self.assertTrue(all("source_actor_id" in item.context_requirements for item in specs))
 
@@ -136,10 +151,19 @@ class SrdConsequenceTests(unittest.TestCase):
         by_id = {item.primitive_id: item for item in specs}
         self.assertEqual(
             set(by_id),
-            {"active_turn_denial", "reaction_denial", "concentration_break", "speech_denial", "fall_transition"},
+            {
+                "active_turn_denial",
+                "reaction_denial",
+                "initiative_disadvantage",
+                "concentration_break",
+                "speech_denial",
+                "fall_transition",
+            },
         )
         self.assertEqual(by_id["active_turn_denial"].qualifier_values["denied_turn_options"], ("action", "bonus_action"))
         self.assertTrue(by_id["concentration_break"].predicate_values["target_is_concentrating"])
+        self.assertEqual(by_id["initiative_disadvantage"].unit, "initiative_opportunity")
+        self.assertEqual(by_id["initiative_disadvantage"].status, "retained_unpriced")
         self.assertEqual(by_id["speech_denial"].status, "retained_unpriced")
         self.assertNotIn("mobility_loss_feet", by_id)
 
@@ -147,13 +171,28 @@ class SrdConsequenceTests(unittest.TestCase):
         condition = self.catalog.conditions["prone"]
         self.assertEqual(
             [item.response_id for item in condition.response_mechanics],
-            ["prone_movement_options", "stand_from_prone"],
+            ["remain_prone", "stand_from_prone", "voluntarily_drop_prone", "crawl_while_prone"],
+        )
+        self.assertTrue(
+            all(item.timing == "explicit_operation_proposal" for item in condition.response_mechanics)
         )
         self.assertEqual(
             condition.response_mechanics[1].effects,
             ("spend_half_current_speed_rounded_down", "end_prone", "retain_remaining_movement"),
         )
-        self.assertEqual(condition.end_mechanics, ("legal_stand", "source_end"))
+        self.assertEqual(
+            condition.response_mechanics[2].effects,
+            ("spend_no_action", "spend_no_speed", "apply_prone"),
+        )
+        self.assertEqual(
+            condition.response_mechanics[3].effects,
+            (
+                "retain_prone",
+                "spend_one_extra_foot_per_foot",
+                "spend_two_extra_feet_per_foot_in_difficult_terrain",
+            ),
+        )
+        self.assertEqual(condition.end_mechanics, ("explicit_stand_operation", "source_end"))
         specs = expand_condition(self.catalog, "prone")
         near = next(item for item in specs if item.primitive_id == "defensive_attack_advantage")
         far = next(item for item in specs if item.primitive_id == "prone_incoming_attack_context")
@@ -340,7 +379,7 @@ class CatalogInvariantTests(unittest.TestCase):
             {
                 "primitive_id": "offensive_impairment_all_attacks",
                 "family": "denial",
-                "unit": "affected_target_turn",
+                "unit": "attack_opportunity",
                 "status": "candidate",
             }
         )
@@ -419,17 +458,30 @@ class CatalogInvariantTests(unittest.TestCase):
         with self.assertRaisesRegex(CatalogError, "condition stunned semantics .* signature exactly"):
             validate_control_catalog(value)
 
-    def test_catalog_invariant_provenance_pins_source_pages_and_exact_file_digest(self) -> None:
+    def test_catalog_invariant_provenance_pins_public_records_and_exact_file_digest(self) -> None:
         provenance = json.loads(DEFAULT_CONTROL_PROVENANCE.read_text(encoding="utf-8"))
-        target_provenance = json.loads(
-            (DEFAULT_CONTROL_PROVENANCE.parent / "srd-control-targets.json").read_text(encoding="utf-8")
-        )
-        self.assertEqual(provenance["source"], target_provenance["source"])
-        self.assertEqual(provenance["data_sha256"], sha256_file(DEFAULT_CONTROL_CATALOG))
+        self.assertEqual(provenance["format_version"], 2)
         self.assertEqual(
-            provenance["condition_pages"],
-            {condition_id: row.source_page for condition_id, row in load_control_catalog().conditions.items()},
+            provenance["source"],
+            {
+                "repository": "kmart01123/kinetic-vanguard",
+                "issue_53_record_ids": [
+                    5247061714,
+                    5247097441,
+                    5247104955,
+                    5247113901,
+                    5247133887,
+                    5247179060,
+                    5247181650,
+                    5247254885,
+                    5247439835,
+                ],
+                "issue_54_record_ids": [5247493229],
+            },
         )
+        self.assertNotIn("condition_pages", provenance)
+        self.assertNotIn("extraction", provenance)
+        self.assertEqual(provenance["data_sha256"], sha256_file(DEFAULT_CONTROL_CATALOG))
 
         with tempfile.TemporaryDirectory() as directory:
             reformatted = Path(directory) / "srd_control_consequences.json"
@@ -437,12 +489,29 @@ class CatalogInvariantTests(unittest.TestCase):
             with self.assertRaisesRegex(CatalogError, "SHA-256 does not match provenance"):
                 load_control_catalog(reformatted)
 
+    def test_catalog_invariant_provenance_rejects_legacy_private_source_shape(self) -> None:
+        provenance = json.loads(DEFAULT_CONTROL_PROVENANCE.read_text(encoding="utf-8"))
+        provenance["source"] = {
+            "ruleset": "private-source-placeholder",
+            "official_pdf_url": "private-source-placeholder",
+            "official_pdf_sha256": "0" * 64,
+            "pages": 1,
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            provenance_path = Path(directory) / "provenance.json"
+            provenance_path.write_text(json.dumps(provenance), encoding="utf-8")
+            with self.assertRaisesRegex(CatalogError, "unknown=.*official_pdf"):
+                load_control_catalog(provenance_path=provenance_path)
+
     def test_catalog_invariant_engine_config_has_named_unweighted_variants_and_no_default_function(self) -> None:
         config = load_engine_config()
         self.assertEqual(config.config_version, ENGINE_CONFIG_VERSION)
         self.assertEqual(config.primitive_contract_version, PRIMITIVE_CONTRACT_VERSION)
         self.assertEqual(config.normalization_rules_version, NORMALIZATION_RULES_VERSION)
         self.assertEqual(config.timeline_engine_version, TIMELINE_ENGINE_VERSION)
+        self.assertEqual(ENGINE_CONFIG_VERSION, "2.0.0")
+        self.assertEqual(NORMALIZATION_RULES_VERSION, "2.0.0")
+        self.assertEqual(TIMELINE_ENGINE_VERSION, "2.0.0")
         self.assertEqual(config.horizon_rounds, 3)
         self.assertEqual(
             list(config.initiative_schedules),
@@ -452,6 +521,14 @@ class CatalogInvariantTests(unittest.TestCase):
             list(config.area_response_conventions),
             ["shortest_route_v1", "fixed_occupancy_v1"],
         )
+        self.assertEqual(config.area_response_conventions["shortest_route_v1"].version, "2.0.0")
+        self.assertEqual(
+            config.area_response_conventions["shortest_route_v1"].policy,
+            "post_explicit_prone_operation_minimizes_future_primitive_exposure",
+        )
+        self.assertEqual(config.area_response_conventions["fixed_occupancy_v1"].version, "1.0.0")
+        self.assertTrue(all(item.version == "1.0.0" for item in config.initiative_schedules.values()))
+        self.assertTrue(all(item.version == "1.0.0" for item in config.displacement_functions.values()))
         self.assertEqual(
             list(config.displacement_functions),
             ["sqrt_5ft_v1", "log2_5ft_v1", "banded_10ft_v1"],
