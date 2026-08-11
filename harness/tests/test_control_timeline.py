@@ -17,6 +17,7 @@ from harness.control_timeline import (
     concentration_dc,
     displacement_function,
     effective_movement_speeds,
+    enumerate_prone_movement_operations,
     prone_movement_response,
     repeat_save_survival,
     resolve_expiry_index,
@@ -57,7 +58,7 @@ def target_trace(schedule: object, target_id: str) -> list[dict[str, object]]:
 
 class TimelineScheduleTests(unittest.TestCase):
     def test_version_boundaries_attack_counts_and_reaction_intervals(self) -> None:
-        self.assertEqual(TIMELINE_ENGINE_VERSION, "1.0.0")
+        self.assertEqual(TIMELINE_ENGINE_VERSION, "2.0.0")
         for convention in ("fighter_first_v1", "target_before_fighter_v1"):
             schedule = build_schedule(
                 convention,
@@ -298,6 +299,65 @@ class TimelineScheduleTests(unittest.TestCase):
                         {"kind": "declaration", "window_id": "duplicate"},
                         {"kind": "activation", "window_id": "duplicate"},
                     ]
+                },
+                target_attack_counts={"target": 0},
+            )
+
+    def test_condition_execution_bridge_kinds_and_opportunity_windows_are_typed(self) -> None:
+        kinds = (
+            "attack_opportunity",
+            "action_proposal",
+            "condition_application",
+            "condition_end",
+            "initiative_opportunity",
+            "fall_transition",
+        )
+        schedule = build_schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [
+                    {"kind": kind, "target_id": "target"}
+                    for kind in kinds
+                ],
+            },
+            target_events_by_round={
+                "target": {
+                    1: [{"kind": "save_opportunity", "phase": "start"}],
+                },
+            },
+            target_attack_counts={"target": 0},
+        )
+        events = {
+            event.kind: event
+            for event in schedule.events
+            if event.kind in set(kinds) | {"save_opportunity"}
+        }
+        self.assertEqual(set(events), set(kinds) | {"save_opportunity"})
+        for kind in (
+            "attack_opportunity",
+            "action_proposal",
+            "initiative_opportunity",
+            "save_opportunity",
+        ):
+            with self.subTest(kind=kind):
+                self.assertEqual(
+                    events[kind].window_id,
+                    events[kind].event_id + ":window",
+                )
+        for kind in ("condition_application", "condition_end", "fall_transition"):
+            with self.subTest(kind=kind):
+                self.assertIsNone(events[kind].window_id)
+
+        with self.assertRaisesRegex(TimelineError, "unknown fields"):
+            build_schedule(
+                "fighter_first_v1",
+                ["target"],
+                controller_events_by_round={
+                    1: [{
+                        "kind": "condition_application",
+                        "condition_id": "prone",
+                    }],
                 },
                 target_attack_counts={"target": 0},
             )
@@ -711,43 +771,103 @@ class TimelineScheduleTests(unittest.TestCase):
 
 
 class ProneAndAreaTests(unittest.TestCase):
-    def test_prone_stands_at_first_positive_speed_response_and_pays_half_floor(self) -> None:
-        even = prone_movement_response(
+    def test_remain_prone_and_stand_are_distinct_actor_selected_operations(self) -> None:
+        operations = enumerate_prone_movement_operations(
             target_id="target",
-            prone=True,
-            current_speed_ft=30,
-        )
-        odd = prone_movement_response(
-            target_id="target",
+            actor_id="target",
             prone=True,
             current_speed_ft=25,
+            movement_budget_ft=25,
         )
         self.assertEqual(
-            (even["stood"], even["standing_cost_ft"], even["remaining_movement_ft"]),
-            (True, 15, 15),
+            operations[:2],
+            [
+                {
+                    "kind": "remain_prone",
+                    "actor_id": "target",
+                    "target_id": "target",
+                },
+                {
+                    "kind": "stand",
+                    "actor_id": "target",
+                    "target_id": "target",
+                },
+            ],
+        )
+        remain = prone_movement_response(
+            target_id="target",
+            actor_id="target",
+            kind="remain_prone",
+            prone=True,
+            current_speed_ft=25,
+            movement_budget_ft=25,
+        )
+        stand = prone_movement_response(
+            target_id="target",
+            actor_id="target",
+            kind="stand",
+            prone=True,
+            current_speed_ft=25,
+            movement_budget_ft=25,
         )
         self.assertEqual(
-            (odd["standing_cost_ft"], odd["remaining_movement_ft"]),
+            (remain["stood"], remain["remaining_movement_ft"], remain["prone_after"]),
+            (False, 25, True),
+        )
+        self.assertEqual(
+            (stand["standing_cost_ft"], stand["remaining_movement_ft"]),
             (12, 13),
         )
-        self.assertFalse(even["prone_after"])
+        self.assertFalse(stand["prone_after"])
+        with self.assertRaisesRegex(TimelineError, "explicit prone_operation"):
+            area_response(
+                "shortest_route_v1",
+                target_id="target",
+                membership=True,
+                effect_active=True,
+                routes=[route("exit", distance=5)],
+                effective_speeds_ft={"walk": 25},
+                prone=True,
+            )
 
-    def test_speed_zero_prevents_standing_until_a_later_legal_response(self) -> None:
-        blocked = prone_movement_response(
-            target_id="target",
-            prone=True,
-            current_speed_ft=0,
-        )
-        self.assertFalse(blocked["stood"])
-        self.assertTrue(blocked["prone_after"])
-        self.assertEqual(blocked["remaining_movement_ft"], 0)
-        recovered = prone_movement_response(
-            target_id="target",
-            prone=blocked["prone_after"],
-            current_speed_ft=20,
-        )
-        self.assertTrue(recovered["stood"])
-        self.assertFalse(recovered["prone_after"])
+    def test_speed_zero_stand_rejection_is_atomic_and_ignores_other_positive_modes(self) -> None:
+        operation = {
+            "kind": "stand",
+            "actor_id": "target",
+            "target_id": "target",
+        }
+        routes = [route(
+            "fly_exit",
+            mode="fly",
+            distance=20,
+            environment="airborne",
+        )]
+        speeds = {"walk": 0, "fly": 60}
+        with self.assertRaisesRegex(TimelineError, "Speed 0"):
+            area_response(
+                "shortest_route_v1",
+                target_id="target",
+                membership=True,
+                effect_active=True,
+                routes=routes,
+                effective_speeds_ft=speeds,
+                prone=True,
+                prone_operation=operation,
+                current_speed_ft=0,
+                movement_budget_ft=60,
+            )
+        self.assertEqual(operation, {
+            "kind": "stand",
+            "actor_id": "target",
+            "target_id": "target",
+        })
+        self.assertEqual(speeds, {"walk": 0, "fly": 60})
+        self.assertEqual(routes, [route(
+            "fly_exit",
+            mode="fly",
+            distance=20,
+            environment="airborne",
+        )])
 
     def test_prone_standing_cost_is_applied_before_area_exit(self) -> None:
         result = area_response(
@@ -758,6 +878,13 @@ class ProneAndAreaTests(unittest.TestCase):
             routes=[route("ground_exit", distance=20)],
             effective_speeds_ft={"walk": 30},
             prone=True,
+            prone_operation={
+                "kind": "stand",
+                "actor_id": "target",
+                "target_id": "target",
+            },
+            current_speed_ft=30,
+            movement_budget_ft=30,
         )
         self.assertFalse(result["exited"])
         self.assertEqual(
@@ -770,51 +897,104 @@ class ProneAndAreaTests(unittest.TestCase):
         )
         self.assertEqual(result["selected_route"]["progress_ft"], 15)
         self.assertEqual(result["selected_route"]["remaining_distance_ft"], 5)
+        self.assertEqual([event["kind"] for event in result["events"]], ["stand"])
 
-    def test_prone_stands_even_when_no_exit_route_is_usable(self) -> None:
-        result = area_response(
-            "shortest_route_v1",
-            target_id="target",
-            membership=True,
-            effect_active=True,
-            routes=[route(
+    def test_no_usable_area_route_cannot_stand_but_can_remain_prone(self) -> None:
+        context = {
+            "target_id": "target",
+            "membership": True,
+            "effect_active": True,
+            "routes": [route(
                 "incompatible_exit",
                 mode="fly",
                 distance=20,
                 compatible=False,
                 environment="airborne",
             )],
-            effective_speeds_ft={"walk": 30, "fly": 0},
-            prone=True,
-        )
-        self.assertEqual(result["reason"], "movement_unavailable")
-        self.assertIsNone(result["selected_route"])
-        self.assertFalse(result["prone_after"])
-        self.assertEqual(
-            result["prone_response"],
-            {
+            "effective_speeds_ft": {"walk": 30, "fly": 60},
+            "prone": True,
+            "current_speed_ft": 30,
+            "movement_budget_ft": 30,
+        }
+        with self.assertRaisesRegex(TimelineError, "valid usable route"):
+            area_response(
+                "shortest_route_v1",
+                **context,
+                prone_operation={
+                    "kind": "stand",
+                    "actor_id": "target",
+                    "target_id": "target",
+                },
+            )
+        remain = area_response(
+            "shortest_route_v1",
+            **context,
+            prone_operation={
+                "kind": "remain_prone",
+                "actor_id": "target",
                 "target_id": "target",
-                "was_prone": True,
-                "stood": True,
-                "standing_cost_ft": 15,
-                "remaining_movement_ft": 15,
-                "prone_after": False,
-                "reason": "first_legal_movement_opportunity",
             },
         )
-        self.assertEqual(
-            result["events"],
-            [{
-                "kind": "stand",
-                "owner": "target",
-                "turn_anchor": "during_turn",
-                "movement_mode": "walk",
-                "standing_cost_ft": 15,
-                "remaining_movement_ft": 15,
-            }],
-        )
+        self.assertEqual(remain["reason"], "remain_prone")
+        self.assertTrue(remain["prone_after"])
+        self.assertIsNone(remain["selected_route"])
 
-    def test_positive_speed_stand_clears_prone_before_first_attack(self) -> None:
+    def test_voluntary_drop_prone_costs_no_action_or_movement(self) -> None:
+        response = prone_movement_response(
+            target_id="target",
+            actor_id="target",
+            kind="drop_prone",
+            prone=False,
+            current_speed_ft=30,
+            movement_budget_ft=17,
+        )
+        self.assertEqual(response["action_cost"], 0)
+        self.assertEqual(response["movement_cost_ft"], 0)
+        self.assertEqual(response["remaining_movement_ft"], 17)
+        self.assertTrue(response["dropped_prone"])
+        self.assertTrue(response["prone_after"])
+
+    def test_crawl_costs_two_feet_per_foot_and_retains_prone(self) -> None:
+        response = prone_movement_response(
+            target_id="target",
+            actor_id="target",
+            kind="crawl",
+            prone=True,
+            current_speed_ft=30,
+            movement_budget_ft=25,
+            distance_feet=10,
+        )
+        self.assertEqual(response["crawl_extra_cost_ft"], 10)
+        self.assertEqual(response["movement_cost_ft"], 20)
+        self.assertEqual(response["remaining_movement_ft"], 5)
+        self.assertTrue(response["prone_after"])
+
+    def test_crawl_in_difficult_terrain_costs_three_feet_per_foot(self) -> None:
+        result = area_response(
+            "shortest_route_v1",
+            target_id="target",
+            membership=True,
+            effect_active=True,
+            routes=[route("difficult_exit", distance=10, multiplier=2)],
+            effective_speeds_ft={"walk": 30},
+            prone=True,
+            prone_operation={
+                "kind": "crawl",
+                "actor_id": "target",
+                "target_id": "target",
+                "distance_feet": 10,
+            },
+            current_speed_ft=30,
+            movement_budget_ft=30,
+        )
+        response = result["prone_response"]
+        self.assertEqual(response["crawl_extra_cost_ft"], 20)
+        self.assertEqual(response["movement_cost_ft"], 30)
+        self.assertEqual(response["remaining_movement_ft"], 0)
+        self.assertTrue(result["exited"])
+        self.assertTrue(result["prone_after"])
+
+    def test_selected_stand_clears_prone_before_first_attack(self) -> None:
         for convention in ("fighter_first_v1", "target_before_fighter_v1"):
             with self.subTest(convention=convention):
                 schedule = build_schedule(
@@ -826,8 +1006,11 @@ class ProneAndAreaTests(unittest.TestCase):
                 attack = schedule.event("r1:target:target:turn:attack:001")
                 response = prone_movement_response(
                     target_id="target",
+                    actor_id="target",
+                    kind="stand",
                     prone=True,
                     current_speed_ft=30,
+                    movement_budget_ft=30,
                 )
                 self.assertLess(movement.sequence, attack.sequence)
                 self.assertTrue(response["stood"])
@@ -910,6 +1093,13 @@ class ProneAndAreaTests(unittest.TestCase):
             effective_speeds_ft={"walk": 30},
             speed_zero=True,
             prone=True,
+            prone_operation={
+                "kind": "remain_prone",
+                "actor_id": "target",
+                "target_id": "target",
+            },
+            current_speed_ft=0,
+            movement_budget_ft=0,
             while_in_area_component_ids=["area_exposure"],
         )
         movement = schedule.event("r1:target:target:turn:movement")
@@ -919,7 +1109,7 @@ class ProneAndAreaTests(unittest.TestCase):
             if event.turn_id == movement.turn_id
             and event.kind == "target_attack_opportunity"
         ]
-        self.assertEqual(response["reason"], "movement_unavailable")
+        self.assertEqual(response["reason"], "remain_prone")
         self.assertTrue(response["membership_after"])
         self.assertTrue(response["prone_after"])
         self.assertEqual(len(attacks), 2)
@@ -1162,7 +1352,10 @@ class RepeatSaveAndConcentrationTests(unittest.TestCase):
         self.assertIsNone(fall["altitude_ft"])
 
     def test_startup_blood_tax_is_exempt_and_later_tax_uses_exact_dc(self) -> None:
-        tracker = ConcentrationTracker(save_bonus=0)
+        tracker = ConcentrationTracker(
+            owner_actor_id="controller",
+            save_bonus=0,
+        )
         start = tracker.start(
             "mass_levitation",
             event_id="activation",
@@ -1189,12 +1382,19 @@ class RepeatSaveAndConcentrationTests(unittest.TestCase):
             "concentration_start",
             "concentration_check",
         ])
+        self.assertTrue(all(
+            row["owner_actor_id"] == "controller"
+            for row in tracker.records
+        ))
         self.assertEqual(concentration_dc(0), 10)
         self.assertEqual(concentration_dc(21), 10)
         self.assertEqual(concentration_dc(100), 30)
 
     def test_failed_later_check_ends_components_area_and_structured_elevation(self) -> None:
-        tracker = ConcentrationTracker(save_bonus=3)
+        tracker = ConcentrationTracker(
+            owner_actor_id="controller",
+            save_bonus=3,
+        )
         tracker.start(
             "mass_levitation",
             event_id="activation",
@@ -1223,7 +1423,10 @@ class RepeatSaveAndConcentrationTests(unittest.TestCase):
         self.assertTrue(all(row["damage"] is None for row in end["fall_transitions"]))
 
     def test_concentration_check_rejects_a_zero_probability_selected_outcome(self) -> None:
-        tracker = ConcentrationTracker(save_bonus=0)
+        tracker = ConcentrationTracker(
+            owner_actor_id="controller",
+            save_bonus=0,
+        )
         tracker.start("effect", event_id="activation")
         with self.assertRaisesRegex(TimelineError, "zero probability"):
             tracker.check(
@@ -1248,7 +1451,10 @@ class RepeatSaveAndConcentrationTests(unittest.TestCase):
         self.assertEqual(tracker.active_effect_id, "effect")
 
     def test_concentration_roll_kernel_requires_unique_d20_outcomes(self) -> None:
-        tracker = ConcentrationTracker(save_bonus=0)
+        tracker = ConcentrationTracker(
+            owner_actor_id="controller",
+            save_bonus=0,
+        )
         tracker.start("effect", event_id="activation")
         cases = (
             ([{"roll": 100, "probability": 1}], "between 1 and 20"),
@@ -1267,7 +1473,10 @@ class RepeatSaveAndConcentrationTests(unittest.TestCase):
         self.assertEqual([row["kind"] for row in tracker.records], ["concentration_start"])
 
     def test_one_slot_replacement_and_every_explicit_end_reason_are_recorded(self) -> None:
-        tracker = ConcentrationTracker(save_bonus=0)
+        tracker = ConcentrationTracker(
+            owner_actor_id="controller",
+            save_bonus=0,
+        )
         tracker.start("first", event_id="first_start")
         tracker.start("second", event_id="second_start")
         self.assertEqual(tracker.records[1]["reason"], "new_concentration_replacement")
@@ -1284,6 +1493,30 @@ class RepeatSaveAndConcentrationTests(unittest.TestCase):
             self.assertTrue(end["changed"])
             self.assertEqual(end["reason"], reason)
         json.dumps(tracker.to_dict(), sort_keys=True, allow_nan=False)
+
+    def test_concentration_end_requires_the_exact_asserted_owner(self) -> None:
+        tracker = ConcentrationTracker(
+            owner_actor_id="controller",
+            save_bonus=0,
+        )
+        start = tracker.start("effect", event_id="activation")
+        before = tracker.to_dict()
+        with self.assertRaisesRegex(TimelineError, "does not match"):
+            tracker.end(
+                reason="controller_incapacitated",
+                event_id="wrong_owner_end",
+                owner_actor_id="other_actor",
+            )
+        self.assertEqual(tracker.to_dict(), before)
+        end = tracker.end(
+            reason="controller_incapacitated",
+            event_id="exact_owner_end",
+            owner_actor_id="controller",
+        )
+        self.assertEqual(start["owner_actor_id"], "controller")
+        self.assertEqual(end["owner_actor_id"], "controller")
+        self.assertEqual(tracker.to_dict()["owner_actor_id"], "controller")
+        self.assertIsNone(tracker.active_effect_id)
 
     def test_airborne_fall_requires_supplied_state_and_preserves_hover_exception(self) -> None:
         grounded = airborne_fall_transition(

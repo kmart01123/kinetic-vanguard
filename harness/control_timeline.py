@@ -14,12 +14,13 @@ from fractions import Fraction
 from typing import Any, Iterable, Mapping, Sequence
 
 
-TIMELINE_ENGINE_VERSION = "1.0.0"
+TIMELINE_ENGINE_VERSION = "2.0.0"
 INITIATIVE_CONVENTIONS = ("fighter_first_v1", "target_before_fighter_v1")
 AREA_RESPONSE_CONVENTIONS = ("shortest_route_v1", "fixed_occupancy_v1")
 DISPLACEMENT_FUNCTIONS = ("sqrt_5ft_v1", "log2_5ft_v1", "banded_10ft_v1")
 MOVEMENT_MODES = ("walk", "fly", "swim", "climb", "burrow")
 ENVIRONMENTS = ("grounded", "airborne", "liquid")
+PRONE_OPERATION_KINDS = ("remain_prone", "stand", "drop_prone", "crawl")
 
 _STRUCTURAL_EVENT_KINDS = {
     "round_start", "round_end", "controller_turn_start", "controller_turn_end",
@@ -27,7 +28,9 @@ _STRUCTURAL_EVENT_KINDS = {
     "target_attack_opportunity", "target_movement_opportunity",
 }
 _SCRIPTED_EVENT_KINDS = {
-    "controller_attack_opportunity", "reaction_window", "save_opportunity",
+    "controller_attack_opportunity", "attack_opportunity", "reaction_window",
+    "save_opportunity", "action_proposal", "initiative_opportunity",
+    "condition_application", "condition_end", "fall_transition",
     "declaration", "activation", "hit", "entry", "exit", "damage_context",
     "concentration_end", "instantaneous_resolution",
 }
@@ -326,7 +329,14 @@ def build_schedule(
             raise TimelineError(f"{label}.target_id is not a supplied target")
         semantic = f"r{round_number}:{turn_owner}:{actor_id}:script:{index:03d}:{row['kind']}"
         window_id = row["window_id"]
-        if row["kind"] in {"controller_attack_opportunity", "reaction_window", "save_opportunity"} and window_id is None:
+        if row["kind"] in {
+            "controller_attack_opportunity",
+            "attack_opportunity",
+            "reaction_window",
+            "save_opportunity",
+            "action_proposal",
+            "initiative_opportunity",
+        } and window_id is None:
             window_id = semantic + ":window"
         effective_reaction_id = reaction_id
         if row["kind"] == "reaction_window":
@@ -583,17 +593,179 @@ def resolve_expiry_index(schedule: TimelineSchedule, applied_event_id: str, dura
     return next(event.sequence for event in schedule.events if event.turn_id == desired_turn_id and event.kind == desired_kind)
 
 
-def prone_movement_response(*, target_id: str, prone: bool, current_speed_ft: int, movement_denied: bool = False) -> dict[str, Any]:
-    target_id = _identifier(target_id, "target_id")
-    prone = _boolean(prone, "prone")
+def _prone_operation_record(
+    *, target_id: str, actor_id: str, kind: str,
+    distance_feet: int | None = None,
+) -> dict[str, Any]:
+    if kind not in PRONE_OPERATION_KINDS:
+        raise TimelineError(f"Unsupported Prone operation: {kind!r}")
+    record: dict[str, Any] = {
+        "kind": kind,
+        "actor_id": actor_id,
+        "target_id": target_id,
+    }
+    if kind == "crawl":
+        record["distance_feet"] = _integer(
+            distance_feet,
+            "distance_feet",
+            1,
+        )
+    elif distance_feet is not None:
+        raise TimelineError("distance_feet is permitted only for crawl")
+    return record
+
+
+def enumerate_prone_movement_operations(
+    *, target_id: str, actor_id: str, prone: bool, current_speed_ft: int,
+    movement_budget_ft: int, difficult_terrain: bool = False,
+    movement_denied: bool = False, actor_owns_opportunity: bool = True,
+    usable_route: bool = True,
+) -> list[dict[str, Any]]:
+    """Enumerate exact legal Prone proposals without selecting one for the actor."""
+
+    target = _identifier(target_id, "target_id")
+    actor = _identifier(actor_id, "actor_id")
+    is_prone = _boolean(prone, "prone")
     speed = _integer(current_speed_ft, "current_speed_ft")
+    budget = _integer(movement_budget_ft, "movement_budget_ft")
+    difficult = _boolean(difficult_terrain, "difficult_terrain")
     denied = _boolean(movement_denied, "movement_denied")
-    if not prone:
-        return {"target_id": target_id, "was_prone": False, "stood": False, "standing_cost_ft": 0, "remaining_movement_ft": speed, "prone_after": False, "reason": "not_prone"}
-    if speed == 0 or denied:
-        return {"target_id": target_id, "was_prone": True, "stood": False, "standing_cost_ft": 0, "remaining_movement_ft": 0, "prone_after": True, "reason": "speed_zero" if speed == 0 else "movement_denied"}
-    cost = speed // 2
-    return {"target_id": target_id, "was_prone": True, "stood": True, "standing_cost_ft": cost, "remaining_movement_ft": speed - cost, "prone_after": False, "reason": "first_legal_movement_opportunity"}
+    owns = _boolean(actor_owns_opportunity, "actor_owns_opportunity")
+    route_is_usable = _boolean(usable_route, "usable_route")
+    if actor != target:
+        raise TimelineError("Prone operation actor_id must equal target_id")
+    if not owns:
+        return []
+
+    operations: list[dict[str, Any]] = []
+    if is_prone:
+        operations.append(_prone_operation_record(
+            target_id=target,
+            actor_id=actor,
+            kind="remain_prone",
+        ))
+        standing_cost = speed // 2
+        if (
+            speed > 0
+            and not denied
+            and route_is_usable
+            and budget >= standing_cost
+        ):
+            operations.append(_prone_operation_record(
+                target_id=target,
+                actor_id=actor,
+                kind="stand",
+            ))
+        if speed > 0 and not denied and route_is_usable:
+            cost_per_foot = 3 if difficult else 2
+            for distance in range(1, (budget // cost_per_foot) + 1):
+                operations.append(_prone_operation_record(
+                    target_id=target,
+                    actor_id=actor,
+                    kind="crawl",
+                    distance_feet=distance,
+                ))
+    elif speed > 0:
+        operations.append(_prone_operation_record(
+            target_id=target,
+            actor_id=actor,
+            kind="drop_prone",
+        ))
+    return operations
+
+
+def prone_movement_response(
+    *, target_id: str, actor_id: str, kind: str, prone: bool,
+    current_speed_ft: int, movement_budget_ft: int,
+    distance_feet: int | None = None, difficult_terrain: bool = False,
+    movement_denied: bool = False, actor_owns_opportunity: bool = True,
+    usable_route: bool = True,
+) -> dict[str, Any]:
+    """Validate and resolve one explicit actor-selected Prone operation."""
+
+    target = _identifier(target_id, "target_id")
+    actor = _identifier(actor_id, "actor_id")
+    operation = _prone_operation_record(
+        target_id=target,
+        actor_id=actor,
+        kind=kind,
+        distance_feet=distance_feet,
+    )
+    is_prone = _boolean(prone, "prone")
+    speed = _integer(current_speed_ft, "current_speed_ft")
+    budget = _integer(movement_budget_ft, "movement_budget_ft")
+    difficult = _boolean(difficult_terrain, "difficult_terrain")
+    denied = _boolean(movement_denied, "movement_denied")
+    owns = _boolean(actor_owns_opportunity, "actor_owns_opportunity")
+    route_is_usable = _boolean(usable_route, "usable_route")
+    legal = enumerate_prone_movement_operations(
+        target_id=target,
+        actor_id=actor,
+        prone=is_prone,
+        current_speed_ft=speed,
+        movement_budget_ft=budget,
+        difficult_terrain=difficult,
+        movement_denied=denied,
+        actor_owns_opportunity=owns,
+        usable_route=route_is_usable,
+    )
+    if operation not in legal:
+        if not owns:
+            reason = "requires an actor-owned legal movement opportunity"
+        elif kind == "stand" and not is_prone:
+            reason = "requires the actor to be Prone"
+        elif kind == "stand" and speed == 0:
+            reason = "is illegal at Speed 0"
+        elif kind == "stand" and not route_is_usable:
+            reason = "requires a valid usable route"
+        elif kind == "stand" and denied:
+            reason = "is illegal while movement is denied"
+        elif kind == "stand" and budget < speed // 2:
+            reason = "exceeds the remaining movement budget"
+        elif kind == "drop_prone" and is_prone:
+            reason = "requires the actor not to be Prone"
+        elif kind == "drop_prone" and speed == 0:
+            reason = "is illegal at Speed 0"
+        elif kind == "crawl" and not is_prone:
+            reason = "requires the actor to be Prone"
+        elif kind == "crawl" and speed == 0:
+            reason = "is illegal at Speed 0"
+        elif kind == "crawl" and not route_is_usable:
+            reason = "requires a valid usable route"
+        elif kind == "crawl" and denied:
+            reason = "is illegal while movement is denied"
+        else:
+            reason = "exceeds the remaining movement budget"
+        raise TimelineError(f"Prone operation {kind!r} {reason}")
+
+    standing_cost = speed // 2 if kind == "stand" else 0
+    crawl_distance = operation.get("distance_feet", 0)
+    crawl_cost_per_foot = 3 if difficult else 2
+    crawl_cost = crawl_distance * crawl_cost_per_foot if kind == "crawl" else 0
+    movement_cost = standing_cost + crawl_cost
+    prone_after = kind != "stand"
+    return {
+        "operation": operation,
+        "target_id": target,
+        "actor_id": actor,
+        "kind": kind,
+        "was_prone": is_prone,
+        "stood": kind == "stand",
+        "dropped_prone": kind == "drop_prone",
+        "crawled": kind == "crawl",
+        "distance_feet": crawl_distance,
+        "action_cost": 0,
+        "standing_cost_ft": standing_cost,
+        "crawl_extra_cost_ft": (
+            crawl_distance * (2 if difficult else 1)
+            if kind == "crawl" else 0
+        ),
+        "movement_cost_ft": movement_cost,
+        "movement_budget_before_ft": budget,
+        "remaining_movement_ft": budget - movement_cost,
+        "prone_after": prone_after,
+        "reason": kind,
+    }
 
 
 def effective_movement_speeds(
@@ -679,10 +851,53 @@ def _route(value: Mapping[str, Any], label: str) -> dict[str, Any]:
     }
 
 
+def _typed_prone_operation(value: Mapping[str, Any]) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise TimelineError("prone_operation must be an object")
+    kind = _identifier(value.get("kind"), "prone_operation.kind")
+    expected = {"kind", "actor_id", "target_id"}
+    if kind == "crawl":
+        expected.add("distance_feet")
+    if set(value) != expected:
+        raise TimelineError(
+            "prone_operation keys are invalid; "
+            f"missing={sorted(expected - set(value))}, "
+            f"unknown={sorted(set(value) - expected)}"
+        )
+    return _prone_operation_record(
+        target_id=_identifier(value["target_id"], "prone_operation.target_id"),
+        actor_id=_identifier(value["actor_id"], "prone_operation.actor_id"),
+        kind=kind,
+        distance_feet=value.get("distance_feet"),
+    )
+
+
+def _prone_area_event(response: Mapping[str, Any]) -> dict[str, Any]:
+    event = {
+        "kind": response["kind"],
+        "owner": "target",
+        "actor_id": response["actor_id"],
+        "target_id": response["target_id"],
+        "turn_anchor": "during_turn",
+        "movement_cost_ft": response["movement_cost_ft"],
+        "remaining_movement_ft": response["remaining_movement_ft"],
+        "prone_after": response["prone_after"],
+    }
+    if response["kind"] == "stand":
+        event["standing_cost_ft"] = response["standing_cost_ft"]
+    if response["kind"] == "crawl":
+        event["distance_feet"] = response["distance_feet"]
+        event["crawl_extra_cost_ft"] = response["crawl_extra_cost_ft"]
+    return event
+
+
 def area_response(
     convention: str, *, target_id: str, membership: bool, effect_active: bool,
     routes: Sequence[Mapping[str, Any]] | None = None, effective_speeds_ft: Mapping[str, int] | None = None,
     denied_modes: Iterable[str] = (), speed_zero: bool = False, prone: bool = False,
+    prone_operation: Mapping[str, Any] | None = None,
+    current_speed_ft: int | None = None, movement_budget_ft: int | None = None,
+    actor_owns_opportunity: bool = True,
     while_in_area_component_ids: Sequence[str] = (), independent_component_ids: Sequence[str] = (),
 ) -> dict[str, Any]:
     """Resolve one caller-supplied legal area response opportunity."""
@@ -690,16 +905,120 @@ def area_response(
     if convention not in AREA_RESPONSE_CONVENTIONS:
         raise TimelineError(f"Unsupported area-response convention: {convention!r}")
     target_id = _identifier(target_id, "target_id")
-    _boolean(membership, "membership");_boolean(effect_active, "effect_active");_boolean(speed_zero, "speed_zero");_boolean(prone, "prone")
+    membership = _boolean(membership, "membership")
+    effect_active = _boolean(effect_active, "effect_active")
+    speed_zero = _boolean(speed_zero, "speed_zero")
+    prone = _boolean(prone, "prone")
+    owns_opportunity = _boolean(
+        actor_owns_opportunity,
+        "actor_owns_opportunity",
+    )
+    operation = (
+        _typed_prone_operation(prone_operation)
+        if prone_operation is not None else None
+    )
+    if operation is not None and operation["target_id"] != target_id:
+        raise TimelineError("prone_operation.target_id must equal target_id")
+    if operation is not None and operation["actor_id"] != target_id:
+        raise TimelineError("Prone operation actor_id must equal target_id")
+    if operation is not None:
+        if current_speed_ft is None or movement_budget_ft is None:
+            raise TimelineError(
+                "prone_operation requires explicit current_speed_ft and "
+                "movement_budget_ft"
+            )
+        operation_speed = _integer(current_speed_ft, "current_speed_ft")
+        operation_budget = _integer(movement_budget_ft, "movement_budget_ft")
+        if speed_zero:
+            operation_speed = 0
+    elif current_speed_ft is not None or movement_budget_ft is not None:
+        raise TimelineError(
+            "current_speed_ft and movement_budget_ft require prone_operation"
+        )
+    else:
+        operation_speed = 0
+        operation_budget = 0
     while_ids = [_identifier(item, "while_in_area_component_ids item") for item in while_in_area_component_ids]
     independent_ids = [_identifier(item, "independent_component_ids item") for item in independent_component_ids]
     if not membership:
+        if operation is not None:
+            raise TimelineError(
+                "prone_operation cannot execute when the target is not in the area"
+            )
         return {"convention": convention, "target_id": target_id, "membership_before": False, "membership_after": False, "exited": False, "selected_route": None, "ended_component_ids": [], "retained_component_ids": independent_ids, "events": [], "reason": "not_in_area"}
     if not effect_active:
+        if operation is not None:
+            raise TimelineError(
+                "prone_operation cannot execute after the area effect ended"
+            )
         return {"convention": convention, "target_id": target_id, "membership_before": True, "membership_after": False, "exited": True, "selected_route": None, "ended_component_ids": while_ids, "retained_component_ids": independent_ids, "events": [{"kind": "exit", "owner": "target", "turn_anchor": "during_turn", "reason": "effect_end"}], "reason": "effect_ended"}
+    if prone and operation is None:
+        raise TimelineError(
+            "Prone area response requires an explicit prone_operation"
+        )
+
+    prevalidated_response: dict[str, Any] | None = None
+    if operation is not None and operation["kind"] in {"stand", "crawl"}:
+        prevalidated_response = prone_movement_response(
+            target_id=target_id,
+            actor_id=operation["actor_id"],
+            kind=operation["kind"],
+            prone=prone,
+            current_speed_ft=operation_speed,
+            movement_budget_ft=operation_budget,
+            distance_feet=operation.get("distance_feet"),
+            actor_owns_opportunity=owns_opportunity,
+            usable_route=True,
+        )
+
+    if operation is not None and operation["kind"] in {
+        "remain_prone",
+        "drop_prone",
+    }:
+        prone_response = prone_movement_response(
+            target_id=target_id,
+            actor_id=operation["actor_id"],
+            kind=operation["kind"],
+            prone=prone,
+            current_speed_ft=operation_speed,
+            movement_budget_ft=operation_budget,
+            actor_owns_opportunity=owns_opportunity,
+            usable_route=False,
+        )
+        return {
+            "convention": convention,
+            "target_id": target_id,
+            "membership_before": True,
+            "membership_after": True,
+            "exited": False,
+            "selected_route": None,
+            "ended_component_ids": [],
+            "retained_component_ids": independent_ids,
+            "events": [_prone_area_event(prone_response)],
+            "reason": operation["kind"],
+            "prone_response": prone_response,
+            "prone_after": prone_response["prone_after"],
+        }
     if convention == "fixed_occupancy_v1":
+        if operation is not None:
+            prone_movement_response(
+                target_id=target_id,
+                actor_id=operation["actor_id"],
+                kind=operation["kind"],
+                prone=prone,
+                current_speed_ft=operation_speed,
+                movement_budget_ft=operation_budget,
+                distance_feet=operation.get("distance_feet"),
+                actor_owns_opportunity=owns_opportunity,
+                usable_route=False,
+            )
         return {"convention": convention, "target_id": target_id, "membership_before": True, "membership_after": True, "exited": False, "selected_route": None, "ended_component_ids": [], "retained_component_ids": independent_ids, "events": [], "reason": "fixed_occupancy"}
     if routes is None or not isinstance(routes, Sequence) or isinstance(routes, (str, bytes)) or not routes:
+        if operation is not None:
+            raise TimelineError(
+                f"Prone operation {operation['kind']!r} requires a valid "
+                "usable route"
+            )
         raise TimelineError("shortest_route_v1 requires at least one typed route")
     if effective_speeds_ft is None or not isinstance(effective_speeds_ft, Mapping):
         raise TimelineError("shortest_route_v1 requires effective movement-mode speeds")
@@ -719,53 +1038,74 @@ def area_response(
         if row["mode"] not in speeds:
             raise TimelineError(f"Missing effective speed for route mode {row['mode']!r}")
 
-    candidates: list[tuple[int, Fraction, str, dict[str, Any], dict[str, Any]]] = []
-    standing_options: list[tuple[int, str, dict[str, Any]]] = []
-    for mode, speed in sorted(speeds.items()):
-        response = prone_movement_response(
-            target_id=target_id,
-            prone=prone,
-            current_speed_ft=0 if speed_zero or mode in denied else speed,
-            movement_denied=mode in denied,
-        )
-        if response["stood"]:
-            standing_options.append(
-                (-response["remaining_movement_ft"], mode, response)
-            )
+    candidates: list[
+        tuple[int, Fraction, str, dict[str, Any], dict[str, Any] | None]
+    ] = []
     blocked_reasons: list[str] = []
     for row in parsed:
         speed = 0 if speed_zero or row["mode"] in denied else speeds[row["mode"]]
-        response = prone_movement_response(target_id=target_id, prone=prone, current_speed_ft=speed, movement_denied=row["mode"] in denied)
-        available = Fraction(response["remaining_movement_ft"])
         if not row["compatible"]:
             blocked_reasons.append(f"{row['route_id']}:incompatible")
             continue
-        if available <= 0:
+        if speed <= 0:
             blocked_reasons.append(f"{row['route_id']}:no_effective_speed")
             continue
-        progress = available / row["multiplier"]
-        if progress <= 0:
-            blocked_reasons.append(f"{row['route_id']}:no_progress")
-            continue
+
+        prone_response: dict[str, Any] | None = None
+        if operation is None:
+            available = Fraction(speed)
+            progress = available / row["multiplier"]
+            future_full_progress = progress
+        elif operation["kind"] == "stand":
+            prone_response = deepcopy(prevalidated_response)
+            available = Fraction(prone_response["remaining_movement_ft"])
+            progress = available / row["multiplier"]
+            future_full_progress = Fraction(speed) / row["multiplier"]
+        else:
+            if row["multiplier"] not in {Fraction(1), Fraction(2)}:
+                blocked_reasons.append(
+                    f"{row['route_id']}:unsupported_crawl_terrain_cost"
+                )
+                continue
+            crawl_distance = operation["distance_feet"]
+            if Fraction(crawl_distance) > row["distance"]:
+                blocked_reasons.append(
+                    f"{row['route_id']}:crawl_distance_exceeds_route"
+                )
+                continue
+            difficult = row["multiplier"] == 2
+            required_budget = crawl_distance * (3 if difficult else 2)
+            if required_budget > operation_budget:
+                blocked_reasons.append(
+                    f"{row['route_id']}:insufficient_crawl_budget"
+                )
+                continue
+            prone_response = prone_movement_response(
+                target_id=target_id,
+                actor_id=operation["actor_id"],
+                kind="crawl",
+                prone=prone,
+                current_speed_ft=operation_speed,
+                movement_budget_ft=operation_budget,
+                distance_feet=crawl_distance,
+                difficult_terrain=difficult,
+                actor_owns_opportunity=owns_opportunity,
+                usable_route=True,
+            )
+            progress = Fraction(crawl_distance)
+            future_cost_per_foot = 3 if difficult else 2
+            future_full_progress = Fraction(speed, future_cost_per_foot)
+
         remaining = max(Fraction(0), row["distance"] - progress)
-        future_full_progress = Fraction(speed) / row["multiplier"]
         turns = 1 if remaining == 0 else 1 + (math.ceil(remaining / future_full_progress) if future_full_progress else 10**9)
-        candidates.append((turns, remaining, row["route_id"], row, response))
+        candidates.append((turns, remaining, row["route_id"], row, prone_response))
     if not candidates:
-        stand = min(standing_options) if standing_options else None
-        stand_mode = stand[1] if stand is not None else None
-        prone_response = stand[2] if stand is not None else None
-        events = []
-        if prone_response is not None:
-            events.append({
-                "kind": "stand",
-                "owner": "target",
-                "turn_anchor": "during_turn",
-                "movement_mode": stand_mode,
-                "standing_cost_ft": prone_response["standing_cost_ft"],
-                "remaining_movement_ft": prone_response["remaining_movement_ft"],
-            })
-        result = {
+        if operation is not None:
+            raise TimelineError(
+                f"Prone operation {operation['kind']!r} requires a valid "
+                "usable route"
+            )
+        return {
             "convention": convention,
             "target_id": target_id,
             "membership_before": True,
@@ -774,17 +1114,11 @@ def area_response(
             "selected_route": None,
             "ended_component_ids": [],
             "retained_component_ids": independent_ids,
-            "events": events,
+            "events": [],
             "reason": "movement_unavailable",
             "blocked_routes": sorted(blocked_reasons),
-            "prone_after": (
-                prone_response["prone_after"]
-                if prone_response is not None else prone
-            ),
+            "prone_after": prone,
         }
-        if prone_response is not None:
-            result["prone_response"] = prone_response
-        return result
     _, remaining, _, selected, prone_response = min(candidates, key=lambda item: (item[0], item[1], item[2]))
     distance = selected["distance"]
     progress = distance - remaining
@@ -797,13 +1131,31 @@ def area_response(
         "remaining_distance_ft": _number(remaining), "remaining_distance_exact": _fraction_record(remaining),
         "prone_response": prone_response,
     }
-    return {
+    events = (
+        [_prone_area_event(prone_response)]
+        if prone_response is not None else []
+    )
+    if exited:
+        events.append({
+            "kind": "exit",
+            "owner": "target",
+            "turn_anchor": "during_turn",
+            "route_id": selected["route_id"],
+        })
+    result = {
         "convention": convention, "target_id": target_id, "membership_before": True,
         "membership_after": not exited, "exited": exited, "selected_route": route_record,
         "ended_component_ids": while_ids if exited else [], "retained_component_ids": independent_ids,
-        "events": [{"kind": "exit", "owner": "target", "turn_anchor": "during_turn", "route_id": selected["route_id"]}] if exited else [],
-        "reason": "shortest_legal_route", "prone_after": prone_response["prone_after"],
+        "events": events,
+        "reason": "shortest_legal_route",
+        "prone_after": (
+            prone_response["prone_after"]
+            if prone_response is not None else prone
+        ),
     }
+    if prone_response is not None:
+        result["prone_response"] = prone_response
+    return result
 
 
 def area_entry(
@@ -889,7 +1241,8 @@ def _concentration_probabilities(dc: int, save_bonus: int, success_probability: 
 class ConcentrationTracker:
     """One explicit controller concentration slot with an append-only audit record."""
 
-    def __init__(self, *, save_bonus: int) -> None:
+    def __init__(self, *, owner_actor_id: str, save_bonus: int) -> None:
+        self.owner_actor_id = _identifier(owner_actor_id, "owner_actor_id")
         self.save_bonus = _integer(save_bonus, "save_bonus", -10_000)
         self.active_effect_id: str | None = None
         self._active_metadata: dict[str, Any] = {}
@@ -922,7 +1275,7 @@ class ConcentrationTracker:
             "fall_target_ids": fall_targets,
             "maximum_duration": maximum,
         }
-        record = {"kind": "concentration_start", "event_id": event, "effect_id": effect, "startup_blood_tax": tax, "check_required": False, "reason": "startup_blood_tax_exemption" if tax else "activation"}
+        record = {"kind": "concentration_start", "event_id": event, "effect_id": effect, "owner_actor_id": self.owner_actor_id, "startup_blood_tax": tax, "check_required": False, "reason": "startup_blood_tax_exemption" if tax else "activation"}
         self.records.append(record);return deepcopy(record)
 
     def check(
@@ -941,7 +1294,8 @@ class ConcentrationTracker:
             )
         record = {
             "kind": "concentration_check", "event_id": _identifier(event_id, "event_id"),
-            "effect_id": self.active_effect_id, "source": source, "amount": amount, "dc": dc,
+            "effect_id": self.active_effect_id, "owner_actor_id": self.owner_actor_id,
+            "source": source, "amount": amount, "dc": dc,
             "save_bonus": self.save_bonus, "success_probability": _fraction_record(success),
             "failure_probability": _fraction_record(1 - success), "kernel": kernel, "outcome": outcome,
         }
@@ -949,16 +1303,25 @@ class ConcentrationTracker:
         if outcome == "failure":self.end(reason="failed_concentration_save", event_id=record["event_id"])
         return deepcopy(record)
 
-    def end(self, *, reason: str, event_id: str) -> dict[str, Any]:
+    def end(
+        self, *, reason: str, event_id: str,
+        owner_actor_id: str | None = None,
+    ) -> dict[str, Any]:
         if reason not in {"new_concentration_replacement", "voluntary_end", "duration_expiry", "controller_incapacitated", "controller_death", "failed_concentration_save"}:
             raise TimelineError(f"Unsupported concentration end reason: {reason!r}")
         event = _identifier(event_id, "event_id")
+        if owner_actor_id is not None:
+            asserted_owner = _identifier(owner_actor_id, "owner_actor_id")
+            if asserted_owner != self.owner_actor_id:
+                raise TimelineError(
+                    "Concentration owner_actor_id does not match tracker owner"
+                )
         if self.active_effect_id is None:
-            record = {"kind": "concentration_end", "event_id": event, "effect_id": None, "reason": reason, "changed": False}
+            record = {"kind": "concentration_end", "event_id": event, "effect_id": None, "owner_actor_id": self.owner_actor_id, "reason": reason, "changed": False}
             self.records.append(record);return deepcopy(record)
         record = {
             "kind": "concentration_end", "event_id": event, "effect_id": self.active_effect_id,
-            "reason": reason, "changed": True,
+            "owner_actor_id": self.owner_actor_id, "reason": reason, "changed": True,
             "ended_component_ids": list(self._active_metadata["concentration_component_ids"]),
             "ended_area_ids": list(self._active_metadata["area_ids"]),
             "execute_concentration_end_gates": True,
@@ -970,7 +1333,7 @@ class ConcentrationTracker:
         self.records.append(record);self.active_effect_id = None;self._active_metadata = {};return deepcopy(record)
 
     def to_dict(self) -> dict[str, Any]:
-        return {"active_effect_id": self.active_effect_id, "save_bonus": self.save_bonus, "records": deepcopy(self.records)}
+        return {"active_effect_id": self.active_effect_id, "owner_actor_id": self.owner_actor_id, "save_bonus": self.save_bonus, "records": deepcopy(self.records)}
 
 
 def airborne_fall_transition(

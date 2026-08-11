@@ -9,13 +9,25 @@ event window.
 from __future__ import annotations
 
 from copy import deepcopy
-from dataclasses import asdict, dataclass, field, is_dataclass
+from dataclasses import asdict, dataclass, field, is_dataclass, replace
+import hashlib
+import json
 from math import floor
 from typing import Any, Iterable, Mapping, Sequence
 
 
-NORMALIZATION_RULES_VERSION = "1.0.0"
+NORMALIZATION_RULES_VERSION = "2.0.0"
 MOVEMENT_MODES = ("walk", "fly", "swim", "climb", "burrow")
+OUTGOING_ATTACK_WINDOWS = frozenset({
+    "attack_opportunity",
+    "target_attack_opportunity",
+    "controller_attack_opportunity",
+})
+INCOMING_ATTACK_WINDOWS = frozenset({
+    "attack_opportunity",
+    "incoming_attack_opportunity",
+    "controller_attack_opportunity",
+})
 
 
 class ControlStateError(ValueError):
@@ -26,8 +38,8 @@ class ControlStateError(ValueError):
 class ActiveComponent:
     """One component instance on one target.
 
-    IDs from Control Authority are model-local.  ``instance_id`` therefore carries
-    invocation identity in addition to the effect/component/target tuple.
+    IDs from Control Authority are model-local. ``source_invocation_id`` keeps
+    runtime selection typed; ``instance_id`` remains the exact component identity.
     """
 
     instance_id: str
@@ -38,13 +50,15 @@ class ActiveComponent:
     duration: dict[str, Any]
     stacking: dict[str, Any]
     source_actor_id: str
+    source_invocation_id: str
     applied_event_id: str
     expiry_event_id: str | None = None
     remaining_tokens: int | None = None
     contributed_windows: set[tuple[str, str]] = field(default_factory=set)
+    condition_instance_id: str | None = None
 
     def to_dict(self) -> dict[str, Any]:
-        return {
+        result = {
             "instance_id": self.instance_id,
             "effect_id": self.effect_id,
             "component_id": self.component_id,
@@ -53,9 +67,212 @@ class ActiveComponent:
             "duration": deepcopy(self.duration),
             "stacking": deepcopy(self.stacking),
             "source_actor_id": self.source_actor_id,
+            "source_invocation_id": self.source_invocation_id,
             "applied_event_id": self.applied_event_id,
             "expiry_event_id": self.expiry_event_id,
             "remaining_tokens": self.remaining_tokens,
+        }
+        if self.condition_instance_id is not None:
+            result["condition_instance_id"] = self.condition_instance_id
+        return result
+
+
+def _condition_identity_payload(
+    *,
+    condition_id: str,
+    target_id: str,
+    source_actor_id: str,
+    source_program_id: str,
+    source_effect_id: str,
+    source_invocation_id: str,
+    source_component_id: str,
+    application_event_id: str,
+    application_sequence: int,
+    duration: Mapping[str, Any],
+    expiry_event_id: str | None,
+    parent_condition_instance_id: str | None,
+    inclusion_edge_id: str | None,
+    issuance_id: str,
+    provenance_id: str,
+) -> dict[str, Any]:
+    return {
+        "condition_id": condition_id,
+        "target_id": target_id,
+        "source_actor_id": source_actor_id,
+        "source_program_id": source_program_id,
+        "source_effect_id": source_effect_id,
+        "source_invocation_id": source_invocation_id,
+        "source_component_id": source_component_id,
+        "application_event_id": application_event_id,
+        "application_sequence": application_sequence,
+        "duration": deepcopy(dict(duration)),
+        "expiry_event_id": expiry_event_id,
+        "parent_condition_instance_id": parent_condition_instance_id,
+        "inclusion_edge_id": inclusion_edge_id,
+        "issuance_id": issuance_id,
+        "provenance_id": provenance_id,
+    }
+
+
+def condition_instance_id_for(
+    *,
+    condition_id: str,
+    target_id: str,
+    source_actor_id: str,
+    source_program_id: str,
+    source_effect_id: str,
+    source_invocation_id: str,
+    source_component_id: str,
+    application_event_id: str,
+    application_sequence: int,
+    duration: Mapping[str, Any],
+    expiry_event_id: str | None,
+    parent_condition_instance_id: str | None = None,
+    inclusion_edge_id: str | None = None,
+    issuance_id: str,
+    provenance_id: str,
+) -> str:
+    """Return the canonical identity for one exact condition application.
+
+    The identity covers provenance, duration, and inclusion lineage. A replayed
+    record whose identity-bearing fields were rewritten therefore cannot be
+    silently accepted under its old instance ID.
+    """
+
+    string_fields = {
+        "condition_id": condition_id,
+        "target_id": target_id,
+        "source_actor_id": source_actor_id,
+        "source_program_id": source_program_id,
+        "source_effect_id": source_effect_id,
+        "source_invocation_id": source_invocation_id,
+        "source_component_id": source_component_id,
+        "application_event_id": application_event_id,
+        "issuance_id": issuance_id,
+        "provenance_id": provenance_id,
+    }
+    invalid_strings = sorted(
+        label
+        for label, value in string_fields.items()
+        if not isinstance(value, str) or not value
+    )
+    if invalid_strings:
+        raise ControlStateError(
+            "Condition identity fields must be non-empty strings: "
+            f"{invalid_strings}"
+        )
+    if (
+        isinstance(application_sequence, bool)
+        or not isinstance(application_sequence, int)
+        or application_sequence < -1
+    ):
+        raise ControlStateError(
+            "Condition application_sequence must be an integer at least -1"
+        )
+    if not isinstance(duration, Mapping):
+        raise ControlStateError("Condition duration must be an object")
+    if expiry_event_id is not None and (
+        not isinstance(expiry_event_id, str) or not expiry_event_id
+    ):
+        raise ControlStateError(
+            "Condition expiry_event_id must be a non-empty string or null"
+        )
+    lineage_values = (
+        parent_condition_instance_id,
+        inclusion_edge_id,
+    )
+    if (lineage_values[0] is None) != (lineage_values[1] is None):
+        raise ControlStateError(
+            "Condition parent identity and inclusion edge must both be null or "
+            "both be present"
+        )
+    if any(
+        value is not None and (not isinstance(value, str) or not value)
+        for value in lineage_values
+    ):
+        raise ControlStateError(
+            "Condition parent identity and inclusion edge must be non-empty strings"
+        )
+
+    payload = _condition_identity_payload(
+        condition_id=condition_id,
+        target_id=target_id,
+        source_actor_id=source_actor_id,
+        source_program_id=source_program_id,
+        source_effect_id=source_effect_id,
+        source_invocation_id=source_invocation_id,
+        source_component_id=source_component_id,
+        application_event_id=application_event_id,
+        application_sequence=application_sequence,
+        duration=duration,
+        expiry_event_id=expiry_event_id,
+        parent_condition_instance_id=parent_condition_instance_id,
+        inclusion_edge_id=inclusion_edge_id,
+        issuance_id=issuance_id,
+        provenance_id=provenance_id,
+    )
+    try:
+        encoded = json.dumps(
+            payload,
+            sort_keys=True,
+            separators=(",", ":"),
+            ensure_ascii=True,
+            allow_nan=False,
+        ).encode("utf-8")
+    except (TypeError, ValueError) as error:
+        raise ControlStateError(
+            "Condition identity fields must be finite JSON values"
+        ) from error
+    return f"condition_{hashlib.sha256(encoded).hexdigest()}"
+
+
+@dataclass(frozen=True)
+class ConditionInstance:
+    """One persistent condition lifecycle record, including inclusion lineage."""
+
+    instance_id: str
+    condition_id: str
+    target_id: str
+    source_actor_id: str
+    source_program_id: str
+    source_effect_id: str
+    source_invocation_id: str
+    source_component_id: str
+    application_event_id: str
+    application_sequence: int
+    duration: Mapping[str, Any]
+    expiry_event_id: str | None
+    status: str
+    end_event_id: str | None
+    end_sequence: int | None
+    end_reason: str | None
+    parent_condition_instance_id: str | None
+    inclusion_edge_id: str | None
+    issuance_id: str
+    provenance_id: str
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "instance_id": self.instance_id,
+            "condition_id": self.condition_id,
+            "target_id": self.target_id,
+            "source_actor_id": self.source_actor_id,
+            "source_program_id": self.source_program_id,
+            "source_effect_id": self.source_effect_id,
+            "source_invocation_id": self.source_invocation_id,
+            "source_component_id": self.source_component_id,
+            "application_event_id": self.application_event_id,
+            "application_sequence": self.application_sequence,
+            "duration": deepcopy(dict(self.duration)),
+            "expiry_event_id": self.expiry_event_id,
+            "status": self.status,
+            "end_event_id": self.end_event_id,
+            "end_sequence": self.end_sequence,
+            "end_reason": self.end_reason,
+            "parent_condition_instance_id": self.parent_condition_instance_id,
+            "inclusion_edge_id": self.inclusion_edge_id,
+            "issuance_id": self.issuance_id,
+            "provenance_id": self.provenance_id,
         }
 
 
@@ -145,7 +362,27 @@ def _value(value: Any, *names: str, default: Any = None) -> Any:
 
 
 def _source_key(component: ActiveComponent) -> str:
+    if component.condition_instance_id is not None:
+        return f"condition_instance:{component.condition_instance_id}"
     return f"{component.effect_id}:{component.component_id}"
+
+
+def _condition_component_instance_id(
+    *,
+    source_invocation_id: str,
+    source_effect_id: str,
+    target_id: str,
+    source_component_id: str,
+    application_sequence: int,
+    condition_instance_id: str,
+) -> str:
+    """Build an active condition-component identity from typed fields."""
+
+    return (
+        f"{source_invocation_id}:{source_effect_id}:{target_id}:"
+        f"{source_component_id}:condition:{application_sequence}:"
+        f"{condition_instance_id}"
+    )
 
 
 def _canonical_context(value: Mapping[str, Any]) -> tuple[tuple[str, str], ...]:
@@ -203,13 +440,592 @@ def _normalize_sense_resolution(value: Any) -> dict[str, Any]:
 class ControlState:
     """Mutable event state with deterministic, JSON-safe audit records."""
 
-    def __init__(self) -> None:
+    def __init__(self, catalog: Any | None = None) -> None:
         self._active: dict[str, list[ActiveComponent]] = {}
         self.audit_ledger: list[dict[str, Any]] = []
         self.refresh_records: list[dict[str, Any]] = []
         self.replacement_records: list[dict[str, Any]] = []
         self.suppression_records: list[SuppressionRecord] = []
         self._relationships: dict[str, dict[str, set[str]]] = {}
+        self._catalog = catalog
+        self._condition_instances: dict[str, ConditionInstance] = {}
+        self._condition_lifecycle: list[dict[str, Any]] = []
+        self._next_condition_sequence = 0
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> "ControlState":
+        """Clone mutable execution state while sharing the immutable catalog.
+
+        Catalog definitions intentionally contain mapping proxies.  They are a
+        validated read-only contract, not execution state, so atomic preflight
+        clones must retain that exact object while independently copying every
+        mutable state and audit store.
+        """
+
+        clone = type(self)(catalog=self._catalog)
+        memo[id(self)] = clone
+        for name, value in self.__dict__.items():
+            if name == "_catalog":
+                continue
+            setattr(clone, name, deepcopy(value, memo))
+        return clone
+
+    @staticmethod
+    def _condition_sequence(value: int | None, fallback: int) -> int:
+        if value is None:
+            return fallback
+        if isinstance(value, bool) or not isinstance(value, int) or value < -1:
+            raise ControlStateError(
+                "Condition event sequence must be an integer at least -1"
+            )
+        return value
+
+    @staticmethod
+    def _condition_text(value: Any, label: str) -> str:
+        if not isinstance(value, str) or not value:
+            raise ControlStateError(f"{label} must be a non-empty string")
+        return value
+
+    def _condition_catalog(self) -> Any:
+        if self._catalog is None:
+            from harness.control_catalog import load_control_catalog
+
+            self._catalog = load_control_catalog()
+        return self._catalog
+
+    def _catalog_conditions(self) -> Mapping[str, Any]:
+        catalog = self._condition_catalog()
+        if isinstance(catalog, Mapping):
+            conditions = catalog.get("conditions")
+        else:
+            conditions = getattr(catalog, "conditions", None)
+        if not isinstance(conditions, Mapping):
+            raise ControlStateError("Condition catalog must expose a conditions object")
+        return conditions
+
+    @staticmethod
+    def _definition_includes(definition: Any, label: str) -> tuple[str, ...]:
+        includes = _value(definition, "includes", default=None)
+        if (
+            not isinstance(includes, Sequence)
+            or isinstance(includes, (str, bytes))
+            or any(not isinstance(item, str) or not item for item in includes)
+        ):
+            raise ControlStateError(f"{label}.includes must be an array of condition IDs")
+        normalized = tuple(includes)
+        if len(normalized) != len(set(normalized)):
+            raise ControlStateError(f"{label}.includes contains duplicate lineage")
+        return normalized
+
+    def _build_condition_instances(
+        self,
+        *,
+        condition_id: str,
+        target_id: str,
+        source_actor_id: str,
+        source_program_id: str,
+        source_effect_id: str,
+        source_invocation_id: str,
+        source_component_id: str,
+        application_event_id: str,
+        application_sequence: int,
+        duration: Mapping[str, Any],
+        expiry_event_id: str | None,
+        issuance_id: str,
+        provenance_id: str,
+        supplied_root_instance_id: str | None,
+    ) -> tuple[ConditionInstance, ...]:
+        """Preflight and build one complete inclusion lineage without mutation."""
+
+        conditions = self._catalog_conditions()
+        planned: list[ConditionInstance] = []
+        path: list[str] = []
+        seen_conditions: dict[str, str] = {}
+
+        def visit(
+            current_condition_id: str,
+            *,
+            parent: ConditionInstance | None,
+            edge_index: int | None,
+        ) -> None:
+            if current_condition_id in path:
+                cycle_start = path.index(current_condition_id)
+                cycle = (*path[cycle_start:], current_condition_id)
+                raise ControlStateError(
+                    f"Condition inclusion cycle: {' -> '.join(cycle)}"
+                )
+            if current_condition_id in seen_conditions:
+                raise ControlStateError(
+                    "Condition inclusion lineage repeats condition "
+                    f"{current_condition_id!r}"
+                )
+            try:
+                definition = conditions[current_condition_id]
+            except KeyError as error:
+                owner = parent.condition_id if parent is not None else condition_id
+                raise ControlStateError(
+                    f"Broken condition inclusion from {owner!r} to "
+                    f"unknown condition {current_condition_id!r}"
+                ) from error
+            inclusion_edge_id = None
+            parent_instance_id = None
+            if parent is not None:
+                parent_instance_id = parent.instance_id
+                inclusion_edge_id = (
+                    f"{parent.condition_id}:includes:{edge_index}:"
+                    f"{current_condition_id}"
+                )
+            computed_id = condition_instance_id_for(
+                condition_id=current_condition_id,
+                target_id=target_id,
+                source_actor_id=source_actor_id,
+                source_program_id=source_program_id,
+                source_effect_id=source_effect_id,
+                source_invocation_id=source_invocation_id,
+                source_component_id=source_component_id,
+                application_event_id=application_event_id,
+                application_sequence=application_sequence,
+                duration=duration,
+                expiry_event_id=expiry_event_id,
+                parent_condition_instance_id=parent_instance_id,
+                inclusion_edge_id=inclusion_edge_id,
+                issuance_id=issuance_id,
+                provenance_id=provenance_id,
+            )
+            if parent is None and supplied_root_instance_id is not None:
+                if supplied_root_instance_id != computed_id:
+                    raise ControlStateError(
+                        "Supplied condition_instance_id does not match its "
+                        "canonical condition identity"
+                    )
+            if computed_id in self._condition_instances or any(
+                item.instance_id == computed_id for item in planned
+            ):
+                raise ControlStateError(
+                    f"Duplicate condition instance ID: {computed_id}"
+                )
+            instance = ConditionInstance(
+                instance_id=computed_id,
+                condition_id=current_condition_id,
+                target_id=target_id,
+                source_actor_id=source_actor_id,
+                source_program_id=source_program_id,
+                source_effect_id=source_effect_id,
+                source_invocation_id=source_invocation_id,
+                source_component_id=source_component_id,
+                application_event_id=application_event_id,
+                application_sequence=application_sequence,
+                duration=deepcopy(dict(duration)),
+                expiry_event_id=expiry_event_id,
+                status="active",
+                end_event_id=None,
+                end_sequence=None,
+                end_reason=None,
+                parent_condition_instance_id=parent_instance_id,
+                inclusion_edge_id=inclusion_edge_id,
+                issuance_id=issuance_id,
+                provenance_id=provenance_id,
+            )
+            planned.append(instance)
+            seen_conditions[current_condition_id] = instance.instance_id
+            path.append(current_condition_id)
+            includes = self._definition_includes(
+                definition,
+                f"conditions.{current_condition_id}",
+            )
+            for index, child_condition_id in enumerate(includes):
+                visit(
+                    child_condition_id,
+                    parent=instance,
+                    edge_index=index,
+                )
+            path.pop()
+
+        visit(condition_id, parent=None, edge_index=None)
+        return tuple(planned)
+
+    def _validate_condition_registry(self) -> None:
+        conditions = self._catalog_conditions() if self._condition_instances else {}
+        children_by_parent: dict[str, list[ConditionInstance]] = {}
+        active_root_ids: set[str] = set()
+        for instance in self._condition_instances.values():
+            expected_id = condition_instance_id_for(
+                condition_id=instance.condition_id,
+                target_id=instance.target_id,
+                source_actor_id=instance.source_actor_id,
+                source_program_id=instance.source_program_id,
+                source_effect_id=instance.source_effect_id,
+                source_invocation_id=instance.source_invocation_id,
+                source_component_id=instance.source_component_id,
+                application_event_id=instance.application_event_id,
+                application_sequence=instance.application_sequence,
+                duration=instance.duration,
+                expiry_event_id=instance.expiry_event_id,
+                parent_condition_instance_id=instance.parent_condition_instance_id,
+                inclusion_edge_id=instance.inclusion_edge_id,
+                issuance_id=instance.issuance_id,
+                provenance_id=instance.provenance_id,
+            )
+            if instance.instance_id != expected_id:
+                raise ControlStateError(
+                    f"Condition instance identity was rewritten: {instance.instance_id}"
+                )
+            if instance.status not in {"active", "ended"}:
+                raise ControlStateError(
+                    f"Condition instance {instance.instance_id} has invalid status"
+                )
+            end_values = (
+                instance.end_event_id,
+                instance.end_sequence,
+                instance.end_reason,
+            )
+            if instance.status == "active" and any(
+                value is not None for value in end_values
+            ):
+                raise ControlStateError(
+                    f"Active condition instance {instance.instance_id} has end metadata"
+                )
+            if instance.status == "ended" and any(
+                value is None for value in end_values
+            ):
+                raise ControlStateError(
+                    f"Ended condition instance {instance.instance_id} lacks end metadata"
+                )
+            if (
+                instance.end_sequence is not None
+                and instance.end_sequence < instance.application_sequence
+            ):
+                raise ControlStateError(
+                    f"Condition instance {instance.instance_id} ends before application"
+                )
+            parent_id = instance.parent_condition_instance_id
+            if parent_id is None:
+                if instance.inclusion_edge_id is not None:
+                    raise ControlStateError(
+                        f"Root condition instance {instance.instance_id} has an inclusion edge"
+                    )
+                if instance.status == "active":
+                    active_root_ids.add(instance.instance_id)
+                continue
+            parent = self._condition_instances.get(parent_id)
+            if parent is None:
+                raise ControlStateError(
+                    f"Condition instance {instance.instance_id} has a broken parent chain"
+                )
+            for field_name in (
+                "target_id",
+                "source_actor_id",
+                "source_program_id",
+                "source_effect_id",
+                "source_invocation_id",
+                "source_component_id",
+                "application_event_id",
+                "application_sequence",
+                "duration",
+                "expiry_event_id",
+                "issuance_id",
+                "provenance_id",
+            ):
+                if getattr(instance, field_name) != getattr(parent, field_name):
+                    raise ControlStateError(
+                        f"Condition lineage rewrites {field_name} at "
+                        f"{instance.instance_id}"
+                    )
+            try:
+                parent_definition = conditions[parent.condition_id]
+            except KeyError as error:
+                raise ControlStateError(
+                    f"Condition lineage has unknown parent {parent.condition_id!r}"
+                ) from error
+            includes = self._definition_includes(
+                parent_definition,
+                f"conditions.{parent.condition_id}",
+            )
+            matching_indexes = [
+                index
+                for index, child_id in enumerate(includes)
+                if child_id == instance.condition_id
+            ]
+            if len(matching_indexes) != 1:
+                raise ControlStateError(
+                    f"Condition lineage edge from {parent.condition_id!r} to "
+                    f"{instance.condition_id!r} is invalid"
+                )
+            expected_edge = (
+                f"{parent.condition_id}:includes:{matching_indexes[0]}:"
+                f"{instance.condition_id}"
+            )
+            if instance.inclusion_edge_id != expected_edge:
+                raise ControlStateError(
+                    f"Condition instance {instance.instance_id} has a rewritten "
+                    "inclusion edge"
+                )
+            if (
+                instance.status,
+                instance.end_event_id,
+                instance.end_sequence,
+                instance.end_reason,
+            ) != (
+                parent.status,
+                parent.end_event_id,
+                parent.end_sequence,
+                parent.end_reason,
+            ):
+                raise ControlStateError(
+                    f"Included condition {instance.instance_id} lifecycle diverges "
+                    f"from parent {parent.instance_id}"
+                )
+            children_by_parent.setdefault(parent_id, []).append(instance)
+
+        for parent_id, children in children_by_parent.items():
+            condition_ids = [child.condition_id for child in children]
+            edge_ids = [child.inclusion_edge_id for child in children]
+            if len(condition_ids) != len(set(condition_ids)) or len(edge_ids) != len(
+                set(edge_ids)
+            ):
+                raise ControlStateError(
+                    f"Condition parent {parent_id} has duplicate lineage"
+                )
+
+        for root in (
+            item
+            for item in self._condition_instances.values()
+            if item.parent_condition_instance_id is None
+        ):
+            seen_conditions: set[str] = set()
+            visiting: set[str] = set()
+
+            def walk(current: ConditionInstance) -> None:
+                if current.instance_id in visiting:
+                    raise ControlStateError("Condition registry contains a lineage cycle")
+                if current.condition_id in seen_conditions:
+                    raise ControlStateError(
+                        f"Condition lineage repeats condition {current.condition_id!r}"
+                    )
+                seen_conditions.add(current.condition_id)
+                visiting.add(current.instance_id)
+                for child in children_by_parent.get(current.instance_id, ()):
+                    walk(child)
+                visiting.remove(current.instance_id)
+
+            walk(root)
+
+        condition_components = tuple(
+            component
+            for component in self.active_components()
+            if component.magnitude.get("kind") == "condition"
+        )
+        component_root_ids = {
+            component.condition_instance_id
+            for component in condition_components
+        }
+        component_instance_ids = {
+            component.instance_id for component in condition_components
+        }
+        if (
+            len(component_instance_ids) != len(condition_components)
+            or len(component_root_ids) != len(condition_components)
+        ):
+            raise ControlStateError(
+                "Active condition components must map one-to-one to unique roots"
+            )
+        if None in component_root_ids:
+            raise ControlStateError(
+                "Active condition component lacks a condition instance identity"
+            )
+        if component_root_ids != active_root_ids:
+            raise ControlStateError(
+                "Active condition components and condition roots diverge"
+            )
+        for component in condition_components:
+            root = self._condition_instances.get(
+                component.condition_instance_id or ""
+            )
+            if root is None or root.parent_condition_instance_id is not None:
+                raise ControlStateError(
+                    "Active condition component has a broken root identity"
+                )
+            if (
+                component.target_id,
+                component.effect_id,
+                component.component_id,
+                component.source_actor_id,
+                component.source_invocation_id,
+                component.applied_event_id,
+                component.duration,
+                component.expiry_event_id,
+            ) != (
+                root.target_id,
+                root.source_effect_id,
+                root.source_component_id,
+                root.source_actor_id,
+                root.source_invocation_id,
+                root.application_event_id,
+                root.duration,
+                root.expiry_event_id,
+            ):
+                raise ControlStateError(
+                    "Active condition component source identity diverges from "
+                    f"root {root.instance_id}"
+                )
+            if (
+                component.magnitude != {
+                    "kind": "condition",
+                    "condition": root.condition_id,
+                }
+                or component.remaining_tokens is not None
+                or component.instance_id
+                != _condition_component_instance_id(
+                    source_invocation_id=root.source_invocation_id,
+                    source_effect_id=root.source_effect_id,
+                    target_id=root.target_id,
+                    source_component_id=root.source_component_id,
+                    application_sequence=root.application_sequence,
+                    condition_instance_id=root.instance_id,
+                )
+            ):
+                raise ControlStateError(
+                    "Active condition component mechanics or identity diverges "
+                    f"from root {root.instance_id}"
+                )
+
+    def instance_registry(
+        self,
+        target_id: str | None = None,
+    ) -> tuple[dict[str, Any], ...]:
+        self._validate_condition_registry()
+        instances = (
+            item
+            for item in self._condition_instances.values()
+            if target_id is None or item.target_id == target_id
+        )
+        return tuple(
+            item.to_dict()
+            for item in sorted(
+                instances,
+                key=lambda item: (
+                    item.application_sequence,
+                    item.target_id,
+                    item.instance_id,
+                ),
+            )
+        )
+
+    def active_condition_instances(
+        self,
+        target_id: str | None = None,
+    ) -> tuple[ConditionInstance, ...]:
+        self._validate_condition_registry()
+        return tuple(
+            deepcopy(item)
+            for item in sorted(
+                (
+                    instance
+                    for instance in self._condition_instances.values()
+                    if instance.status == "active"
+                    and (target_id is None or instance.target_id == target_id)
+                ),
+                key=lambda item: (
+                    item.application_sequence,
+                    item.target_id,
+                    item.instance_id,
+                ),
+            )
+        )
+
+    def derived_current_conditions(self, target_id: str) -> tuple[str, ...]:
+        return tuple(
+            sorted(
+                {
+                    item.condition_id
+                    for item in self.active_condition_instances(target_id)
+                }
+            )
+        )
+
+    def lineage_records(
+        self,
+        target_id: str | None = None,
+    ) -> tuple[dict[str, Any], ...]:
+        self._validate_condition_registry()
+        records = []
+        for child in self._condition_instances.values():
+            if child.parent_condition_instance_id is None:
+                continue
+            if target_id is not None and child.target_id != target_id:
+                continue
+            parent = self._condition_instances[child.parent_condition_instance_id]
+            records.append({
+                "parent_condition_instance_id": parent.instance_id,
+                "parent_condition_id": parent.condition_id,
+                "child_condition_instance_id": child.instance_id,
+                "child_condition_id": child.condition_id,
+                "inclusion_edge_id": child.inclusion_edge_id,
+                "target_id": child.target_id,
+                "source_actor_id": child.source_actor_id,
+                "source_program_id": child.source_program_id,
+                "source_effect_id": child.source_effect_id,
+                "source_invocation_id": child.source_invocation_id,
+                "source_component_id": child.source_component_id,
+                "application_event_id": child.application_event_id,
+                "application_sequence": child.application_sequence,
+                "expiry_event_id": child.expiry_event_id,
+                "issuance_id": child.issuance_id,
+                "provenance_id": child.provenance_id,
+            })
+        return tuple(
+            sorted(
+                records,
+                key=lambda row: (
+                    row["target_id"],
+                    row["parent_condition_instance_id"],
+                    row["inclusion_edge_id"],
+                    row["child_condition_instance_id"],
+                ),
+            )
+        )
+
+    def condition_lifecycle_records(
+        self,
+        target_id: str | None = None,
+    ) -> tuple[dict[str, Any], ...]:
+        self._validate_condition_registry()
+        records = (
+            deepcopy(record)
+            for record in self._condition_lifecycle
+            if target_id is None or record["target_id"] == target_id
+        )
+        # A resolved branch terminates/replaces before it applies. Preserve that
+        # order when both lifecycle phases share one timeline sequence.
+        phase_order = {"condition_end": 0, "condition_application": 1}
+
+        def lineage_position(instance_id: str) -> tuple[str, int]:
+            instance = self._condition_instances[instance_id]
+            depth = 0
+            while instance.parent_condition_instance_id is not None:
+                instance = self._condition_instances[
+                    instance.parent_condition_instance_id
+                ]
+                depth += 1
+            return instance.instance_id, depth
+
+        def lifecycle_key(row: Mapping[str, Any]) -> tuple[Any, ...]:
+            root_id, depth = lineage_position(row["condition_instance_id"])
+            phase = phase_order[row["kind"]]
+            lineage_order = -depth if row["kind"] == "condition_end" else depth
+            return (
+                row["sequence"],
+                phase,
+                root_id,
+                lineage_order,
+                row["condition_instance_id"],
+            )
+
+        return tuple(
+            sorted(
+                records,
+                key=lifecycle_key,
+            )
+        )
 
     def register_relationships(self, effect_id: str, relationships: Mapping[str, Any]) -> None:
         dominance: dict[str, set[str]] = {}
@@ -237,12 +1053,113 @@ class ControlState:
         target_id: str,
         component_id: str,
         effect_id: str | None = None,
+        instance_id: str | None = None,
+        source_invocation_id: str | None = None,
+        condition_instance_id: str | None = None,
     ) -> list[ActiveComponent]:
         return [
             component for component in self._active.get(target_id, [])
             if component.component_id == component_id
             and (effect_id is None or component.effect_id == effect_id)
+            and (instance_id is None or component.instance_id == instance_id)
+            and (
+                source_invocation_id is None
+                or component.source_invocation_id == source_invocation_id
+            )
+            and (
+                condition_instance_id is None
+                or component.condition_instance_id == condition_instance_id
+            )
         ]
+
+    def _plan_condition_application(
+        self,
+        *,
+        condition_id: str,
+        target_id: str,
+        source_actor_id: str,
+        source_program_id: str | None,
+        source_effect_id: str,
+        source_invocation_id: str,
+        source_component_id: str,
+        application_event_id: str,
+        application_sequence: int | None,
+        duration: Any,
+        expiry_event_id: str | None,
+        condition_instance_id: str | None,
+        issuance_id: str | None,
+        provenance_id: str | None,
+    ) -> tuple[
+        int,
+        str,
+        str,
+        str,
+        tuple[ConditionInstance, ...],
+    ]:
+        condition = self._condition_text(condition_id, "condition")
+        target = self._condition_text(target_id, "target_id")
+        source_actor = self._condition_text(
+            source_actor_id,
+            "source_actor_id",
+        )
+        if condition in {"charmed", "frightened"} and source_actor == target:
+            raise ControlStateError(
+                f"Condition {condition!r} requires an exact non-self source actor"
+            )
+        sequence = self._condition_sequence(
+            application_sequence,
+            self._next_condition_sequence,
+        )
+        source_program = self._condition_text(
+            source_program_id
+            if source_program_id is not None
+            else source_effect_id,
+            "source_program_id",
+        )
+        issuance = self._condition_text(
+            issuance_id
+            if issuance_id is not None
+            else (
+                f"issuance:{source_invocation_id}:{application_event_id}:"
+                f"{sequence}:{source_effect_id}:{source_component_id}"
+            ),
+            "issuance_id",
+        )
+        provenance = self._condition_text(
+            provenance_id if provenance_id is not None else issuance,
+            "provenance_id",
+        )
+        if not isinstance(duration, Mapping):
+            raise ControlStateError("Condition component duration must be an object")
+        instances = self._build_condition_instances(
+            condition_id=condition,
+            target_id=target,
+            source_actor_id=source_actor,
+            source_program_id=source_program,
+            source_effect_id=self._condition_text(
+                source_effect_id,
+                "effect_id",
+            ),
+            source_invocation_id=self._condition_text(
+                source_invocation_id,
+                "invocation_id",
+            ),
+            source_component_id=self._condition_text(
+                source_component_id,
+                "component_id",
+            ),
+            application_event_id=self._condition_text(
+                application_event_id,
+                "event_id",
+            ),
+            application_sequence=sequence,
+            duration=duration,
+            expiry_event_id=expiry_event_id,
+            issuance_id=issuance,
+            provenance_id=provenance,
+            supplied_root_instance_id=condition_instance_id,
+        )
+        return sequence, source_program, issuance, provenance, instances
 
     def apply_component(
         self,
@@ -255,6 +1172,11 @@ class ControlState:
         invocation_id: str,
         expiry_event_id: str | None = None,
         condition_immunities: Iterable[str] = (),
+        application_sequence: int | None = None,
+        condition_instance_id: str | None = None,
+        source_program_id: str | None = None,
+        issuance_id: str | None = None,
+        provenance_id: str | None = None,
     ) -> ActiveComponent | None:
         component_id = str(component["component_id"])
         magnitude = deepcopy(dict(component["magnitude"]))
@@ -280,9 +1202,39 @@ class ControlState:
             })
             return None
 
+        condition_plan: tuple[
+            int,
+            str,
+            str,
+            str,
+            tuple[ConditionInstance, ...],
+        ] | None = None
+        if condition is not None:
+            condition_plan = self._plan_condition_application(
+                condition_id=condition,
+                target_id=target_id,
+                source_actor_id=source_actor_id,
+                source_program_id=source_program_id,
+                source_effect_id=effect_id,
+                source_invocation_id=invocation_id,
+                source_component_id=component_id,
+                application_event_id=event_id,
+                application_sequence=application_sequence,
+                duration=component.get("duration"),
+                expiry_event_id=expiry_event_id,
+                condition_instance_id=condition_instance_id,
+                issuance_id=issuance_id,
+                provenance_id=provenance_id,
+            )
+
         stacking = deepcopy(dict(component["stacking"]))
         key = str(stacking["key"])
-        existing = [
+        # Condition lifecycle identity is independent from derived mechanical
+        # overlap. Every separately issued condition application commits its own
+        # root and inclusion lineage; normalization collapses identical primitive
+        # consequences later. Generic component stacking must never end, refresh,
+        # or suppress a different condition application.
+        existing = [] if condition is not None else [
             item for item in self._active.get(target_id, [])
             if item.effect_id == effect_id and item.stacking.get("key") == key
         ]
@@ -317,8 +1269,24 @@ class ControlState:
         remaining_tokens: int | None = None
         if magnitude.get("kind") == "attack_disadvantage" and magnitude.get("scope") == "next_attack":
             remaining_tokens = int(magnitude.get("count", 1))
+        condition_instances: tuple[ConditionInstance, ...] = ()
+        root_condition_instance_id: str | None = None
+        component_instance_id = f"{invocation_id}:{effect_id}:{target_id}:{component_id}"
+        if condition is not None:
+            if condition_plan is None:  # pragma: no cover - magnitude invariant
+                raise ControlStateError("Condition application lacks a condition plan")
+            sequence, _, _, _, condition_instances = condition_plan
+            root_condition_instance_id = condition_instances[0].instance_id
+            component_instance_id = _condition_component_instance_id(
+                source_invocation_id=invocation_id,
+                source_effect_id=effect_id,
+                target_id=target_id,
+                source_component_id=component_id,
+                application_sequence=sequence,
+                condition_instance_id=root_condition_instance_id,
+            )
         active = ActiveComponent(
-            instance_id=f"{invocation_id}:{effect_id}:{target_id}:{component_id}",
+            instance_id=component_instance_id,
             effect_id=effect_id,
             component_id=component_id,
             target_id=target_id,
@@ -326,12 +1294,43 @@ class ControlState:
             duration=deepcopy(dict(component["duration"])),
             stacking=stacking,
             source_actor_id=source_actor_id,
+            source_invocation_id=invocation_id,
             applied_event_id=event_id,
             expiry_event_id=expiry_event_id,
             remaining_tokens=remaining_tokens,
+            condition_instance_id=root_condition_instance_id,
         )
+
+        # The complete condition lineage was validated before either state store is
+        # mutated. Committing these adjacent writes cannot expose a partial lineage.
         self._active.setdefault(target_id, []).append(active)
         self._active[target_id].sort(key=lambda item: (item.effect_id, item.component_id, item.instance_id))
+        if condition_instances:
+            for instance in condition_instances:
+                self._condition_instances[instance.instance_id] = instance
+                self._condition_lifecycle.append({
+                    "kind": "condition_application",
+                    "event_id": instance.application_event_id,
+                    "sequence": instance.application_sequence,
+                    "target_id": instance.target_id,
+                    "condition_instance_id": instance.instance_id,
+                    "condition_id": instance.condition_id,
+                    "parent_condition_instance_id": (
+                        instance.parent_condition_instance_id
+                    ),
+                    "inclusion_edge_id": instance.inclusion_edge_id,
+                    "source_actor_id": instance.source_actor_id,
+                    "source_program_id": instance.source_program_id,
+                    "source_effect_id": instance.source_effect_id,
+                    "source_invocation_id": instance.source_invocation_id,
+                    "source_component_id": instance.source_component_id,
+                    "issuance_id": instance.issuance_id,
+                    "provenance_id": instance.provenance_id,
+                })
+            self._next_condition_sequence = max(
+                self._next_condition_sequence,
+                condition_instances[0].application_sequence + 1,
+            )
         self.audit_ledger.append({
             "event_id": event_id,
             "operation": "apply",
@@ -339,6 +1338,180 @@ class ControlState:
             "component": active.to_dict(),
         })
         return active
+
+    def _condition_lineage(
+        self,
+        root_instance_id: str,
+    ) -> tuple[ConditionInstance, ...]:
+        root = self._condition_instances.get(root_instance_id)
+        if root is None:
+            raise ControlStateError(
+                f"Unknown or stale condition instance ID: {root_instance_id}"
+            )
+        result: list[ConditionInstance] = []
+
+        def append_lineage(instance: ConditionInstance) -> None:
+            result.append(instance)
+            children = sorted(
+                (
+                    child
+                    for child in self._condition_instances.values()
+                    if child.parent_condition_instance_id == instance.instance_id
+                ),
+                key=lambda child: child.instance_id,
+            )
+            for child in children:
+                append_lineage(child)
+
+        append_lineage(root)
+        return tuple(result)
+
+    def _refresh_condition_lineage_expiry(
+        self,
+        root_instance_id: str,
+        expiry_event_id: str | None,
+    ) -> None:
+        self._validate_condition_registry()
+        for instance in self._condition_lineage(root_instance_id):
+            if (
+                instance.status == "active"
+                and instance.expiry_event_id != expiry_event_id
+            ):
+                raise ControlStateError(
+                    "Condition expiry is identity-bound; refresh by applying a "
+                    "new condition instance with application provenance"
+                )
+
+    def end_condition_instance(
+        self,
+        condition_instance_id: str,
+        *,
+        event_id: str,
+        event_sequence: int,
+        reason: str,
+        expected_source_actor_id: str,
+        expected_issuance_id: str | None = None,
+    ) -> tuple[ConditionInstance, ...]:
+        """End one exact instance and only its inclusion descendants.
+
+        Raw condition names are intentionally not accepted. The expected source
+        and optional issuance identity make a foreign or stale end request fail
+        before either component or lifecycle state is mutated.
+        """
+
+        self._validate_condition_registry()
+        instance_id = self._condition_text(
+            condition_instance_id,
+            "condition_instance_id",
+        )
+        instance = self._condition_instances.get(instance_id)
+        if instance is None:
+            raise ControlStateError(
+                f"Unknown or stale condition instance ID: {instance_id}"
+            )
+        if instance.status != "active":
+            raise ControlStateError(
+                f"Condition instance {instance_id} already ended"
+            )
+        if instance.parent_condition_instance_id is not None:
+            raise ControlStateError(
+                "Included condition instances end only through their exact root "
+                "lineage"
+            )
+        expected_source = self._condition_text(
+            expected_source_actor_id,
+            "expected_source_actor_id",
+        )
+        if instance.source_actor_id != expected_source:
+            raise ControlStateError(
+                f"Condition instance {instance_id} source actor mismatch"
+            )
+        if (
+            expected_issuance_id is not None
+            and instance.issuance_id != expected_issuance_id
+        ):
+            raise ControlStateError(
+                f"Condition instance {instance_id} issuance mismatch"
+            )
+        end_event = self._condition_text(event_id, "event_id")
+        end_reason = self._condition_text(reason, "reason")
+        sequence = self._condition_sequence(event_sequence, 0)
+        lineage = self._condition_lineage(instance_id)
+        active_lineage = tuple(
+            item for item in lineage if item.status == "active"
+        )
+        if any(sequence < item.application_sequence for item in active_lineage):
+            raise ControlStateError(
+                f"Condition end sequence {sequence} precedes its application"
+            )
+
+        linked_component: ActiveComponent | None = None
+        if instance.parent_condition_instance_id is None:
+            linked = [
+                component
+                for component in self._active.get(instance.target_id, ())
+                if component.condition_instance_id == instance.instance_id
+            ]
+            if len(linked) != 1:
+                raise ControlStateError(
+                    f"Active condition root {instance.instance_id} has a broken "
+                    "component link"
+                )
+            linked_component = linked[0]
+
+        ended: list[ConditionInstance] = []
+        for current in reversed(active_lineage):
+            updated = replace(
+                current,
+                status="ended",
+                end_event_id=end_event,
+                end_sequence=sequence,
+                end_reason=end_reason,
+            )
+            self._condition_instances[current.instance_id] = updated
+            ended.append(updated)
+            self._condition_lifecycle.append({
+                "kind": "condition_end",
+                "event_id": end_event,
+                "sequence": sequence,
+                "target_id": current.target_id,
+                "condition_instance_id": current.instance_id,
+                "condition_id": current.condition_id,
+                "parent_condition_instance_id": (
+                    current.parent_condition_instance_id
+                ),
+                "inclusion_edge_id": current.inclusion_edge_id,
+                "source_actor_id": current.source_actor_id,
+                "source_program_id": current.source_program_id,
+                "source_effect_id": current.source_effect_id,
+                "source_invocation_id": current.source_invocation_id,
+                "source_component_id": current.source_component_id,
+                "issuance_id": current.issuance_id,
+                "provenance_id": current.provenance_id,
+                "reason": end_reason,
+            })
+        if linked_component is not None:
+            self._active[instance.target_id] = [
+                component
+                for component in self._active[instance.target_id]
+                if component is not linked_component
+            ]
+        self._next_condition_sequence = max(
+            self._next_condition_sequence,
+            sequence + 1,
+        )
+        self.audit_ledger.append({
+            "event_id": end_event,
+            "event_sequence": sequence,
+            "operation": "condition_end",
+            "target_id": instance.target_id,
+            "condition_instance_id": instance.instance_id,
+            "ended_condition_instance_ids": [
+                item.instance_id for item in ended
+            ],
+            "reason": end_reason,
+        })
+        return tuple(deepcopy(item) for item in ended)
 
     def terminate(
         self,
@@ -348,12 +1521,83 @@ class ControlState:
         event_id: str,
         effect_id: str | None = None,
         reason: str = "explicit_termination",
+        instance_id: str | None = None,
+        source_invocation_id: str | None = None,
+        condition_instance_id: str | None = None,
+        event_sequence: int | None = None,
     ) -> tuple[ActiveComponent, ...]:
-        removed = self._matching(target_id, component_id, effect_id)
-        if removed:
-            removed_ids = {item.instance_id for item in removed}
+        for label, value in (
+            ("instance_id", instance_id),
+            ("source_invocation_id", source_invocation_id),
+            ("condition_instance_id", condition_instance_id),
+        ):
+            if value is not None:
+                self._condition_text(value, label)
+        removed = self._matching(
+            target_id,
+            component_id,
+            effect_id,
+            instance_id,
+            source_invocation_id,
+            condition_instance_id,
+        )
+        if not removed and any(
+            value is not None
+            for value in (
+                instance_id,
+                source_invocation_id,
+                condition_instance_id,
+            )
+        ):
+            raise ControlStateError(
+                "Exact component, invocation, or condition selector is stale"
+            )
+        condition_components = [
+            item
+            for item in removed
+            if item.condition_instance_id is not None
+        ]
+        if condition_components and all(
+            value is None
+            for value in (
+                instance_id,
+                source_invocation_id,
+                condition_instance_id,
+            )
+        ):
+            raise ControlStateError(
+                "Condition component termination requires an exact instance or "
+                "source invocation selector"
+            )
+        if len(condition_components) > 1:
+            raise ControlStateError(
+                "Ambiguous condition component termination requires an exact "
+                "component instance_id"
+            )
+        ended_condition_instances: tuple[ConditionInstance, ...] = ()
+        if condition_components:
+            component = condition_components[0]
+            sequence = self._condition_sequence(
+                event_sequence,
+                self._next_condition_sequence,
+            )
+            ended_condition_instances = self.end_condition_instance(
+                component.condition_instance_id or "",
+                event_id=event_id,
+                event_sequence=sequence,
+                reason=reason,
+                expected_source_actor_id=component.source_actor_id,
+            )
+        noncondition_ids = {
+            item.instance_id
+            for item in removed
+            if item.condition_instance_id is None
+        }
+        if noncondition_ids:
             self._active[target_id] = [
-                item for item in self._active[target_id] if item.instance_id not in removed_ids
+                item
+                for item in self._active[target_id]
+                if item.instance_id not in noncondition_ids
             ]
         self.audit_ledger.append({
             "event_id": event_id,
@@ -362,7 +1606,13 @@ class ControlState:
             "effect_id": effect_id,
             "component_id": component_id,
             "reason": reason,
+            "selected_instance_id": instance_id,
+            "selected_source_invocation_id": source_invocation_id,
+            "selected_condition_instance_id": condition_instance_id,
             "removed_instance_ids": [item.instance_id for item in removed],
+            "ended_condition_instance_ids": [
+                item.instance_id for item in ended_condition_instances
+            ],
         })
         return tuple(removed)
 
@@ -374,21 +1624,80 @@ class ControlState:
         event_id: str,
         effect_id: str | None = None,
         expiry_event_id: str | None = None,
+        instance_id: str | None = None,
+        source_invocation_id: str | None = None,
+        condition_instance_id: str | None = None,
     ) -> tuple[ActiveComponent, ...]:
-        matches = self._matching(target_id, component_id, effect_id)
+        for label, value in (
+            ("instance_id", instance_id),
+            ("source_invocation_id", source_invocation_id),
+            ("condition_instance_id", condition_instance_id),
+        ):
+            if value is not None:
+                self._condition_text(value, label)
+        matches = self._matching(
+            target_id,
+            component_id,
+            effect_id,
+            instance_id,
+            source_invocation_id,
+            condition_instance_id,
+        )
         if not matches:
             raise ControlStateError(
                 f"Cannot refresh inactive component {component_id!r} on target {target_id!r}"
             )
+        condition_matches = [
+            component
+            for component in matches
+            if component.condition_instance_id is not None
+        ]
+        if condition_matches and all(
+            value is None
+            for value in (
+                instance_id,
+                source_invocation_id,
+                condition_instance_id,
+            )
+        ):
+            raise ControlStateError(
+                "Condition component refresh requires an exact instance or "
+                "source invocation selector"
+            )
+        if len(condition_matches) > 1:
+            raise ControlStateError(
+                "Ambiguous condition component refresh requires an exact "
+                "component or condition instance ID"
+            )
+        for component in matches:
+            if (
+                component.condition_instance_id is not None
+                and expiry_event_id is not None
+                and expiry_event_id != component.expiry_event_id
+            ):
+                raise ControlStateError(
+                    "Condition expiry is identity-bound; refresh by applying a "
+                    "new condition instance with application provenance"
+                )
         for component in matches:
             previous = component.expiry_event_id
-            component.expiry_event_id = expiry_event_id if expiry_event_id is not None else previous
+            new_expiry = expiry_event_id if expiry_event_id is not None else previous
+            if component.condition_instance_id is not None:
+                self._refresh_condition_lineage_expiry(
+                    component.condition_instance_id,
+                    new_expiry,
+                )
+            component.expiry_event_id = new_expiry
             record = {
                 "event_id": event_id,
                 "target_id": target_id,
                 "effect_id": component.effect_id,
                 "component_id": component.component_id,
                 "reason": "explicit_refresh",
+                "selected_instance_id": instance_id,
+                "selected_source_invocation_id": source_invocation_id,
+                "selected_condition_instance_id": condition_instance_id,
+                "refreshed_instance_id": component.instance_id,
                 "previous_expiry_event_id": previous,
                 "new_expiry_event_id": component.expiry_event_id,
                 "immediate_persistent_contribution": False,
@@ -397,7 +1706,12 @@ class ControlState:
             self.audit_ledger.append({"operation": "refresh", **record})
         return tuple(matches)
 
-    def expire(self, event_id: str) -> tuple[ActiveComponent, ...]:
+    def expire(
+        self,
+        event_id: str,
+        *,
+        event_sequence: int | None = None,
+    ) -> tuple[ActiveComponent, ...]:
         expired: list[ActiveComponent] = []
         for target_id in sorted(self._active):
             for component in tuple(self._active[target_id]):
@@ -408,19 +1722,12 @@ class ControlState:
                         event_id=event_id,
                         effect_id=component.effect_id,
                         reason="duration_expiry",
+                        instance_id=component.instance_id,
+                        source_invocation_id=component.source_invocation_id,
+                        condition_instance_id=component.condition_instance_id,
+                        event_sequence=event_sequence,
                     ))
         return tuple(expired)
-
-    def end_condition(self, target_id: str, condition: str, event_id: str, reason: str) -> None:
-        for component in tuple(self._active.get(target_id, ())):
-            if component.magnitude == {"kind": "condition", "condition": condition}:
-                self.terminate(
-                    target_id=target_id,
-                    component_id=component.component_id,
-                    event_id=event_id,
-                    effect_id=component.effect_id,
-                    reason=reason,
-                )
 
     def apply_branch(
         self,
@@ -436,11 +1743,48 @@ class ControlState:
         expiry_event_ids: Mapping[str, str | None] | None = None,
         condition_immunities: Iterable[str] = (),
         relationships: Mapping[str, Any] | None = None,
+        application_sequence: int | None = None,
+        condition_instance_id: str | None = None,
+        source_program_id: str | None = None,
+        issuance_id: str | None = None,
+        provenance_id: str | None = None,
+        _atomic_preflight: bool = True,
     ) -> dict[str, Any]:
         """Apply one already-resolved authority branch in mandated transition order."""
 
+        if _atomic_preflight:
+            preview = deepcopy(self)
+            record = preview.apply_branch(
+                effect_id=effect_id,
+                branch=branch,
+                components_by_id=components_by_id,
+                target_id=target_id,
+                source_actor_id=source_actor_id,
+                event_id=event_id,
+                invocation_id=invocation_id,
+                required_active_component_ids=required_active_component_ids,
+                expiry_event_ids=expiry_event_ids,
+                condition_immunities=condition_immunities,
+                relationships=relationships,
+                application_sequence=application_sequence,
+                condition_instance_id=condition_instance_id,
+                source_program_id=source_program_id,
+                issuance_id=issuance_id,
+                provenance_id=provenance_id,
+                _atomic_preflight=False,
+            )
+            for name, value in preview.__dict__.items():
+                if name != "_catalog":
+                    setattr(self, name, value)
+            return record
+
         before = self.snapshot(target_id)
-        pre_ids = {item["component_id"] for item in before if item["effect_id"] == effect_id}
+        pre_ids = {
+            item["component_id"]
+            for item in before
+            if item["effect_id"] == effect_id
+            and item["source_invocation_id"] == invocation_id
+        }
         missing_guards = sorted(set(required_active_component_ids) - pre_ids)
         if missing_guards:
             record = {
@@ -459,24 +1803,91 @@ class ControlState:
         expiry_event_ids = expiry_event_ids or {}
         if relationships is not None:
             self.register_relationships(effect_id, relationships)
+        applied_condition_ids = [
+            str(component_id)
+            for component_id in branch.get("applies", [])
+            if (
+                str(component_id) in components_by_id
+                and _value(
+                    components_by_id[str(component_id)].get("magnitude", {}),
+                    "kind",
+                )
+                == "condition"
+            )
+        ]
+        if condition_instance_id is not None and len(applied_condition_ids) != 1:
+            raise ControlStateError(
+                "condition_instance_id requires exactly one applied condition "
+                "component in the branch"
+            )
+
+        def condition_transition_invocation(
+            component_id: str,
+        ) -> str | None:
+            definition = components_by_id.get(component_id)
+            if definition is None:
+                return None
+            magnitude = definition.get("magnitude", {})
+            if not isinstance(magnitude, Mapping):
+                return None
+            return invocation_id if magnitude.get("kind") == "condition" else None
+
+        # Resolve every condition transition selector before the first mutation.
+        # A branch owns only condition components from its exact invocation; if
+        # that still names multiple issued applications, the compiled transition
+        # is underspecified and must fail atomically.
+        for transition_name in ("terminates", "replaces", "refreshes"):
+            for raw_component_id in branch.get(transition_name, []):
+                transition_component_id = str(raw_component_id)
+                selected_invocation = condition_transition_invocation(
+                    transition_component_id
+                )
+                if selected_invocation is None:
+                    continue
+                matches = self._matching(
+                    target_id,
+                    transition_component_id,
+                    effect_id,
+                    source_invocation_id=selected_invocation,
+                )
+                condition_matches = [
+                    component
+                    for component in matches
+                    if component.condition_instance_id is not None
+                ]
+                if len(condition_matches) > 1:
+                    raise ControlStateError(
+                        f"Branch {transition_name} for condition component "
+                        f"{transition_component_id!r} is ambiguous within "
+                        f"invocation {selected_invocation!r}"
+                    )
 
         # 4. explicit terminates
         for component_id in branch.get("terminates", []):
+            component_id = str(component_id)
             self.terminate(
                 target_id=target_id,
-                component_id=str(component_id),
+                component_id=component_id,
                 event_id=event_id,
                 effect_id=effect_id,
+                source_invocation_id=condition_transition_invocation(
+                    component_id
+                ),
+                event_sequence=application_sequence,
             )
 
         # 5. explicit replaces
         for component_id in branch.get("replaces", []):
+            component_id = str(component_id)
+            selected_invocation = condition_transition_invocation(component_id)
             removed = self.terminate(
                 target_id=target_id,
-                component_id=str(component_id),
+                component_id=component_id,
                 event_id=event_id,
                 effect_id=effect_id,
                 reason="explicit_branch_replacement",
+                source_invocation_id=selected_invocation,
+                event_sequence=application_sequence,
             )
             record = {
                 "event_id": event_id,
@@ -484,7 +1895,8 @@ class ControlState:
                 "effect_id": effect_id,
                 "branch_id": branch.get("branch_id"),
                 "dominant_component_ids": list(branch.get("applies", [])),
-                "replaced_component_id": str(component_id),
+                "replaced_component_id": component_id,
+                "selected_source_invocation_id": selected_invocation,
                 "replaced_instance_ids": [item.instance_id for item in removed],
                 "reason": "explicit_branch_replacement",
             }
@@ -506,6 +1918,15 @@ class ControlState:
                 invocation_id=invocation_id,
                 expiry_event_id=expiry_event_ids.get(component_id),
                 condition_immunities=condition_immunities,
+                application_sequence=application_sequence,
+                condition_instance_id=(
+                    condition_instance_id
+                    if component_id in applied_condition_ids
+                    else None
+                ),
+                source_program_id=source_program_id,
+                issuance_id=issuance_id,
+                provenance_id=provenance_id,
             )
 
         # 7. explicit refreshes
@@ -517,6 +1938,9 @@ class ControlState:
                 event_id=event_id,
                 effect_id=effect_id,
                 expiry_event_id=expiry_event_ids.get(component_id),
+                source_invocation_id=condition_transition_invocation(
+                    component_id
+                ),
             )
 
         # 8/9. canonical dominance and primitive overlap are evaluated as a
@@ -643,10 +2067,29 @@ class ControlState:
         ]
         return max([1.0, *multipliers])
 
-    def _condition_specs(self, component: ActiveComponent, catalog: Any) -> list[Any]:
-        from harness.control_catalog import expand_condition
-
-        return list(expand_condition(catalog, str(component.magnitude["condition"])))
+    def _condition_specs(self, condition_id: str, catalog: Any) -> list[Any]:
+        conditions = (
+            catalog.get("conditions")
+            if isinstance(catalog, Mapping)
+            else getattr(catalog, "conditions", None)
+        )
+        if not isinstance(conditions, Mapping) or condition_id not in conditions:
+            raise ControlStateError(
+                f"Unknown condition ID in live state: {condition_id!r}"
+            )
+        primitives = _value(
+            conditions[condition_id],
+            "primitives",
+            default=None,
+        )
+        if (
+            not isinstance(primitives, Sequence)
+            or isinstance(primitives, (str, bytes))
+        ):
+            raise ControlStateError(
+                f"conditions.{condition_id}.primitives must be an array"
+            )
+        return list(primitives)
 
     @staticmethod
     def _predicate_result(predicate: Any, context: Mapping[str, Any]) -> bool | None:
@@ -820,12 +2263,12 @@ class ControlState:
         allowed_windows: dict[str, set[str]] = {
             "active_turn_denial": {"target_active_turn_opportunity"},
             "reaction_denial": {"reaction_window"},
-            "offensive_impairment_next_attack": {"target_attack_opportunity"},
-            "offensive_impairment_all_attacks": {"target_active_turn_opportunity"},
-            "target_choice_restriction": {"target_active_turn_opportunity"},
+            "offensive_impairment_next_attack": set(OUTGOING_ATTACK_WINDOWS),
+            "offensive_impairment_all_attacks": set(OUTGOING_ATTACK_WINDOWS),
+            "target_choice_restriction": {"action_proposal"},
             "sight_option_denial": {"sight_opportunity", "target_active_turn_opportunity"},
             "geometry_sensitive_approach_restriction": {"target_movement_opportunity", "target_active_turn_opportunity"},
-            "defensive_attack_advantage": {"incoming_attack_opportunity", "controller_attack_opportunity"},
+            "defensive_attack_advantage": set(INCOMING_ATTACK_WINDOWS),
             "save_disadvantage": {"save_opportunity"},
             "save_auto_failure": {"save_opportunity"},
             "sight_dependent_opportunity": {"sight_opportunity", "controller_attack_opportunity"},
@@ -836,7 +2279,8 @@ class ControlState:
             "persistent_elevation": {"state_window"},
             "fall_transition": {"instantaneous_resolution"},
             "nonsight_location_awareness": {"sight_opportunity", "location_opportunity"},
-            "prone_incoming_attack_context": {"incoming_attack_opportunity", "controller_attack_opportunity"},
+            "prone_incoming_attack_context": set(INCOMING_ATTACK_WINDOWS),
+            "initiative_disadvantage": {"initiative_opportunity"},
         }
         if primitive_id in allowed_windows and window_kind not in allowed_windows[primitive_id]:
             return None
@@ -897,16 +2341,16 @@ class ControlState:
 
         if kind == "attack_disadvantage":
             scope = magnitude["scope"]
-            if scope == "next_attack" and window_kind == "target_attack_opportunity" and (component.remaining_tokens or 0) > 0:
-                add("denial", "offensive_impairment_next_attack", "attack_opportunity_token")
-            elif scope == "all_attacks" and window_kind == "target_active_turn_opportunity":
-                add("denial", "offensive_impairment_all_attacks", "affected_target_turn")
+            if scope == "next_attack" and window_kind in OUTGOING_ATTACK_WINDOWS and (component.remaining_tokens or 0) > 0:
+                add("denial", "offensive_impairment_next_attack", "attack_opportunity")
+            elif scope == "all_attacks" and window_kind in OUTGOING_ATTACK_WINDOWS:
+                add("denial", "offensive_impairment_all_attacks", "attack_opportunity")
         elif kind == "reaction_denial" and window_kind == "reaction_window":
             add("denial", "reaction_denial", "reaction_window")
         elif kind == "movement_option_denial" and window_kind == "target_movement_opportunity":
             for mode in magnitude["movement_modes"]:
                 add("denial", "movement_mode_denial", "denied_movement_mode_window", movement_mode=mode)
-        elif kind == "numerical_modifier" and window_kind in {"incoming_attack_opportunity", "controller_attack_opportunity"}:
+        elif kind == "numerical_modifier" and window_kind in INCOMING_ATTACK_WINDOWS:
             if magnitude.get("target") == "armor_class" and float(magnitude["value"]) < 0:
                 add(
                     "enablement",
@@ -1084,10 +2528,10 @@ class ControlState:
             context["alternative_sight_resolution"] = sense_resolution
 
         active = list(self._active.get(target_id, []))
-        if catalog is None and any(item.magnitude.get("kind") == "condition" for item in active):
-            from harness.control_catalog import load_control_catalog
-
-            catalog = load_control_catalog()
+        if any(item.magnitude.get("kind") == "condition" for item in active):
+            self._validate_condition_registry()
+            if catalog is None:
+                catalog = self._condition_catalog()
         candidates: list[PrimitiveContribution] = []
         suppressions: list[SuppressionRecord] = []
         active_turn_denial_sources: set[str] = set()
@@ -1111,30 +2555,50 @@ class ControlState:
             component_context["source_actor_id"] = component.source_actor_id
 
             if component.magnitude.get("kind") == "condition":
-                for spec in self._condition_specs(component, catalog):
-                    if str(_value(spec, "primitive_id", "id")) == "active_turn_denial":
-                        denial_probe = self._candidate_from_spec(
-                            component,
+                if component.condition_instance_id is None:
+                    raise ControlStateError(
+                        "Active condition component lacks a condition instance identity"
+                    )
+                for condition_instance in self._condition_lineage(
+                    component.condition_instance_id
+                ):
+                    if condition_instance.status != "active":
+                        continue
+                    condition_component = replace(
+                        component,
+                        magnitude={
+                            "kind": "condition",
+                            "condition": condition_instance.condition_id,
+                        },
+                        condition_instance_id=condition_instance.instance_id,
+                    )
+                    for spec in self._condition_specs(
+                        condition_instance.condition_id,
+                        catalog,
+                    ):
+                        if str(_value(spec, "primitive_id", "id")) == "active_turn_denial":
+                            denial_probe = self._candidate_from_spec(
+                                condition_component,
+                                spec,
+                                target_id=target_id,
+                                window_id=window_id,
+                                window_kind="target_active_turn_opportunity",
+                                context=component_context,
+                            )
+                            if denial_probe is not None and denial_probe.family == "denial":
+                                active_turn_denial_sources.update(
+                                    denial_probe.source_component_ids
+                                )
+                        contribution = self._candidate_from_spec(
+                            condition_component,
                             spec,
                             target_id=target_id,
                             window_id=window_id,
-                            window_kind="target_active_turn_opportunity",
+                            window_kind=window_kind,
                             context=component_context,
                         )
-                        if denial_probe is not None and denial_probe.family == "denial":
-                            active_turn_denial_sources.update(
-                                denial_probe.source_component_ids
-                            )
-                    contribution = self._candidate_from_spec(
-                        component,
-                        spec,
-                        target_id=target_id,
-                        window_id=window_id,
-                        window_kind=window_kind,
-                        context=component_context,
-                    )
-                    if contribution is not None:
-                        candidates.append(contribution)
+                        if contribution is not None:
+                            candidates.append(contribution)
             else:
                 candidates.extend(self._direct_candidates(
                     component,
@@ -1163,21 +2627,36 @@ class ControlState:
         # the suppressed active component.
         suppressed_sources: set[str] = set()
         for effect_id, edges in self._relationships.items():
-            active_ids = {
-                component.component_id for component in active if component.effect_id == effect_id
-            }
+            active_by_component_id: dict[str, list[ActiveComponent]] = {}
+            for component in active:
+                if component.effect_id == effect_id:
+                    active_by_component_id.setdefault(
+                        component.component_id,
+                        [],
+                    ).append(component)
             for dominant_id, dominated_ids in edges.items():
-                if dominant_id not in active_ids:
+                dominant_components = active_by_component_id.get(dominant_id, ())
+                if not dominant_components:
                     continue
-                for dominated_id in sorted(dominated_ids & active_ids):
-                    suppressed_key = f"{effect_id}:{dominated_id}"
-                    suppressed_sources.add(suppressed_key)
+                dominant_sources = tuple(
+                    sorted(_source_key(component) for component in dominant_components)
+                )
+                for dominated_id in sorted(
+                    dominated_ids & active_by_component_id.keys()
+                ):
+                    dominated_sources = tuple(
+                        sorted(
+                            _source_key(component)
+                            for component in active_by_component_id[dominated_id]
+                        )
+                    )
+                    suppressed_sources.update(dominated_sources)
                     suppressions.append(SuppressionRecord(
                         target_id,
                         window_id,
                         "authority_component_dominance",
-                        (f"{effect_id}:{dominant_id}",),
-                        (suppressed_key,),
+                        dominant_sources,
+                        dominated_sources,
                         "explicit_authority_dominance",
                         {"effect_id": effect_id},
                     ))
@@ -1197,12 +2676,9 @@ class ControlState:
         )
         attack_opportunity_denied = (
             bool(dominant_sources)
-            and window_kind == "target_attack_opportunity"
+            and window_kind in OUTGOING_ATTACK_WINDOWS
         )
-        if dominant_sources and window_kind in {
-            "target_active_turn_opportunity",
-            "target_attack_opportunity",
-        }:
+        if dominant_sources and window_kind in OUTGOING_ATTACK_WINDOWS:
             retained: list[PrimitiveContribution] = []
             for item in candidates:
                 if item.primitive_id in {
@@ -1351,7 +2827,7 @@ class ControlState:
 
         # Consume every next-attack token that participated in this opportunity.
         if (
-            window_kind == "target_attack_opportunity"
+            window_kind in OUTGOING_ATTACK_WINDOWS
             and not attack_opportunity_denied
         ):
             for component in tuple(active):
@@ -1368,6 +2844,8 @@ class ControlState:
                             event_id=window_id,
                             effect_id=component.effect_id,
                             reason="next_attack_token_consumed",
+                            instance_id=component.instance_id,
+                            source_invocation_id=component.source_invocation_id,
                         )
 
         normalized.sort(key=lambda item: (
@@ -1389,14 +2867,14 @@ class ControlState:
         """Return active mechanics, not a reward or combined Control Value."""
 
         result: dict[str, Any] = {}
-        for target_id in sorted(self._active):
+        target_ids = set(self._active)
+        target_ids.update(
+            instance.target_id for instance in self._condition_instances.values()
+        )
+        for target_id in sorted(target_ids):
             result[target_id] = {
                 "active_components": self.snapshot(target_id),
-                "conditions": sorted({
-                    component.magnitude["condition"]
-                    for component in self._active[target_id]
-                    if component.magnitude.get("kind") == "condition"
-                }),
+                "conditions": list(self.derived_current_conditions(target_id)),
                 "area_movement_cost_multiplier": self.area_movement_cost_multiplier(target_id),
             }
         return result

@@ -16,12 +16,12 @@ DEFAULT_CONTROL_CATALOG = HARNESS_ROOT / "data" / "srd_control_consequences.json
 DEFAULT_CONTROL_PROVENANCE = HARNESS_ROOT / "provenance" / "srd-control-consequences.json"
 DEFAULT_ENGINE_CONFIG = HARNESS_ROOT / "config" / "control-engine.json"
 
-CATALOG_VERSION = "1.0.0"
+CATALOG_VERSION = "2.0.0"
 CONSEQUENCE_CATALOG_VERSION = CATALOG_VERSION
-PRIMITIVE_CONTRACT_VERSION = "1.0.0"
-ENGINE_CONFIG_VERSION = "1.0.0"
-NORMALIZATION_RULES_VERSION = "1.0.0"
-TIMELINE_ENGINE_VERSION = "1.0.0"
+PRIMITIVE_CONTRACT_VERSION = "2.0.0"
+ENGINE_CONFIG_VERSION = "2.0.0"
+NORMALIZATION_RULES_VERSION = "2.0.0"
+TIMELINE_ENGINE_VERSION = "2.0.0"
 
 DIAGNOSTIC_FAMILIES = ("denial", "enablement", "retained_unpriced")
 PRIMITIVE_STATUSES = ("candidate", "retained_unpriced")
@@ -76,15 +76,15 @@ PRIMITIVE_CONTRACT: Mapping[str, PrimitiveDefinition] = MappingProxyType(
     {
         "active_turn_denial": _primitive("denial", "target_turn_window"),
         "reaction_denial": _primitive("denial", "reaction_window"),
-        "offensive_impairment_next_attack": _primitive("denial", "attack_opportunity_token"),
-        "offensive_impairment_all_attacks": _primitive("denial", "affected_target_turn"),
-        "target_choice_restriction": _primitive("denial", "affected_target_turn"),
+        "offensive_impairment_next_attack": _primitive("denial", "attack_opportunity"),
+        "offensive_impairment_all_attacks": _primitive("denial", "attack_opportunity"),
+        "target_choice_restriction": _primitive("denial", "action_proposal"),
         "sight_option_denial": _primitive("denial", "sight_dependent_opportunity_window"),
         "mobility_loss_feet": _primitive("denial", "feet_unavailable_at_movement_opportunity"),
         "movement_mode_denial": _primitive("denial", "denied_movement_mode_window"),
         "forced_displacement": _primitive("denial", "selected_displacement_function_units"),
         "geometry_sensitive_approach_restriction": _primitive("denial", "contextual_target_turn_window"),
-        "defensive_attack_advantage": _primitive("enablement", "relevant_incoming_attack_opportunity"),
+        "defensive_attack_advantage": _primitive("enablement", "attack_opportunity"),
         "defense_numerical_reduction": _primitive("enablement", "defense_point_opportunity"),
         "save_disadvantage": _primitive("enablement", "save_opportunity"),
         "save_auto_failure": _primitive("enablement", "save_opportunity"),
@@ -113,7 +113,10 @@ PRIMITIVE_CONTRACT: Mapping[str, PrimitiveDefinition] = MappingProxyType(
             "retained_unpriced", "location_detection_opportunity", "retained_unpriced"
         ),
         "prone_incoming_attack_context": _primitive(
-            "retained_unpriced", "incoming_attack_opportunity", "retained_unpriced"
+            "retained_unpriced", "attack_opportunity", "retained_unpriced"
+        ),
+        "initiative_disadvantage": _primitive(
+            "retained_unpriced", "initiative_opportunity", "retained_unpriced"
         ),
     }
 )
@@ -166,7 +169,10 @@ _QUALIFIER_RULES: Mapping[str, tuple[str, Any]] = MappingProxyType(
         "ability_check_effect": ("enum", ("automatic_failure", "disadvantage")),
         "attack_scope": ("enum", ("next_attack", "all_attacks")),
         "restricted_target_relation": ("enum", ("charmer",)),
-        "restricted_choice_kinds": ("exact_list", ("attack", "harmful_effect")),
+        "restricted_choice_kinds": (
+            "exact_list",
+            ("attack", "damaging_ability", "damaging_magical_effect"),
+        ),
         "social_actor_relation": ("enum", ("charmer",)),
         "movement_relation": ("enum", ("closer_to_source",)),
         "denied_turn_options": ("exact_list", ("action", "bonus_action")),
@@ -184,17 +190,21 @@ _ALLOWED_DOMINANCE = frozenset({("save_auto_failure", "save_disadvantage")})
 
 _EXPECTED_RESPONSES: Mapping[str, Mapping[str, tuple[str, ...] | str]] = MappingProxyType(
     {
-        "prone_movement_options": MappingProxyType(
+        "remain_prone": MappingProxyType(
             {
-                "timing": "each_movement_opportunity",
-                "requirements": (),
-                "effects": ("crawl_is_remaining_movement_option",),
+                "timing": "explicit_operation_proposal",
+                "requirements": ("currently_prone",),
+                "effects": ("retain_prone", "spend_no_action", "spend_no_speed"),
             }
         ),
         "stand_from_prone": MappingProxyType(
             {
-                "timing": "first_legal_movement_opportunity",
-                "requirements": ("effective_speed_positive",),
+                "timing": "explicit_operation_proposal",
+                "requirements": (
+                    "currently_prone",
+                    "actor_owned_movement_opportunity",
+                    "current_speed_positive",
+                ),
                 "effects": (
                     "spend_half_current_speed_rounded_down",
                     "end_prone",
@@ -202,21 +212,49 @@ _EXPECTED_RESPONSES: Mapping[str, Mapping[str, tuple[str, ...] | str]] = Mapping
                 ),
             }
         ),
+        "voluntarily_drop_prone": MappingProxyType(
+            {
+                "timing": "explicit_operation_proposal",
+                "requirements": (
+                    "currently_not_prone",
+                    "actor_owned_movement_opportunity",
+                    "current_speed_positive",
+                ),
+                "effects": ("spend_no_action", "spend_no_speed", "apply_prone"),
+            }
+        ),
+        "crawl_while_prone": MappingProxyType(
+            {
+                "timing": "explicit_operation_proposal",
+                "requirements": (
+                    "currently_prone",
+                    "actor_owned_movement_opportunity",
+                ),
+                "effects": (
+                    "retain_prone",
+                    "spend_one_extra_foot_per_foot",
+                    "spend_two_extra_feet_per_foot_in_difficult_terrain",
+                ),
+            }
+        ),
     }
 )
-_END_MECHANICS = frozenset({"source_end", "legal_stand"})
+_END_MECHANICS = frozenset({"source_end", "explicit_stand_operation"})
 
 _EXPECTED_SOURCE = {
-    "ruleset": "D&D SRD 5.2.1",
-    "official_pdf_url": "https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf",
-    "official_pdf_sha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",
-    "pages": 364,
-}
-_EXPECTED_EXTRACTION = {
-    "scope": "Blinded, Charmed, Frightened, Incapacitated, Prone, Restrained, and Stunned",
-    "representation": "compact_structured_mechanical_facts",
-    "copied_paragraphs": False,
-    "inference": "none",
+    "repository": "kmart01123/kinetic-vanguard",
+    "issue_53_record_ids": [
+        5247061714,
+        5247097441,
+        5247104955,
+        5247113901,
+        5247133887,
+        5247179060,
+        5247181650,
+        5247254885,
+        5247439835,
+    ],
+    "issue_54_record_ids": [5247493229],
 }
 
 
@@ -488,7 +526,7 @@ _EXPECTED_CONDITION_SEMANTICS: Mapping[
     tuple[str, str], tuple[_ConditionSemantics, ...]
 ] = MappingProxyType(
     {
-        ("1.0.0", "1.0.0"): (
+        ("2.0.0", "2.0.0"): (
             (
                 "blinded",
                 176,
@@ -524,21 +562,21 @@ _EXPECTED_CONDITION_SEMANTICS: Mapping[
                     (
                         "offensive_impairment_all_attacks",
                         "denial",
-                        "affected_target_turn",
+                        "attack_opportunity",
                         "candidate",
-                        (("alternative_sight_available", False),),
+                        (),
                         (("attack_scope", "all_attacks"),),
-                        ("alternative_sight_resolution",),
+                        (),
                         (),
                     ),
                     (
                         "defensive_attack_advantage",
                         "enablement",
-                        "relevant_incoming_attack_opportunity",
+                        "attack_opportunity",
                         "candidate",
-                        (("alternative_sight_available", False),),
                         (),
-                        ("alternative_sight_resolution",),
+                        (),
+                        (),
                         (),
                     ),
                 ),
@@ -555,12 +593,15 @@ _EXPECTED_CONDITION_SEMANTICS: Mapping[
                     (
                         "target_choice_restriction",
                         "denial",
-                        "affected_target_turn",
+                        "action_proposal",
                         "candidate",
                         (),
                         (
                             ("restricted_target_relation", "charmer"),
-                            ("restricted_choice_kinds", ("attack", "harmful_effect")),
+                            (
+                                "restricted_choice_kinds",
+                                ("attack", "damaging_ability", "damaging_magical_effect"),
+                            ),
                         ),
                         ("source_actor_id",),
                         (),
@@ -589,7 +630,7 @@ _EXPECTED_CONDITION_SEMANTICS: Mapping[
                     (
                         "offensive_impairment_all_attacks",
                         "denial",
-                        "affected_target_turn",
+                        "attack_opportunity",
                         "candidate",
                         (("source_in_line_of_sight", True),),
                         (("attack_scope", "all_attacks"),),
@@ -652,6 +693,16 @@ _EXPECTED_CONDITION_SEMANTICS: Mapping[
                         (),
                     ),
                     (
+                        "initiative_disadvantage",
+                        "retained_unpriced",
+                        "initiative_opportunity",
+                        "retained_unpriced",
+                        (),
+                        (),
+                        (),
+                        (),
+                    ),
+                    (
                         "concentration_break",
                         "retained_unpriced",
                         "concentration_state_transition",
@@ -693,23 +744,47 @@ _EXPECTED_CONDITION_SEMANTICS: Mapping[
                 "denial",
                 (
                     (
-                        "prone_movement_options",
-                        "each_movement_opportunity",
-                        (),
-                        ("crawl_is_remaining_movement_option",),
+                        "remain_prone",
+                        "explicit_operation_proposal",
+                        ("currently_prone",),
+                        ("retain_prone", "spend_no_action", "spend_no_speed"),
                     ),
                     (
                         "stand_from_prone",
-                        "first_legal_movement_opportunity",
-                        ("effective_speed_positive",),
+                        "explicit_operation_proposal",
+                        (
+                            "currently_prone",
+                            "actor_owned_movement_opportunity",
+                            "current_speed_positive",
+                        ),
                         (
                             "spend_half_current_speed_rounded_down",
                             "end_prone",
                             "retain_remaining_movement",
                         ),
                     ),
+                    (
+                        "voluntarily_drop_prone",
+                        "explicit_operation_proposal",
+                        (
+                            "currently_not_prone",
+                            "actor_owned_movement_opportunity",
+                            "current_speed_positive",
+                        ),
+                        ("spend_no_action", "spend_no_speed", "apply_prone"),
+                    ),
+                    (
+                        "crawl_while_prone",
+                        "explicit_operation_proposal",
+                        ("currently_prone", "actor_owned_movement_opportunity"),
+                        (
+                            "retain_prone",
+                            "spend_one_extra_foot_per_foot",
+                            "spend_two_extra_feet_per_foot_in_difficult_terrain",
+                        ),
+                    ),
                 ),
-                ("legal_stand", "source_end"),
+                ("explicit_stand_operation", "source_end"),
                 (
                     "effective_speed_ft",
                     "attacker_distance_ft",
@@ -720,7 +795,7 @@ _EXPECTED_CONDITION_SEMANTICS: Mapping[
                     (
                         "offensive_impairment_all_attacks",
                         "denial",
-                        "affected_target_turn",
+                        "attack_opportunity",
                         "candidate",
                         (),
                         (("attack_scope", "all_attacks"),),
@@ -730,7 +805,7 @@ _EXPECTED_CONDITION_SEMANTICS: Mapping[
                     (
                         "defensive_attack_advantage",
                         "enablement",
-                        "relevant_incoming_attack_opportunity",
+                        "attack_opportunity",
                         "candidate",
                         (("attacker_distance_band", "within_5_feet"),),
                         (),
@@ -740,7 +815,7 @@ _EXPECTED_CONDITION_SEMANTICS: Mapping[
                     (
                         "prone_incoming_attack_context",
                         "retained_unpriced",
-                        "incoming_attack_opportunity",
+                        "attack_opportunity",
                         "retained_unpriced",
                         (("attacker_distance_band", "farther_than_5_feet"),),
                         (("incoming_attack_effect", "disadvantage"),),
@@ -787,7 +862,7 @@ _EXPECTED_CONDITION_SEMANTICS: Mapping[
                     (
                         "defensive_attack_advantage",
                         "enablement",
-                        "relevant_incoming_attack_opportunity",
+                        "attack_opportunity",
                         "candidate",
                         (),
                         (),
@@ -797,7 +872,7 @@ _EXPECTED_CONDITION_SEMANTICS: Mapping[
                     (
                         "offensive_impairment_all_attacks",
                         "denial",
-                        "affected_target_turn",
+                        "attack_opportunity",
                         "candidate",
                         (),
                         (("attack_scope", "all_attacks"),),
@@ -852,7 +927,7 @@ _EXPECTED_CONDITION_SEMANTICS: Mapping[
                     (
                         "defensive_attack_advantage",
                         "enablement",
-                        "relevant_incoming_attack_opportunity",
+                        "attack_opportunity",
                         "candidate",
                         (),
                         (),
@@ -1266,14 +1341,12 @@ def _validate_catalog_provenance(value: Any, catalog_path: Path, catalog: Contro
             "catalog_version",
             "primitive_contract_version",
             "source",
-            "condition_pages",
             "data_file",
             "data_sha256",
-            "extraction",
         },
         "control consequence provenance",
     )
-    if isinstance(data["format_version"], bool) or data["format_version"] != 1:
+    if isinstance(data["format_version"], bool) or data["format_version"] != 2:
         raise CatalogError("Unsupported control consequence provenance format version")
     _version(data["catalog_version"], catalog.catalog_version, "provenance.catalog_version")
     _version(
@@ -1284,20 +1357,12 @@ def _validate_catalog_provenance(value: Any, catalog_path: Path, catalog: Contro
     source = _object(data["source"], "control consequence provenance.source")
     _exact_keys(source, set(_EXPECTED_SOURCE), "control consequence provenance.source")
     if source != _EXPECTED_SOURCE:
-        raise CatalogError("Control consequence provenance does not identify the pinned official SRD 5.2.1 PDF")
-    pages = _object(data["condition_pages"], "control consequence provenance.condition_pages")
-    _exact_keys(pages, set(_CONDITION_PAGES), "control consequence provenance.condition_pages")
-    if pages != dict(_CONDITION_PAGES):
-        raise CatalogError("Control consequence provenance condition pages are not exact")
+        raise CatalogError("Control consequence provenance does not identify the accepted public records")
     if data["data_file"] != "harness/data/srd_control_consequences.json":
         raise CatalogError("Control consequence provenance data_file is unsupported")
     data_sha = _string(data["data_sha256"], "control consequence provenance.data_sha256")
     if not _SHA256.fullmatch(data_sha) or data_sha != sha256_file(catalog_path) or data_sha != catalog.digest:
         raise CatalogError("Control consequence catalog SHA-256 does not match provenance")
-    extraction = _object(data["extraction"], "control consequence provenance.extraction")
-    _exact_keys(extraction, set(_EXPECTED_EXTRACTION), "control consequence provenance.extraction")
-    if extraction != _EXPECTED_EXTRACTION:
-        raise CatalogError("Control consequence provenance extraction policy is unsupported")
 
 
 def load_control_catalog(
@@ -1630,8 +1695,8 @@ _EXPECTED_SCHEDULES = (
 _EXPECTED_AREAS = (
     {
         "area_response_id": "shortest_route_v1",
-        "version": "1.0.0",
-        "policy": "first_legal_movement_opportunity_minimizes_future_primitive_exposure",
+        "version": "2.0.0",
+        "policy": "post_explicit_prone_operation_minimizes_future_primitive_exposure",
         "required_route_context": [
             "current_membership",
             "distance_to_exit_by_legal_movement_mode",
@@ -1686,6 +1751,7 @@ def _validate_named_rows(
     expected: tuple[dict[str, Any], ...],
 ) -> list[dict[str, Any]]:
     rows = _array(value, label)
+    expected_by_id = {item[id_key]: item for item in expected}
     seen: set[str] = set()
     normalized: list[dict[str, Any]] = []
     for index, raw in enumerate(rows):
@@ -1696,7 +1762,10 @@ def _validate_named_rows(
         if identifier in seen:
             raise CatalogError(f"{label} contains duplicate ID: {identifier}")
         seen.add(identifier)
-        _version(item["version"], "1.0.0", f"{item_label}.version")
+        expected_item = expected_by_id.get(identifier)
+        if expected_item is None:
+            raise CatalogError(f"{label} must match the versioned named registry exactly")
+        _version(item["version"], expected_item["version"], f"{item_label}.version")
         normalized.append(item)
     if normalized != list(expected):
         raise CatalogError(f"{label} must match the versioned named registry exactly")

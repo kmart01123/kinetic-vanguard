@@ -1,9 +1,9 @@
 {
   "format_version": 1,
-  "config_version": "1.0.0",
-  "primitive_contract_version": "1.0.0",
-  "normalization_rules_version": "1.0.0",
-  "timeline_engine_version": "1.0.0",
+  "config_version": "2.0.0",
+  "primitive_contract_version": "2.0.0",
+  "normalization_rules_version": "2.0.0",
+  "timeline_engine_version": "2.0.0",
   "horizon_rounds": 3,
   "initiative_schedules": [
     {
@@ -60,8 +60,8 @@
   "area_response_conventions": [
     {
       "area_response_id": "shortest_route_v1",
-      "version": "1.0.0",
-      "policy": "first_legal_movement_opportunity_minimizes_future_primitive_exposure",
+      "version": "2.0.0",
+      "policy": "post_explicit_prone_operation_minimizes_future_primitive_exposure",
       "required_route_context": [
         "current_membership",
         "distance_to_exit_by_legal_movement_mode",

@@ -42,13 +42,14 @@ from harness.control_timeline import (
     area_entry,
     area_response,
     build_schedule,
+    enumerate_prone_movement_operations,
     prone_movement_response,
     repeat_save_survival,
     resolve_expiry_index,
 )
 
 
-FIXTURE_PATH = Path(__file__).parent / "fixtures" / "control_engine_v1.json"
+FIXTURE_PATH = Path(__file__).parent / "fixtures" / "control_engine_v2.json"
 CASE_KEYS = {"id", "category", "invariant", "operation", "input", "expected"}
 CATEGORY_COUNTS = {
     "catalog_and_senses": 8,
@@ -81,18 +82,18 @@ EXPECTED_INVARIANTS = (
     "Restrained plus independent Speed 0 counts mobility denial once.",
     "Longer Slow resumes after shorter independent Speed 0 ends.",
     "Stunned plus direct reaction denial counts reaction denial once.",
-    "Active-turn denial suppresses offensive impairment during that denied target turn.",
+    "Active-turn denial suppresses offensive impairment at each scripted attack opportunity.",
     "Stunned automatic Dexterity failure dominates Restrained Dexterity disadvantage.",
-    "Blinded plus Restrained does not double-count identical attack effects.",
-    "Reapplication refreshes expiry without immediate duplicate persistent contribution.",
+    "Blinded plus Restrained does not double-count one attack opportunity.",
+    "Non-condition Slow reapplication refreshes expiry without immediate duplicate persistent contribution.",
     "Explicit branch replacement overrides generic normalization.",
-    "Different targets remain independent.",
-    "Prone target with positive Speed stands at first movement opportunity.",
-    "Standing consumes half current Speed.",
-    "Speed 0 prevents standing.",
-    "Prone plus Speed 0 persists until Speed returns or source ends.",
-    "Incoming attack consequence differs for within-5-foot and farther-than-5-foot contexts.",
-    "Missing attacker-distance context retains the consequence as unresolved/contextual rather than choosing one.",
+    "Different targets remain independent at each attack opportunity.",
+    "Remain Prone and stand are distinct actor-selected operations.",
+    "Explicit standing consumes half current Speed rounded down.",
+    "Speed 0 rejects an explicit stand operation without mutation.",
+    "Speed returning makes stand available without selecting it automatically.",
+    "Each incoming attack opportunity uses the distance-specific Prone consequence.",
+    "A missing-distance attack opportunity retains both Prone contexts as unresolved.",
     "Until controller-start-next under `fighter_first_v1`.",
     "Until controller-end-next under `fighter_first_v1`.",
     "The same durations under `target_before_fighter_v1`.",
@@ -131,7 +132,7 @@ EXPECTED_INVARIANTS = (
     "Engine result contains no HOT/IDEAL/COLD/SENSITIVE field.",
     "Engine performs no action, tier, target, resource, or comparator optimization.",
     "Both initiative conventions put the first movement response after start processing and before active and attack windows.",
-    "Standing and route progress share one pre-attack movement budget.",
+    "Explicit standing and route progress share one pre-attack movement budget.",
     "Frozen Ground can be exited on the immediate legal movement response without changing Speed.",
     "Ball Lightning while-in-area consequences end on the immediate legal exit response.",
     "Speed 0 preserves Prone and area exposure at the pre-attack movement response.",
@@ -576,18 +577,62 @@ class ControlEngineFixtureTests(unittest.TestCase):
         )
 
     def run_prone_response(self, case: Mapping[str, Any]) -> None:
-        result = prone_movement_response(**case["input"])
-        for key, expected in case["expected"].items():
-            self.assertEqual(result[key], expected)
+        inputs = deepcopy(case["input"])
+        expected = case["expected"]
+        selected_kinds = inputs.pop("selected_kinds", None)
+        if selected_kinds is not None:
+            operations = enumerate_prone_movement_operations(**inputs)
+            self.assertEqual(
+                [operation["kind"] for operation in operations[:len(selected_kinds)]],
+                expected["enumerated_kinds_prefix"],
+            )
+            by_kind = {operation["kind"]: operation for operation in operations}
+            for kind in selected_kinds:
+                operation = by_kind[kind]
+                result = prone_movement_response(
+                    **inputs,
+                    kind=operation["kind"],
+                    distance_feet=operation.get("distance_feet"),
+                )
+                for key, value in expected["responses"][kind].items():
+                    self.assertEqual(result[key], value)
+            return
+        error_contains = expected.get("error_contains")
+        if error_contains is not None:
+            before = deepcopy(inputs)
+            with self.assertRaisesRegex(TimelineError, error_contains):
+                prone_movement_response(**inputs)
+            self.assertEqual(inputs, before)
+            return
+        result = prone_movement_response(**inputs)
+        for key, value in expected.items():
+            self.assertEqual(result[key], value)
 
     def run_prone_sequence(self, case: Mapping[str, Any]) -> None:
         prone = True
         rows = []
-        for speed in case["input"]["speeds_ft"]:
-            row = prone_movement_response(
+        stand_available = []
+        for speed, selected_kind in zip(
+            case["input"]["speeds_ft"],
+            case["input"]["selected_kinds"],
+            strict=True,
+        ):
+            operations = enumerate_prone_movement_operations(
                 target_id=case["input"]["target_id"],
+                actor_id=case["input"]["actor_id"],
                 prone=prone,
                 current_speed_ft=speed,
+                movement_budget_ft=speed,
+            )
+            stand_available.append(any(row["kind"] == "stand" for row in operations))
+            selected = next(row for row in operations if row["kind"] == selected_kind)
+            row = prone_movement_response(
+                target_id=case["input"]["target_id"],
+                actor_id=case["input"]["actor_id"],
+                kind=selected["kind"],
+                prone=prone,
+                current_speed_ft=speed,
+                movement_budget_ft=speed,
             )
             rows.append(row)
             prone = row["prone_after"]
@@ -598,6 +643,10 @@ class ControlEngineFixtureTests(unittest.TestCase):
         self.assertEqual(
             [row["prone_after"] for row in rows],
             case["expected"]["prone_after_by_opportunity"],
+        )
+        self.assertEqual(
+            stand_available,
+            case["expected"]["stand_available_by_opportunity"],
         )
 
     def prone_contributions(self, distance: int | None) -> tuple[Any, ...]:
@@ -633,6 +682,10 @@ class ControlEngineFixtureTests(unittest.TestCase):
                     [item.disposition for item in contributions],
                     [expected["disposition_by_distance"][distance]],
                 )
+                self.assertEqual(
+                    [item.unit for item in contributions],
+                    [expected["unit_by_distance"][distance]],
+                )
         else:
             contributions = rows[None]
             self.assertEqual(
@@ -642,6 +695,10 @@ class ControlEngineFixtureTests(unittest.TestCase):
             self.assertEqual(
                 sorted({item.disposition for item in contributions}),
                 sorted(expected["dispositions"]),
+            )
+            self.assertEqual(
+                sorted({item.unit for item in contributions}),
+                sorted(expected["units"]),
             )
             if expected["unresolved_context"]:
                 self.assertTrue(
@@ -884,7 +941,10 @@ class ControlEngineFixtureTests(unittest.TestCase):
         if "compiled_effect" in case["input"]:
             self.run_compiled_concentration_scenario(case)
             return
-        tracker = ConcentrationTracker(save_bonus=case["input"]["save_bonus"])
+        tracker = ConcentrationTracker(
+            owner_actor_id=case["input"]["owner_actor_id"],
+            save_bonus=case["input"]["save_bonus"],
+        )
         for raw in case["input"]["steps"]:
             step = deepcopy(raw)
             kind = step.pop("kind")
@@ -900,6 +960,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
                 self.fail(f"Unknown concentration step {kind}")
         result = tracker.to_dict()
         expected = case["expected"]
+        self.assertEqual(result["owner_actor_id"], expected["owner_actor_id"])
         self.assertEqual(result["active_effect_id"], expected["active_effect_id"])
         if "record_kinds" in expected:
             self.assertEqual(
@@ -971,14 +1032,19 @@ class ControlEngineFixtureTests(unittest.TestCase):
                 gate_id=f"mass_levitation_t{compiled_effect['tier']}_initial_saves",
                 outcome="save_failure",
                 target_id=target_id,
-                source_actor_id="controller",
+                source_actor_id=inputs["owner_actor_id"],
                 event_id=save_events[target_id].event_id,
                 invocation_id=invocation_id,
                 schedule=schedule,
                 selector_membership=selector_membership,
                 selector_context=selector_context,
             )
-        tracker = ConcentrationTracker(save_bonus=inputs["save_bonus"])
+        tracker = ConcentrationTracker(
+            owner_actor_id=inputs["owner_actor_id"],
+            save_bonus=inputs["save_bonus"],
+        )
+        expected = case["expected"]
+        self.assertEqual(tracker.owner_actor_id, expected["owner_actor_id"])
         start = self.engine._start_concentration(
             state=state,
             tracker=tracker,
@@ -988,7 +1054,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
             selector_membership=selector_membership,
             selector_context=selector_context,
             invocation_id=invocation_id,
-            source_actor_id="controller",
+            source_actor_id=inputs["owner_actor_id"],
         )
         replacement_effect = inputs.get("replacement_effect")
         if replacement_effect is not None:
@@ -1010,9 +1076,8 @@ class ControlEngineFixtureTests(unittest.TestCase):
                 selector_membership=replacement_membership,
                 selector_context=selector_context,
                 invocation_id=f"{invocation_id}:replacement",
-                source_actor_id="controller",
+                source_actor_id=inputs["owner_actor_id"],
             )
-            expected = case["expected"]
             self.assertEqual(
                 tracker.active_effect_id,
                 expected["active_effect_id"],
@@ -1046,11 +1111,10 @@ class ControlEngineFixtureTests(unittest.TestCase):
             selector_membership=selector_membership,
             selector_context=selector_context,
             invocation_id=invocation_id,
-            source_actor_id="controller",
+            source_actor_id=inputs["owner_actor_id"],
             reason=inputs["end_reason"],
             event_id=end_event.event_id,
         )
-        expected = case["expected"]
         self.assertIsNone(tracker.active_effect_id)
         self.assertEqual(ended["reason"], inputs["end_reason"])
         self.assertEqual(
@@ -1189,6 +1253,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
             "selector_membership": selector_membership,
             "selector_context": selector_context,
             "target_id": target_id,
+            "invocation_id": invocation_id,
             "area_response_convention": convention,
             "membership": params["membership"],
             "effect_active": params["effect_active"],
@@ -1338,6 +1403,7 @@ class ControlEngineFixtureTests(unittest.TestCase):
                     target_size_by_id={target_id: "medium"},
                     controller_proficiency_bonus=6,
                 ),
+                invocation_id=f"fixture:{case['id']}:invocation",
                 event_id=response_event.event_id,
                 area_response_convention=convention,
                 **params,
@@ -1436,6 +1502,10 @@ class ControlEngineFixtureTests(unittest.TestCase):
         session.close_event()
         if target_start is not None:
             session.advance_to(target_start.event_id)
+            session.resolve_save_opportunity(
+                actor_id=target_id,
+                ability=gate.ability,
+            )
             session.apply_branch(
                 gate_id="frozen_ground_t0_start_turn_save",
                 outcome="save_failure",
@@ -1549,6 +1619,10 @@ class ControlEngineFixtureTests(unittest.TestCase):
         session.start_concentration()
         session.close_event()
         session.advance_to(starts[0].event_id)
+        session.resolve_save_opportunity(
+            actor_id=target_id,
+            ability=gate.ability,
+        )
         success = session.apply_branch(
             gate_id=gate.gate_id,
             outcome="save_success",

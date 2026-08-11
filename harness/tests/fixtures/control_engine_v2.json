@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "engine_version": "1.0.0",
+  "engine_version": "2.0.0",
   "cases": [
     {
       "id": 1,
@@ -419,10 +419,10 @@
         "quantities": {
           "mobility_loss_feet": 30
         },
-        "source_component_ids": {
-          "mobility_loss_feet": [
-            "fixture_effect:restrained",
-            "other_effect:direct_speed_zero"
+      "source_component_ids": {
+        "mobility_loss_feet": [
+          "condition_instance:condition_7caa5de5c1f778bc508ff0a4289da5f97695f793343c7500cfa6315bc824706d",
+          "other_effect:direct_speed_zero"
           ]
         }
       }
@@ -511,10 +511,10 @@
         "contribution_counts": {
           "reaction_denial": 1
         },
-        "source_component_ids": {
-          "reaction_denial": [
-            "fixture_effect:stunned",
-            "other_effect:direct_reaction_denial"
+      "source_component_ids": {
+        "reaction_denial": [
+          "condition_instance:condition_3932795decbb377e5e9823ce6c7514c5eeab8cb2c1ca42641ed4c8a1ac125cbc",
+          "other_effect:direct_reaction_denial"
           ]
         },
         "suppression_reasons_contains": [
@@ -525,7 +525,7 @@
     {
       "id": 19,
       "category": "overlap_and_dominance",
-      "invariant": "Active-turn denial suppresses offensive impairment during that denied target turn.",
+      "invariant": "Active-turn denial suppresses offensive impairment at each scripted attack opportunity.",
       "operation": "state_window",
       "input": {
         "components": [
@@ -547,16 +547,14 @@
         ],
         "window": {
           "target_id": "target",
-          "window_id": "active_turn_1",
-          "window_kind": "target_active_turn_opportunity"
-        }
-      },
-      "expected": {
-        "contribution_ids_contains": [
-          "active_turn_denial"
-        ],
-        "contribution_ids_absent": [
-          "offensive_impairment_all_attacks"
+        "window_id": "attack_1",
+        "window_kind": "target_attack_opportunity"
+      }
+    },
+    "expected": {
+      "contribution_ids_absent": [
+        "active_turn_denial",
+        "offensive_impairment_all_attacks"
         ],
         "suppression_reasons_contains": [
           "active_turn_denial_removes_attack_opportunity"
@@ -608,7 +606,7 @@
     {
       "id": 21,
       "category": "overlap_and_dominance",
-      "invariant": "Blinded plus Restrained does not double-count identical attack effects.",
+      "invariant": "Blinded plus Restrained does not double-count one attack opportunity.",
       "operation": "state_window",
       "input": {
         "components": [
@@ -630,8 +628,8 @@
         ],
         "window": {
           "target_id": "target",
-          "window_id": "active_turn_1",
-          "window_kind": "target_active_turn_opportunity",
+        "window_id": "attack_1",
+        "window_kind": "target_attack_opportunity",
           "context": {
             "alternative_sight_resolution": false
           }
@@ -641,10 +639,10 @@
         "contribution_counts": {
           "offensive_impairment_all_attacks": 1
         },
-        "source_component_ids": {
-          "offensive_impairment_all_attacks": [
-            "fixture_effect:blinded",
-            "other_effect:restrained"
+      "source_component_ids": {
+        "offensive_impairment_all_attacks": [
+          "condition_instance:condition_4924b6740af7927c8b08b7215b94a327438cb8ead4076b36196df876cb1d18eb",
+          "condition_instance:condition_530c9c9747f42c1004d8c80a0f153b11f2a232636860dc91403503b8493db4ba"
           ]
         },
         "suppression_reasons_contains": [
@@ -655,7 +653,7 @@
     {
       "id": 22,
       "category": "overlap_and_dominance",
-      "invariant": "Reapplication refreshes expiry without immediate duplicate persistent contribution.",
+      "invariant": "Non-condition Slow reapplication refreshes expiry without immediate duplicate persistent contribution.",
       "operation": "state_refresh",
       "input": {
         "component": {
@@ -726,7 +724,7 @@
     {
       "id": 24,
       "category": "overlap_and_dominance",
-      "invariant": "Different targets remain independent.",
+      "invariant": "Different targets remain independent at each attack opportunity.",
       "operation": "state_independence",
       "input": {
         "target_ids": [
@@ -737,7 +735,7 @@
           "kind": "attack_disadvantage",
           "scope": "all_attacks"
         },
-        "window_kind": "target_active_turn_opportunity"
+      "window_kind": "target_attack_opportunity"
       },
       "expected": {
         "primitive_id": "offensive_impairment_all_attacks",
@@ -748,78 +746,108 @@
     {
       "id": 25,
       "category": "prone",
-      "invariant": "Prone target with positive Speed stands at first movement opportunity.",
+      "invariant": "Remain Prone and stand are distinct actor-selected operations.",
       "operation": "prone_response",
       "input": {
         "target_id": "target",
+        "actor_id": "target",
         "prone": true,
-        "current_speed_ft": 30
+        "current_speed_ft": 30,
+        "movement_budget_ft": 30,
+        "selected_kinds": ["remain_prone", "stand"]
       },
       "expected": {
-        "stood": true,
-        "prone_after": false,
-        "reason": "first_legal_movement_opportunity"
+        "enumerated_kinds_prefix": ["remain_prone", "stand"],
+        "responses": {
+          "remain_prone": {
+            "stood": false,
+            "prone_after": true,
+            "movement_cost_ft": 0,
+            "remaining_movement_ft": 30,
+            "reason": "remain_prone"
+          },
+          "stand": {
+            "stood": true,
+            "prone_after": false,
+            "standing_cost_ft": 15,
+            "remaining_movement_ft": 15,
+            "reason": "stand"
+          }
+        }
       }
     },
     {
       "id": 26,
       "category": "prone",
-      "invariant": "Standing consumes half current Speed.",
+      "invariant": "Explicit standing consumes half current Speed rounded down.",
       "operation": "prone_response",
       "input": {
         "target_id": "target",
+        "actor_id": "target",
+        "kind": "stand",
         "prone": true,
-        "current_speed_ft": 25
+        "current_speed_ft": 25,
+        "movement_budget_ft": 25
       },
       "expected": {
         "standing_cost_ft": 12,
-        "remaining_movement_ft": 13
+        "remaining_movement_ft": 13,
+        "reason": "stand"
       }
     },
     {
       "id": 27,
       "category": "prone",
-      "invariant": "Speed 0 prevents standing.",
+      "invariant": "Speed 0 rejects an explicit stand operation without mutation.",
       "operation": "prone_response",
       "input": {
         "target_id": "target",
+        "actor_id": "target",
+        "kind": "stand",
         "prone": true,
-        "current_speed_ft": 0
+        "current_speed_ft": 0,
+        "movement_budget_ft": 0
       },
       "expected": {
-        "stood": false,
-        "prone_after": true,
-        "remaining_movement_ft": 0,
-        "reason": "speed_zero"
+        "error_contains": "Speed 0"
       }
     },
     {
       "id": 28,
       "category": "prone",
-      "invariant": "Prone plus Speed 0 persists until Speed returns or source ends.",
+      "invariant": "Speed returning makes stand available without selecting it automatically.",
       "operation": "prone_sequence",
       "input": {
         "target_id": "target",
+        "actor_id": "target",
         "speeds_ft": [
           0,
           20
+        ],
+        "selected_kinds": [
+          "remain_prone",
+          "remain_prone"
         ]
       },
       "expected": {
         "stood_by_opportunity": [
           false,
-          true
+          false
         ],
         "prone_after_by_opportunity": [
           true,
-          false
+          true
+        ],
+        "stand_available_by_opportunity": [
+          false,
+          true
         ]
       }
     },
     {
       "id": 29,
       "category": "prone",
-      "invariant": "Incoming attack consequence differs for within-5-foot and farther-than-5-foot contexts.",
+      "invariant": "Each incoming attack opportunity uses the distance-specific Prone consequence.",
       "operation": "prone_context",
       "input": {
         "distances_ft": [
@@ -835,13 +863,17 @@
         "disposition_by_distance": {
           "5": "candidate",
           "10": "retained_unpriced"
+        },
+        "unit_by_distance": {
+          "5": "attack_opportunity",
+          "10": "attack_opportunity"
         }
       }
     },
     {
       "id": 30,
       "category": "prone",
-      "invariant": "Missing attacker-distance context retains the consequence as unresolved/contextual rather than choosing one.",
+      "invariant": "A missing-distance attack opportunity retains both Prone contexts as unresolved.",
       "operation": "prone_context",
       "input": {
         "distances_ft": [
@@ -855,6 +887,9 @@
         ],
         "dispositions": [
           "retained_unpriced"
+        ],
+        "units": [
+          "attack_opportunity"
         ],
         "unresolved_context": true
       }
@@ -1182,6 +1217,7 @@
       "invariant": "Startup Blood Tax does not cause a check.",
       "operation": "concentration_scenario",
       "input": {
+        "owner_actor_id": "controller",
         "save_bonus": 0,
         "steps": [
           {
@@ -1193,6 +1229,7 @@
         ]
       },
       "expected": {
+        "owner_actor_id": "controller",
         "active_effect_id": "mass_levitation",
         "record_kinds": [
           "concentration_start"
@@ -1209,6 +1246,7 @@
       "invariant": "Later Blood Tax causes the correct DC.",
       "operation": "concentration_scenario",
       "input": {
+        "owner_actor_id": "controller",
         "save_bonus": 0,
         "steps": [
           {
@@ -1227,6 +1265,7 @@
         ]
       },
       "expected": {
+        "owner_actor_id": "controller",
         "active_effect_id": "effect",
         "record_kinds": [
           "concentration_start",
@@ -1244,6 +1283,7 @@
       "invariant": "Failed later concentration save ends the effect.",
       "operation": "concentration_scenario",
       "input": {
+        "owner_actor_id": "controller",
         "save_bonus": 2,
         "steps": [
           {
@@ -1262,6 +1302,7 @@
         ]
       },
       "expected": {
+        "owner_actor_id": "controller",
         "active_effect_id": null,
         "record_kinds": [
           "concentration_start",
@@ -1280,6 +1321,7 @@
       "invariant": "Starting a second concentration effect ends the first.",
       "operation": "concentration_scenario",
       "input": {
+        "owner_actor_id": "controller",
         "compiled_effect": {
           "mastery_id": "mass_levitation",
           "tier": 0
@@ -1294,6 +1336,7 @@
         "save_bonus": 0
       },
       "expected": {
+        "owner_actor_id": "controller",
         "active_effect_id": "mass_levitation_t1_control",
         "record_kinds": [
           "concentration_end",
@@ -1308,6 +1351,7 @@
       "invariant": "Incapacitated controller event ends concentration.",
       "operation": "concentration_scenario",
       "input": {
+        "owner_actor_id": "controller",
         "compiled_effect": {
           "mastery_id": "mass_levitation",
           "tier": 0
@@ -1319,6 +1363,7 @@
         "end_reason": "controller_incapacitated"
       },
       "expected": {
+        "owner_actor_id": "controller",
         "concentration_component_ids": [
           "mass_levitation_persistent_elevation",
           "mass_levitation_restrained"
@@ -1340,6 +1385,7 @@
       "invariant": "Mass Levitation concentration end causes current-position falls.",
       "operation": "concentration_scenario",
       "input": {
+        "owner_actor_id": "controller",
         "compiled_effect": {
           "mastery_id": "mass_levitation",
           "tier": 0
@@ -1352,6 +1398,7 @@
         "end_reason": "voluntary_end"
       },
       "expected": {
+        "owner_actor_id": "controller",
         "concentration_component_ids": [
           "mass_levitation_persistent_elevation",
           "mass_levitation_restrained"
@@ -2020,7 +2067,7 @@
     {
       "id": 69,
       "category": "prone",
-      "invariant": "Standing and route progress share one pre-attack movement budget.",
+      "invariant": "Explicit standing and route progress share one pre-attack movement budget.",
       "operation": "area_response",
       "input": {
         "convention": "shortest_route_v1",
@@ -2037,10 +2084,17 @@
             "environment": "grounded"
           }
         ],
-        "effective_speeds_ft": {
-          "walk": 30
-        },
-        "prone": true
+      "effective_speeds_ft": {
+        "walk": 30
+      },
+      "prone": true,
+      "prone_operation": {
+        "kind": "stand",
+        "actor_id": "target",
+        "target_id": "target"
+      },
+      "current_speed_ft": 30,
+      "movement_budget_ft": 30
       },
       "expected": {
         "paths": {
@@ -2163,9 +2217,16 @@
         "effective_speeds_ft": {
           "walk": 30
         },
-        "speed_zero": true,
-        "prone": true,
-        "while_in_area_component_ids": [
+      "speed_zero": true,
+      "prone": true,
+      "prone_operation": {
+        "kind": "remain_prone",
+        "actor_id": "target",
+        "target_id": "target"
+      },
+      "current_speed_ft": 0,
+      "movement_budget_ft": 0,
+      "while_in_area_component_ids": [
           "area_exposure"
         ]
       },
@@ -2174,8 +2235,10 @@
           "membership_after": true,
           "exited": false,
           "selected_route": null,
-          "reason": "movement_unavailable",
-          "prone_after": true
+        "reason": "remain_prone",
+        "prone_after": true,
+        "prone_response.stood": false,
+        "prone_response.movement_cost_ft": 0
         },
         "ended_component_ids": []
       }
