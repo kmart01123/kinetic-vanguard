@@ -653,7 +653,7 @@
     {
       "id": 22,
       "category": "overlap_and_dominance",
-      "invariant": "Reapplication refreshes expiry without immediate duplicate persistent contribution.",
+      "invariant": "Non-condition Slow reapplication refreshes expiry without immediate duplicate persistent contribution.",
       "operation": "state_refresh",
       "input": {
         "component": {

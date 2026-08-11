@@ -76,6 +76,41 @@ def _initial_condition_instances(
     return records
 
 
+def _initial_condition_instance(
+    *,
+    condition_id: str,
+    target_id: str,
+    source_actor_id: str,
+    source_program_id: str,
+    source_effect_id: str,
+    source_invocation_id: str,
+    source_component_id: str,
+    duration: Mapping[str, Any],
+    expiry_event_id: str | None,
+    issuance_id: str,
+    provenance_id: str,
+) -> dict[str, Any]:
+    identity = {
+        "condition_id": condition_id,
+        "target_id": target_id,
+        "source_actor_id": source_actor_id,
+        "source_program_id": source_program_id,
+        "source_effect_id": source_effect_id,
+        "source_invocation_id": source_invocation_id,
+        "source_component_id": source_component_id,
+        "application_event_id": "session_initial_state",
+        "application_sequence": -1,
+        "duration": dict(duration),
+        "expiry_event_id": expiry_event_id,
+        "issuance_id": issuance_id,
+        "provenance_id": provenance_id,
+    }
+    return {
+        "instance_id": condition_instance_id_for(**identity),
+        **identity,
+    }
+
+
 def _resolve_prone_operation(
     session,
     *,
@@ -204,6 +239,7 @@ def _activate_component(
     *,
     target_id: str = "target",
     event_id: str = "fixture:apply",
+    invocation_id: str = "fixture_invocation",
 ) -> None:
     state.apply_component(
         effect_id=program.effect_id,
@@ -216,7 +252,16 @@ def _activate_component(
         target_id=target_id,
         source_actor_id="controller",
         event_id=event_id,
-        invocation_id="fixture_invocation",
+        invocation_id=invocation_id,
+    )
+
+
+def _condition_root_ids(state, target_id: str, condition_id: str) -> list[str]:
+    return sorted(
+        instance.instance_id
+        for instance in state.active_condition_instances(target_id)
+        if instance.condition_id == condition_id
+        and instance.parent_condition_instance_id is None
     )
 
 
@@ -786,6 +831,75 @@ class ControlExecutionSessionTests(unittest.TestCase):
         )
         return session, schedule, save_event
 
+    def _absolute_zero_t2_sibling_replacement_session(self):
+        program = self.engine.program_for("absolute_zero", 2)
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{"kind": "save_opportunity", "target_id": "target"}],
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        save_event = next(
+            event for event in schedule.events
+            if event.kind == "save_opportunity"
+        )
+        restrained = program.component("absolute_zero_restrained")
+        initial = [
+            _initial_condition_instance(
+                condition_id="restrained",
+                target_id="target",
+                source_actor_id="controller",
+                source_program_id=program.effect_id,
+                source_effect_id=program.effect_id,
+                source_invocation_id=invocation_id,
+                source_component_id=restrained.component_id,
+                duration=restrained.duration.to_dict(),
+                expiry_event_id=None,
+                issuance_id=f"issuance_{invocation_id}",
+                provenance_id=f"provenance_{invocation_id}",
+            )
+            for invocation_id in ("invocation_a", "invocation_b")
+        ]
+        grounded = {
+            "airborne": False,
+            "can_hover": False,
+            "explicit_prevents_fall": False,
+            "fly_speed_ft": 30,
+        }
+        session = self.engine.execution_session(
+            program,
+            targets=(ReliabilityTarget(
+                "target",
+                15,
+                {"constitution": 2},
+            ),),
+            selector_membership=_single_selector_membership(
+                program,
+                "target",
+            ),
+            selector_context=_selector_context_for("target"),
+            schedule=schedule,
+            target_mechanics={
+                "target": {
+                    "initial_condition_instances": initial,
+                    "base_speeds_ft": {"walk": 30, "fly": 30},
+                    "movement_mode": "walk",
+                    "area_membership": False,
+                },
+            },
+            area_response_convention="fixed_occupancy_v1",
+            displacement_function_id="sqrt_5ft_v1",
+            probability_context=ProbabilityContext(save_dc=15),
+            source_actor_id="controller",
+            invocation_id="invocation_a",
+            operation_inputs_by_event={
+                save_event.event_id: {"fall_context": grounded},
+            },
+        )
+        return session, save_event, initial
+
     def _condition_bridge_session(
         self,
         *,
@@ -988,6 +1102,12 @@ class ControlExecutionSessionTests(unittest.TestCase):
         condition_id: str,
         source_actor_id: str,
         source_component_id: str,
+        source_program_id: str = "condition_bridge_test_program",
+        source_effect_id: str | None = None,
+        source_invocation_id: str | None = None,
+        duration: Mapping[str, Any] | None = None,
+        expiry_event_id: str | None = None,
+        provenance_id: str | None = None,
         fall_context: Mapping[str, Any] | None = None,
     ):
         session.advance_to(event.event_id)
@@ -995,12 +1115,22 @@ class ControlExecutionSessionTests(unittest.TestCase):
             condition_id=condition_id,
             target_id=str(event.target_id),
             source_actor_id=source_actor_id,
-            source_program_id="condition_bridge_test_program",
-            source_effect_id=f"{source_component_id}_effect",
-            source_invocation_id=f"{source_component_id}_invocation",
+            source_program_id=source_program_id,
+            source_effect_id=(
+                source_effect_id or f"{source_component_id}_effect"
+            ),
+            source_invocation_id=(
+                source_invocation_id or f"{source_component_id}_invocation"
+            ),
             source_component_id=source_component_id,
-            duration={"kind": "until_condition_response"},
-            provenance_id=f"{source_component_id}_provenance",
+            duration=(
+                {"kind": "until_condition_response"}
+                if duration is None else duration
+            ),
+            expiry_event_id=expiry_event_id,
+            provenance_id=(
+                provenance_id or f"{source_component_id}_provenance"
+            ),
             fall_context=fall_context,
         )
         record = session.apply_condition_application(proposal)
@@ -1747,6 +1877,289 @@ class ControlExecutionSessionTests(unittest.TestCase):
         session._issued_record_attestations[
             record.operation_sequence - 1
         ] = record.record_sha256
+
+    def test_replay_rejects_branch_cleanup_invocation_substitution(self) -> None:
+        session, save_event, initial = (
+            self._absolute_zero_t2_sibling_replacement_session()
+        )
+        roots_by_invocation = {
+            row["source_invocation_id"]: row["instance_id"]
+            for row in initial
+        }
+        session.advance_to(save_event.event_id)
+        _resolve_save_roll(session)
+        branch_record = session.apply_branch(
+            gate_id="absolute_zero_t2_save",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.close_event()
+        session.complete()
+
+        registry = {
+            row["instance_id"]: row
+            for row in session.condition_instance_snapshot("target")
+        }
+        self.assertEqual(
+            registry[roots_by_invocation["invocation_a"]]["end_reason"],
+            "explicit_branch_replacement",
+        )
+        self.assertEqual(
+            registry[roots_by_invocation["invocation_b"]]["status"],
+            "active",
+        )
+        payload = branch_record.to_dict()["payload"]
+        self.assertEqual(payload["invocation_id"], "invocation_a")
+        self.assertEqual(
+            {
+                row["source_invocation_id"]
+                for row in payload["active_components_before"]
+                if row.get("condition_instance_id") is not None
+            },
+            {"invocation_a", "invocation_b"},
+        )
+        self.assertEqual(
+            {
+                row["source_invocation_id"]
+                for row in payload["active_components_after"]
+                if row.get("component_id") == "absolute_zero_restrained"
+            },
+            {"invocation_b"},
+        )
+
+        payload["invocation_id"] = "invocation_b"
+        self._synchronize_rewritten_record_for_replay_test(
+            session,
+            branch_record,
+            payload,
+        )
+        transition_index = next(
+            index
+            for index, row in enumerate(session._event_state_transitions)
+            if row.get("gate_id") == "absolute_zero_t2_save"
+        )
+        session._event_state_transitions[transition_index] = payload
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"branch|invocation|ownership|condition state|replay",
+        ):
+            session.result()
+
+    def test_replay_rejects_cross_invocation_condition_cleanup(self) -> None:
+        session, save_event, _initial = (
+            self._absolute_zero_t2_sibling_replacement_session()
+        )
+        session.advance_to(save_event.event_id)
+        _resolve_save_roll(session)
+        branch_record = session.apply_branch(
+            gate_id="absolute_zero_t2_save",
+            outcome="save_failure",
+            target_id="target",
+        )
+        session.close_event()
+        session.complete()
+
+        payload = branch_record.to_dict()["payload"]
+        invocation_a_restrained = next(
+            row
+            for row in payload["active_components_before"]
+            if row.get("component_id") == "absolute_zero_restrained"
+            and row.get("source_invocation_id") == "invocation_a"
+        )
+        payload["active_components_after"] = [
+            invocation_a_restrained
+            if row.get("component_id") == "absolute_zero_restrained"
+            and row.get("source_invocation_id") == "invocation_b"
+            else row
+            for row in payload["active_components_after"]
+        ]
+        self._synchronize_rewritten_record_for_replay_test(
+            session,
+            branch_record,
+            payload,
+        )
+        transition_index = next(
+            index
+            for index, row in enumerate(session._event_state_transitions)
+            if row.get("gate_id") == "absolute_zero_t2_save"
+        )
+        session._event_state_transitions[transition_index] = payload
+        audit_index = next(
+            index
+            for index, row in enumerate(session._state.audit_ledger)
+            if row.get("operation") == "branch_transition"
+            and row.get("gate_id") == "absolute_zero_t2_save"
+        )
+        session._state.audit_ledger[audit_index] = payload
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"branch|invocation|ownership|condition state|replay",
+        ):
+            session.result()
+
+    def test_replay_rejects_component_expiry_sibling_substitution(self) -> None:
+        session, schedule = self._condition_bridge_session(
+            controller_events=(
+                {"kind": "condition_application", "target_id": "target"},
+                {"kind": "condition_application", "target_id": "target"},
+            ),
+        )
+        applications = [
+            event for event in schedule.events
+            if event.kind == "condition_application"
+        ]
+        expiry_a = next(
+            event for event in schedule.events
+            if event.kind == "controller_turn_end" and event.round == 1
+        )
+        expiry_b = next(
+            event for event in schedule.events
+            if event.kind == "controller_turn_end" and event.round == 2
+        )
+        roots: dict[str, str] = {}
+        for event, invocation_id, expiry_event in zip(
+            applications,
+            ("invocation_a", "invocation_b"),
+            (expiry_a, expiry_b),
+            strict=True,
+        ):
+            _proposal, applied = self._apply_condition_at(
+                session,
+                event,
+                condition_id="blinded",
+                source_actor_id="controller",
+                source_component_id="shared_blinded",
+                source_program_id="shared_program",
+                source_effect_id="shared_blinded_effect",
+                source_invocation_id=invocation_id,
+                duration={
+                    "kind": "relative",
+                    "owner": "controller",
+                    "anchor": "end_turn",
+                    "offset_turns": 1,
+                },
+                expiry_event_id=expiry_event.event_id,
+                provenance_id=f"provenance_{invocation_id}",
+            )
+            roots[invocation_id] = applied.to_dict()["payload"][
+                "root_condition_instance_id"
+            ]
+        components = {
+            row.source_invocation_id: row
+            for row in session._state.active_components("target")
+            if row.component_id == "shared_blinded"
+        }
+        self.assertEqual(set(components), {"invocation_a", "invocation_b"})
+
+        session.advance_to(expiry_a.event_id)
+        session.close_event()
+        active_after_a = session._state.active_condition_instances("target")
+        self.assertEqual(
+            [row.source_invocation_id for row in active_after_a],
+            ["invocation_b"],
+        )
+        self.assertEqual(
+            session._state.derived_current_conditions("target"),
+            ("blinded",),
+        )
+        session.complete()
+        expiry_record = next(
+            record for record in session.issued_records()
+            if record.record_kind == "component_expiry"
+            and record.event_id == expiry_a.event_id
+        )
+        payload = expiry_record.to_dict()["payload"]
+        self.assertEqual(
+            payload["expired_instance_ids"],
+            [components["invocation_a"].instance_id],
+        )
+        self.assertEqual(
+            payload["expired_condition_root_instance_ids"],
+            [roots["invocation_a"]],
+        )
+        self.assertEqual(
+            payload["ended_condition_instance_ids"],
+            [roots["invocation_a"]],
+        )
+
+        payload["expired_instance_ids"] = [
+            components["invocation_b"].instance_id
+        ]
+        payload["expired_condition_root_instance_ids"] = [
+            roots["invocation_b"]
+        ]
+        payload["ended_condition_instance_ids"] = [roots["invocation_b"]]
+        self._synchronize_rewritten_record_for_replay_test(
+            session,
+            expiry_record,
+            payload,
+        )
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"component expiry|identity|lineage|replay",
+        ):
+            session.result()
+
+    def test_replay_rejects_fabricated_refresh_record(self) -> None:
+        session, _schedule, save_event = self._absolute_zero_session()
+        branch = self._finish_absolute_zero(
+            session,
+            save_event,
+            outcome="save_failure",
+        )
+        [active] = branch.to_dict()["payload"]["active_components_after"]
+        session._state.refresh_records.append({
+            "event_id": save_event.event_id,
+            "target_id": "target",
+            "effect_id": "absolute_zero_t0_control",
+            "component_id": active["component_id"],
+            "reason": "explicit_refresh",
+            "selected_instance_id": active["instance_id"],
+            "selected_source_invocation_id": active["source_invocation_id"],
+            "selected_condition_instance_id": None,
+            "refreshed_instance_id": active["instance_id"],
+            "previous_expiry_event_id": active["expiry_event_id"],
+            "new_expiry_event_id": active["expiry_event_id"],
+            "immediate_persistent_contribution": False,
+        })
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"refresh|replacement|mutation|replay|fabricated",
+        ):
+            session.result()
+
+    def test_replay_rejects_fabricated_replacement_record(self) -> None:
+        session, _schedule, save_event = self._absolute_zero_session()
+        branch = self._finish_absolute_zero(
+            session,
+            save_event,
+            outcome="save_failure",
+        )
+        branch_payload = branch.to_dict()["payload"]
+        [active] = branch_payload["active_components_after"]
+        session._state.replacement_records.append({
+            "event_id": save_event.event_id,
+            "target_id": "target",
+            "effect_id": "absolute_zero_t0_control",
+            "branch_id": branch_payload["branch_id"],
+            "dominant_component_ids": [active["component_id"]],
+            "replaced_component_id": active["component_id"],
+            "selected_source_invocation_id": active[
+                "source_invocation_id"
+            ],
+            "replaced_instance_ids": [active["instance_id"]],
+            "reason": "explicit_branch_replacement",
+        })
+
+        with self.assertRaisesRegex(
+            ControlEngineError,
+            r"refresh|replacement|mutation|replay|fabricated",
+        ):
+            session.result()
 
     def test_replay_rejects_fabricated_save_roll_mode(self) -> None:
         session, _schedule, save_event = self._absolute_zero_session()
@@ -7293,6 +7706,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
             selector_context=_selector_context_for("target"),
             target_id="target",
             event_id=exit_event.event_id,
+            invocation_id="fixture_invocation",
             area_response_convention="shortest_route_v1",
             membership=True,
             effect_active=True,
@@ -10617,6 +11031,50 @@ class ControlExecutionSessionTests(unittest.TestCase):
             }],
         )
 
+    def test_sibling_invocation_does_not_defeat_ambient_suppression_replay(
+        self,
+    ) -> None:
+        scenario = self._frozen_entry_scenario(
+            entry_specs_by_target={"target": ()},
+        )
+        program = scenario["program"]
+        scenario["session_kwargs"]["target_mechanics"]["target"][
+            "initial_condition_instances"
+        ] = [_initial_condition_instance(
+            condition_id="blinded",
+            target_id="target",
+            source_actor_id="controller",
+            source_program_id=program.effect_id,
+            source_effect_id=program.effect_id,
+            source_invocation_id="sibling_invocation",
+            source_component_id="frozen_ground_difficult_terrain",
+            duration={"kind": "until_condition_response"},
+            expiry_event_id=None,
+            issuance_id="sibling_issuance",
+            provenance_id="sibling_provenance",
+        )]
+        session = scenario["engine"].execution_session(
+            program,
+            **scenario["session_kwargs"],
+        )
+
+        [activation] = self._activate_frozen_ground(
+            session,
+            scenario["activation"],
+        )
+        self.assertEqual(
+            activation.to_dict()["payload"]["filtered_branch"]["applies"],
+            [],
+        )
+        session.complete()
+        result = session.result().to_dict()
+
+        [sibling] = result["final_normalized_state"]["target"][
+            "active_components"
+        ]
+        self.assertEqual(sibling["source_invocation_id"], "sibling_invocation")
+        self.assertEqual(sibling["magnitude"]["condition"], "blinded")
+
     def test_ambient_membership_02_nonmember_normalization_has_no_terrain_loss(
         self,
     ) -> None:
@@ -11193,6 +11651,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 "frozen_ground_difficult_terrain"
             ),
             event_id="manual:ambient:injection",
+            invocation_id=session._invocation_id,
         )
         before = (
             json.loads(json.dumps(session._state.snapshot("target"))),
@@ -11234,6 +11693,7 @@ class ControlExecutionSessionTests(unittest.TestCase):
                 "frozen_ground_difficult_terrain"
             ),
             event_id="manual:ambient:injection",
+            invocation_id=session._invocation_id,
         )
         with self.assertRaisesRegex(
             ControlEngineError,
@@ -11955,6 +12415,107 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             "r2:controller:turn:end",
         )
 
+    def test_compiled_same_condition_invocations_expire_independently(
+        self,
+    ) -> None:
+        program = self.engine.program_for("flare", 1)
+        schedule = self.engine.schedule(
+            "fighter_first_v1",
+            ["target"],
+            controller_events_by_round={
+                1: [{"kind": "hit", "target_id": "target"}],
+                2: [{"kind": "hit", "target_id": "target"}],
+            },
+            target_attack_counts={"target": [0, 0, 0]},
+        )
+        hits = [event for event in schedule.events if event.kind == "hit"]
+        state = self.engine._new_state()
+        membership = _single_selector_membership(program, "target")
+        for event, invocation_id in zip(
+            hits,
+            ("invocation_a", "invocation_b"),
+            strict=True,
+        ):
+            self.engine._apply_resolved_branch(
+                state=state,
+                effect=program,
+                gate_id="flare_t1_attack",
+                outcome="attack_hit",
+                target_id="target",
+                source_actor_id="controller",
+                event_id=event.event_id,
+                invocation_id=invocation_id,
+                schedule=schedule,
+                selector_membership=membership,
+                selector_context=_selector_context_for("target"),
+            )
+
+        roots = [
+            row for row in state.active_condition_instances("target")
+            if row.condition_id == "blinded"
+            and row.parent_condition_instance_id is None
+        ]
+        self.assertEqual(
+            [row.source_invocation_id for row in roots],
+            ["invocation_a", "invocation_b"],
+        )
+        self.assertEqual(len(state.active_components("target")), 2)
+        self.assertEqual(
+            state.derived_current_conditions("target"),
+            ("blinded",),
+        )
+        normalized = state.normalize_for_window(
+            target_id="target",
+            window_id="attack",
+            window_kind="target_attack_opportunity",
+        )
+        impairment = [
+            row for row in normalized.contributions
+            if row.primitive_id == "offensive_impairment_all_attacks"
+        ]
+        self.assertEqual(len(impairment), 1)
+        self.assertEqual(
+            set(impairment[0].source_component_ids),
+            {
+                f"condition_instance:{row.instance_id}"
+                for row in roots
+            },
+        )
+
+        expiry_a = schedule.event("r2:controller:turn:end")
+        expired_a = state.expire(
+            expiry_a.event_id,
+            event_sequence=expiry_a.sequence,
+        )
+        self.assertEqual(
+            [row.source_invocation_id for row in expired_a],
+            ["invocation_a"],
+        )
+        self.assertEqual(
+            [
+                row.source_invocation_id
+                for row in state.active_condition_instances("target")
+                if row.parent_condition_instance_id is None
+            ],
+            ["invocation_b"],
+        )
+        self.assertEqual(
+            state.derived_current_conditions("target"),
+            ("blinded",),
+        )
+
+        expiry_b = schedule.event("r3:controller:turn:end")
+        expired_b = state.expire(
+            expiry_b.event_id,
+            event_sequence=expiry_b.sequence,
+        )
+        self.assertEqual(
+            [row.source_invocation_id for row in expired_b],
+            ["invocation_b"],
+        )
+        self.assertEqual(state.active_condition_instances("target"), ())
+        self.assertEqual(state.derived_current_conditions("target"), ())
+
     def test_branch_requires_typed_event_selectors_and_reachable_invocation_edge(self) -> None:
         program = self.engine.program("explosion_implosion_t0_control")
         schedule = self.engine.schedule(
@@ -12426,6 +12987,9 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 base_speeds_ft={"walk": 30},
                 movement_mode="walk",
                 prone_operation={"kind": "stand"},
+                prone_condition_instance_ids=_condition_root_ids(
+                    state, "target", "prone"
+                ),
                 movement_budget_ft=30,
             )
         with self.assertRaisesRegex(TimelineError, "resolve exactly once"):
@@ -12437,6 +13001,9 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 base_speeds_ft={"walk": 30},
                 movement_mode="walk",
                 prone_operation={"kind": "stand"},
+                prone_condition_instance_ids=_condition_root_ids(
+                    state, "target", "prone"
+                ),
                 movement_budget_ft=30,
             )
         self.assertEqual(state.snapshot(), before_rejected)
@@ -12449,6 +13016,9 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 base_speeds_ft={"walk": 30},
                 movement_mode="walk",
                 prone_operation={"kind": "stand"},
+                prone_condition_instance_ids=_condition_root_ids(
+                    state, "target", "prone"
+                ),
                 movement_budget_ft=30,
             )
         blocked = self.engine._resolve_prone_movement(
@@ -12459,6 +13029,9 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             base_speeds_ft={"walk": 30},
             movement_mode="walk",
             prone_operation={"kind": "remain_prone"},
+            prone_condition_instance_ids=_condition_root_ids(
+                state, "target", "prone"
+            ),
             movement_budget_ft=30,
         )
         self.assertFalse(blocked["stood"])
@@ -12489,6 +13062,9 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             base_speeds_ft={"walk": 30},
             movement_mode="walk",
             prone_operation={"kind": "stand"},
+            prone_condition_instance_ids=_condition_root_ids(
+                state, "target", "prone"
+            ),
             movement_budget_ft=30,
         )
         self.assertTrue(stood["stood"])
@@ -12533,6 +13109,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                     selector_context=_selector_context_for("target"),
                     target_id="target",
                     event_id=response_event.event_id,
+                    invocation_id="fixture_invocation",
                     area_response_convention=convention,
                     membership=True,
                     effect_active=effect_active,
@@ -12607,6 +13184,9 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             base_speeds_ft={"walk": 30},
             movement_mode="walk",
             prone_operation={"kind": "stand"},
+            prone_condition_instance_ids=_condition_root_ids(
+                state, "target", "prone"
+            ),
             movement_budget_ft=30,
         )
         for component in program.components:
@@ -12620,6 +13200,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             selector_context=_selector_context_for("target"),
             target_id="target",
             event_id=movement.event_id,
+            invocation_id="fixture_invocation",
             area_response_convention="shortest_route_v1",
             membership=True,
             effect_active=True,
@@ -12757,6 +13338,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
                 selector_context=selector_context,
                 target_id="target",
                 event_id=event.event_id,
+                invocation_id="fixture_invocation",
                 area_response_convention="shortest_route_v1",
                 membership=True,
                 effect_active=True,
@@ -12863,6 +13445,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             selector_context=selector_context,
             target_id="target",
             event_id=area_end_event.event_id,
+            invocation_id="fixture_invocation",
             area_response_convention="fixed_occupancy_v1",
             membership=True,
             effect_active=False,
@@ -12942,6 +13525,7 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             ),
             "selector_context": _selector_context_for("target", "other"),
             "target_id": "target",
+            "invocation_id": "fixture_invocation",
             "area_response_convention": "shortest_route_v1",
             "membership": True,
             "effect_active": True,
@@ -13615,7 +14199,12 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
         )
         state = self.engine._new_state()
         for component in program.components:
-            _activate_component(state, program, component)
+            _activate_component(
+                state,
+                program,
+                component,
+                invocation_id="ball_lightning_invocation",
+            )
         tracker = ConcentrationTracker(owner_actor_id="controller", save_bonus=0)
         membership = _single_selector_membership(program, "target")
         start = self.engine._start_concentration(

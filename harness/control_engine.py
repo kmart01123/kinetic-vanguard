@@ -1605,6 +1605,7 @@ class ControlEngine:
                 str(item.get("component_id"))
                 for item in _active_guard_snapshot
                 if item.get("effect_id") == program.effect_id
+                and item.get("source_invocation_id") == invocation
                 and item.get("target_id") == target
             }
             missing_guards = sorted(
@@ -1680,17 +1681,22 @@ class ControlEngine:
         instantaneous_contributions: list[dict[str, Any]] = []
         pending_displacement_requests: list[dict[str, Any]] = []
         instantaneous_resolutions: list[dict[str, Any]] = []
-        active_identities = {
-            (component.effect_id, component.component_id)
-            for component in state.active_components(target)
-        }
         for component_id in applies:
             component = enabled[component_id]
-            if (
-                not component.instantaneous
-                or (program.effect_id, component_id) not in active_identities
-            ):
+            matching_active = [
+                active
+                for active in state.active_components(target)
+                if active.effect_id == program.effect_id
+                and active.component_id == component_id
+                and active.source_invocation_id == invocation
+            ]
+            if not component.instantaneous or not matching_active:
                 continue
+            if len(matching_active) != 1:
+                raise ControlEngineError(
+                    "Instantaneous component resolution is ambiguous within "
+                    "the current invocation"
+                )
             magnitude = component.magnitude.data.to_dict()
             if component.magnitude.kind == "fall":
                 contribution = PrimitiveContribution(
@@ -1726,6 +1732,8 @@ class ControlEngine:
                 event_id=event,
                 effect_id=program.effect_id,
                 reason="instantaneous_resolution",
+                instance_id=matching_active[0].instance_id,
+                source_invocation_id=invocation,
             )
             instantaneous_resolutions.append(
                 {
@@ -2214,6 +2222,7 @@ class ControlEngine:
         base_speeds_ft: Mapping[str, int],
         movement_mode: str,
         prone_operation: Mapping[str, Any],
+        prone_condition_instance_ids: Sequence[str],
         movement_budget_ft: int,
         difficult_terrain: bool = False,
         mixed_speed_operation_order: Sequence[str] | None = None,
@@ -2265,6 +2274,16 @@ class ControlEngine:
             if component.magnitude.get("kind") == "condition"
             and component.magnitude.get("condition") == "prone"
         ]
+        active_prone_roots = {
+            instance.instance_id: instance
+            for instance in state.active_condition_instances(target)
+            if instance.condition_id == "prone"
+            and instance.parent_condition_instance_id is None
+        }
+        if list(prone_condition_instance_ids) != sorted(active_prone_roots):
+            raise ControlEngineError(
+                "Prone movement does not bind the exact live roots"
+            )
         response = prone_movement_response(
             target_id=target,
             actor_id=target,
@@ -2282,9 +2301,8 @@ class ControlEngine:
             )
         ended_condition_instances: list[Any] = []
         if response["stood"]:
-            for instance in tuple(state.active_condition_instances(target)):
-                if instance.condition_id != "prone":
-                    continue
+            for instance_id in sorted(active_prone_roots):
+                instance = active_prone_roots[instance_id]
                 ended_condition_instances.extend(state.end_condition_instance(
                     instance.instance_id,
                     event_id=event.event_id,
@@ -2437,6 +2455,7 @@ class ControlEngine:
         selector_context: SelectorContext,
         target_id: str,
         event_id: str,
+        invocation_id: str,
         area_response_convention: str,
         membership: bool,
         effect_active: bool,
@@ -2445,6 +2464,7 @@ class ControlEngine:
         base_speeds_ft: Mapping[str, int] | None = None,
         mixed_speed_operation_order: Sequence[str] | None = None,
         prone_operation: Mapping[str, Any] | None = None,
+        prone_condition_instance_ids: Sequence[str] | None = None,
         prone_current_speed_ft: int | None = None,
         movement_budget_ft: int | None = None,
     ) -> dict[str, Any]:
@@ -2458,6 +2478,7 @@ class ControlEngine:
         if not isinstance(schedule, TimelineSchedule):
             raise TypeError("schedule must be TimelineSchedule")
         target = _identifier(target_id, "target_id")
+        invocation = _identifier(invocation_id, "invocation_id")
         if target not in schedule.target_ids:
             raise ControlEngineError(
                 f"target_id {target!r} is not part of the supplied schedule"
@@ -2572,6 +2593,7 @@ class ControlEngine:
             component
             for component in state.active_components(target)
             if component.effect_id == program.effect_id
+            and component.source_invocation_id == invocation
             and component.component_id in definitions
         ]
         while_in_area_ids = sorted({
@@ -2584,6 +2606,7 @@ class ControlEngine:
             for component in state.active_components(target)
             if not (
                 component.effect_id == program.effect_id
+                and component.source_invocation_id == invocation
                 and component.component_id in while_in_area_ids
             )
         })
@@ -2620,6 +2643,26 @@ class ControlEngine:
             and component.magnitude.get("condition") == "prone"
             for component in state.active_components(target)
         )
+        active_prone_roots = {
+            instance.instance_id: instance
+            for instance in state.active_condition_instances(target)
+            if instance.condition_id == "prone"
+            and instance.parent_condition_instance_id is None
+        }
+        if prone_operation is not None:
+            selected_prone_ids = (
+                list(prone_condition_instance_ids)
+                if prone_condition_instance_ids is not None
+                else None
+            )
+            if selected_prone_ids != sorted(active_prone_roots):
+                raise ControlEngineError(
+                    "Area Prone operation does not bind the exact live roots"
+                )
+        elif prone_condition_instance_ids is not None:
+            raise ControlEngineError(
+                "Prone root IDs require an explicit area Prone operation"
+            )
         if active_target_exit:
             if area_response_convention not in AREA_RESPONSE_CONVENTIONS:
                 raise ControlEngineError(
@@ -2661,30 +2704,42 @@ class ControlEngine:
             )
         ended_instances: list[dict[str, Any]] = []
         for component_id in response["ended_component_ids"]:
-            removed = state.terminate(
-                target_id=target,
-                component_id=component_id,
-                event_id=event.event_id,
-                effect_id=program.effect_id,
-                reason="area_exit" if response["reason"] != "effect_ended" else "area_end",
-            )
-            ended_instances.extend(
-                {
-                    "target_id": item.target_id,
-                    "component_id": item.component_id,
-                    "instance_id": item.instance_id,
-                }
-                for item in removed
-            )
+            selected = [
+                component
+                for component in tuple(state.active_components(target))
+                if component.effect_id == program.effect_id
+                and component.component_id == component_id
+                and component.source_invocation_id == invocation
+            ]
+            for component in selected:
+                removed = state.terminate(
+                    target_id=target,
+                    component_id=component_id,
+                    event_id=event.event_id,
+                    effect_id=program.effect_id,
+                    reason=(
+                        "area_exit"
+                        if response["reason"] != "effect_ended"
+                        else "area_end"
+                    ),
+                    instance_id=component.instance_id,
+                    source_invocation_id=invocation,
+                    condition_instance_id=component.condition_instance_id,
+                )
+                ended_instances.extend(
+                    {
+                        "target_id": item.target_id,
+                        "component_id": item.component_id,
+                        "instance_id": item.instance_id,
+                    }
+                    for item in removed
+                )
         prone_response = (
             response.get("selected_route") or {}
         ).get("prone_response") or response.get("prone_response")
         if isinstance(prone_response, Mapping) and prone_response.get("stood"):
-            for instance in tuple(
-                state.active_condition_instances(target)
-            ):
-                if instance.condition_id != "prone":
-                    continue
+            for instance_id in sorted(active_prone_roots):
+                instance = active_prone_roots[instance_id]
                 state.end_condition_instance(
                     instance.instance_id,
                     event_id=event.event_id,
@@ -2707,7 +2762,11 @@ class ControlEngine:
             "ended_state_instances": ended_instances,
             "active_components_after": state.snapshot(target),
         }
-        state.audit_ledger.append({"operation": "area_response", **record})
+        state.audit_ledger.append({
+            "operation": "area_response",
+            "source_invocation_id": invocation,
+            **record,
+        })
         return record
 
     def _canonical_effect(
@@ -3175,6 +3234,7 @@ class ControlEngine:
                     component.component_id
                     for component in state.active_components(target_id)
                     if component.effect_id == context.program.effect_id
+                    and component.source_invocation_id == context.invocation_id
                 }
                 if not set(gate.requires_active_component_ids).issubset(active_ids):
                     continue
@@ -3260,6 +3320,7 @@ class ControlEngine:
             component.instance_id: component
             for component in state.active_components()
             if component.effect_id == context.program.effect_id
+            and component.source_invocation_id == context.invocation_id
         }
         gate_transitions: list[dict[str, Any]] = []
         for gate_id, target_id, outcome in plans:
@@ -3289,6 +3350,7 @@ class ControlEngine:
         for component in tuple(state.active_components()):
             if (
                 component.effect_id == context.program.effect_id
+                and component.source_invocation_id == context.invocation_id
                 and component.component_id in cleanup_ids
             ):
                 state.terminate(
@@ -3297,11 +3359,14 @@ class ControlEngine:
                     event_id=event,
                     effect_id=context.program.effect_id,
                     reason="concentration_end",
+                    instance_id=component.instance_id,
+                    source_invocation_id=context.invocation_id,
                 )
         remaining_instance_ids = {
             component.instance_id
             for component in state.active_components()
             if component.effect_id == context.program.effect_id
+            and component.source_invocation_id == context.invocation_id
         }
         ended_instances = [
             {
@@ -4190,6 +4255,7 @@ class ControlEngine:
                 "duration",
                 "stacking",
                 "source_actor_id",
+                "source_invocation_id",
                 "applied_event_id",
                 "expiry_event_id",
                 "remaining_tokens",
@@ -4214,6 +4280,7 @@ class ControlEngine:
                     "component_id",
                     "target_id",
                     "source_actor_id",
+                    "source_invocation_id",
                     "applied_event_id",
                 ):
                     if (
@@ -4968,7 +5035,23 @@ class ControlEngine:
                 }
             else:
                 expected = {"operation": operation, **dict(row)}
-            if expected not in serialized_audit_ledger:
+            matches = [
+                audit_row
+                for audit_row in serialized_audit_ledger
+                if audit_row == expected
+                or (
+                    operation == "area_response"
+                    and isinstance(audit_row.get("source_invocation_id"), str)
+                    and bool(audit_row["source_invocation_id"])
+                    and {
+                        key: value
+                        for key, value in audit_row.items()
+                        if key != "source_invocation_id"
+                    }
+                    == expected
+                )
+            ]
+            if len(matches) != 1:
                 raise ControlEngineError(
                     f"{label} does not match the final state audit ledger"
                 )
@@ -8804,6 +8887,7 @@ class ControlExecutionSession:
                 gate.trigger.kind != "activation"
                 or transition.get("operation") != "branch_transition"
                 or transition.get("effect_id") != self._program.effect_id
+                or transition.get("invocation_id") != self._invocation_id
                 or transition.get("target_id") != target_id
             ):
                 continue
@@ -8884,6 +8968,7 @@ class ControlExecutionSession:
                 component.component_id
                 for component in self._state.active_components(target_id)
                 if component.effect_id == self._program.effect_id
+                and component.source_invocation_id == self._invocation_id
             }
             for target_id in self._schedule.target_ids
         }
@@ -9050,6 +9135,7 @@ class ControlExecutionSession:
             component.component_id
             for component in self._state.active_components(transition.target_id)
             if component.effect_id == transition.effect_id
+            and component.source_invocation_id == self._invocation_id
         }
         restore_rows = tuple(
             row for row in authority_rows
@@ -9061,6 +9147,7 @@ class ControlExecutionSession:
                 transition.target_id
             )
             if component.effect_id == transition.effect_id
+            and component.source_invocation_id == self._invocation_id
             and component.stacking.get("mode") != "independent"
         }
         planned_nonindependent_keys: set[str] = set()
@@ -9611,6 +9698,7 @@ class ControlExecutionSession:
             component.target_id
             for component in self._state.active_components()
             if component.effect_id == self._program.effect_id
+            and component.source_invocation_id == self._invocation_id
         }
         targets.update(
             state.target_id
@@ -9638,6 +9726,7 @@ class ControlExecutionSession:
             component.target_id
             for component in self._state.active_components()
             if component.effect_id == context.program.effect_id
+            and component.source_invocation_id == context.invocation_id
             and component.component_id in cleanup_ids
         }
         targets.update(
@@ -10086,6 +10175,7 @@ class ControlExecutionSession:
             component.component_id
             for component in self._state.active_components(target_id)
             if component.effect_id == self._program.effect_id
+            and component.source_invocation_id == self._invocation_id
             and component.component_id in bindings
         }))
 
@@ -10489,6 +10579,7 @@ class ControlExecutionSession:
                 for row in pre_event_rows
                 if row.get("target_id") == target_id
                 and row.get("effect_id") == self._program.effect_id
+                and row.get("source_invocation_id") == self._invocation_id
             }
             if set(gate.requires_active_component_ids) - active_ids:
                 self._current_required_operations.discard(operation)
@@ -10595,12 +10686,29 @@ class ControlExecutionSession:
         if self._current_pre_state_json is None:  # pragma: no cover
             raise ControlEngineError("Current event has no pre-event snapshot")
         pre_expiry = _canonical_json(self._state.snapshot())
+        pre_expiry_registry = {
+            row["instance_id"]: row for row in self._state.instance_registry()
+        }
         self._current_event_expiry_complete = True
         expired = self._state.expire(
             event.event_id,
             event_sequence=event.sequence,
         )
         if expired:
+            expired_root_ids = sorted({
+                str(item.condition_instance_id)
+                for item in expired
+                if item.condition_instance_id is not None
+            })
+            ended_condition_ids = sorted(
+                row["instance_id"]
+                for row in self._state.instance_registry()
+                if row["instance_id"] in pre_expiry_registry
+                and row["status"] == "ended"
+                and row["end_event_id"] == event.event_id
+                and row["end_sequence"] == event.sequence
+                and row["end_reason"] == "duration_expiry"
+            )
             self._issue(
                 record_kind="component_expiry",
                 target_id=event.target_id,
@@ -10608,10 +10716,15 @@ class ControlExecutionSession:
                 payload={
                     "kind": "component_expiry",
                     "event_id": event.event_id,
-                    "expired_instance_ids": [item.instance_id for item in expired],
+                    "event_sequence": event.sequence,
+                    "expired_instance_ids": [
+                        item.instance_id for item in expired
+                    ],
                     "expired_component_ids": sorted({
                         item.component_id for item in expired
                     }),
+                    "expired_condition_root_instance_ids": expired_root_ids,
+                    "ended_condition_instance_ids": ended_condition_ids,
                 },
             )
         if event.kind == "activation" and not self._concentration_required:
@@ -10692,6 +10805,7 @@ class ControlExecutionSession:
             for row in pre_event_rows
             if row.get("target_id") == target_id
             and row.get("effect_id") == self._program.effect_id
+            and row.get("source_invocation_id") == self._invocation_id
         }
         missing_guards = sorted(
             set(gate.requires_active_component_ids) - active_guard_ids
@@ -13114,6 +13228,7 @@ class ControlExecutionSession:
             for component in tuple(self._state.active_components(target)):
                 if (
                     component.effect_id != self._program.effect_id
+                    or component.source_invocation_id != self._invocation_id
                     or update.area_id
                     not in bindings.get(component.component_id, ())
                 ):
@@ -13124,6 +13239,9 @@ class ControlExecutionSession:
                     event_id=event.event_id,
                     effect_id=self._program.effect_id,
                     reason="compiled_area_reposition_exit",
+                    instance_id=component.instance_id,
+                    source_invocation_id=self._invocation_id,
+                    condition_instance_id=component.condition_instance_id,
                 )
                 ended_component_ids.append(component.component_id)
                 ended_instances.extend({
@@ -13430,6 +13548,12 @@ class ControlExecutionSession:
                     for row in usable_rows
                 )
         prone = "prone" in self._state.derived_current_conditions(target)
+        prone_condition_instance_ids = sorted(
+            instance.instance_id
+            for instance in self._state.active_condition_instances(target)
+            if instance.condition_id == "prone"
+            and instance.parent_condition_instance_id is None
+        )
         proposals = enumerate_prone_movement_operations(
             target_id=target,
             actor_id=target,
@@ -13480,6 +13604,7 @@ class ControlExecutionSession:
                 "target_id": target,
                 "actor_id": target,
                 "prone_before": prone,
+                "prone_condition_instance_ids": prone_condition_instance_ids,
                 "movement_mode": movement_mode,
                 "current_speed_ft": current_speed,
                 "movement_budget_ft": movement_budget,
@@ -13535,11 +13660,29 @@ class ControlExecutionSession:
         target_id: str,
         event: TimelineEvent,
         reason: str,
+        condition_instance_ids: Sequence[str],
     ) -> tuple[Mapping[str, Any], ...]:
+        selected_ids = tuple(condition_instance_ids)
+        if (
+            any(not isinstance(item, str) or not item for item in selected_ids)
+            or list(selected_ids) != sorted(set(selected_ids))
+        ):
+            raise ControlEngineError(
+                "Prone counter instance IDs must be sorted and unique"
+            )
+        active = {
+            instance.instance_id: instance
+            for instance in self._state.active_condition_instances(target_id)
+            if instance.condition_id == "prone"
+            and instance.parent_condition_instance_id is None
+        }
+        if list(selected_ids) != sorted(active):
+            raise ControlEngineError(
+                "Prone counter instance IDs differ from the issued live roots"
+            )
         ended: list[Mapping[str, Any]] = []
-        for instance in tuple(self._state.active_condition_instances(target_id)):
-            if instance.condition_id != "prone":
-                continue
+        for instance_id in selected_ids:
+            instance = active[instance_id]
             ended.extend(self._state.end_condition_instance(
                 instance.instance_id,
                 event_id=event.event_id,
@@ -13810,6 +13953,7 @@ class ControlExecutionSession:
                 selector_context=self._selector_context,
                 target_id=target,
                 event_id=event.event_id,
+                invocation_id=self._invocation_id,
                 area_response_convention=self._area_response_convention,
                 membership=True,
                 effect_active=True,
@@ -13817,6 +13961,13 @@ class ControlExecutionSession:
                 base_speeds_ft=base_speeds,
                 mixed_speed_operation_order=mixed_order,
                 prone_operation=selected_prone_operation,
+                prone_condition_instance_ids=(
+                    None
+                    if prone_proposal_payload is None
+                    else prone_proposal_payload[
+                        "prone_condition_instance_ids"
+                    ]
+                ),
                 prone_current_speed_ft=(
                     None
                     if prone_proposal_payload is None
@@ -13935,9 +14086,12 @@ class ControlExecutionSession:
                     and audit_row.get("event_id") == event.event_id
                     and audit_row.get("target_id") == target
                     and audit_row.get("effect_id") == self._program.effect_id
+                    and audit_row.get("source_invocation_id")
+                    == self._invocation_id
                 ):
                     self._state.audit_ledger[audit_index] = {
                         "operation": "area_response",
+                        "source_invocation_id": self._invocation_id,
                         **area,
                     }
                     break
@@ -14024,6 +14178,9 @@ class ControlExecutionSession:
                         target_id=target,
                         event=event,
                         reason="explicit_stand_operation",
+                        condition_instance_ids=prone_proposal_payload[
+                            "prone_condition_instance_ids"
+                        ],
                     )
                 if prone_record["dropped_prone"]:
                     drop_condition_instances = self._apply_voluntary_drop_prone(
@@ -14076,10 +14233,18 @@ class ControlExecutionSession:
                     selector_context=self._selector_context,
                     target_id=target,
                     event_id=event.event_id,
+                    invocation_id=self._invocation_id,
                     area_response_convention=self._area_response_convention,
                     membership=authoritative_area_state.membership,
                     effect_active=fixed_area_effect_active,
                     prone_operation=selected_prone_operation,
+                    prone_condition_instance_ids=(
+                        None
+                        if prone_proposal_payload is None
+                        else prone_proposal_payload[
+                            "prone_condition_instance_ids"
+                        ]
+                    ),
                     prone_current_speed_ft=(
                         None
                         if prone_proposal_payload is None
@@ -14127,9 +14292,12 @@ class ControlExecutionSession:
                         and audit_row.get("event_id") == event.event_id
                         and audit_row.get("target_id") == target
                         and audit_row.get("effect_id") == self._program.effect_id
+                        and audit_row.get("source_invocation_id")
+                        == self._invocation_id
                     ):
                         self._state.audit_ledger[audit_index] = {
                             "operation": "area_response",
+                            "source_invocation_id": self._invocation_id,
                             **area,
                         }
                         break
@@ -15253,6 +15421,7 @@ class ControlExecutionSession:
                         for row in json.loads(record.pre_event_state_json)
                         if row.get("target_id") == record.target_id
                         and row.get("effect_id") == self._program.effect_id
+                        and row.get("source_invocation_id") == self._invocation_id
                     }
                     missing = sorted(
                         set(gate.requires_active_component_ids) - active_ids
@@ -15305,6 +15474,7 @@ class ControlExecutionSession:
                     "target_id",
                     "actor_id",
                     "prone_before",
+                    "prone_condition_instance_ids",
                     "movement_mode",
                     "current_speed_ft",
                     "movement_budget_ft",
@@ -15363,13 +15533,18 @@ class ControlExecutionSession:
                     raise ControlEngineError(
                         "Final Prone proposal identity or authority is invalid"
                     )
-                prone_in_pre_state = any(
-                    row.get("target_id") == record.target_id
+                pre_prone_ids = sorted({
+                    row["condition_instance_id"]
+                    for row in json.loads(record.pre_operation_state_json)
+                    if row.get("target_id") == record.target_id
                     and row.get("magnitude", {}).get("kind") == "condition"
                     and row.get("magnitude", {}).get("condition") == "prone"
-                    for row in json.loads(record.pre_operation_state_json)
-                )
-                if prone_in_pre_state != payload["prone_before"]:
+                    and row.get("condition_instance_id") is not None
+                })
+                if (
+                    bool(pre_prone_ids) != payload["prone_before"]
+                    or payload["prone_condition_instance_ids"] != pre_prone_ids
+                ):
                     raise ControlEngineError(
                         "Final Prone proposal does not match its pre-state"
                     )
@@ -15598,7 +15773,13 @@ class ControlExecutionSession:
                         raise ControlEngineError(
                             "Final area-bound Prone operation disagrees with its area result"
                         )
-                elif operation_kind == "stand":
+                if proposal_payload.get("prone_condition_instance_ids") != sorted(
+                    pre_prone_ids
+                ):
+                    raise ControlEngineError(
+                        "Final Prone operation rewrites its issued root selection"
+                    )
+                if operation_kind == "stand":
                     if not pre_prone_ids or post_prone_ids:
                         raise ControlEngineError(
                             "Final stand operation does not end exact Prone state"
@@ -15835,6 +16016,7 @@ class ControlExecutionSession:
                 "source_actor_id": instance["source_actor_id"],
                 "source_program_id": instance["source_program_id"],
                 "source_effect_id": instance["source_effect_id"],
+                "source_invocation_id": instance["source_invocation_id"],
                 "source_component_id": instance["source_component_id"],
                 "issuance_id": instance["issuance_id"],
                 "provenance_id": instance["provenance_id"],
@@ -15999,6 +16181,7 @@ class ControlExecutionSession:
                 "duration",
                 "stacking",
                 "source_actor_id",
+                "source_invocation_id",
                 "applied_event_id",
                 "expiry_event_id",
                 "remaining_tokens",
@@ -16073,6 +16256,10 @@ class ControlExecutionSession:
                     source_actor_id=_identifier(
                         row["source_actor_id"],
                         f"{label}[{index}].source_actor_id",
+                    ),
+                    source_invocation_id=_identifier(
+                        row["source_invocation_id"],
+                        f"{label}[{index}].source_invocation_id",
                     ),
                     applied_event_id=_identifier(
                         row["applied_event_id"],
@@ -16150,6 +16337,13 @@ class ControlExecutionSession:
                     issuance_id=str(row["issuance_id"]),
                     provenance_id=str(row["provenance_id"]),
                 )
+            try:
+                rebuilt.instance_registry()
+            except ControlStateError as error:
+                raise ControlEngineError(
+                    f"Final {label} condition registry does not match its "
+                    "active components"
+                ) from error
             return rebuilt
 
         def snapshot_condition_rows(
@@ -16424,6 +16618,68 @@ class ControlExecutionSession:
                 "end_reason": None,
             }
 
+        def replay_condition_concentration_cleanup(
+            *,
+            replay_state: ControlState,
+            wrapper: Any,
+            record: _IssuedControlRecord,
+        ) -> None:
+            if wrapper is None:
+                return
+            if not isinstance(wrapper, Mapping):
+                raise ControlEngineError(
+                    "Final condition concentration wrapper is malformed"
+                )
+            tracker_end = wrapper.get("tracker_end_record")
+            claimed_cleanup = wrapper.get("cleanup_transition")
+            if (
+                not isinstance(tracker_end, Mapping)
+                or not isinstance(claimed_cleanup, Mapping)
+                or self._concentration_start_event_id is None
+            ):
+                raise ControlEngineError(
+                    "Final condition concentration cleanup is malformed"
+                )
+            context = self._engine._build_concentration_context(
+                effect=self._program,
+                schedule=self._schedule,
+                selector_membership=self._membership,
+                selector_context=self._selector_context,
+                invocation_id=self._invocation_id,
+                source_actor_id=self._source_actor_id,
+                start_event_id=self._concentration_start_event_id,
+                choices=self._choices,
+            )
+            plans = self._engine._concentration_end_plan(
+                state=replay_state,
+                context=context,
+                event_id=record.event_id,
+                reason="controller_incapacitated",
+            )
+            expected_cleanup = self._engine._apply_concentration_end_record(
+                state=replay_state,
+                record=tracker_end,
+                context=context,
+                plans=plans,
+            )
+            if expected_cleanup != claimed_cleanup:
+                raise ControlEngineError(
+                    "Final condition concentration cleanup does not replay"
+                )
+
+        def require_exact_replayed_state(
+            replay_state: ControlState,
+            record: _IssuedControlRecord,
+            *,
+            label: str,
+        ) -> None:
+            if _canonical_json(replay_state.snapshot()) != (
+                record.post_operation_state_json
+            ):
+                raise ControlEngineError(
+                    f"Final {label} post-state does not replay"
+                )
+
         records_by_sequence = {
             record.operation_sequence: record for record in self._issued_records
         }
@@ -16521,13 +16777,23 @@ class ControlExecutionSession:
                     else None
                 )
                 observed_structural_opportunities = 0
-                expected_exact_record_counts = (
-                    {"action_legality": 1}
-                    if event.kind == "action_proposal"
-                    else {"fall_transition": 1}
-                    if event.kind == "fall_transition"
-                    else {}
+                expected_exact_record_counts: dict[str, int] = {}
+                if event.kind == "action_proposal":
+                    expected_exact_record_counts["action_legality"] = 1
+                elif event.kind == "fall_transition":
+                    expected_exact_record_counts["fall_transition"] = 1
+                event_records = records_by_event.get(event.event_id, ())
+                expiry_expected = any(
+                    row.get("expiry_event_id") == event.event_id
+                    for row in json.loads(snapshot.pre_event_state_json)
+                ) or any(
+                    row.get("expiry_event_id") == event.event_id
+                    for issued in event_records
+                    if issued.record_kind != "component_expiry"
+                    for row in json.loads(issued.post_operation_state_json)
                 )
+                if expiry_expected:
+                    expected_exact_record_counts["component_expiry"] = 1
                 observed_exact_record_counts = {
                     record_kind: 0
                     for record_kind in expected_exact_record_counts
@@ -16545,6 +16811,7 @@ class ControlExecutionSession:
                         row["component_id"]
                         for row in pre_rows
                         if row.get("effect_id") == self._program.effect_id
+                        and row.get("source_invocation_id") == self._invocation_id
                         and row.get("target_id") == target_id
                     }
                     if (
@@ -16735,6 +17002,27 @@ class ControlExecutionSession:
                     raise ControlEngineError(
                         "Final typed event lacks its exact required execution records"
                     )
+                if event.kind == "condition_application":
+                    proposal_count = sum(
+                        record.record_kind == "condition_application_proposal"
+                        for record in event_records
+                    )
+                    application_count = sum(
+                        record.record_kind == "condition_application"
+                        for record in event_records
+                    )
+                    if proposal_count < 1 or proposal_count != application_count:
+                        raise ControlEngineError(
+                            "Final typed condition-application event lacks its "
+                            "one-to-one issued proposal/application records"
+                        )
+                elif event.kind == "condition_end" and not any(
+                    record.record_kind == "condition_end"
+                    for record in event_records
+                ):
+                    raise ControlEngineError(
+                        "Final typed condition-end event lacks an issued exact end"
+                    )
                 if current_gates:
                     area_gate_bindings = self._canonical_area_gate_bindings()
                     if any(
@@ -16758,8 +17046,40 @@ class ControlExecutionSession:
 
         validate_opportunity_gate_authority()
 
+        canonical_branch_replay_rows: list[dict[str, Any]] = []
+        replayed_refresh_records: list[dict[str, Any]] = []
+        replayed_replacement_records: list[dict[str, Any]] = []
         for record in self._issued_records:
             payload = json.loads(record.payload_json)
+            pre_condition_components = [
+                row
+                for row in json.loads(record.pre_operation_state_json)
+                if row.get("condition_instance_id") is not None
+            ]
+            post_condition_components = [
+                row
+                for row in json.loads(record.post_operation_state_json)
+                if row.get("condition_instance_id") is not None
+            ]
+            condition_mutating_record_kinds = {
+                "area_entry",
+                "area_geometry_update",
+                "area_response",
+                "branch_transition",
+                "component_expiry",
+                "condition_application",
+                "condition_end",
+                "concentration_end",
+                "prone_operation",
+            }
+            if (
+                record.record_kind not in condition_mutating_record_kinds
+                and pre_condition_components != post_condition_components
+            ):
+                raise ControlEngineError(
+                    "Final condition state changed during a condition-inert "
+                    f"{record.record_kind} operation"
+                )
             if record.record_kind == "condition_application_proposal":
                 if set(payload) != {
                     "kind",
@@ -16862,13 +17182,92 @@ class ControlExecutionSession:
                 proposal_payload = json.loads(proposal_record.payload_json)
                 root_id = payload.get("root_condition_instance_id")
                 lineage = lineage_for_root(str(root_id))
-                expected_created = sorted(
-                    (application_projection(row) for row in lineage),
-                    key=lambda row: (
-                        row["application_sequence"],
-                        row["target_id"],
-                        row["instance_id"],
-                    ),
+                proposal_instance = proposal_payload.get("condition_instance")
+                if not isinstance(proposal_instance, Mapping):
+                    raise ControlEngineError(
+                        "Final condition application proposal instance is malformed"
+                    )
+                replay_state = movement_state_from_snapshot(
+                    record.pre_operation_state_json,
+                    label="condition application pre-state",
+                    event_sequence=record.event_sequence,
+                )
+                replay_registry_ids = {
+                    row["instance_id"] for row in replay_state.instance_registry()
+                }
+                try:
+                    applied = replay_state.apply_component(
+                        effect_id=str(proposal_instance["source_effect_id"]),
+                        component={
+                            "component_id": str(
+                                proposal_instance["source_component_id"]
+                            ),
+                            "magnitude": {
+                                "kind": "condition",
+                                "condition": str(
+                                    proposal_instance["condition_id"]
+                                ),
+                            },
+                            "duration": proposal_instance["duration"],
+                            "stacking": {
+                                "key": (
+                                    "condition_instance:"
+                                    f"{proposal_instance['instance_id']}"
+                                ),
+                                "mode": "independent",
+                                "refresh": "none",
+                            },
+                        },
+                        target_id=str(proposal_instance["target_id"]),
+                        source_actor_id=str(
+                            proposal_instance["source_actor_id"]
+                        ),
+                        event_id=record.event_id,
+                        invocation_id=str(
+                            proposal_instance["source_invocation_id"]
+                        ),
+                        expiry_event_id=proposal_instance["expiry_event_id"],
+                        condition_immunities=self._condition_immunities(
+                            str(record.target_id)
+                        ),
+                        application_sequence=record.event_sequence,
+                        condition_instance_id=str(
+                            proposal_instance["instance_id"]
+                        ),
+                        source_program_id=str(
+                            proposal_instance["source_program_id"]
+                        ),
+                        issuance_id=str(proposal_instance["issuance_id"]),
+                        provenance_id=str(proposal_instance["provenance_id"]),
+                    )
+                except (ControlStateError, KeyError, TypeError, ValueError) as error:
+                    raise ControlEngineError(
+                        "Final condition application cannot be replayed"
+                    ) from error
+                if applied is None:
+                    raise ControlEngineError(
+                        "Final condition application was mechanically suppressed"
+                    )
+                replay_condition_concentration_cleanup(
+                    replay_state=replay_state,
+                    wrapper=payload.get("condition_concentration_end"),
+                    record=record,
+                )
+                replayed_refresh_records.extend(
+                    deepcopy(replay_state.refresh_records)
+                )
+                replayed_replacement_records.extend(
+                    deepcopy(replay_state.replacement_records)
+                )
+                expected_created = [
+                    row
+                    for row in replay_state.instance_registry()
+                    if row["instance_id"] not in replay_registry_ids
+                ]
+                require_exact_replayed_state(
+                    replay_state,
+                    record,
+                    label="condition application",
                 )
                 post_condition_ids = sorted({
                     row["condition_id"]
@@ -16913,19 +17312,42 @@ class ControlExecutionSession:
                 }
                 root_id = payload.get("root_condition_instance_id")
                 lineage = lineage_for_root(str(root_id))
-                ended = [
-                    row for row in reversed(lineage)
-                    if row["end_event_id"] == record.event_id
-                    and row["end_sequence"] == record.event_sequence
-                ]
-                post_condition_ids = sorted({
-                    row["condition_id"]
-                    for row in snapshot_condition_rows(
-                        record.post_operation_state_json,
-                        target_id=str(record.target_id),
-                        event_sequence=record.event_sequence,
+                root_row = registry.get(str(root_id))
+                if root_row is None or root_row.get("end_reason") is None:
+                    raise ControlEngineError(
+                        "Final condition end root lifecycle is malformed"
                     )
-                })
+                replay_state = movement_state_from_snapshot(
+                    record.pre_operation_state_json,
+                    label="condition end pre-state",
+                    event_sequence=record.event_sequence,
+                )
+                try:
+                    replayed_ended = replay_state.end_condition_instance(
+                        str(root_id),
+                        event_id=record.event_id,
+                        event_sequence=record.event_sequence,
+                        reason=str(root_row["end_reason"]),
+                        expected_source_actor_id=str(
+                            root_row["source_actor_id"]
+                        ),
+                        expected_issuance_id=str(root_row["issuance_id"]),
+                    )
+                except ControlStateError as error:
+                    raise ControlEngineError(
+                        "Final condition end cannot be replayed"
+                    ) from error
+                ended = [item.to_dict() for item in replayed_ended]
+                require_exact_replayed_state(
+                    replay_state,
+                    record,
+                    label="condition end",
+                )
+                post_condition_ids = list(
+                    replay_state.derived_current_conditions(
+                        str(record.target_id)
+                    )
+                )
                 if (
                     set(payload) != expected_fields
                     or payload.get("kind") != "condition_end"
@@ -16941,39 +17363,245 @@ class ControlExecutionSession:
                         "Final condition end state or lineage does not replay"
                     )
 
+            elif record.record_kind == "component_expiry":
+                expected_fields = {
+                    "kind",
+                    "event_id",
+                    "event_sequence",
+                    "expired_instance_ids",
+                    "expired_component_ids",
+                    "expired_condition_root_instance_ids",
+                    "ended_condition_instance_ids",
+                }
+                replay_state = movement_state_from_snapshot(
+                    record.pre_operation_state_json,
+                    label="component expiry pre-state",
+                    event_sequence=record.event_sequence,
+                )
+                try:
+                    expired = replay_state.expire(
+                        record.event_id,
+                        event_sequence=record.event_sequence,
+                    )
+                except ControlStateError as error:
+                    raise ControlEngineError(
+                        "Final component expiry cannot be replayed"
+                    ) from error
+                expired_root_ids = sorted({
+                    str(item.condition_instance_id)
+                    for item in expired
+                    if item.condition_instance_id is not None
+                })
+                ended_condition_ids = sorted(
+                    row["instance_id"]
+                    for row in replay_state.instance_registry()
+                    if row["status"] == "ended"
+                    and row["end_event_id"] == record.event_id
+                    and row["end_sequence"] == record.event_sequence
+                    and row["end_reason"] == "duration_expiry"
+                )
+                if (
+                    set(payload) != expected_fields
+                    or payload.get("kind") != "component_expiry"
+                    or payload.get("event_id") != record.event_id
+                    or payload.get("event_sequence") != record.event_sequence
+                    or payload.get("expired_instance_ids")
+                    != [item.instance_id for item in expired]
+                    or payload.get("expired_component_ids")
+                    != sorted({item.component_id for item in expired})
+                    or payload.get("expired_condition_root_instance_ids")
+                    != expired_root_ids
+                    or payload.get("ended_condition_instance_ids")
+                    != ended_condition_ids
+                ):
+                    raise ControlEngineError(
+                        "Final component expiry identity or lineage does not replay"
+                    )
+                require_exact_replayed_state(
+                    replay_state,
+                    record,
+                    label="component expiry",
+                )
+
             elif record.record_kind == "branch_transition":
-                created_rows = payload.get("created_condition_instances", [])
-                if not isinstance(created_rows, list):
-                    raise ControlEngineError(
-                        "Final branch condition-instance rows are malformed"
-                    )
-                pre_root_ids = {
-                    row["condition_instance_id"]
-                    for row in json.loads(record.pre_operation_state_json)
-                    if row.get("target_id") == record.target_id
-                    and row.get("condition_instance_id") is not None
+                expected_fields = {
+                    "event_id",
+                    "operation",
+                    "target_id",
+                    "effect_id",
+                    "branch_id",
+                    "outcome",
+                    "active_components_before",
+                    "active_components_after",
+                    "transition_order",
+                    "invocation_id",
+                    "gate_id",
+                    "next_gate_ids",
+                    "gate_reachability",
+                    "filtered_branch",
+                    "refresh_expiry_event_ids",
+                    "instantaneous_contributions",
+                    "pending_displacement_requests",
+                    "instantaneous_resolutions",
+                    "created_condition_instances",
+                    "condition_concentration_end",
+                    "fall_transition",
+                    "active_conditions_after",
+                    "outside_compiled_area_membership_suppressions",
                 }
-                post_root_ids = {
-                    row["condition_instance_id"]
-                    for row in json.loads(record.post_operation_state_json)
-                    if row.get("target_id") == record.target_id
-                    and row.get("condition_instance_id") is not None
-                }
-                expected_created: list[dict[str, Any]] = []
-                for root_id in sorted(post_root_ids - pre_root_ids):
-                    expected_created.extend(
-                        application_projection(row)
-                        for row in lineage_for_root(root_id)
+                target = str(record.target_id)
+                event = events[record.event_id]
+                try:
+                    gate = self._program.gate(str(payload.get("gate_id")))
+                    branch = gate.branch_for_outcome(
+                        str(payload.get("outcome"))
                     )
-                expected_created.sort(key=lambda row: (
-                    row["application_sequence"],
-                    row["target_id"],
-                    row["instance_id"],
-                ))
-                if created_rows != expected_created:
+                    direct_event_match = typed_event_matches(
+                        event,
+                        gate.trigger.data.to_dict(),
+                        target_id=target,
+                        triggering_turn_id=event.turn_id,
+                    )
+                except Exception as error:
                     raise ControlEngineError(
-                        "Final branch condition-instance delta does not replay"
+                        "Final branch authority identity is malformed"
+                    ) from error
+                expected_suppressions = list(
+                    self._outside_membership_ambient_suppressions_from_routes(
+                        gate=gate,
+                        branch=branch,
+                        target_id=target,
+                        event=event,
+                        route_rows=json.loads(
+                            record.pre_operation_route_state_json
+                        ),
                     )
+                )
+                replay_state = movement_state_from_snapshot(
+                    record.pre_operation_state_json,
+                    label="branch transition pre-state",
+                    event_sequence=record.event_sequence,
+                )
+                replay_state.audit_ledger.extend(
+                    deepcopy(canonical_branch_replay_rows)
+                )
+                replay_registry_ids = {
+                    row["instance_id"] for row in replay_state.instance_registry()
+                }
+                try:
+                    canonical_transition = self._engine._apply_resolved_branch(
+                        state=replay_state,
+                        effect=self._program,
+                        gate_id=gate.gate_id,
+                        outcome=branch.outcome,
+                        target_id=target,
+                        source_actor_id=self._source_actor_id,
+                        event_id=record.event_id,
+                        invocation_id=self._invocation_id,
+                        schedule=self._schedule,
+                        selector_membership=self._membership,
+                        selector_context=self._selector_context,
+                        choices=self._choices,
+                        condition_immunities=self._targets_by_id[
+                            target
+                        ].condition_immunities,
+                        _active_guard_snapshot=json.loads(
+                            record.pre_event_state_json
+                        ),
+                        _allow_reachable_same_event=not direct_event_match,
+                        _suppressed_application_component_ids=tuple(
+                            row["component_id"]
+                            for row in expected_suppressions
+                        ),
+                        source_program_id=self._program.effect_id,
+                        issuance_id=(
+                            f"{self._scenario_digest}:{record.event_id}:branch:"
+                            f"{gate.gate_id}:{target}:"
+                            f"{record.operation_sequence}"
+                        ),
+                        provenance_id=self._scenario_digest,
+                    )
+                except (ControlEngineError, ControlStateError) as error:
+                    raise ControlEngineError(
+                        "Final branch transition cannot be replayed from "
+                        "compiled authority"
+                    ) from error
+                if canonical_transition.get("operation") != "branch_transition":
+                    raise ControlEngineError(
+                        "Final branch transition was canonically guard-suppressed"
+                    )
+                canonical_branch_replay_rows.append(
+                    deepcopy(canonical_transition)
+                )
+                expected_created = [
+                    row
+                    for row in replay_state.instance_registry()
+                    if row["instance_id"] not in replay_registry_ids
+                ]
+                canonical_fields = {
+                    "event_id",
+                    "operation",
+                    "target_id",
+                    "effect_id",
+                    "branch_id",
+                    "outcome",
+                    "active_components_before",
+                    "transition_order",
+                    "invocation_id",
+                    "gate_id",
+                    "next_gate_ids",
+                    "gate_reachability",
+                    "filtered_branch",
+                    "refresh_expiry_event_ids",
+                    "instantaneous_contributions",
+                    "pending_displacement_requests",
+                    "instantaneous_resolutions",
+                }
+                replay_condition_concentration_cleanup(
+                    replay_state=replay_state,
+                    wrapper=payload.get("condition_concentration_end"),
+                    record=record,
+                )
+                replayed_refresh_records.extend(
+                    deepcopy(replay_state.refresh_records)
+                )
+                replayed_replacement_records.extend(
+                    deepcopy(replay_state.replacement_records)
+                )
+                expected_active_conditions = list(
+                    replay_state.derived_current_conditions(target)
+                )
+                expected_target_state = replay_state.snapshot(target)
+                if (
+                    set(payload) != expected_fields
+                    or payload.get("effect_id") != self._program.effect_id
+                    or payload.get("invocation_id") != self._invocation_id
+                    or payload.get("branch_id") != branch.branch_id
+                    or any(
+                        payload.get(field_name)
+                        != canonical_transition.get(field_name)
+                        for field_name in canonical_fields
+                    )
+                    or payload.get(
+                        "outside_compiled_area_membership_suppressions"
+                    )
+                    != expected_suppressions
+                    or payload.get("created_condition_instances")
+                    != expected_created
+                    or payload.get("active_conditions_after")
+                    != expected_active_conditions
+                    or payload.get("active_components_after")
+                    != expected_target_state
+                ):
+                    raise ControlEngineError(
+                        "Final branch transition ownership or condition state "
+                        "does not replay"
+                    )
+                require_exact_replayed_state(
+                    replay_state,
+                    record,
+                    label="branch transition",
+                )
 
             if record.record_kind == "action_legality":
                 decision = {
@@ -17406,6 +18034,17 @@ class ControlExecutionSession:
                 raise ControlEngineError(
                     "Final opportunity roll kind is fabricated"
                 )
+
+        if (
+            _canonical_json(self._state.refresh_records)
+            != _canonical_json(replayed_refresh_records)
+            or _canonical_json(self._state.replacement_records)
+            != _canonical_json(replayed_replacement_records)
+        ):
+            raise ControlEngineError(
+                "Final refresh or replacement mutation records do not replay "
+                "from exact compiled branch authority"
+            )
 
         executed_falls: set[tuple[str, str]] = set()
         for record in self._issued_records:
@@ -18024,6 +18663,7 @@ class ControlExecutionSession:
             row["component_id"]
             for row in json.loads(snapshot.pre_event_state_json)
             if row.get("effect_id") == self._program.effect_id
+            and row.get("source_invocation_id") == self._invocation_id
             and row.get("target_id") == target_id
         }
         return not (
@@ -18151,6 +18791,7 @@ class ControlExecutionSession:
                 row["component_id"]
                 for row in json.loads(restoration_pre_state_json)
                 if row.get("effect_id") == bound.effect_id
+                and row.get("source_invocation_id") == self._invocation_id
                 and row.get("target_id") == bound.target_id
             }
             expected_retained_ambient_ids = [
@@ -18166,6 +18807,7 @@ class ControlExecutionSession:
             post_rows = [
                 row for row in json.loads(record.post_operation_state_json)
                 if row.get("effect_id") == bound.effect_id
+                and row.get("source_invocation_id") == self._invocation_id
                 and row.get("target_id") == bound.target_id
             ]
             post_by_component_id = {
@@ -18493,6 +19135,7 @@ class ControlExecutionSession:
             for target_id in self._schedule.target_ids
             for component in self._state.active_components(target_id)
             if component.effect_id == self._program.effect_id
+            and component.source_invocation_id == self._invocation_id
             and self._program.component(component.component_id).duration.get("kind")
             == "concentration"
         )
@@ -18622,10 +19265,12 @@ class ControlExecutionSession:
             program_check_rows = [
                 row for row in check_state_rows
                 if row.get("effect_id") == self._program.effect_id
+                and row.get("source_invocation_id") == self._invocation_id
             ]
             program_end_pre_rows = [
                 row for row in json.loads(end_record.pre_operation_state_json)
                 if row.get("effect_id") == self._program.effect_id
+                and row.get("source_invocation_id") == self._invocation_id
             ]
             program_check_routes = [
                 row for row in check_route_rows
@@ -18769,6 +19414,7 @@ class ControlExecutionSession:
                     row for row in self._state.audit_ledger
                     if row.get("operation") == "branch_transition"
                     and row.get("event_id") == end_record.event_id
+                    and row.get("invocation_id") == self._invocation_id
                     and row.get("gate_id") == planned["gate_id"]
                     and row.get("target_id") == planned["target_id"]
                     and row.get("filtered_branch", {}).get("outcome")
@@ -18785,6 +19431,7 @@ class ControlExecutionSession:
             program_end_post_rows = [
                 row for row in json.loads(end_record.post_operation_state_json)
                 if row.get("effect_id") == self._program.effect_id
+                and row.get("source_invocation_id") == self._invocation_id
             ]
             if any(
                 row.get("component_id") in cleanup_ids
@@ -19075,6 +19722,7 @@ class ControlExecutionSession:
                 item.get("component_id")
                 for item in transition.get("active_components_after", ())
                 if item.get("effect_id") == self._program.effect_id
+                and item.get("source_invocation_id") == self._invocation_id
                 and item.get("target_id") == target_id
             }
             for area_id in sorted(self._persistent_area_ids):
@@ -19171,6 +19819,8 @@ class ControlExecutionSession:
                     item.get("component_id")
                     for item in transition.get("active_components_after", ())
                     if item.get("effect_id") == self._program.effect_id
+                    and item.get("source_invocation_id")
+                    == self._invocation_id
                     and item.get("target_id") == row["target_id"]
                 }
                 if (
@@ -19284,6 +19934,7 @@ class ControlExecutionSession:
             state_rows = json.loads(snapshot.post_event_state_json)
         return any(
             row.get("effect_id") == self._program.effect_id
+            and row.get("source_invocation_id") == self._invocation_id
             and row.get("target_id") == target_id
             and row.get("component_id") == component_id
             for row in state_rows
@@ -19343,6 +19994,8 @@ class ControlExecutionSession:
             ever_realized = any(
                 any(
                     item.get("effect_id") == self._program.effect_id
+                    and item.get("source_invocation_id")
+                    == self._invocation_id
                     and item.get("target_id") == target_id
                     and item.get("component_id") == component_id
                     for item in (

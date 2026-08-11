@@ -108,7 +108,7 @@ class ControlStateTransitionTests(unittest.TestCase):
         self.assertEqual([row.component_id for row in state.active_components()], ["speed_zero_component"])
         self.assertEqual(state.suppression_records[0].reason, "target_condition_immunity")
 
-    def test_reapplication_refreshes_expiry_without_duplicate_active_state(self) -> None:
+    def test_noncondition_reapplication_refreshes_without_duplicate_active_state(self) -> None:
         state = ControlState()
         slow = component(
             "slow",
@@ -324,6 +324,37 @@ class ConditionInstanceLifecycleTests(unittest.TestCase):
         self.assertEqual(lineage[0]["child_condition_id"], "incapacitated")
         self.assertEqual(lineage[0]["issuance_id"], "stun_issuance")
 
+        child = by_condition["incapacitated"]
+        before_child_end = (
+            state.snapshot(),
+            state.instance_registry(),
+            state.lineage_records(),
+            state.condition_lifecycle_records(),
+            deepcopy(state.audit_ledger),
+        )
+        with self.assertRaisesRegex(
+            ControlStateError,
+            "Included condition instances end only through their exact root",
+        ):
+            state.end_condition_instance(
+                child.instance_id,
+                event_id="invalid_child_end",
+                event_sequence=8,
+                reason="source_end",
+                expected_source_actor_id="stunning_source",
+                expected_issuance_id="stun_issuance",
+            )
+        self.assertEqual(
+            (
+                state.snapshot(),
+                state.instance_registry(),
+                state.lineage_records(),
+                state.condition_lifecycle_records(),
+                state.audit_ledger,
+            ),
+            before_child_end,
+        )
+
     def test_parent_end_cleans_only_its_child_and_independent_child_survives(self) -> None:
         state = ControlState(
             catalog=condition_catalog({
@@ -395,6 +426,218 @@ class ConditionInstanceLifecycleTests(unittest.TestCase):
         ]
         self.assertEqual(len(ended_rows), 2)
         self.assertTrue(all(row["end_reason"] == "source_end" for row in ended_rows))
+
+    def test_same_source_stunned_applications_keep_independent_child_lineages(
+        self,
+    ) -> None:
+        state = ControlState(
+            catalog=condition_catalog({
+                "stunned": ("incapacitated",),
+                "incapacitated": (),
+            })
+        )
+        stunned = component(
+            "stunned",
+            {"kind": "condition", "condition": "stunned"},
+        )
+        direct_incapacitated = component(
+            "incapacitated",
+            {"kind": "condition", "condition": "incapacitated"},
+        )
+        roots = []
+        for sequence, invocation in ((1, "invocation_a"), (2, "invocation_b")):
+            roots.append(apply(
+                state,
+                stunned,
+                event=f"stunned_{invocation}",
+                invocation=invocation,
+                source_actor="same_source",
+                application_sequence=sequence,
+                source_program_id="stun_program",
+                issuance_id=f"issuance_{invocation}",
+                provenance_id=f"provenance_{invocation}",
+            ))
+        independent = apply(
+            state,
+            direct_incapacitated,
+            effect="independent_effect",
+            event="independent_incapacitated",
+            invocation="independent_invocation",
+            source_actor="independent_source",
+            application_sequence=3,
+            issuance_id="independent_issuance",
+            provenance_id="independent_provenance",
+        )
+
+        lineages = state.lineage_records("target_a")
+        self.assertEqual(len(lineages), 2)
+        self.assertEqual(
+            {row["source_invocation_id"] for row in lineages},
+            {"invocation_a", "invocation_b"},
+        )
+        self.assertEqual(
+            state.derived_current_conditions("target_a"),
+            ("incapacitated", "stunned"),
+        )
+        self.assertEqual(len(state.active_condition_instances("target_a")), 5)
+
+        state.end_condition_instance(
+            roots[0].condition_instance_id,
+            event_id="end_a",
+            event_sequence=4,
+            reason="source_end",
+            expected_source_actor_id="same_source",
+            expected_issuance_id="issuance_invocation_a",
+        )
+        active = state.active_condition_instances("target_a")
+        self.assertEqual(
+            {row.source_invocation_id for row in active},
+            {"invocation_b", "independent_invocation"},
+        )
+        self.assertEqual(len(active), 3)
+        state.end_condition_instance(
+            roots[1].condition_instance_id,
+            event_id="end_b",
+            event_sequence=5,
+            reason="source_end",
+            expected_source_actor_id="same_source",
+            expected_issuance_id="issuance_invocation_b",
+        )
+        remaining = state.active_condition_instances("target_a")
+        self.assertEqual([row.instance_id for row in remaining], [independent.condition_instance_id])
+        self.assertEqual(
+            state.derived_current_conditions("target_a"),
+            ("incapacitated",),
+        )
+
+    def test_condition_transitions_are_exact_or_invocation_qualified_and_atomic(
+        self,
+    ) -> None:
+        restrained = component(
+            "restrained",
+            {"kind": "condition", "condition": "restrained"},
+        )
+        stunned = component(
+            "stunned",
+            {"kind": "condition", "condition": "stunned"},
+        )
+
+        def populated(invocations: tuple[str, ...]) -> ControlState:
+            state = ControlState()
+            for sequence, invocation in enumerate(invocations, 1):
+                apply(
+                    state,
+                    restrained,
+                    event=f"apply_{sequence}",
+                    invocation=invocation,
+                    application_sequence=sequence,
+                    issuance_id=f"issuance_{sequence}",
+                    provenance_id=f"provenance_{sequence}",
+                )
+            return state
+
+        state = populated(("invocation_a", "invocation_b"))
+        unchanged = (
+            state.snapshot(),
+            state.instance_registry(),
+            state.condition_lifecycle_records(),
+            deepcopy(state.audit_ledger),
+        )
+        with self.assertRaisesRegex(ControlStateError, "requires an exact"):
+            state.terminate(
+                target_id="target_a",
+                component_id="restrained",
+                effect_id="test_effect",
+                event_id="ambiguous_end",
+            )
+        with self.assertRaisesRegex(ControlStateError, "requires an exact"):
+            state.refresh(
+                target_id="target_a",
+                component_id="restrained",
+                effect_id="test_effect",
+                event_id="ambiguous_refresh",
+            )
+        self.assertEqual(
+            (
+                state.snapshot(),
+                state.instance_registry(),
+                state.condition_lifecycle_records(),
+                state.audit_ledger,
+            ),
+            unchanged,
+        )
+
+        state.apply_branch(
+            effect_id="test_effect",
+            branch={
+                "branch_id": "replace_restrained",
+                "outcome": "save_failure",
+                "applies": ["stunned"],
+                "replaces": ["restrained"],
+                "terminates": [],
+                "refreshes": [],
+                "next_gate_ids": [],
+            },
+            components_by_id={"restrained": restrained, "stunned": stunned},
+            target_id="target_a",
+            source_actor_id="controller",
+            event_id="replace_a",
+            invocation_id="invocation_a",
+            application_sequence=3,
+            issuance_id="replacement_issuance",
+            provenance_id="replacement_provenance",
+        )
+        active_roots = [
+            row
+            for row in state.active_condition_instances("target_a")
+            if row.parent_condition_instance_id is None
+        ]
+        self.assertEqual(
+            {(row.condition_id, row.source_invocation_id) for row in active_roots},
+            {("restrained", "invocation_b"), ("stunned", "invocation_a")},
+        )
+        self.assertEqual(
+            state.replacement_records[-1]["selected_source_invocation_id"],
+            "invocation_a",
+        )
+
+        ambiguous = populated(("invocation_a", "invocation_a"))
+        before = (
+            ambiguous.snapshot(),
+            ambiguous.instance_registry(),
+            ambiguous.condition_lifecycle_records(),
+            deepcopy(ambiguous.audit_ledger),
+        )
+        with self.assertRaisesRegex(ControlStateError, "ambiguous within invocation"):
+            ambiguous.apply_branch(
+                effect_id="test_effect",
+                branch={
+                    "branch_id": "ambiguous_replace",
+                    "outcome": "save_failure",
+                    "applies": ["stunned"],
+                    "replaces": ["restrained"],
+                    "terminates": [],
+                    "refreshes": [],
+                    "next_gate_ids": [],
+                },
+                components_by_id={"restrained": restrained, "stunned": stunned},
+                target_id="target_a",
+                source_actor_id="controller",
+                event_id="ambiguous_replace",
+                invocation_id="invocation_a",
+                application_sequence=3,
+                issuance_id="ambiguous_issuance",
+                provenance_id="ambiguous_provenance",
+            )
+        self.assertEqual(
+            (
+                ambiguous.snapshot(),
+                ambiguous.instance_registry(),
+                ambiguous.condition_lifecycle_records(),
+                ambiguous.audit_ledger,
+            ),
+            before,
+        )
 
     def test_cycle_duplicate_lineage_and_broken_chain_fail_atomically(self) -> None:
         invalid_catalogs = (
@@ -540,6 +783,13 @@ class ConditionInstanceLifecycleTests(unittest.TestCase):
             issuance_id="issuance",
             provenance_id="provenance",
         )
+        before_duplicate = (
+            duplicate_state.snapshot(),
+            duplicate_state.instance_registry(),
+            duplicate_state.lineage_records(),
+            duplicate_state.condition_lifecycle_records(),
+            deepcopy(duplicate_state.audit_ledger),
+        )
         with self.assertRaisesRegex(ControlStateError, "Duplicate condition instance ID"):
             apply(
                 duplicate_state,
@@ -551,7 +801,16 @@ class ConditionInstanceLifecycleTests(unittest.TestCase):
                 issuance_id="issuance",
                 provenance_id="provenance",
             )
-        self.assertEqual(len(duplicate_state.instance_registry()), 1)
+        self.assertEqual(
+            (
+                duplicate_state.snapshot(),
+                duplicate_state.instance_registry(),
+                duplicate_state.lineage_records(),
+                duplicate_state.condition_lifecycle_records(),
+                duplicate_state.audit_ledger,
+            ),
+            before_duplicate,
+        )
 
         rewritten_state = ControlState(catalog=catalog)
         with self.assertRaisesRegex(ControlStateError, "does not match"):
@@ -567,135 +826,175 @@ class ConditionInstanceLifecycleTests(unittest.TestCase):
             )
         self.assertEqual(rewritten_state.instance_registry(), ())
 
-    def test_condition_duration_refresh_ends_old_identity_and_applies_new_one(self) -> None:
-        state = ControlState(catalog=condition_catalog({"prone": ()}))
-        prone = component(
-            "prone",
-            {"kind": "condition", "condition": "prone"},
+    def test_same_source_applications_keep_independent_lifecycles_and_one_mechanic(
+        self,
+    ) -> None:
+        restrained_a = component(
+            "restrained",
+            {"kind": "condition", "condition": "restrained"},
         )
-        first = apply(
-            state,
-            prone,
-            expiry="old_expiry",
-            application_sequence=1,
-            issuance_id="first_issuance",
-            provenance_id="first_provenance",
+        restrained_b = deepcopy(restrained_a)
+        restrained_b["duration"]["offset_turns"] = 2
+
+        def populated(
+            invocation_a: str = "invocation_a",
+            invocation_b: str = "invocation_b",
+        ) -> tuple[ControlState, object, object]:
+            state = ControlState()
+            first = apply(
+                state,
+                restrained_a,
+                event="application_a",
+                expiry="expiry_a",
+                invocation=invocation_a,
+                application_sequence=1,
+                source_program_id="shared_program",
+                issuance_id="issuance_a",
+                provenance_id="provenance_a",
+            )
+            second = apply(
+                state,
+                restrained_b,
+                event="application_b",
+                expiry="expiry_b",
+                invocation=invocation_b,
+                application_sequence=2,
+                source_program_id="shared_program",
+                issuance_id="issuance_b",
+                provenance_id="provenance_b",
+            )
+            return state, first, second
+
+        state, first, second = populated()
+        self.assertNotEqual(first.condition_instance_id, second.condition_instance_id)
+        roots = state.active_condition_instances("target_a")
+        self.assertEqual(len(roots), 2)
+        self.assertEqual(
+            {row.source_invocation_id for row in roots},
+            {"invocation_a", "invocation_b"},
         )
-        second = apply(
-            state,
-            prone,
-            event="refresh_event",
-            expiry="new_expiry",
-            application_sequence=2,
-            issuance_id="second_issuance",
-            provenance_id="second_provenance",
+        self.assertEqual(
+            {row.application_event_id for row in roots},
+            {"application_a", "application_b"},
+        )
+        self.assertEqual({row.application_sequence for row in roots}, {1, 2})
+        self.assertEqual({row.issuance_id for row in roots}, {"issuance_a", "issuance_b"})
+        self.assertEqual(
+            {row.provenance_id for row in roots},
+            {"provenance_a", "provenance_b"},
+        )
+        self.assertEqual({row.expiry_event_id for row in roots}, {"expiry_a", "expiry_b"})
+        self.assertEqual(len({json.dumps(row.duration, sort_keys=True) for row in roots}), 2)
+        self.assertEqual(state.derived_current_conditions("target_a"), ("restrained",))
+        self.assertEqual(len(state.active_components("target_a")), 2)
+        self.assertFalse(state.refresh_records)
+        normalized = state.normalize_for_window(
+            target_id="target_a",
+            window_id="attack",
+            window_kind="target_attack_opportunity",
+        )
+        self.assertEqual(len(normalized.contributions), 1)
+        self.assertEqual(
+            set(normalized.contributions[0].source_component_ids),
+            {
+                f"condition_instance:{first.condition_instance_id}",
+                f"condition_instance:{second.condition_instance_id}",
+            },
+        )
+        self.assertEqual(
+            {row["source_invocation_id"] for row in state.condition_lifecycle_records()},
+            {"invocation_a", "invocation_b"},
         )
 
-        self.assertNotEqual(
-            first.condition_instance_id,
+        state.expire("expiry_a", event_sequence=3)
+        self.assertEqual(
+            [row.source_invocation_id for row in state.active_condition_instances()],
+            ["invocation_b"],
+        )
+        state.end_condition_instance(
             second.condition_instance_id,
+            event_id="end_b",
+            event_sequence=4,
+            reason="source_end",
+            expected_source_actor_id="controller",
+            expected_issuance_id="issuance_b",
         )
-        registry = {
-            row["instance_id"]: row for row in state.instance_registry()
-        }
-        self.assertEqual(
-            registry[first.condition_instance_id]["status"],
-            "ended",
-        )
-        self.assertEqual(
-            registry[first.condition_instance_id]["expiry_event_id"],
-            "old_expiry",
-        )
-        self.assertEqual(
-            registry[first.condition_instance_id]["end_reason"],
-            "duration_refresh",
-        )
-        self.assertEqual(
-            registry[second.condition_instance_id]["status"],
-            "active",
-        )
-        self.assertEqual(
-            registry[second.condition_instance_id]["expiry_event_id"],
-            "new_expiry",
-        )
-        self.assertEqual(len(state.active_components()), 1)
+        self.assertEqual(state.derived_current_conditions("target_a"), ())
 
-        old_expiry_identity = condition_instance_id_for(
-            condition_id="prone",
-            target_id="target_a",
-            source_actor_id="controller",
-            source_program_id="test_effect",
-            source_effect_id="test_effect",
-            source_invocation_id="invocation_1",
-            source_component_id="prone",
-            application_event_id="event_apply",
-            application_sequence=1,
-            duration=prone["duration"],
-            expiry_event_id="old_expiry",
-            issuance_id="first_issuance",
-            provenance_id="first_provenance",
+        exact_end_state, exact_first, exact_second = populated()
+        exact_end_state.end_condition_instance(
+            exact_first.condition_instance_id,
+            event_id="end_a",
+            event_sequence=3,
+            reason="countered",
+            expected_source_actor_id="controller",
+            expected_issuance_id="issuance_a",
         )
-        changed_expiry_identity = condition_instance_id_for(
-            condition_id="prone",
-            target_id="target_a",
-            source_actor_id="controller",
-            source_program_id="test_effect",
-            source_effect_id="test_effect",
-            source_invocation_id="invocation_1",
-            source_component_id="prone",
-            application_event_id="event_apply",
-            application_sequence=1,
-            duration=prone["duration"],
-            expiry_event_id="rewritten_expiry",
-            issuance_id="first_issuance",
-            provenance_id="first_provenance",
+        self.assertEqual(
+            [row.instance_id for row in exact_end_state.active_condition_instances()],
+            [exact_second.condition_instance_id],
         )
-        self.assertEqual(first.condition_instance_id, old_expiry_identity)
-        self.assertNotEqual(old_expiry_identity, changed_expiry_identity)
+
+        same_invocation, same_first, same_second = populated(
+            "shared_invocation",
+            "shared_invocation",
+        )
+        self.assertNotEqual(
+            same_first.condition_instance_id,
+            same_second.condition_instance_id,
+        )
+        self.assertEqual(len(same_invocation.active_condition_instances()), 2)
 
     def test_registry_lineage_and_lifecycle_serialization_is_deterministic(self) -> None:
-        catalog = condition_catalog({"alpha": (), "beta": ()})
-        alpha = component(
-            "alpha",
-            {"kind": "condition", "condition": "alpha"},
-        )
-        beta = component(
-            "beta",
-            {"kind": "condition", "condition": "beta"},
+        catalog = condition_catalog({"restrained": ()})
+        restrained = component(
+            "restrained",
+            {"kind": "condition", "condition": "restrained"},
         )
 
         def populated(order: tuple[str, ...]) -> ControlState:
             state = ControlState(catalog=catalog)
-            definitions = {"alpha": alpha, "beta": beta}
-            for condition_id in order:
-                sequence = 1 if condition_id == "alpha" else 2
+            for application_id in order:
+                sequence = 1 if application_id == "application_a" else 2
                 apply(
                     state,
-                    definitions[condition_id],
-                    effect=f"{condition_id}_effect",
-                    source_actor=f"{condition_id}_source",
+                    restrained,
+                    effect="shared_effect",
+                    event=application_id,
+                    expiry=f"expiry_{application_id[-1]}",
+                    invocation=f"invocation_{application_id[-1]}",
+                    source_actor="shared_source",
                     application_sequence=sequence,
-                    issuance_id=f"{condition_id}_issuance",
-                    provenance_id=f"{condition_id}_provenance",
+                    source_program_id="shared_program",
+                    issuance_id=f"issuance_{application_id[-1]}",
+                    provenance_id=f"provenance_{application_id[-1]}",
                 )
             return state
 
-        first = populated(("alpha", "beta"))
-        second = populated(("beta", "alpha"))
+        first = populated(("application_a", "application_b"))
+        second = populated(("application_b", "application_a"))
+        self.assertEqual(len(first.active_condition_instances()), 2)
+        self.assertEqual(len(second.active_condition_instances()), 2)
         first_serialized = json.dumps(
             {
+                "components": first.snapshot(),
                 "registry": first.instance_registry(),
                 "lineage": first.lineage_records(),
                 "lifecycle": first.condition_lifecycle_records(),
+                "derived": first.derived_current_conditions("target_a"),
+                "normalized": first.final_normalized_state(),
             },
             sort_keys=True,
             separators=(",", ":"),
         )
         second_serialized = json.dumps(
             {
+                "components": second.snapshot(),
                 "registry": second.instance_registry(),
                 "lineage": second.lineage_records(),
                 "lifecycle": second.condition_lifecycle_records(),
+                "derived": second.derived_current_conditions("target_a"),
+                "normalized": second.final_normalized_state(),
             },
             sort_keys=True,
             separators=(",", ":"),
@@ -824,6 +1123,8 @@ class MobilityNormalizationTests(unittest.TestCase):
                     component_id=str(denial["component_id"]),
                     effect_id="denial_effect",
                     event_id=f"{label}_ends",
+                    instance_id=applied_denial.instance_id,
+                    source_invocation_id=applied_denial.source_invocation_id,
                 )
                 resumed = state.normalize_for_window(
                     target_id="target_a",
@@ -1223,11 +1524,18 @@ class DirectPrimitiveNormalizationTests(unittest.TestCase):
             if item.component_id == "next_attack"
         )
         self.assertEqual(next_attack.remaining_tokens, 1)
+        incapacitated = next(
+            item
+            for item in state.active_components("target_a")
+            if item.component_id == "incapacitated"
+        )
         state.terminate(
             target_id="target_a",
             component_id="incapacitated",
             effect_id="denial_effect",
             event_id="denial_ends",
+            instance_id=incapacitated.instance_id,
+            source_invocation_id=incapacitated.source_invocation_id,
         )
         resumed_turn = state.normalize_for_window(
             target_id="target_a",
