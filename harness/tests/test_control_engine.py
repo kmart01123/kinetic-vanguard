@@ -18,9 +18,11 @@ from harness.control_engine import (
     ControlEngine,
     ControlEngineError,
     ControlEngineResult,
+    CONTROL_ENGINE_RESULT_CONTRACT_VERSION,
     ENGINE_VERSION,
     ScenarioConvention,
     VersionProvenance,
+    control_target_sense_query_input,
     reliability_result_to_dict,
     validate_engine,
 )
@@ -275,7 +277,11 @@ class ControlEngineFacadeTests(unittest.TestCase):
         self.assertEqual(len(self.engine.authority.programs), 35)
         self.assertEqual(len(self.engine.authority.masteries), 3)
         self.assertEqual(len(self.engine.authority.exclusions), 14)
-        self.assertEqual(len(self.engine.targets), 28)
+        self.assertEqual(len(self.engine.targets), 47)
+        self.assertEqual(
+            len(self.engine.targets),
+            len(self.engine.target_profile_entries),
+        )
         self.assertEqual(len(self.engine.catalog.conditions), 7)
         self.assertEqual(self.engine.config.horizon_rounds, 3)
 
@@ -286,7 +292,24 @@ class ControlEngineFacadeTests(unittest.TestCase):
             displacement_function_id="sqrt_5ft_v1",
         ).to_dict()
         self.assertEqual(identity["engine_version"], ENGINE_VERSION)
+        self.assertEqual(
+            identity["control_engine_result_contract_version"],
+            CONTROL_ENGINE_RESULT_CONTRACT_VERSION,
+        )
         self.assertEqual(identity["authority_projection_version"], "2.1.0")
+        self.assertEqual(identity["catalog_contract_version"], "1.0.0")
+        self.assertEqual(identity["roster_contract_version"], "1.0.0")
+        self.assertEqual(
+            identity["target_profile_id"],
+            "srd521_headline_source_diversity_v1",
+        )
+        self.assertEqual(identity["target_profile_version"], "1.0.0")
+        self.assertEqual(
+            identity["control_target_projection_id"],
+            "srd521_control_target",
+        )
+        self.assertEqual(identity["control_target_projection_version"], "1.0.0")
+        self.assertEqual(identity["consumer_requirements_version"], "1.0.0")
         self.assertEqual(identity["consequence_catalog_version"], "2.0.0")
         self.assertEqual(identity["primitive_contract_version"], "2.0.0")
         self.assertEqual(identity["normalization_rules_version"], "2.0.0")
@@ -295,11 +318,45 @@ class ControlEngineFacadeTests(unittest.TestCase):
         for key in (
             "engine_implementation_digest",
             "authority_projection_digest",
-            "target_supplement_digest",
+            "catalog_sha256",
+            "roster_sha256",
+            "target_profile_sha256",
+            "control_target_projection_sha256",
+            "consumer_requirements_sha256",
             "consequence_catalog_digest",
             "engine_config_digest",
         ):
             self.assertRegex(identity[key], r"^[0-9a-f]{64}$")
+
+    def test_control_targets_retain_all_senses_while_query_adapter_stays_nonvisual(self) -> None:
+        self.assertTrue(
+            all(
+                tuple(target.senses)
+                == ("darkvision", "blindsight", "tremorsense", "truesight")
+                for target in self.engine.targets
+            )
+        )
+        truesight_target = next(
+            target for target in self.engine.targets if target.senses["truesight"]
+        )
+        self.assertTrue(truesight_target.senses["truesight"])
+        query_input = control_target_sense_query_input(truesight_target)
+        self.assertNotIn("truesight", {item["sense"] for item in query_input})
+        self.assertNotIn("darkvision", {item["sense"] for item in query_input})
+
+    def test_constructor_rejects_stale_control_target_projection_identity(self) -> None:
+        with self.assertRaisesRegex(ControlEngineError, "projection digest"):
+            ControlEngine(
+                catalog=self.engine.catalog,
+                config=self.engine.config,
+                authority=self.engine.authority,
+                targets=self.engine.targets,
+                target_profile_entries=self.engine.target_profile_entries,
+                target_input_identity=replace(
+                    self.engine.target_input_identity,
+                    control_target_projection_sha256="0" * 64,
+                ),
+            )
 
     def test_unknown_methodology_variant_fails_closed(self) -> None:
         with self.assertRaisesRegex(ControlEngineError, "initiative"):
@@ -727,7 +784,15 @@ class ControlEngineFacadeTests(unittest.TestCase):
         self.assertEqual(summary["compiled_programs"], 35)
         self.assertEqual(summary["compiled_masteries"], 3)
         self.assertEqual(summary["preserved_exclusions"], 14)
-        self.assertEqual(summary["control_target_rows"], 28)
+        self.assertEqual(summary["control_target_rows"], 47)
+        self.assertEqual(
+            summary["control_engine_result_contract_version"],
+            CONTROL_ENGINE_RESULT_CONTRACT_VERSION,
+        )
+        self.assertEqual(
+            summary["target_profile_id"],
+            "srd521_headline_source_diversity_v1",
+        )
         self.assertEqual(summary["fixture_cases"], 72)
         self.assertEqual(len(summary["initiative_schedules"]), 2)
         self.assertEqual(len(summary["area_response_conventions"]), 2)
@@ -4402,7 +4467,8 @@ class ControlExecutionSessionTests(unittest.TestCase):
             config=self.engine.config,
             authority=synthetic_authority,
             targets=self.engine.targets,
-            target_supplement_digest=self.engine.target_supplement_digest,
+            target_profile_entries=self.engine.target_profile_entries,
+            target_input_identity=self.engine.target_input_identity,
         )
 
     def _synthetic_frozen_engine(
@@ -5295,7 +5361,8 @@ class ControlExecutionSessionTests(unittest.TestCase):
             config=self.engine.config,
             authority=authority,
             targets=self.engine.targets,
-            target_supplement_digest=self.engine.target_supplement_digest,
+            target_profile_entries=self.engine.target_profile_entries,
+            target_input_identity=self.engine.target_input_identity,
         )
         schedule = engine.schedule(
             "fighter_first_v1",
@@ -9296,7 +9363,8 @@ class ControlExecutionSessionTests(unittest.TestCase):
             config=self.engine.config,
             authority=synthetic_authority,
             targets=self.engine.targets,
-            target_supplement_digest=self.engine.target_supplement_digest,
+            target_profile_entries=self.engine.target_profile_entries,
+            target_input_identity=self.engine.target_input_identity,
         )
         schedule = engine.schedule(
             "fighter_first_v1",
@@ -12324,7 +12392,8 @@ class ControlExecutionSessionTests(unittest.TestCase):
             config=self.engine.config,
             authority=synthetic_authority,
             targets=self.engine.targets,
-            target_supplement_digest=self.engine.target_supplement_digest,
+            target_profile_entries=self.engine.target_profile_entries,
+            target_input_identity=self.engine.target_input_identity,
         )
         schedule = synthetic_engine.schedule(
             "fighter_first_v1",
@@ -14289,7 +14358,8 @@ class ControlEngineIntegrationBridgeTests(unittest.TestCase):
             config=self.engine.config,
             authority=authority,
             targets=self.engine.targets,
-            target_supplement_digest=self.engine.target_supplement_digest,
+            target_profile_entries=self.engine.target_profile_entries,
+            target_input_identity=self.engine.target_input_identity,
         )
         schedule = engine.schedule(
             "fighter_first_v1",

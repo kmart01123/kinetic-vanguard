@@ -41,6 +41,14 @@ LEGAL_NOTICES = (
 NOTICE_COLUMNS = {f"Notice {label}": value for label, value in LEGAL_NOTICES}
 
 
+def provenance_columns(provenance: dict[str, Any]) -> dict[str, str]:
+    """Render one stable set of provenance columns for every damage artifact."""
+    return {
+        f"Provenance {str(key).replace('_', ' ').title()}": str(value)
+        for key, value in provenance.items()
+    }
+
+
 def _display_value(value: float) -> float:
     return round(float(value), 6)
 
@@ -158,8 +166,8 @@ def write_damage_matrix(
     if any(row.get("Band") not in BANDS for row in rows):
         raise ValueError("Damage comparison matrix contains an unsupported band")
     _validate_release_rows(rows)
-    provenance_columns={f"Provenance {str(key).replace('_',' ').title()}":str(value) for key,value in provenance.items()}
-    rows=[{**row,**provenance_columns} for row in rows]
+    rendered_provenance=provenance_columns(provenance)
+    rows=[{**row,**rendered_provenance} for row in rows]
     columns = list(rows[0])
     if any(list(row) != columns for row in rows):
         raise ValueError("Damage comparison matrix rows do not share one column order")

@@ -32,6 +32,23 @@ from harness.control_catalog import (
     load_control_catalog,
     load_engine_config,
 )
+from harness.creature_catalog import (
+    CONSUMER_REQUIREMENTS_VERSION,
+    CONTROL_PROJECTION_ID,
+    CONTROL_PROJECTION_VERSION,
+    DEFAULT_CATALOG as DEFAULT_CREATURE_CATALOG,
+    DEFAULT_CONSUMER_REQUIREMENTS,
+    DEFAULT_PROVENANCE as DEFAULT_CREATURE_PROVENANCE,
+    DEFAULT_ROSTERS as DEFAULT_CREATURE_ROSTERS,
+    HEADLINE_PROFILE_ID,
+    ROSTER_CONTRACT_VERSION,
+    ControlTarget,
+    RosterEntry,
+    load_catalog as load_creature_catalog,
+    load_consumer_requirements,
+    load_profile,
+    project_control_target,
+)
 from harness.control_graph import (
     CONTROL_MAGNITUDE_KINDS,
     CompiledAuthority,
@@ -64,12 +81,6 @@ from harness.control_state import (
     SuppressionRecord,
     condition_instance_id_for,
 )
-from harness.control_targets import (
-    DEFAULT_CONTROL_PROVENANCE as DEFAULT_TARGET_PROVENANCE,
-    DEFAULT_CONTROL_SUPPLEMENT,
-    ControlTarget,
-    load_control_targets,
-)
 from harness.control_timeline import (
     AREA_RESPONSE_CONVENTIONS,
     DISPLACEMENT_FUNCTIONS,
@@ -93,10 +104,9 @@ from harness.control_timeline import (
     typed_event_matches,
     vertical_displacement_vector,
 )
-from harness.model import DEFAULT_ROSTER, file_sha256
-
-
 ENGINE_VERSION = "2.0.0"
+CONTROL_ENGINE_RESULT_CONTRACT_VERSION = "3.0.0"
+CONTROL_QUERY_SENSE_KINDS = ("blindsight", "tremorsense")
 DEFAULT_FIXTURE_CORPUS = (
     Path(__file__).resolve().parent / "tests" / "fixtures" / "control_engine_v2.json"
 )
@@ -183,6 +193,30 @@ _RESULT_CONSTRUCTION_DEPTH = 0
 
 class ControlEngineError(ValueError):
     """Raised when the public facade would need to invent scenario policy."""
+
+
+def control_target_sense_query_input(
+    target: ControlTarget,
+) -> tuple[dict[str, Any], ...]:
+    """Adapt only the nonvisual facts consumed by current sense mechanics.
+
+    ``ControlTarget.senses`` retains Darkvision, Blindsight, Tremorsense, and
+    Truesight independently.  The existing Blinded/nonvisual query has a
+    narrower input contract, so this adapter must not reinterpret Truesight as
+    Blindsight or silently add ordinary vision facts.
+    """
+
+    if not isinstance(target, ControlTarget):
+        raise TypeError("target must be a ControlTarget")
+    return tuple(
+        {
+            "sense": kind,
+            "range_ft": fact.range_feet,
+            "limitation": fact.limitation,
+        }
+        for kind in CONTROL_QUERY_SENSE_KINDS
+        for fact in target.senses[kind]
+    )
 
 
 def _identifier(value: Any, label: str) -> str:
@@ -304,6 +338,14 @@ def _sha256_record(value: Any) -> str:
     return hashlib.sha256(_canonical_json(value).encode("utf-8")).hexdigest()
 
 
+def _file_sha256(path: Path) -> str:
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
 def _require_string_mapping_keys(value: Any, path: str) -> None:
     """Reject lossy JSON key coercion in scenario identity inputs."""
 
@@ -387,12 +429,66 @@ def _assert_weight_free(value: Any, path: str = "result") -> None:
 
 
 @dataclass(frozen=True)
+class ControlTargetInputIdentity:
+    """Catalog/profile/projection identities carried by control results."""
+
+    catalog_contract_version: str
+    catalog_sha256: str
+    roster_contract_version: str
+    roster_sha256: str
+    target_profile_id: str
+    target_profile_version: str
+    target_profile_sha256: str
+    control_target_projection_id: str
+    control_target_projection_version: str
+    control_target_projection_sha256: str
+    consumer_requirements_version: str
+    consumer_requirements_sha256: str
+
+
+def _control_target_projection_digest(
+    entries: Sequence[RosterEntry],
+    targets: Sequence[ControlTarget],
+) -> str:
+    if not entries or len(entries) != len(targets):
+        raise ControlEngineError(
+            "ControlTarget projections must cover a non-empty profile exactly"
+        )
+    first_entry = entries[0]
+    return _sha256_record({
+        "projection_id": CONTROL_PROJECTION_ID,
+        "projection_version": CONTROL_PROJECTION_VERSION,
+        "profile_id": first_entry.profile_id,
+        "profile_sha256": first_entry.profile_sha256,
+        "targets": [
+            {
+                "creature_id": entry.creature_id,
+                "target_sha256": target.target_sha256,
+            }
+            for entry, target in zip(entries, targets, strict=True)
+        ],
+    })
+
+
+@dataclass(frozen=True)
 class VersionProvenance:
+    control_engine_result_contract_version: str
     engine_version: str
     engine_implementation_digest: str
     authority_projection_version: str
     authority_projection_digest: str
-    target_supplement_digest: str
+    catalog_contract_version: str
+    catalog_sha256: str
+    roster_contract_version: str
+    roster_sha256: str
+    target_profile_id: str
+    target_profile_version: str
+    target_profile_sha256: str
+    control_target_projection_id: str
+    control_target_projection_version: str
+    control_target_projection_sha256: str
+    consumer_requirements_version: str
+    consumer_requirements_sha256: str
     consequence_catalog_version: str
     consequence_catalog_digest: str
     primitive_contract_version: str
@@ -1122,18 +1218,91 @@ class ControlEngine:
         config: ControlEngineConfig,
         authority: CompiledAuthority,
         targets: Sequence[ControlTarget],
-        target_supplement_digest: str,
+        target_profile_entries: Sequence[RosterEntry],
+        target_input_identity: ControlTargetInputIdentity,
     ) -> None:
         self.catalog = catalog
         self.config = config
         self.authority = authority
         self.targets = tuple(targets)
+        self.target_profile_entries = tuple(target_profile_entries)
+        if not self.target_profile_entries or len(self.targets) != len(
+            self.target_profile_entries
+        ):
+            raise ControlEngineError(
+                "ControlTarget projections must cover a non-empty profile exactly"
+            )
+        if any(
+            target.creature_id != entry.creature_id
+            for entry, target in zip(
+                self.target_profile_entries,
+                self.targets,
+                strict=True,
+            )
+        ):
+            raise ControlEngineError(
+                "ControlTarget projections must follow active profile order"
+            )
+        first_entry = self.target_profile_entries[0]
+        if any(
+            entry.profile_id != first_entry.profile_id
+            or entry.profile_version != first_entry.profile_version
+            or entry.profile_sha256 != first_entry.profile_sha256
+            or entry.roster_sha256 != first_entry.roster_sha256
+            or entry.catalog_sha256 != first_entry.catalog_sha256
+            for entry in self.target_profile_entries
+        ):
+            raise ControlEngineError(
+                "ControlTarget profile entries have inconsistent identities"
+            )
+        if any(
+            target.catalog_contract_version
+            != target_input_identity.catalog_contract_version
+            or target.catalog_sha256 != target_input_identity.catalog_sha256
+            or target.projection_id
+            != target_input_identity.control_target_projection_id
+            or target.projection_version
+            != target_input_identity.control_target_projection_version
+            or target.requirements_sha256
+            != target_input_identity.consumer_requirements_sha256
+            for target in self.targets
+        ):
+            raise ControlEngineError(
+                "ControlTarget projection identities disagree with input provenance"
+            )
+        if (
+            first_entry.catalog_sha256 != target_input_identity.catalog_sha256
+            or first_entry.roster_sha256 != target_input_identity.roster_sha256
+            or first_entry.profile_id != target_input_identity.target_profile_id
+            or first_entry.profile_version
+            != target_input_identity.target_profile_version
+            or first_entry.profile_sha256
+            != target_input_identity.target_profile_sha256
+            or ROSTER_CONTRACT_VERSION
+            != target_input_identity.roster_contract_version
+            or CONTROL_PROJECTION_ID
+            != target_input_identity.control_target_projection_id
+            or CONTROL_PROJECTION_VERSION
+            != target_input_identity.control_target_projection_version
+            or CONSUMER_REQUIREMENTS_VERSION
+            != target_input_identity.consumer_requirements_version
+        ):
+            raise ControlEngineError(
+                "ControlTarget profile/projection metadata disagrees with input provenance"
+            )
+        if _control_target_projection_digest(
+            self.target_profile_entries,
+            self.targets,
+        ) != target_input_identity.control_target_projection_sha256:
+            raise ControlEngineError(
+                "ControlTarget projection digest disagrees with input provenance"
+            )
         self._concentration_contexts: dict[
             ConcentrationTracker,
             _ConcentrationAuthorityContext,
         ] = {}
         self._execution_tokens: set[object] = set()
-        self.target_supplement_digest = target_supplement_digest
+        self.target_input_identity = target_input_identity
 
     @classmethod
     def load(
@@ -1143,24 +1312,70 @@ class ControlEngine:
         catalog_path: str | Path = DEFAULT_CONTROL_CATALOG,
         catalog_provenance_path: str | Path = DEFAULT_CONTROL_PROVENANCE,
         config_path: str | Path = DEFAULT_ENGINE_CONFIG,
-        roster_path: Path = DEFAULT_ROSTER,
-        target_supplement_path: Path = DEFAULT_CONTROL_SUPPLEMENT,
-        target_provenance_path: Path = DEFAULT_TARGET_PROVENANCE,
+        creature_catalog_path: Path = DEFAULT_CREATURE_CATALOG,
+        creature_roster_path: Path = DEFAULT_CREATURE_ROSTERS,
+        creature_provenance_path: Path = DEFAULT_CREATURE_PROVENANCE,
+        consumer_requirements_path: Path = DEFAULT_CONSUMER_REQUIREMENTS,
     ) -> "ControlEngine":
         catalog = load_control_catalog(catalog_path, catalog_provenance_path)
         config = load_engine_config(config_path)
         authority = load_compiled_control_authority(authority_path)
-        targets = load_control_targets(
-            roster_path,
-            target_supplement_path,
-            target_provenance_path,
+        creature_catalog = load_creature_catalog(
+            catalog_path=creature_catalog_path,
+            provenance_path=creature_provenance_path,
+            roster_path=creature_roster_path,
         )
+        requirements = load_consumer_requirements(
+            consumer_requirements_path,
+            catalog=creature_catalog,
+        )
+        entries = load_profile(
+            HEADLINE_PROFILE_ID,
+            catalog=creature_catalog,
+            roster_path=creature_roster_path,
+        )
+        targets = tuple(
+            project_control_target(
+                entry.creature_id,
+                catalog=creature_catalog,
+                requirements=requirements,
+            )
+            for entry in entries
+        )
+        if not entries:
+            raise ControlEngineError("Headline ControlTarget profile is empty")
+        first_entry = entries[0]
+        if any(
+            entry.profile_id != first_entry.profile_id
+            or entry.profile_version != first_entry.profile_version
+            or entry.profile_sha256 != first_entry.profile_sha256
+            or entry.roster_sha256 != first_entry.roster_sha256
+            for entry in entries
+        ):
+            raise ControlEngineError(
+                "Headline ControlTarget profile identities are inconsistent"
+            )
+        projection_sha256 = _control_target_projection_digest(entries, targets)
         return cls(
             catalog=catalog,
             config=config,
             authority=authority,
             targets=targets,
-            target_supplement_digest=file_sha256(target_supplement_path),
+            target_profile_entries=entries,
+            target_input_identity=ControlTargetInputIdentity(
+                catalog_contract_version=targets[0].catalog_contract_version,
+                catalog_sha256=targets[0].catalog_sha256,
+                roster_contract_version=ROSTER_CONTRACT_VERSION,
+                roster_sha256=first_entry.roster_sha256,
+                target_profile_id=first_entry.profile_id,
+                target_profile_version=first_entry.profile_version,
+                target_profile_sha256=first_entry.profile_sha256,
+                control_target_projection_id=CONTROL_PROJECTION_ID,
+                control_target_projection_version=CONTROL_PROJECTION_VERSION,
+                control_target_projection_sha256=projection_sha256,
+                consumer_requirements_version=CONSUMER_REQUIREMENTS_VERSION,
+                consumer_requirements_sha256=requirements.sha256,
+            ),
         )
 
     def program(self, effect_id: str) -> CompiledEffect:
@@ -3885,25 +4100,50 @@ class ControlEngine:
             raise ControlEngineError(
                 f"Unknown displacement function: {displacement_function_id!r}"
             ) from error
+        target_inputs = self.target_input_identity
         return VersionProvenance(
-            ENGINE_VERSION,
-            file_sha256(Path(__file__)),
-            self.authority.projection_version,
-            self.authority.authority_sha256,
-            self.target_supplement_digest,
-            self.catalog.catalog_version,
-            self.catalog.digest,
-            self.catalog.primitive_contract_version,
-            NORMALIZATION_RULES_VERSION,
-            TIMELINE_ENGINE_VERSION,
-            self.config.config_version,
-            self.config.digest,
-            initiative_convention,
-            schedule.version,
-            area_response_convention,
-            area.version,
-            displacement_function_id,
-            displacement.version,
+            control_engine_result_contract_version=(
+                CONTROL_ENGINE_RESULT_CONTRACT_VERSION
+            ),
+            engine_version=ENGINE_VERSION,
+            engine_implementation_digest=_file_sha256(Path(__file__)),
+            authority_projection_version=self.authority.projection_version,
+            authority_projection_digest=self.authority.authority_sha256,
+            catalog_contract_version=target_inputs.catalog_contract_version,
+            catalog_sha256=target_inputs.catalog_sha256,
+            roster_contract_version=target_inputs.roster_contract_version,
+            roster_sha256=target_inputs.roster_sha256,
+            target_profile_id=target_inputs.target_profile_id,
+            target_profile_version=target_inputs.target_profile_version,
+            target_profile_sha256=target_inputs.target_profile_sha256,
+            control_target_projection_id=(
+                target_inputs.control_target_projection_id
+            ),
+            control_target_projection_version=(
+                target_inputs.control_target_projection_version
+            ),
+            control_target_projection_sha256=(
+                target_inputs.control_target_projection_sha256
+            ),
+            consumer_requirements_version=(
+                target_inputs.consumer_requirements_version
+            ),
+            consumer_requirements_sha256=(
+                target_inputs.consumer_requirements_sha256
+            ),
+            consequence_catalog_version=self.catalog.catalog_version,
+            consequence_catalog_digest=self.catalog.digest,
+            primitive_contract_version=self.catalog.primitive_contract_version,
+            normalization_rules_version=NORMALIZATION_RULES_VERSION,
+            timeline_engine_version=TIMELINE_ENGINE_VERSION,
+            engine_config_version=self.config.config_version,
+            engine_config_digest=self.config.digest,
+            initiative_convention=initiative_convention,
+            initiative_convention_version=schedule.version,
+            area_response_convention=area_response_convention,
+            area_response_convention_version=area.version,
+            displacement_function_id=displacement_function_id,
+            displacement_function_version=displacement.version,
         )
 
     def schedule(
@@ -20321,9 +20561,9 @@ def validate_engine(
         raise ControlEngineError(
             "Control Authority must preserve exactly 14 profile exclusions"
         )
-    if len(engine.targets) != 28:
+    if len(engine.targets) != len(engine.target_profile_entries):
         raise ControlEngineError(
-            "Control target inputs must remain an exact 28-row join"
+            "ControlTarget projections must cover the active profile exactly"
         )
     encountered_kinds: set[str] = set()
     for program in engine.authority.programs:
@@ -20403,11 +20643,18 @@ def validate_engine(
     return {
         "status": "ok",
         "engine_version": ENGINE_VERSION,
+        "control_engine_result_contract_version": (
+            CONTROL_ENGINE_RESULT_CONTRACT_VERSION
+        ),
         "authority_projection_version": engine.authority.projection_version,
         "compiled_programs": len(engine.authority.programs),
         "compiled_masteries": len(engine.authority.masteries),
         "preserved_exclusions": len(engine.authority.exclusions),
         "control_target_rows": len(engine.targets),
+        "target_profile_id": engine.target_input_identity.target_profile_id,
+        "target_profile_version": (
+            engine.target_input_identity.target_profile_version
+        ),
         "catalog_version": engine.catalog.catalog_version,
         "catalog_conditions": len(engine.catalog.conditions),
         "primitive_contract_version": (

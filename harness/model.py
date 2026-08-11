@@ -1,26 +1,17 @@
-"""Frozen damage-benchmark inputs and shared roster helpers."""
+"""Frozen damage-benchmark configuration and shared arithmetic helpers."""
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
+
+from .creature_catalog import DamageTarget, HEADLINE_PROFILE_ID
 
 HARNESS_ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = HARNESS_ROOT / "config" / "benchmark.json"
 DEFAULT_COMPARATORS = HARNESS_ROOT / "comparators" / "fighter-subclasses.json"
-DEFAULT_ROSTER = HARNESS_ROOT / "data" / "srd_targets.csv"
-ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
-
-
-@dataclass(frozen=True)
-class Target:
-    level:int;name:str;ac:int;saves:dict[str,int];magic_resistance:bool;legendary_resistance:int;size:str;creature_type:str
-    condition_immunities:frozenset[str];damage_resistances:frozenset[str];damage_immunities:frozenset[str];damage_vulnerabilities:frozenset[str]
-    hp:int;source:str;source_page:str;source_url:str
 
 
 def _object(value:Any,label:str)->dict[str,Any]:
@@ -53,11 +44,11 @@ def _level_map(value:Any,label:str,validator:Any=_integer)->dict[str,Any]:
 def load_config(path:Path=DEFAULT_CONFIG)->dict[str,Any]:
     with path.open(encoding="utf-8") as stream:data=json.load(stream)
     data=_object(data,"benchmark config");_exact_keys(data,{"format_version","methodology","fighter_progression","fighter_mechanics","kv_profile","damage_matrix"},"benchmark config")
-    if data["format_version"]!=1:raise ValueError("Unsupported benchmark config format version")
-    methodology=_object(data["methodology"],"methodology");_exact_keys(methodology,{"status","historical_source","levels","rounds","cluster_sizes","target_weighting","target_death","ally_turns","legal_positioning_assumed","legendary_resistance","damage_default_trials","damage_seed"},"methodology")
+    if data["format_version"]!=2:raise ValueError("Unsupported benchmark config format version")
+    methodology=_object(data["methodology"],"methodology");_exact_keys(methodology,{"status","historical_source","levels","rounds","cluster_sizes","target_profile_id","target_weighting","target_death","ally_turns","legal_positioning_assumed","legendary_resistance","damage_default_trials","damage_seed"},"methodology")
     if methodology["status"] not in {"PORTED_UNDER_REVIEW","REVIEWED_WITH_DOCUMENTED_DIFFERENCES"}:raise ValueError("Unsupported numerical review status")
     if methodology["levels"]!=[7,11,15,20] or methodology["cluster_sizes"]!=[1,3,6] or methodology["rounds"]!=3:raise ValueError("Benchmark levels, clusters, and three-round horizon are frozen")
-    if methodology["target_weighting"]!="equal_weight_within_level" or methodology["legendary_resistance"]!="metadata_only":raise ValueError("Unsupported benchmark aggregation or Legendary Resistance policy")
+    if methodology["target_profile_id"]!=HEADLINE_PROFILE_ID or methodology["target_weighting"]!="explicit_rational_profile_weights" or methodology["legendary_resistance"]!="metadata_only":raise ValueError("Unsupported benchmark target profile, aggregation, or Legendary Resistance policy")
     for key in ("target_death","ally_turns","legal_positioning_assumed"):_boolean(methodology[key],f"methodology.{key}")
     for key in ("damage_default_trials","damage_seed"):_integer(methodology[key],f"methodology.{key}",1)
     progression=_object(data["fighter_progression"],"fighter_progression");_exact_keys(progression,{"7","11","15","20"},"fighter_progression")
@@ -143,23 +134,6 @@ def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
     return data
 
 
-def _items(value:str)->frozenset[str]:
-    return frozenset(item.strip().lower() for item in value.split(";") if item.strip())
-
-
-def load_targets(path:Path=DEFAULT_ROSTER,levels:set[int]|None=None,limit:int|None=None)->list[Target]:
-    rows:list[Target]=[]
-    with path.open(newline="",encoding="utf-8") as stream:
-        for raw in csv.DictReader(stream):
-            level=int(raw["Level"])
-            if levels is not None and level not in levels:continue
-            if raw["Source"]!="SRD 5.2.1" or not raw["Source Page"] or not raw["HP"] or not raw["Source URL"]:raise ValueError(f"Pinned roster row {raw.get('Target','?')} lacks required SRD provenance or HP")
-            rows.append(Target(level,raw["Target"],int(raw["AC"]),{ability:int(raw[ability[:3].upper()]) for ability in ABILITIES},raw["Magic Resistance"].lower()=="true",int(raw["Legendary Resistance"]),raw["Size"].lower(),raw["Creature Type"].lower(),_items(raw["Condition Immunities"]),_items(raw["Damage Resistances"]),_items(raw["Damage Immunities"]),_items(raw["Damage Vulnerabilities"]),int(raw["HP"]),raw["Source"],raw["Source Page"],raw["Source URL"]))
-    if limit is not None:rows=rows[:limit]
-    if not rows:raise ValueError("Target selection is empty")
-    return rows
-
-
 def file_sha256(path:Path)->str:
     digest=hashlib.sha256()
     with path.open("rb") as stream:
@@ -167,7 +141,7 @@ def file_sha256(path:Path)->str:
     return digest.hexdigest()
 
 
-def save_success_probability(target:Target,ability:str,dc:int)->float:
+def save_success_probability(target:DamageTarget,ability:str,dc:int)->float:
     """Return the maintained damage model's save success probability."""
 
     successes=total=0
