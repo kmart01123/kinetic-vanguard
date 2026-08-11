@@ -93,7 +93,7 @@ test("retired migration sources are absent from the active architecture",async()
   assert.match(await readFile("CHANGELOG.md","utf8"),/migration/i);
 });
 
-test("shared control engine has one maintained Python runtime and remains outside damage",async()=>{
+test("shared creature catalog feeds independent damage and control runtimes",async()=>{
   const runtimeModules=[
     "harness/control_catalog.py","harness/control_graph.py","harness/control_state.py","harness/control_timeline.py","harness/control_engine.py"
   ] as const;
@@ -106,7 +106,7 @@ test("shared control engine has one maintained Python runtime and remains outsid
     ["harness/tests/test_control_engine_fixtures.py","test_source"],
     ...["catalog","graph","state","timeline","engine"].map(name=>[`harness/tests/test_control_${name}.py`,"test_source"] as const)
   ];
-  await Promise.all(expectedInputs.map(([path])=>access(path)));
+  await Promise.all([...expectedInputs.map(([path])=>access(path)),access("harness/creature_catalog.py")]);
   await assertAbsent("harness/tests/fixtures/control_engine_v1.json");
   const twinStems=["catalog","graph","state","timeline","engine"] as const;
   await Promise.all(twinStems.flatMap(stem=>[`src/control-${stem}.ts`,`src/control_${stem}.ts`]).map(assertAbsent));
@@ -117,6 +117,12 @@ test("shared control engine has one maintained Python runtime and remains outsid
   for(const [index,source] of runtimeSources.entries())assert.doesNotMatch(source,/\b(?:damage_harness|damage_report|readme_damage)\b|config\/benchmark\.json|comparators\/fighter-subclasses\.json/,runtimeModules[index]);
   const damagePaths=["harness/model.py","harness/damage_harness.py","harness/damage_report.py","harness/readme_damage.py"] as const,damageSources=await Promise.all(damagePaths.map(path=>readFile(path,"utf8")));
   for(const [index,source] of damageSources.entries())assert.doesNotMatch(source,/(?:from|import)\s+(?:harness\.)?\.?control_(?:catalog|graph|state|timeline|engine)\b/,damagePaths[index]);
+  const creatureSource=await readFile("harness/creature_catalog.py","utf8"),damageHarness=damageSources[1]!,controlEngine=runtimeSources[4]!;
+  assert.match(damageHarness,/(?:from\s+\.creature_catalog|from\s+harness\.creature_catalog\s+import)/);
+  assert.match(controlEngine,/from\s+harness\.creature_catalog\s+import/);
+  assert.doesNotMatch(creatureSource,/(?:from|import)\s+(?:harness\.)?\.?(?:damage_harness|damage_report|control_catalog|control_graph|control_state|control_timeline|control_engine)\b/);
+  assert.doesNotMatch(damageHarness,/(?:from|import)\s+(?:harness\.)?\.?control_engine\b/);
+  assert.doesNotMatch(controlEngine,/(?:from|import)\s+(?:harness\.)?\.?damage_harness\b/);
   const scripts=JSON.parse(await readFile("package.json","utf8")).scripts as Record<string,string>;
   assert.deepEqual(Object.keys(scripts).filter(name=>name.startsWith("control:engine:")).sort(),["control:engine:fixtures","control:engine:validate"]);
 });
