@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
+import { createHash } from "node:crypto";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { loadAuthority } from "../src/load.js";
@@ -89,6 +91,10 @@ test("README and release process stay synchronized with canonical development st
   assert.match(checklist, /mutable branch and pull-request pointers/i);
   assert.match(checklist, /every CI\/release workflow/i);
   assert.match(checklist, /frozen release branches, tags, GitHub Releases, published evidence assets, and Git history/i);
+  assert.match(checklist, /npm run harness:damage -- --output-dir <private-output>/);
+  assert.match(checklist, /npm run readme:damage -- --report-input <private-output>\/run-manifest\.json/);
+  assert.match(checklist, /npm run readme:damage:check -- --report-input <private-output>\/run-manifest\.json/);
+  assert.match(checklist, /both synchronization commands must read the same manifest and must not evaluate/i);
 
   assert.match(pullRequestTemplate, /RELEASE_CHECKLIST\.md/);
   assert.match(pullRequestTemplate, /README\.md/);
@@ -96,19 +102,21 @@ test("README and release process stay synchronized with canonical development st
 });
 
 test("README keeps current authority, historical review basis, and publication status distinct", async () => {
-  const [{ authority }, readme, packageJsonSource, benchmarkConfigSource, damageReviewSource, harnessReadme] = await Promise.all([
+  const [{ authority }, readme, packageJsonSource, benchmarkConfigSource, damageReviewSource, harnessReadme, readmeWriter] = await Promise.all([
     loadAuthority(),
     readFile("README.md", "utf8"),
     readFile("package.json", "utf8"),
     readFile("harness/config/benchmark.json", "utf8"),
     readFile("harness/provenance/damage-review.json", "utf8"),
-    readFile("harness/README.md", "utf8")
+    readFile("harness/README.md", "utf8"),
+    readFile("harness/readme_damage.py", "utf8")
   ]);
   const packageJson = JSON.parse(packageJsonSource) as {
     readonly scripts?: Readonly<Record<string, string>>;
   };
   const benchmarkConfig = JSON.parse(benchmarkConfigSource) as {
     readonly kv_profile: { readonly id: string };
+    readonly methodology: { readonly target_profile_id: string };
   };
   const damageReview = JSON.parse(damageReviewSource) as {
     readonly current_damage_review: {
@@ -116,6 +124,17 @@ test("README keeps current authority, historical review basis, and publication s
       readonly status: string;
       readonly review_date: string;
       readonly durable_record: string;
+    };
+    readonly expanded_roster_baseline_evidence: {
+      readonly rules_version: string;
+      readonly release_tag: string;
+      readonly release_commit: string;
+      readonly source_url: string;
+      readonly filename: string;
+      readonly bytes: number;
+      readonly rows: number;
+      readonly sha256: string;
+      readonly evaluator: string;
     };
     readonly current_development_disposition: {
       readonly current_rules_version: string;
@@ -126,21 +145,70 @@ test("README keeps current authority, historical review basis, and publication s
       readonly fresh_monte_carlo_certification: boolean;
       readonly reason: string;
       readonly durable_record: string;
+      readonly fresh_run_evidence: null | {
+        readonly run_manifest_sha256: string;
+        readonly baseline_evidence_sha256: string;
+        readonly rules_version: string;
+        readonly target_profile_id: string;
+        readonly target_profile_sha256: string;
+        readonly damage_target_projection_sha256: string;
+        readonly evaluator: string;
+        readonly evaluator_implementation_sha256: string;
+        readonly output_sha256: Readonly<Record<string, string>>;
+        readonly row_counts: { readonly detail: number; readonly matrix: number };
+      };
     };
   };
   const review = damageReview.current_damage_review;
+  const baseline = damageReview.expanded_roster_baseline_evidence;
   const disposition = damageReview.current_development_disposition;
+  const carriedForward = "CARRIED_FORWARD_WITHOUT_FRESH_NUMERICAL_REVIEW";
+  const freshExpandedRoster = "FRESH_EXPANDED_ROSTER_RUN_WITHOUT_INDEPENDENT_CERTIFICATION";
   assert.equal(disposition.current_rules_version, authority.rules_version);
   assert.equal(disposition.review_basis_rules_version, review.rules_version);
   assert.notEqual(disposition.current_rules_version, disposition.review_basis_rules_version);
   assert.equal(review.rules_version, "14.1.0");
   assert.equal(review.review_date, "2026-08-07");
   assert.equal(review.durable_record, "GitHub PR #20");
-  assert.equal(disposition.review_disposition, "CARRIED_FORWARD_WITHOUT_FRESH_NUMERICAL_REVIEW");
-  assert.equal(disposition.fresh_full_roster_run, false);
+  assert.deepEqual(baseline, {
+    rules_version: "14.1.0",
+    release_tag: "v14.1.0",
+    release_commit: "40d0d191e7ef3ba7be7a3ed6f5f4c0e1c6059bef",
+    source_url: "https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.1.0",
+    filename: "kv-14-1-0-damage-comparison-matrix.csv",
+    bytes: 265819,
+    rows: 96,
+    sha256: "e0a9aec2d5c8da9409b8158163d44085001c26686385ddacb7108ff48d2326b4",
+    evaluator: "exact_analytical_enumeration"
+  });
+  assert.ok(
+    [carriedForward, freshExpandedRoster].includes(disposition.review_disposition),
+    `supported development disposition: ${disposition.review_disposition}`
+  );
+  assert.equal(disposition.fresh_full_roster_run, disposition.review_disposition === freshExpandedRoster);
   assert.equal(disposition.fresh_numerical_certification, false);
   assert.equal(disposition.fresh_monte_carlo_certification, false);
-  assert.equal(disposition.durable_record, "GitHub PR #46");
+  assert.ok(disposition.reason.length > 0);
+  assert.ok(disposition.durable_record.length > 0);
+  if (disposition.review_disposition === carriedForward) {
+    assert.equal(disposition.fresh_run_evidence, null);
+  } else {
+    const evidence = disposition.fresh_run_evidence;
+    assert.ok(evidence, "fresh expanded-roster disposition binds exact run evidence");
+    assert.equal(evidence.rules_version, authority.rules_version);
+    assert.equal(evidence.target_profile_id, benchmarkConfig.methodology.target_profile_id);
+    assert.equal(evidence.evaluator, "exact_analytical_enumeration");
+    assert.deepEqual(evidence.row_counts, { detail: 564, matrix: 96 });
+    assert.deepEqual(Object.keys(evidence.output_sha256).sort(), ["detail_csv", "matrix_csv", "matrix_html", "matrix_markdown"]);
+    for (const digest of [
+      evidence.run_manifest_sha256,
+      evidence.baseline_evidence_sha256,
+      evidence.target_profile_sha256,
+      evidence.damage_target_projection_sha256,
+      evidence.evaluator_implementation_sha256,
+      ...Object.values(evidence.output_sha256)
+    ]) assert.match(digest, /^[0-9a-f]{64}$/);
+  }
 
   const beginMarker = "<!-- BEGIN GENERATED DAMAGE MATRIX -->";
   const endMarker = "<!-- END GENERATED DAMAGE MATRIX -->";
@@ -177,14 +245,39 @@ test("README keeps current authority, historical review basis, and publication s
     /\*\*(?:Published|Unreleased development) snapshot\*\*|current published release|Current development line/i,
     "analytical evidence is independent of release-status metadata"
   );
-  assert.ok(region.includes(`Profile: \`${benchmarkConfig.kv_profile.id}\`.`));
-  assert.ok(region.includes(
-    `Numerical-review basis: reviewed rules **v${review.rules_version}** evidence (\`${review.status}\`).`
-  ));
-  assert.ok(region.includes(
-    `Snapshot values are carried forward from that reviewed evidence and were not regenerated for **v${authority.rules_version}**. No fresh **v${authority.rules_version}** full-roster run, numerical certification, or Monte Carlo certification was performed.`
-  ));
-  assert.ok(region.includes(`Reason: ${disposition.reason}`));
+  assert.ok(
+    region.includes(`Profile: \`${benchmarkConfig.kv_profile.id}\`.`)
+      || region.includes(`Kinetic Vanguard profile: \`${benchmarkConfig.kv_profile.id}\`.`),
+    "snapshot identifies the Kinetic Vanguard benchmark profile"
+  );
+  if (disposition.review_disposition === carriedForward) {
+    assert.ok(region.includes(
+      `Numerical-review basis: reviewed rules **v${review.rules_version}** evidence (\`${review.status}\`).`
+    ));
+    assert.ok(region.includes(
+      `Snapshot values are carried forward from that reviewed evidence and were not regenerated for **v${authority.rules_version}**. No fresh **v${authority.rules_version}** full-roster run, numerical certification, or Monte Carlo certification was performed.`
+    ));
+    assert.ok(region.includes(`Reason: ${disposition.reason}`));
+    assert.doesNotMatch(region, /A fresh exact analytical run/);
+  } else {
+    assert.ok(region.includes(
+      `A fresh exact analytical run for **v${authority.rules_version}**`
+    ));
+    assert.ok(region.includes(
+      `used all `
+    ));
+    assert.ok(region.includes(
+      ` targets in \`${benchmarkConfig.methodology.target_profile_id}\`. It replaces the carried-forward snapshot`
+    ));
+    assert.ok(region.includes(
+      `independently reviewed rules **v${review.rules_version}** evidence remains the review basis (\`${review.status}\`)`
+    ));
+    assert.match(region, /No fresh independent numerical or Monte Carlo certification is claimed\./);
+    assert.match(region, /Run-manifest SHA-256: `[0-9a-f]{64}`\./);
+    assert.match(region, /^Target profile: `[^`]+` \(\d+ source-ordered targets\)\.$/m);
+    assert.ok(region.includes(`Target profile: \`${benchmarkConfig.methodology.target_profile_id}\``));
+    assert.doesNotMatch(region, /Snapshot values are carried forward|No fresh v14\.2 full-roster run/);
+  }
   assert.doesNotMatch(region, /Numerical review status:/i);
   assert.match(region, /^## Damage benchmark snapshot$/m);
   assert.doesNotMatch(region, /^### /m);
@@ -221,7 +314,7 @@ test("README keeps current authority, historical review basis, and publication s
     "[`KineticVanguard.yaml`](KineticVanguard.yaml)",
     "[maintained damage harness guide](harness/README.md)",
     "[methodology configuration](harness/config/benchmark.json)",
-    "[SRD target roster](harness/data/srd_targets.csv)",
+    "[SRD creature catalog audit](docs/srd-creature-catalog-audit.md)",
     "[comparator assumptions](harness/comparators/fighter-subclasses.json)",
     "[`LICENSE.md`](LICENSE.md)",
     "[`NOTICE.md`](NOTICE.md)"
@@ -230,9 +323,24 @@ test("README keeps current authority, historical review basis, and publication s
 
   for (const statement of [
     `canonical rules **v${disposition.current_rules_version}**`,
-    `numerical-review basis **v${disposition.review_basis_rules_version}**`,
-    "No fresh v14.2 full-roster run, numerical certification, or Monte Carlo certification was performed"
+    `numerical-review basis **v${disposition.review_basis_rules_version}**`
   ]) assert.ok(harnessReadme.includes(statement), `harness guide states ${statement}`);
+  if (disposition.review_disposition === carriedForward) {
+    assert.match(harnessReadme, /No fresh v14\.2 full-roster run, numerical certification, or Monte Carlo certification was performed/);
+  } else {
+    assert.match(harnessReadme, /fresh expanded-roster|fresh exact analytical run/i);
+    assert.doesNotMatch(harnessReadme, /No fresh v14\.2 full-roster run/);
+  }
+  for (const path of [
+    "data/srd_creatures.json",
+    "data/srd_creature_rosters.json",
+    "config/creature-consumers.json",
+    "provenance/srd-creatures.json"
+  ]) assert.ok(harnessReadme.includes(path), `harness guide links the maintained ${path}`);
+  for (const retired of ["srd_targets.csv", "srd_control_targets.json", "srd-control-targets.json"]) {
+    assert.ok(!readme.includes(retired), `README does not reference retired ${retired}`);
+    assert.ok(!harnessReadme.includes(retired), `harness guide does not reference retired ${retired}`);
+  }
 
   const status = readme.slice(controlStatus, publication);
   assert.match(status, /v14\.1.*Control Reliability.*historical release evidence/s);
@@ -248,4 +356,73 @@ test("README keeps current authority, historical review basis, and publication s
   );
   assert.match(packageJson.scripts?.["readme:damage"] ?? "", /^python3 -m harness\.readme_damage --write(?:\s|$)/);
   assert.match(packageJson.scripts?.["readme:damage:check"] ?? "", /^python3 -m harness\.readme_damage --check(?:\s|$)/);
+  for (const script of [packageJson.scripts?.["readme:damage"], packageJson.scripts?.["readme:damage:check"]]) {
+    assert.doesNotMatch(script ?? "", /damage_harness|harness:damage|--output-dir/);
+  }
+  assert.match(readmeWriter, /parser\.add_argument\("--report-input", type=Path, required=True\)/);
+  assert.match(readmeWriter, /load_verified_damage_run\(args\.report_input\)/);
+  assert.doesNotMatch(readmeWriter, /\bfrom \.damage_harness import run\b|\bdamage_harness\.run\s*\(|(?<![\w.])run\s*\(/);
+  const missingReportInput = spawnSync(
+    "python3",
+    ["-m", "harness.readme_damage", "--check"],
+    { encoding: "utf8" }
+  );
+  assert.equal(missingReportInput.status, 2);
+  assert.match(missingReportInput.stderr, /the following arguments are required: --report-input/);
+});
+
+test("expanded-roster damage delta audit is compact, complete, and provenance-bound", async () => {
+  const [source, reviewSource, harnessReadme, auditDoc] = await Promise.all([
+    readFile("harness/provenance/damage-delta-v14.1-to-v14.2.json", "utf8"),
+    readFile("harness/provenance/damage-review.json", "utf8"),
+    readFile("harness/README.md", "utf8"),
+    readFile("docs/srd-creature-catalog-audit.md", "utf8")
+  ]);
+  const audit = JSON.parse(source) as any;
+  const review = JSON.parse(reviewSource) as any;
+  const evidence = review.current_development_disposition.fresh_run_evidence;
+
+  assert.equal(audit.schema_version, "1.1.0");
+  assert.equal(audit.method.result_generation, "read-only comparison of existing artifacts; evaluator was not invoked");
+  assert.match(audit.method.primary_target_population, /cluster sizes 1, 3, and 6/);
+  assert.match(audit.method.absolute_delta_population, /288 entity values overall/);
+  assert.deepEqual(audit.target_counts_by_level, [
+    { level: 7, before: 8, after: 12, delta: 4 },
+    { level: 11, before: 6, after: 12, delta: 6 },
+    { level: 15, before: 6, after: 11, delta: 5 },
+    { level: 20, before: 8, after: 12, delta: 4 }
+  ]);
+  assert.equal(audit.validation.matching_row_identity_sets, true);
+  assert.equal(audit.validation.baseline_matrix_row_count, 96);
+  assert.equal(audit.validation.final_matrix_row_count, 96);
+  assert.equal(audit.validation.final_detail_row_count, 564);
+  assert.deepEqual(audit.newly_unevaluable_rows, []);
+  assert.equal(audit.primary_target_changes.length, 16);
+  assert.equal(audit.aggregate_scope_changes.length, 48);
+  assert.equal(audit.classification_changes.transition_count, 11);
+  assert.deepEqual(audit.classification_changes.transition_pair_counts, {
+    "HOT->IDEAL": 2,
+    "IDEAL->COLD": 9
+  });
+  assert.equal(audit.absolute_dpr_delta.overall.value_count, 288);
+  assert.equal(audit.absolute_dpr_delta.overall.mean_absolute_dpr_delta, "3.336333510417");
+  assert.equal(audit.absolute_dpr_delta.overall.max_absolute_dpr_delta, "39.306652");
+  assert.equal(
+    audit.artifacts_and_provenance.final.reports.run_manifest.sha256,
+    evidence.run_manifest_sha256
+  );
+  assert.equal(
+    audit.artifacts_and_provenance.final.reports.matrix_csv.sha256,
+    evidence.output_sha256.matrix_csv
+  );
+  assert.equal(
+    audit.artifacts_and_provenance.baseline.reports.matrix_csv.sha256,
+    review.expanded_roster_baseline_evidence.sha256
+  );
+  const digest = "b000f3c87bcc8ffda2c88823877885a7b0af5c9ec3c3da7c4ac10a7b1ef8c969";
+  assert.equal(createHash("sha256").update(source).digest("hex"), digest);
+  assert.ok(harnessReadme.includes("provenance/damage-delta-v14.1-to-v14.2.json"));
+  assert.ok(harnessReadme.includes(digest));
+  assert.ok(auditDoc.includes("harness/provenance/damage-delta-v14.1-to-v14.2.json"));
+  assert.ok(auditDoc.includes(digest));
 });

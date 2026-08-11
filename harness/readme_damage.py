@@ -4,11 +4,13 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
 import json
 import os
+import shlex
 import stat
 import tempfile
-from dataclasses import dataclass
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Sequence
 
@@ -19,11 +21,11 @@ from .damage_report import (
     VALUE_COLUMNS,
     damage_matrix_row,
 )
-from .damage_harness import run as run_damage
+from .damage_harness import (
+    DAMAGE_RESULT_CONTRACT_VERSION,
+    load_damage_input_bundle,
+)
 from .model import (
-    DEFAULT_COMPARATORS,
-    DEFAULT_CONFIG,
-    DEFAULT_ROSTER,
     file_sha256,
     load_config,
 )
@@ -42,20 +44,36 @@ README_DISCIPLINES = (
 )
 RESULT_FIELDS = tuple(VALUE_COLUMNS)
 PROVENANCE_FIELDS = (
+    "Provenance Damage Result Contract Version",
     "Provenance Rules Version",
     "Provenance Authority Sha256",
+    "Provenance Catalog Contract Version",
+    "Provenance Catalog Sha256",
+    "Provenance Roster Contract Version",
     "Provenance Roster Sha256",
+    "Provenance Target Profile Id",
+    "Provenance Target Profile Version",
+    "Provenance Target Profile Sha256",
+    "Provenance Damage Target Projection Id",
+    "Provenance Damage Target Projection Version",
+    "Provenance Damage Target Projection Sha256",
+    "Provenance Consumer Requirements Version",
+    "Provenance Consumer Requirements Sha256",
     "Provenance Config Sha256",
     "Provenance Comparator Config Sha256",
+    "Provenance Evaluator",
+    "Provenance Evaluator Implementation Sha256",
     "Provenance Trials",
     "Provenance Seed",
-    "Provenance Evaluator",
     "Provenance Trial Seed Role",
     "Provenance Aggregation",
     "Provenance Status",
 )
 MatrixRow = dict[str, str]
 CARRIED_FORWARD_REVIEW = "CARRIED_FORWARD_WITHOUT_FRESH_NUMERICAL_REVIEW"
+FRESH_EXPANDED_ROSTER_REVIEW = (
+    "FRESH_EXPANDED_ROSTER_RUN_WITHOUT_INDEPENDENT_CERTIFICATION"
+)
 
 
 class MatrixSyncError(ValueError):
@@ -63,7 +81,58 @@ class MatrixSyncError(ValueError):
 
 
 @dataclass(frozen=True)
+class ExpandedRosterBaselineEvidence:
+    rules_version: str
+    release_tag: str
+    release_commit: str
+    source_url: str
+    filename: str
+    bytes: int
+    rows: int
+    sha256: str
+    evaluator: str
+
+
+@dataclass(frozen=True)
+class DamageOutputSha256:
+    detail_csv: str
+    matrix_csv: str
+    matrix_markdown: str
+    matrix_html: str
+
+
+@dataclass(frozen=True)
+class DamageRowCounts:
+    detail: int
+    matrix: int
+
+
+@dataclass(frozen=True)
+class FreshRunEvidence:
+    run_manifest_sha256: str
+    baseline_evidence_sha256: str
+    damage_result_contract_version: str
+    rules_version: str
+    authority_sha256: str
+    catalog_contract_version: str
+    catalog_sha256: str
+    roster_contract_version: str
+    roster_sha256: str
+    target_profile_id: str
+    target_profile_version: str
+    target_profile_sha256: str
+    damage_target_projection_id: str
+    damage_target_projection_version: str
+    damage_target_projection_sha256: str
+    evaluator: str
+    evaluator_implementation_sha256: str
+    output_sha256: DamageOutputSha256
+    row_counts: DamageRowCounts
+
+
+@dataclass(frozen=True)
 class DamageReviewDisposition:
+    expanded_roster_baseline_evidence: ExpandedRosterBaselineEvidence
     current_rules_version: str
     review_basis_rules_version: str
     review_status: str
@@ -73,6 +142,49 @@ class DamageReviewDisposition:
     fresh_monte_carlo_certification: bool
     reason: str
     durable_record: str
+    fresh_run_evidence: FreshRunEvidence | None
+
+
+@dataclass(frozen=True)
+class VerifiedDamageRun:
+    manifest_path: Path
+    manifest_sha256: str
+    inputs: dict[str, object]
+    target_count: int
+    matrix_path: Path
+    rows: tuple[MatrixRow, ...]
+    output_sha256: DamageOutputSha256
+    row_counts: DamageRowCounts
+
+
+EXPANDED_ROSTER_BASELINE_EVIDENCE = ExpandedRosterBaselineEvidence(
+    rules_version="14.1.0",
+    release_tag="v14.1.0",
+    release_commit="40d0d191e7ef3ba7be7a3ed6f5f4c0e1c6059bef",
+    source_url=(
+        "https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.1.0"
+    ),
+    filename="kv-14-1-0-damage-comparison-matrix.csv",
+    bytes=265_819,
+    rows=96,
+    sha256="e0a9aec2d5c8da9409b8158163d44085001c26686385ddacb7108ff48d2326b4",
+    evaluator="exact_analytical_enumeration",
+)
+
+
+def _canonical_sha256(value: object) -> str:
+    payload = json.dumps(
+        value,
+        ensure_ascii=False,
+        sort_keys=True,
+        separators=(",", ":"),
+    ).encode("utf-8")
+    return hashlib.sha256(payload).hexdigest()
+
+
+EXPANDED_ROSTER_BASELINE_EVIDENCE_SHA256 = _canonical_sha256(
+    asdict(EXPANDED_ROSTER_BASELINE_EVIDENCE)
+)
 
 
 def _review_object(value: object, label: str) -> dict[str, object]:
@@ -85,6 +197,183 @@ def _review_string(value: object, label: str) -> str:
     if not isinstance(value, str) or not value.strip():
         raise MatrixSyncError(f"{label} must be a non-empty string")
     return value
+
+
+def _review_exact_keys(
+    value: dict[str, object], required: set[str], label: str
+) -> None:
+    if set(value) != required:
+        raise MatrixSyncError(
+            f"{label} keys are invalid; "
+            f"missing={sorted(required - value.keys())}, "
+            f"unknown={sorted(value.keys() - required)}"
+        )
+
+
+def _review_sha256(value: object, label: str) -> str:
+    result = _review_string(value, label)
+    if len(result) != 64 or any(
+        character not in "0123456789abcdef" for character in result
+    ):
+        raise MatrixSyncError(f"{label} must be a lowercase SHA-256")
+    return result
+
+
+def _review_positive_integer(value: object, label: str) -> int:
+    if type(value) is not int or value <= 0:
+        raise MatrixSyncError(f"{label} must be a positive integer")
+    return value
+
+
+def _load_baseline_evidence(value: object) -> ExpandedRosterBaselineEvidence:
+    label = "expanded_roster_baseline_evidence"
+    raw = _review_object(value, label)
+    required = {
+        "rules_version",
+        "release_tag",
+        "release_commit",
+        "source_url",
+        "filename",
+        "bytes",
+        "rows",
+        "sha256",
+        "evaluator",
+    }
+    _review_exact_keys(raw, required, label)
+    release_commit = _review_string(
+        raw["release_commit"], f"{label}.release_commit"
+    )
+    if len(release_commit) != 40 or any(
+        character not in "0123456789abcdef" for character in release_commit
+    ):
+        raise MatrixSyncError(
+            f"{label}.release_commit must be a lowercase full Git SHA"
+        )
+    result = ExpandedRosterBaselineEvidence(
+        rules_version=_review_string(raw["rules_version"], f"{label}.rules_version"),
+        release_tag=_review_string(raw["release_tag"], f"{label}.release_tag"),
+        release_commit=release_commit,
+        source_url=_review_string(raw["source_url"], f"{label}.source_url"),
+        filename=_review_string(raw["filename"], f"{label}.filename"),
+        bytes=_review_positive_integer(raw["bytes"], f"{label}.bytes"),
+        rows=_review_positive_integer(raw["rows"], f"{label}.rows"),
+        sha256=_review_sha256(raw["sha256"], f"{label}.sha256"),
+        evaluator=_review_string(raw["evaluator"], f"{label}.evaluator"),
+    )
+    if result != EXPANDED_ROSTER_BASELINE_EVIDENCE:
+        actual = asdict(result)
+        expected = asdict(EXPANDED_ROSTER_BASELINE_EVIDENCE)
+        changed = sorted(key for key in expected if actual[key] != expected[key])
+        raise MatrixSyncError(
+            "Expanded-roster baseline evidence differs from the pinned v14.1 "
+            "release asset: " + ", ".join(changed)
+        )
+    return result
+
+
+def _load_output_sha256(value: object, label: str) -> DamageOutputSha256:
+    raw = _review_object(value, label)
+    required = {"detail_csv", "matrix_csv", "matrix_markdown", "matrix_html"}
+    _review_exact_keys(raw, required, label)
+    return DamageOutputSha256(
+        detail_csv=_review_sha256(raw["detail_csv"], f"{label}.detail_csv"),
+        matrix_csv=_review_sha256(raw["matrix_csv"], f"{label}.matrix_csv"),
+        matrix_markdown=_review_sha256(
+            raw["matrix_markdown"], f"{label}.matrix_markdown"
+        ),
+        matrix_html=_review_sha256(raw["matrix_html"], f"{label}.matrix_html"),
+    )
+
+
+def _load_row_counts(value: object, label: str) -> DamageRowCounts:
+    raw = _review_object(value, label)
+    required = {"detail", "matrix"}
+    _review_exact_keys(raw, required, label)
+    return DamageRowCounts(
+        detail=_review_positive_integer(raw["detail"], f"{label}.detail"),
+        matrix=_review_positive_integer(raw["matrix"], f"{label}.matrix"),
+    )
+
+
+def _load_fresh_run_evidence(value: object) -> FreshRunEvidence:
+    label = "current_development_disposition.fresh_run_evidence"
+    raw = _review_object(value, label)
+    required = {
+        "run_manifest_sha256",
+        "baseline_evidence_sha256",
+        "damage_result_contract_version",
+        "rules_version",
+        "authority_sha256",
+        "catalog_contract_version",
+        "catalog_sha256",
+        "roster_contract_version",
+        "roster_sha256",
+        "target_profile_id",
+        "target_profile_version",
+        "target_profile_sha256",
+        "damage_target_projection_id",
+        "damage_target_projection_version",
+        "damage_target_projection_sha256",
+        "evaluator",
+        "evaluator_implementation_sha256",
+        "output_sha256",
+        "row_counts",
+    }
+    _review_exact_keys(raw, required, label)
+    string_fields = (
+        "damage_result_contract_version",
+        "rules_version",
+        "catalog_contract_version",
+        "roster_contract_version",
+        "target_profile_id",
+        "target_profile_version",
+        "damage_target_projection_id",
+        "damage_target_projection_version",
+        "evaluator",
+    )
+    strings = {
+        field: _review_string(raw[field], f"{label}.{field}")
+        for field in string_fields
+    }
+    sha_fields = (
+        "run_manifest_sha256",
+        "baseline_evidence_sha256",
+        "authority_sha256",
+        "catalog_sha256",
+        "roster_sha256",
+        "target_profile_sha256",
+        "damage_target_projection_sha256",
+        "evaluator_implementation_sha256",
+    )
+    shas = {
+        field: _review_sha256(raw[field], f"{label}.{field}")
+        for field in sha_fields
+    }
+    return FreshRunEvidence(
+        run_manifest_sha256=shas["run_manifest_sha256"],
+        baseline_evidence_sha256=shas["baseline_evidence_sha256"],
+        damage_result_contract_version=strings["damage_result_contract_version"],
+        rules_version=strings["rules_version"],
+        authority_sha256=shas["authority_sha256"],
+        catalog_contract_version=strings["catalog_contract_version"],
+        catalog_sha256=shas["catalog_sha256"],
+        roster_contract_version=strings["roster_contract_version"],
+        roster_sha256=shas["roster_sha256"],
+        target_profile_id=strings["target_profile_id"],
+        target_profile_version=strings["target_profile_version"],
+        target_profile_sha256=shas["target_profile_sha256"],
+        damage_target_projection_id=strings["damage_target_projection_id"],
+        damage_target_projection_version=strings[
+            "damage_target_projection_version"
+        ],
+        damage_target_projection_sha256=shas["damage_target_projection_sha256"],
+        evaluator=strings["evaluator"],
+        evaluator_implementation_sha256=shas["evaluator_implementation_sha256"],
+        output_sha256=_load_output_sha256(
+            raw["output_sha256"], f"{label}.output_sha256"
+        ),
+        row_counts=_load_row_counts(raw["row_counts"], f"{label}.row_counts"),
+    )
 
 
 def load_damage_review_disposition(
@@ -105,6 +394,9 @@ def load_damage_review_disposition(
             provenance["current_comparator_review"],
             "current_comparator_review",
         )
+        baseline_evidence = _load_baseline_evidence(
+            provenance["expanded_roster_baseline_evidence"]
+        )
         raw = _review_object(
             provenance["current_development_disposition"],
             "current_development_disposition",
@@ -121,13 +413,9 @@ def load_damage_review_disposition(
         "fresh_monte_carlo_certification",
         "reason",
         "durable_record",
+        "fresh_run_evidence",
     }
-    if set(raw) != required:
-        raise MatrixSyncError(
-            "current_development_disposition keys are invalid; "
-            f"missing={sorted(required - raw.keys())}, "
-            f"unknown={sorted(raw.keys() - required)}"
-        )
+    _review_exact_keys(raw, required, "current_development_disposition")
 
     strings = {
         field: _review_string(raw[field], f"current_development_disposition.{field}")
@@ -164,13 +452,13 @@ def load_damage_review_disposition(
         comparator_review.get("rules_version"),
         "current_comparator_review.rules_version",
     )
+    historical_evaluator = _review_string(
+        historical_review.get("evaluator"),
+        "current_damage_review.evaluator",
+    )
     if strings["current_rules_version"] != current_rules_version:
         raise MatrixSyncError(
             "Current damage-review disposition differs from canonical rules version"
-        )
-    if strings["review_basis_rules_version"] == strings["current_rules_version"]:
-        raise MatrixSyncError(
-            "Carried-forward review basis must differ from current rules version"
         )
     if strings["review_basis_rules_version"] != basis_version:
         raise MatrixSyncError(
@@ -180,18 +468,68 @@ def load_damage_review_disposition(
         raise MatrixSyncError(
             "Damage and comparator review-basis versions must agree"
         )
+    if baseline_evidence.rules_version != basis_version:
+        raise MatrixSyncError(
+            "Expanded-roster baseline evidence differs from the review-basis version"
+        )
+    if baseline_evidence.evaluator != historical_evaluator:
+        raise MatrixSyncError(
+            "Expanded-roster baseline evaluator differs from the durable damage review"
+        )
     if historical_status != review_status:
         raise MatrixSyncError(
             "Damage matrix review status differs from the durable review basis"
         )
-    if strings["review_disposition"] != CARRIED_FORWARD_REVIEW:
+    disposition = strings["review_disposition"]
+    fresh_run_evidence: FreshRunEvidence | None
+    if disposition == CARRIED_FORWARD_REVIEW:
+        if strings["review_basis_rules_version"] == strings["current_rules_version"]:
+            raise MatrixSyncError(
+                "Carried-forward review basis must differ from current rules version"
+            )
+        if any(booleans.values()):
+            raise MatrixSyncError(
+                "Carried-forward damage evidence cannot claim a fresh run or certification"
+            )
+        if raw["fresh_run_evidence"] is not None:
+            raise MatrixSyncError(
+                "Carried-forward damage evidence requires null fresh_run_evidence"
+            )
+        fresh_run_evidence = None
+    elif disposition == FRESH_EXPANDED_ROSTER_REVIEW:
+        if not booleans["fresh_full_roster_run"]:
+            raise MatrixSyncError(
+                "Expanded-roster disposition requires a fresh full-roster run"
+            )
+        if booleans["fresh_numerical_certification"] or booleans[
+            "fresh_monte_carlo_certification"
+        ]:
+            raise MatrixSyncError(
+                "Expanded-roster implementation cannot claim independent or "
+                "Monte Carlo certification"
+            )
+        if raw["fresh_run_evidence"] is None:
+            raise MatrixSyncError(
+                "Expanded-roster disposition requires fresh_run_evidence"
+            )
+        fresh_run_evidence = _load_fresh_run_evidence(raw["fresh_run_evidence"])
+        if (
+            fresh_run_evidence.baseline_evidence_sha256
+            != _canonical_sha256(asdict(baseline_evidence))
+        ):
+            raise MatrixSyncError(
+                "Fresh-run evidence baseline_evidence_sha256 differs from the "
+                "maintained baseline evidence"
+            )
+        if fresh_run_evidence.rules_version != strings["current_rules_version"]:
+            raise MatrixSyncError(
+                "Fresh-run evidence rules version differs from current rules version"
+            )
+    else:
         raise MatrixSyncError("Unsupported current damage-review disposition")
-    if any(booleans.values()):
-        raise MatrixSyncError(
-            "Carried-forward damage evidence cannot claim a fresh run or certification"
-        )
 
     return DamageReviewDisposition(
+        expanded_roster_baseline_evidence=baseline_evidence,
         current_rules_version=strings["current_rules_version"],
         review_basis_rules_version=strings["review_basis_rules_version"],
         review_status=historical_status,
@@ -203,6 +541,7 @@ def load_damage_review_disposition(
         ],
         reason=strings["reason"],
         durable_record=strings["durable_record"],
+        fresh_run_evidence=fresh_run_evidence,
     )
 
 
@@ -247,7 +586,7 @@ def require_unchanged_inputs(before: dict[str, str]) -> None:
     )
     if changed:
         raise MatrixSyncError(
-            "Synchronization inputs changed during analytical evaluation: "
+            "Synchronization inputs changed during report validation: "
             + ", ".join(changed)
         )
 
@@ -288,6 +627,262 @@ def read_matrix_rows(path: Path) -> list[MatrixRow]:
     return rows
 
 
+def load_verified_damage_run(path: Path) -> VerifiedDamageRun:
+    path = path.resolve()
+    if path.name != "run-manifest.json" or not path.is_file():
+        raise MatrixSyncError("--report-input must name an existing run-manifest.json")
+    try:
+        manifest = _review_object(
+            json.loads(path.read_text(encoding="utf-8")),
+            "Damage run manifest",
+        )
+    except (OSError, json.JSONDecodeError) as error:
+        raise MatrixSyncError("Cannot read the damage run manifest") from error
+    required = {
+        "format_version",
+        "damage_result_contract_version",
+        "inputs",
+        "outputs",
+        "row_counts",
+    }
+    if set(manifest) != required:
+        raise MatrixSyncError(
+            "Damage run manifest keys are invalid; "
+            f"missing={sorted(required - manifest.keys())}, "
+            f"unknown={sorted(manifest.keys() - required)}"
+        )
+    if manifest["format_version"] != 1 or manifest[
+        "damage_result_contract_version"
+    ] != DAMAGE_RESULT_CONTRACT_VERSION:
+        raise MatrixSyncError("Unsupported damage run-manifest contract")
+    inputs = _review_object(manifest["inputs"], "Damage run inputs")
+    config = load_config()
+    levels = {int(value) for value in config["methodology"]["levels"]}
+    trials = int(config["methodology"]["damage_default_trials"])
+    seed = int(config["methodology"]["damage_seed"])
+    current = load_damage_input_bundle(DEFAULT_AUTHORITY, levels, trials, seed)
+    if inputs != current.identity:
+        changed = sorted(
+            key
+            for key in inputs.keys() | current.identity.keys()
+            if inputs.get(key) != current.identity.get(key)
+        )
+        raise MatrixSyncError(
+            "Damage run inputs are stale or foreign: " + ", ".join(changed)
+        )
+    outputs = _review_object(manifest["outputs"], "Damage run outputs")
+    expected_outputs = {
+        "detail_csv",
+        "matrix_csv",
+        "matrix_markdown",
+        "matrix_html",
+    }
+    if set(outputs) != expected_outputs:
+        raise MatrixSyncError(
+            "Damage run output inventory is incomplete or unsupported"
+        )
+    resolved: dict[str, Path] = {}
+    output_sha256_values: dict[str, str] = {}
+    for name in sorted(expected_outputs):
+        record = _review_object(outputs[name], f"Damage run output {name}")
+        if set(record) != {"file", "sha256"}:
+            raise MatrixSyncError(f"Damage run output {name} has invalid keys")
+        filename = _review_string(record["file"], f"Damage run output {name}.file")
+        expected_sha = _review_sha256(
+            record["sha256"], f"Damage run output {name}.sha256"
+        )
+        if Path(filename).name != filename:
+            raise MatrixSyncError(f"Damage run output {name} must be a sibling file")
+        candidate = path.parent / filename
+        if not candidate.is_file() or file_sha256(candidate) != expected_sha:
+            raise MatrixSyncError(f"Damage run output {name} digest does not match")
+        resolved[name] = candidate
+        output_sha256_values[name] = expected_sha
+    output_sha256 = _load_output_sha256(
+        output_sha256_values,
+        "Damage run output SHA-256 inventory",
+    )
+    row_counts = _load_row_counts(manifest["row_counts"], "Damage run row counts")
+    expected_detail = (
+        len(current.entries)
+        * len(current.model.disciplines)
+        * len(config["methodology"]["cluster_sizes"])
+    )
+    expected_matrix = (
+        len(levels)
+        * len(current.model.disciplines)
+        * len(config["methodology"]["cluster_sizes"])
+        * len(DAMAGE_SCOPES)
+    )
+    if row_counts != DamageRowCounts(
+        detail=expected_detail,
+        matrix=expected_matrix,
+    ):
+        raise MatrixSyncError("Damage run row counts do not match current inputs")
+    rows = tuple(read_matrix_rows(resolved["matrix_csv"]))
+    if len(rows) != row_counts.matrix:
+        raise MatrixSyncError("Damage matrix row count differs from its run manifest")
+    return VerifiedDamageRun(
+        manifest_path=path,
+        manifest_sha256=file_sha256(path),
+        inputs=dict(inputs),
+        target_count=len(current.entries),
+        matrix_path=resolved["matrix_csv"],
+        rows=rows,
+        output_sha256=output_sha256,
+        row_counts=row_counts,
+    )
+
+
+def _verified_input_string(
+    verified: VerifiedDamageRun, key: str, *, sha256: bool = False
+) -> str:
+    label = f"Verified damage run input {key}"
+    value = verified.inputs.get(key)
+    return _review_sha256(value, label) if sha256 else _review_string(value, label)
+
+
+def fresh_run_evidence_from_verified(
+    review_baseline: ExpandedRosterBaselineEvidence,
+    verified: VerifiedDamageRun,
+) -> FreshRunEvidence:
+    """Build the review evidence record from an already verified run manifest."""
+
+    if review_baseline != EXPANDED_ROSTER_BASELINE_EVIDENCE:
+        raise MatrixSyncError(
+            "Cannot bind fresh-run evidence to an unsupported baseline evidence record"
+        )
+    output_sha256 = _load_output_sha256(
+        asdict(verified.output_sha256),
+        "Verified damage run output SHA-256 inventory",
+    )
+    row_counts = _load_row_counts(
+        asdict(verified.row_counts),
+        "Verified damage run row counts",
+    )
+    return FreshRunEvidence(
+        run_manifest_sha256=_review_sha256(
+            verified.manifest_sha256,
+            "Verified damage run manifest SHA-256",
+        ),
+        baseline_evidence_sha256=_canonical_sha256(asdict(review_baseline)),
+        damage_result_contract_version=_verified_input_string(
+            verified, "damage_result_contract_version"
+        ),
+        rules_version=_verified_input_string(verified, "rules_version"),
+        authority_sha256=_verified_input_string(
+            verified, "authority_sha256", sha256=True
+        ),
+        catalog_contract_version=_verified_input_string(
+            verified, "catalog_contract_version"
+        ),
+        catalog_sha256=_verified_input_string(
+            verified, "catalog_sha256", sha256=True
+        ),
+        roster_contract_version=_verified_input_string(
+            verified, "roster_contract_version"
+        ),
+        roster_sha256=_verified_input_string(
+            verified, "roster_sha256", sha256=True
+        ),
+        target_profile_id=_verified_input_string(verified, "target_profile_id"),
+        target_profile_version=_verified_input_string(
+            verified, "target_profile_version"
+        ),
+        target_profile_sha256=_verified_input_string(
+            verified, "target_profile_sha256", sha256=True
+        ),
+        damage_target_projection_id=_verified_input_string(
+            verified, "damage_target_projection_id"
+        ),
+        damage_target_projection_version=_verified_input_string(
+            verified, "damage_target_projection_version"
+        ),
+        damage_target_projection_sha256=_verified_input_string(
+            verified, "damage_target_projection_sha256", sha256=True
+        ),
+        evaluator=_verified_input_string(verified, "evaluator"),
+        evaluator_implementation_sha256=_verified_input_string(
+            verified, "evaluator_implementation_sha256", sha256=True
+        ),
+        output_sha256=output_sha256,
+        row_counts=row_counts,
+    )
+
+
+def _flatten_evidence(value: object, prefix: str = "") -> dict[str, object]:
+    if not isinstance(value, dict):
+        return {prefix: value}
+    flattened: dict[str, object] = {}
+    for key, child in value.items():
+        label = f"{prefix}.{key}" if prefix else str(key)
+        flattened.update(_flatten_evidence(child, label))
+    return flattened
+
+
+def validate_damage_review_run_evidence(
+    review: DamageReviewDisposition,
+    verified: VerifiedDamageRun,
+) -> None:
+    baseline = review.expanded_roster_baseline_evidence
+    if baseline != EXPANDED_ROSTER_BASELINE_EVIDENCE:
+        raise MatrixSyncError(
+            "Damage-review baseline evidence differs from the pinned v14.1 release asset"
+        )
+    if baseline.rules_version != review.review_basis_rules_version:
+        raise MatrixSyncError(
+            "Damage-review baseline evidence does not match the review-basis version"
+        )
+
+    if review.review_disposition == CARRIED_FORWARD_REVIEW:
+        if review.review_basis_rules_version == review.current_rules_version or any(
+            (
+                review.fresh_full_roster_run,
+                review.fresh_numerical_certification,
+                review.fresh_monte_carlo_certification,
+            )
+        ):
+            raise MatrixSyncError(
+                "Carried-forward damage-review flags are inconsistent"
+            )
+        if review.fresh_run_evidence is not None:
+            raise MatrixSyncError(
+                "Carried-forward damage review requires null fresh_run_evidence"
+            )
+        return
+    if review.review_disposition != FRESH_EXPANDED_ROSTER_REVIEW:
+        raise MatrixSyncError("Unsupported damage-review evidence disposition")
+    if review.fresh_run_evidence is None:
+        raise MatrixSyncError(
+            "Fresh expanded-roster damage review requires fresh_run_evidence"
+        )
+    if (
+        not review.fresh_full_roster_run
+        or review.fresh_numerical_certification
+        or review.fresh_monte_carlo_certification
+    ):
+        raise MatrixSyncError(
+            "Fresh expanded-roster damage-review flags are inconsistent"
+        )
+
+    expected = fresh_run_evidence_from_verified(baseline, verified)
+    if expected.rules_version != review.current_rules_version:
+        raise MatrixSyncError(
+            "Verified fresh-run rules version differs from current review disposition"
+        )
+    if review.fresh_run_evidence != expected:
+        actual_values = _flatten_evidence(asdict(review.fresh_run_evidence))
+        expected_values = _flatten_evidence(asdict(expected))
+        changed = sorted(
+            key
+            for key in actual_values.keys() | expected_values.keys()
+            if actual_values.get(key) != expected_values.get(key)
+        )
+        raise MatrixSyncError(
+            "Fresh-run evidence differs from the verified run: " + ", ".join(changed)
+        )
+
+
 def _require_fields(rows: Sequence[MatrixRow], fields: Sequence[str]) -> None:
     expected = set(fields)
     for index, row in enumerate(rows):
@@ -319,6 +914,7 @@ def _key_difference(actual: set[tuple[str, ...]], expected: set[tuple[str, ...]]
 
 def validate_authoritative_rows(
     damage_rows: Sequence[MatrixRow],
+    expected_inputs: dict[str, object] | None = None,
 ) -> tuple[str, str, str, tuple[int, ...], tuple[str, ...]]:
     model = DamageAuthorityModel.load(DEFAULT_AUTHORITY)
     config = load_config()
@@ -361,20 +957,19 @@ def validate_authoritative_rows(
     if len(damage_rows) != len(expected_damage):
         raise MatrixSyncError("Damage matrix contains duplicate row identities")
 
+    if expected_inputs is None:
+        bundle = load_damage_input_bundle(
+            DEFAULT_AUTHORITY,
+            set(levels),
+            int(config["methodology"]["damage_default_trials"]),
+            int(config["methodology"]["damage_seed"]),
+        )
+        expected_inputs = bundle.identity
     expected = {
-        "Provenance Rules Version": model.rules_version,
-        "Provenance Authority Sha256": model.authority_sha256,
-        "Provenance Roster Sha256": file_sha256(DEFAULT_ROSTER),
-        "Provenance Config Sha256": file_sha256(DEFAULT_CONFIG),
-        "Provenance Comparator Config Sha256": file_sha256(DEFAULT_COMPARATORS),
-        "Provenance Trials": str(config["methodology"]["damage_default_trials"]),
-        "Provenance Seed": str(config["methodology"]["damage_seed"]),
-        "Provenance Evaluator": "exact_analytical_enumeration",
-        "Provenance Trial Seed Role": "historical_compatibility_metadata",
-        "Provenance Aggregation": (
-            "equal-weight roster means; percentages from displayed aggregates"
-        ),
-        "Provenance Status": status,
+        **{
+            f"Provenance {str(key).replace('_', ' ').title()}": str(value)
+            for key, value in expected_inputs.items()
+        },
         "Profile": profile,
     }
     for index, row in enumerate(damage_rows):
@@ -496,6 +1091,9 @@ def render_damage_region(
     rules_version: str,
     review: DamageReviewDisposition,
     profile: str,
+    target_profile: str,
+    target_count: int,
+    run_manifest_sha256: str,
     clusters: Sequence[int],
     disciplines: Sequence[str] = README_DISCIPLINES,
 ) -> str:
@@ -505,30 +1103,16 @@ def render_damage_region(
         raise MatrixSyncError(
             "README review disposition differs from canonical rules version"
         )
-    if review.review_basis_rules_version == review.current_rules_version:
-        raise MatrixSyncError(
-            "README review basis must differ from a carried-forward rules version"
-        )
-    if review.review_disposition != CARRIED_FORWARD_REVIEW or any(
-        (
-            review.fresh_full_roster_run,
-            review.fresh_numerical_certification,
-            review.fresh_monte_carlo_certification,
-        )
-    ):
-        raise MatrixSyncError(
-            "README carried-forward evidence requires false fresh-run and "
-            "certification flags"
-        )
-    lines = [
-        BEGIN_MARKER,
-        "## Damage benchmark snapshot",
-        "",
-        f"**Current canonical damage authority:** rules **v{rules_version}**.",
-        "",
-        f"Profile: `{profile}`.",
-        "",
-        (
+    if review.review_disposition == CARRIED_FORWARD_REVIEW:
+        if review.review_basis_rules_version == review.current_rules_version or any(
+            (
+                review.fresh_full_roster_run,
+                review.fresh_numerical_certification,
+                review.fresh_monte_carlo_certification,
+            )
+        ):
+            raise MatrixSyncError("Carried-forward damage-review flags are inconsistent")
+        review_text = (
             "Numerical-review basis: reviewed rules "
             f"**v{review.review_basis_rules_version}** evidence "
             f"(`{review.review_status}`). Snapshot values are carried forward from "
@@ -537,7 +1121,32 @@ def render_damage_region(
             f"**v{review.current_rules_version}** full-roster run, numerical "
             "certification, or Monte Carlo certification was performed. "
             f"Reason: {review.reason}"
-        ),
+        )
+    elif review.review_disposition == FRESH_EXPANDED_ROSTER_REVIEW:
+        if not review.fresh_full_roster_run or review.fresh_numerical_certification or review.fresh_monte_carlo_certification:
+            raise MatrixSyncError("Fresh expanded-roster review flags are inconsistent")
+        review_text = (
+            f"A fresh exact analytical run for **v{review.current_rules_version}** "
+            f"used all {target_count} targets in `{target_profile}`. It replaces the "
+            "carried-forward snapshot, while the independently reviewed rules "
+            f"**v{review.review_basis_rules_version}** evidence remains the review "
+            f"basis (`{review.review_status}`). No fresh independent numerical or "
+            "Monte Carlo certification is claimed. "
+            f"Run-manifest SHA-256: `{run_manifest_sha256}`."
+        )
+    else:
+        raise MatrixSyncError("Unsupported README damage-review disposition")
+    lines = [
+        BEGIN_MARKER,
+        "## Damage benchmark snapshot",
+        "",
+        f"**Current canonical damage authority:** rules **v{rules_version}**.",
+        "",
+        f"Kinetic Vanguard profile: `{profile}`.",
+        "",
+        f"Target profile: `{target_profile}` ({target_count} source-ordered targets).",
+        "",
+        review_text,
         "",
         (
             "Battle Master and Eldritch Knight define the comparison envelope. `IDEAL` "
@@ -562,7 +1171,7 @@ def render_damage_region(
             "[`KineticVanguard.yaml`](KineticVanguard.yaml). See the "
             "[maintained damage harness guide](harness/README.md), "
             "[methodology configuration](harness/config/benchmark.json), "
-            "[SRD target roster](harness/data/srd_targets.csv), and "
+            "[SRD creature catalog audit](docs/srd-creature-catalog-audit.md), and "
             "[comparator assumptions](harness/comparators/fighter-subclasses.json)."
         ),
         "",
@@ -593,26 +1202,6 @@ def replace_generated_region(readme: str, region: str) -> str:
     return readme[:start] + region + readme[end:]
 
 
-def generate_authoritative_rows(workers: int) -> list[MatrixRow]:
-    config = load_config()
-    levels = {int(value) for value in config["methodology"]["levels"]}
-    methodology = config["methodology"]
-    with tempfile.TemporaryDirectory(prefix="kv-readme-damage-") as directory:
-        root = Path(directory)
-        damage = run_damage(
-            DEFAULT_AUTHORITY,
-            root / "damage",
-            levels,
-            None,
-            int(methodology["damage_default_trials"]),
-            int(methodology["damage_seed"]),
-            False,
-            True,
-            workers,
-        )
-        return read_matrix_rows(damage["paths"]["csv"])
-
-
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Synchronize the README damage matrix with the analytical harness"
@@ -620,10 +1209,8 @@ def main() -> None:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
-    parser.add_argument("--workers", type=int, default=4)
+    parser.add_argument("--report-input", type=Path, required=True)
     args = parser.parse_args()
-    if args.workers <= 0:
-        parser.error("--workers must be positive")
 
     input_fingerprints = synchronization_input_fingerprints()
     readme = README_PATH.read_text(encoding="utf-8")
@@ -634,9 +1221,12 @@ def main() -> None:
         model.rules_version,
         str(config["methodology"]["status"]),
     )
-    damage_rows = generate_authoritative_rows(args.workers)
+    verified = load_verified_damage_run(args.report_input)
+    validate_damage_review_run_evidence(review, verified)
+    damage_rows = list(verified.rows)
     rules_version, status, profile, clusters, disciplines = validate_authoritative_rows(
-        damage_rows
+        damage_rows,
+        verified.inputs,
     )
     if review.current_rules_version != rules_version or review.review_status != status:
         raise MatrixSyncError(
@@ -647,18 +1237,23 @@ def main() -> None:
         rules_version,
         review,
         profile,
+        str(verified.inputs["target_profile_id"]),
+        verified.target_count,
+        verified.manifest_sha256,
         clusters,
         disciplines,
     )
     synchronized = replace_generated_region(readme, region)
     require_unchanged_inputs(input_fingerprints)
     if README_PATH.read_text(encoding="utf-8") != readme:
-        raise MatrixSyncError("README changed during analytical evaluation; retry synchronization")
+        raise MatrixSyncError("README changed during report synchronization; retry")
 
     if args.check:
         if synchronized != readme:
             raise SystemExit(
-                "README damage benchmark snapshot is stale; run npm run readme:damage"
+                "README damage benchmark snapshot is stale; run "
+                "npm run readme:damage -- --report-input "
+                + shlex.quote(str(verified.manifest_path))
             )
         print(f"README damage benchmark snapshot is synchronized for v{rules_version}")
         return

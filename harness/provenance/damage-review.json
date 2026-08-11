@@ -3,7 +3,17 @@
     "ruleset": "D&D SRD 5.2.1",
     "official_pdf_sha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",
     "pages": 364,
-    "roster_rows": 28
+    "catalog_contract_version": "1.0.0",
+    "catalog_sha256": "57b3746eec236bc0884ff2bea0aaf58d71cb3b2a370b405d24a6073479ff6866",
+    "catalog_rows": 330,
+    "roster_contract_version": "1.0.0",
+    "roster_sha256": "e1bf8e5e15c6552be07af90cdd1fb918298189466b676aa86f19d5e66936a5db",
+    "target_profile_id": "srd521_headline_source_diversity_v1",
+    "target_profile_version": "1.0.0",
+    "target_profile_sha256": "2d15f7e772c63db35c7e66b6c35d52f8b1869cb7491e354aaf24246943d90a24",
+    "target_profile_rows": 47,
+    "consumer_requirements_version": "1.0.0",
+    "consumer_requirements_sha256": "b3aebbf3e6a9ec6dcf26b2427bfa607a0b8ee9bd31b288c1372ed489820d971d"
   },
   "historical_damage_source": {
     "rules_version": "12.0.0",
@@ -34,15 +44,55 @@
     "adaptive_aggregate_rows_regressed": 0,
     "adaptive_primary_rows_lower_for_aggregate_objective": 9
   },
+  "expanded_roster_baseline_evidence": {
+    "rules_version": "14.1.0",
+    "release_tag": "v14.1.0",
+    "release_commit": "40d0d191e7ef3ba7be7a3ed6f5f4c0e1c6059bef",
+    "source_url": "https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.1.0",
+    "filename": "kv-14-1-0-damage-comparison-matrix.csv",
+    "bytes": 265819,
+    "rows": 96,
+    "sha256": "e0a9aec2d5c8da9409b8158163d44085001c26686385ddacb7108ff48d2326b4",
+    "evaluator": "exact_analytical_enumeration"
+  },
   "current_development_disposition": {
     "current_rules_version": "14.2.0",
     "review_basis_rules_version": "14.1.0",
-    "review_disposition": "CARRIED_FORWARD_WITHOUT_FRESH_NUMERICAL_REVIEW",
-    "fresh_full_roster_run": false,
+    "review_disposition": "FRESH_EXPANDED_ROSTER_RUN_WITHOUT_INDEPENDENT_CERTIFICATION",
+    "fresh_full_roster_run": true,
     "fresh_numerical_certification": false,
     "fresh_monte_carlo_certification": false,
-    "reason": "No intentional change to damage-relevant mechanics or numerical evaluator semantics.",
-    "durable_record": "GitHub PR #46"
+    "reason": "Issue #55 replaced the retired 28-row target inputs with the frozen 47-target deterministic headline profile, requiring one fresh exact full-roster run. No independent numerical or Monte Carlo certification was performed.",
+    "durable_record": "GitHub issue #55",
+    "fresh_run_evidence": {
+      "run_manifest_sha256": "a6ad2a6ca1b56c08ce95668f0825d2959d7b8f3ea8dd2f10b498d3536a25e1b8",
+      "baseline_evidence_sha256": "61b82443b9bd8e05b9b9cbcf51e1650d9da2da13eb9c880bae3f9fc67cfea814",
+      "damage_result_contract_version": "2.0.0",
+      "rules_version": "14.2.0",
+      "authority_sha256": "8c533b1daf260eac73b4d0ea77a8c05296c7cbdb5431ec5dc783074b4066f6d5",
+      "catalog_contract_version": "1.0.0",
+      "catalog_sha256": "57b3746eec236bc0884ff2bea0aaf58d71cb3b2a370b405d24a6073479ff6866",
+      "roster_contract_version": "1.0.0",
+      "roster_sha256": "e1bf8e5e15c6552be07af90cdd1fb918298189466b676aa86f19d5e66936a5db",
+      "target_profile_id": "srd521_headline_source_diversity_v1",
+      "target_profile_version": "1.0.0",
+      "target_profile_sha256": "2d15f7e772c63db35c7e66b6c35d52f8b1869cb7491e354aaf24246943d90a24",
+      "damage_target_projection_id": "srd521_damage_target",
+      "damage_target_projection_version": "1.0.0",
+      "damage_target_projection_sha256": "6633a2cc836f204a5a0fd726674f4a7ca656372ce3bbb6a402412f7e1dd8125a",
+      "evaluator": "exact_analytical_enumeration",
+      "evaluator_implementation_sha256": "9838c390ef6c8a05ffcc9f6b67ca4e867da16277f8838a99015ae919e3a18c4d",
+      "output_sha256": {
+        "detail_csv": "6147aca22e5881741628dcdc5527175facd1107b98e66eff4660db852103b1b9",
+        "matrix_csv": "aaa5883bf18ac1ccde6cbb1af21290e5add47c36ec3babba36d95e5101cd1263",
+        "matrix_markdown": "7d8cd1e4316ee28f589b2ad47a1de1418d0c9b80389f0fb2bac9a82467c3c87c",
+        "matrix_html": "963cceba16ac9a1db894e02407d1fa22333215c279425083458af14a92e27639"
+      },
+      "row_counts": {
+        "detail": 564,
+        "matrix": 96
+      }
+    }
   },
   "current_comparator_review": {
     "rules_version": "14.1.0",

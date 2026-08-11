@@ -95,7 +95,7 @@ test("control-engine validation entrypoints are exact and reuse the maintained v
   );
   assert.equal(
     packageJson.scripts["harness:validate"],
-    "python3 -m harness.damage_harness --output-dir /tmp/kv-harness-validation --validate-only && python3 -m harness.authority --projection-version 2.1.0 --require-benchmark-ready && python3 -m harness.control_targets && python3 -m harness.control_engine --validate-only"
+    "python3 -m harness.creature_catalog && python3 -m harness.damage_harness --output-dir /tmp/kv-harness-validation --validate-only && python3 -m harness.authority --projection-version 2.1.0 --require-benchmark-ready && python3 -m harness.control_engine --validate-only"
   );
   assert.doesNotMatch(packageJson.scripts["harness:validate"] ?? "", /harness:damage|readme:damage|--fixtures-only/);
 });

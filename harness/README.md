@@ -1,6 +1,6 @@
 # Kinetic Vanguard maintained computational harnesses
 
-Status: current canonical rules **v14.2.0**; durable numerical-review basis **v14.1.0** (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`), carried forward because PR #46 intentionally changed neither damage-relevant mechanics nor numerical evaluator semantics. No fresh v14.2 full-roster run, numerical certification, or Monte Carlo certification was performed. The maintained damage evaluator remains damage-only. The shared control engine is comparator-neutral mechanical infrastructure and publishes no v14.2 Control Value result. The Control Reliability implementation and its report pipeline were retired from current `main`; the frozen v14.1 release remains the historical source for those results.
+Status: current canonical rules **v14.2.0**; a fresh expanded-roster exact analytical damage run is recorded below after the issue #55 source-only freeze. The durable numerical-review basis **v14.1.0** (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`) remains the independently reviewed basis; neither that basis nor the fresh run is a claim of independent v14.2 numerical or Monte Carlo certification. The maintained damage evaluator remains damage-only. The shared control engine is comparator-neutral mechanical infrastructure and publishes no v14.2 Control Value result. The Control Reliability implementation and its report pipeline were retired from current `main`; the frozen v14.1 release remains the historical source for those results.
 
 `KineticVanguard.yaml` is the sole Kinetic Vanguard rules authority. Python does not parse feature prose or carry parallel Kinetic Vanguard progression, Psi, save, damage, tier, or targeting tables. The TypeScript loader validates the canonical YAML and emits `DamageHarnessProjection`; Python's `DamageAuthorityModel` loads that projection by stable entity ID and fails closed on missing, duplicate, unavailable, or inconsistent mechanics.
 
@@ -10,20 +10,20 @@ The damage benchmark keeps four distinct input layers:
 
 1. **Kinetic Vanguard authority:** root `KineticVanguard.yaml`, projected only after canonical schema and semantic validation.
 2. **Damage methodology:** profiles, aggregation, target clustering, the explicit `damage_matrix.non_damage_effect_boundary`, historical seed/trial metadata, and SRD-derived Fighter progression/mechanics in `config/benchmark.json`, plus project-authored Python evaluation and reporting code.
-3. **SRD target data:** the pinned 28-row SRD 5.2.1 roster and provenance in `data/srd_targets.csv`.
+3. **SRD creature inputs:** the authoritative 330-record source catalog in `data/srd_creatures.json`, separate source-only headline/census profiles and complete accounting in `data/srd_creature_rosters.json`, consumer requirements in `config/creature-consumers.json`, and extraction provenance in `provenance/srd-creatures.json`.
 4. **Third-party damage comparator assumptions:** minimal independently expressed Battle Master and Eldritch Knight numerical packages in `comparators/fighter-subclasses.json`.
 
-The runtime hashes canonical authority, methodology, comparator assumptions, and roster separately. Neither configuration file is Kinetic Vanguard rules authority.
+The runtime hashes canonical authority, methodology, comparator assumptions, the whole catalog and roster contract, the active profile, consumer requirements, and the active thin projection separately. Neither configuration file is Kinetic Vanguard rules authority. Catalog facts, roster level/weight, and live scenario state remain distinct.
 
 ### Control Authority v2 is separate
 
-Control Authority v2.1 is the complete 35-modeled/14-excluded structured authority for the control-methodology redesign. Its `benchmark_ready` flag is scoped to authority completeness. Combined control-input readiness additionally requires the exact 28-row `data/srd_control_targets.json` supplement and `provenance/srd-control-targets.json` to validate against the unchanged `data/srd_targets.csv` roster; `npm run harness:validate` enforces both boundaries. The supplement records only official movement modes, hover, and relevant nonvisual senses and is loaded through `harness.control_targets`; it is not consumed by `DamageHarnessProjection` or the damage benchmark. This contract does not evaluate, classify, or publish a v14.2 control result.
+Control Authority v2.1 is the complete 35-modeled/14-excluded structured authority for the control-methodology redesign. Its `benchmark_ready` flag is scoped to authority completeness. Combined control-input readiness requires the shared creature catalog, the active source-only profile, consumer requirements, and a `ControlTarget` 1.0.0 projection. `ControlTarget` preserves raw ability modifiers and final saves separately; condition facts; movement and hover; Darkvision, Blindsight, Tremorsense, and Truesight; Initiative; communication and telepathy; static Gear; and typed passive facts. Existing nonvisual control queries adapt only Blindsight and Tremorsense and never reclassify Truesight. This contract does not evaluate, classify, or publish a v14.2 control result.
 
 ### Shared control mechanics engine
 
-`harness.control_engine` is the narrow public facade over the one maintained computational runtime for control consequences, gates, overlap, state, and timing. That runtime is Python only: `control_catalog.py`, `control_graph.py`, `control_state.py`, `control_timeline.py`, and `control_engine.py`. TypeScript retains cheap architecture, manifest, and input-presence checks, but has no twin semantic evaluator or engine-parity corpus. The facade consumes the validated Control Authority v2.1 projection, the exact control-target supplement, the source-backed seven-condition consequence catalog (Blinded, Charmed, Frightened, Incapacitated, Prone, Restrained, and Stunned), and the separate `config/control-engine.json` methodology configuration.
+`harness.control_engine` is the narrow public facade over the one maintained computational runtime for control consequences, gates, overlap, state, and timing. That runtime is Python only: `control_catalog.py`, `control_graph.py`, `control_state.py`, `control_timeline.py`, and `control_engine.py`. TypeScript retains cheap architecture, manifest, and input-presence checks, but has no twin semantic evaluator or engine-parity corpus. The facade consumes the validated Control Authority v2.1 projection, shared `ControlTarget` inputs, the source-backed seven-condition consequence catalog (Blinded, Charmed, Frightened, Incapacitated, Prone, Restrained, and Stunned), and the separate `config/control-engine.json` methodology configuration.
 
-The control engine, consequence catalog, primitive contract, normalization rules, timeline engine, and engine configuration are each version `2.0.0`. Engine results retain the authority projection version and digest, target-supplement digest, consequence-catalog version and digest, primitive-contract version, normalization-rules version, timeline-engine version, `engine_config_version` and `engine_config_digest`, selected initiative and area-response convention IDs and versions, and displacement-function ID and version. Consequence provenance pins only the accepted public issue #53 and #54 record IDs; it contains no private-source locator, page, or source hash. The configuration and runtime are project-authored methodology and software.
+The mechanical control engine, consequence catalog, primitive contract, normalization rules, timeline engine, and engine configuration remain version `2.0.0`. The public result contract is `3.0.0` because it replaces the retired supplement digest with catalog, whole-roster, active-profile, ControlTarget-projection, and consumer-requirement versions and digests. Results also retain the authority projection, consequence catalog, primitive contract, normalization rules, timeline engine, engine configuration, selected initiative and area-response conventions, and displacement-function identities. No control mechanics changed at this target-provenance boundary. Consequence provenance pins only the accepted public issue #53 and #54 record IDs; it contains no private-source locator, page, or source hash.
 
 The supported mutable boundary is `ControlEngine.execution_session(...)`, and the supported final assembly boundary is `session.result()`. The v2 session accepts provenance-bearing initial condition instances rather than unique condition IDs and preserves every separately issued condition application as an independent lifecycle, including applications with the same source actor, program, effect, component, and invocation when their issuance identities differ. It also records generic parent/child inclusion lineage. A session binds the compiled effect and authority digest; engine, catalog, primitive, normalization, timeline, configuration, initiative, area, and displacement identities; exact target identities and relevant mechanics; selector membership and context; choices; probability context and kernel provenance; candidate components; the ordered reliability script; and the exact timeline schedule into a deterministic canonical scenario record and SHA-256 integrity digest. Independent mutable state, chronological helpers, and collection-based result assembly are not public facade operations.
 
@@ -65,13 +65,7 @@ npm run harness:validate
 npm run test:harness
 ```
 
-`control:engine:validate` validates the catalog, provenance, configuration, authority compilation, and public facade while emitting only a compact summary. `control:engine:fixtures` runs the 72-case reviewed hand-calculated corpus across both initiative schedules, both area conventions, and all three displacement functions without evaluating the complete target roster. `harness:validate` includes the same cheap engine validation alongside the maintained damage, authority, and control-target checks.
-
-Tiny fixed-input damage smoke run:
-
-```text
-python3 -m harness.damage_harness --output-dir /tmp/kv-damage-smoke --levels 7 --target-limit 1 --trials 32 --seed 1151001
-```
+`control:engine:validate` validates the consequence catalog, shared creature inputs, configuration, authority compilation, and public facade while emitting only a compact summary. `control:engine:fixtures` runs the 72-case reviewed hand-calculated corpus across both initiative schedules, both area conventions, and all three displacement functions without evaluating a control roster. `harness:validate` includes the same cheap engine validation alongside the maintained creature-catalog, damage-input, and authority checks.
 
 Full configured roster run:
 
@@ -81,28 +75,42 @@ npm run harness:damage -- --output-dir harness/results/damage
 
 Use `--matrix-only` to omit the detailed CSV or `--no-matrix` to omit the compact damage matrix. The CLI defaults to the repository-root authority, accepts `--authority` for mutation tests, writes only below the explicit `--output-dir`, and performs no network access.
 
+A full run writes `run-manifest.json` beside its detail and matrix outputs. That manifest binds rules, authority, catalog, whole roster contract, active profile, DamageTarget projection, consumer requirements, benchmark configuration, comparator configuration, evaluator implementation, and every output digest. Headline output has no file-order `--target-limit` mode.
+
 Synchronize the generated damage snapshot near the top of the repository README:
 
 ```text
-npm run readme:damage
-npm run readme:damage:check
+npm run readme:damage -- --report-input /path/to/final-run/run-manifest.json
+npm run readme:damage:check -- --report-input /path/to/final-run/run-manifest.json
 ```
 
-Both commands run a fresh full-roster damage evaluation from canonical authority and maintained damage inputs. The writer atomically replaces only the `BEGIN/END GENERATED DAMAGE MATRIX` region and refuses to overwrite a concurrent README edit. Both modes fingerprint all maintained build inputs before evaluation and abort if any input changes. The check recomputes the region and fails if the committed README differs. This path uses exact analytical enumeration and does not compare against or update a tracked golden output.
+Both commands only validate and read the exact final run; neither invokes the evaluator. A stale, foreign, incomplete, rewritten, or digest-mismatched report fails closed. The writer atomically replaces only the `BEGIN/END GENERATED DAMAGE MATRIX` region and refuses to overwrite a concurrent README edit. Both modes fingerprint all maintained build inputs before reading and abort if any input changes. The check derives the same region from the same manifest and fails if the committed README differs.
 
-Run the writer only when fresh full-roster evidence is required because benchmark inputs, evaluator or planner logic, methodology, comparator or roster data changed, or a specific release gate explicitly requires fresh evidence. Review the numerical diff before running the check. A release metadata or status edit alone does not trigger either command.
+Run the evaluator once when benchmark inputs, evaluator or planner logic, methodology, comparator or roster data changed, or a specific release gate explicitly requires fresh evidence. Reuse that one manifest for the writer, numerical review, and check. A release metadata or status edit alone does not trigger an analytical run.
+
+### Recorded v14.2 expanded-roster run
+
+The catalog and roster were frozen before execution in issue #55 comment `5252064760`. An attempted `/usr/bin/time` wrapper failed before `npm` started and therefore did not invoke the evaluator or count as a run. The one evaluator invocation was:
+
+```text
+npm run harness:damage -- --output-dir /tmp/kv-issue-55-final-damage.NU1wCZ/damage --workers 4
+```
+
+It completed in about 255 seconds over all 47 source-ordered headline targets with evaluator implementation SHA-256 `9838c390ef6c8a05ffcc9f6b67ca4e867da16277f8838a99015ae919e3a18c4d`. The final manifest SHA-256 is `a6ad2a6ca1b56c08ce95668f0825d2959d7b8f3ea8dd2f10b498d3536a25e1b8`; it binds 564 detail rows at `6147aca22e5881741628dcdc5527175facd1107b98e66eff4660db852103b1b9` and 96 matrix rows emitted as CSV `aaa5883bf18ac1ccde6cbb1af21290e5add47c36ec3babba36d95e5101cd1263`, Markdown `7d8cd1e4316ee28f589b2ad47a1de1418d0c9b80389f0fb2bac9a82467c3c87c`, and HTML `963cceba16ac9a1db894e02407d1fa22333215c279425083458af14a92e27639`. The README writer and checker reused this same manifest and did not rerun the evaluator. No independent numerical or Monte Carlo certification was performed.
+
+The read-only v14.1-to-v14.2 comparison joins all 96 matrix identities exactly, finds no newly unevaluable row, and records all target counts, grouped and row-level signed DPR changes, boundary changes, 11 classification transitions, and absolute-delta statistics in [`provenance/damage-delta-v14.1-to-v14.2.json`](provenance/damage-delta-v14.1-to-v14.2.json), SHA-256 `b000f3c87bcc8ffda2c88823877885a7b0af5c9ec3c3da7c4ac10a7b1ef8c969`. The 288 displayed DPR cells have mean absolute change 3.336333510417 and maximum absolute change 39.306652. This mechanical audit did not invoke the evaluator or alter the frozen roster.
 
 The generated damage evidence line is status-neutral and identifies the canonical rules version without duplicating publication state. Its adjacent provenance text distinguishes that current authority from the durable numerical-review basis and records whether fresh current-version evidence exists. Maintain the current published release and development line in the README's separate **Release status** section.
 
 ## Damage method
 
-The headline profile is `official_default_25_percent_hp`: 25% of fixed-HP budget for voluntary Blood Tax, Advanced Training disabled, and every configured attack replaced by Manifested Strike. Because the profile supplies no Kinetic Vanguard weapon packet, this is not a global optimization of every legal Fighter weapon/Manifested Strike mix. The benchmark covers levels 7, 11, 15, and 20; three rounds; equal target weighting; cluster sizes 1, 3, and 6; no target death; legal configured positioning; and SRD defense handling.
+The Kinetic Vanguard profile is `official_default_25_percent_hp`: 25% of fixed-HP budget for voluntary Blood Tax, Advanced Training disabled, and every configured attack replaced by Manifested Strike. Because the profile supplies no Kinetic Vanguard weapon packet, this is not a global optimization of every legal Fighter weapon/Manifested Strike mix. The target profile is `srd521_headline_source_diversity_v1`. It covers levels 7, 11, 15, and 20; three rounds; explicit exact rational weights that sum to one within each level; cluster sizes 1, 3, and 6; no target death; legal configured positioning; and SRD defense handling.
 
 Every comparator action slot is an Attack action. Kinetic Vanguard may instead spend one slot on its canonically capped standalone psionic Action. The planner optimizes each target, discipline, and cluster independently from legally observable state, then averages target results across the roster. Its lexicographic objective is aggregate damage followed by primary-target damage. It cannot look ahead into unresolved outcomes. Thermal Fracture's Armor Class reduction is the one explicit non-damage effect allowed to feed back into self-attack damage; the configured boundary rejects other condition, control, outcome, and ally-turn feedback.
 
-The evaluator analytically enumerates d20, saving-throw, and damage-die outcomes. Seeds and trial counts remain historical compatibility metadata; generated provenance identifies `exact_analytical_enumeration` as the evaluator. The durable v14.1 review-basis status is `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`; it is not a claim of fresh v14.2 numerical or Monte Carlo certification.
+The evaluator analytically enumerates d20, saving-throw, and damage-die outcomes. Seeds and trial counts remain historical compatibility metadata; generated provenance identifies `exact_analytical_enumeration` as the evaluator. The durable v14.1 review-basis status is `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`; neither that label nor the fresh v14.2 expanded-roster run claims independent v14.2 numerical or Monte Carlo certification.
 
-Damage produces separate primary-target and aggregate-cluster DPR rows. Headline percentages use displayed equal-weight roster aggregates:
+Damage produces separate primary-target and aggregate-cluster DPR rows. Headline percentages use the displayed exact-profile-weight aggregates:
 
 ```text
 KV as % of comparator = 100 × KV aggregate / comparator aggregate
@@ -112,7 +120,7 @@ For each row, the lower boundary is the smaller Battle Master/Eldritch Knight re
 
 ### Durable v14.1 numerical-review basis
 
-The following numerical findings belong to the retained v14.1 review basis. PR #46 carries that basis forward because it intentionally changes neither damage-relevant mechanics nor numerical evaluator semantics; it does not relabel the findings as a fresh v14.2 review.
+The following numerical findings belong to the retained v14.1 review basis. PR #46 carried that basis forward because it intentionally changed neither damage-relevant mechanics nor numerical evaluator semantics. Those findings remain historical review evidence and do not independently certify the fresh v14.2 expanded-roster results.
 
 - Exact reevaluation of all 336 preserved historical damage policies agrees with the 25,000-trial rows at sampling scale: primary DPR mean absolute delta `0.0323169` and maximum `0.176034`; aggregate DPR mean absolute delta `0.0374951` and maximum `0.340120`.
 - The observed-state policy improves aggregate damage in 123 rows, ties 213, and regresses in none. Nine rows trade lower primary-target damage for higher aggregate damage under the declared aggregate-first objective.
@@ -131,8 +139,8 @@ The comparator model identifies the 2024 fifth-edition ruleset. It is not a comp
 
 Filenames derive from YAML `rules_version`, for example `kv-14-2-0-damage-comparison-matrix.csv`. The damage matrix is emitted as CSV, Markdown, and self-contained HTML from one numerical row model. Every format retains raw Kinetic Vanguard, Battle Master, and Eldritch Knight aggregates; ordinary ratios; lower and upper comparator identities and values; classification; signed boundary delta; and provenance.
 
-Generated-run provenance includes rules version, authority digest, roster digest, methodology-config digest, comparator-config digest, evaluator, compatibility-only seed/trial settings, aggregation, and the review-basis status. The maintained `provenance/damage-review.json` separately records the current authority version, durable review-basis version, and whether fresh full-roster or numerical certification was performed. CSV rows carry structured component, SRD, and comparator notices; Markdown and HTML display the same notices in a visible licensing section.
+Generated-run provenance includes the damage result contract; rules version; authority digest; catalog and roster contract versions and digests; active target-profile ID, version, and digest; DamageTarget projection ID, version, and digest; consumer-requirement version and digest; methodology and comparator digests; evaluator implementation digest; compatibility-only seed/trial settings; aggregation; and review-basis status. The maintained `provenance/damage-review.json` separately records the current authority version, durable review-basis version, final run identity, and whether a fresh full-roster run, independent numerical certification, or Monte Carlo certification was performed. CSV rows carry structured component, SRD, and comparator notices; Markdown and HTML display the same notices in a visible licensing section.
 
-The README generator validates the complete authoritative damage matrix, all raw and derived result fields, all provenance and notice fields, comparator scope, and canonical rules evidence identity before selecting primary-target cluster-size-1 rows for its single public heat table. Generated outputs, caches, virtual environments, and `.codex-import/` are ignored and are not official source.
+The README generator validates the run manifest, every bound input/output digest, the complete authoritative damage matrix, all raw and derived result fields, all provenance and notice fields, comparator scope, and canonical rules evidence identity before selecting primary-target cluster-size-1 rows for its single public heat table. Generated outputs, caches, virtual environments, and `.codex-import/` are ignored and are not official source.
 
-The v14.1 restoration and numerical-review record remains the durable basis for the current damage snapshot. See `MIGRATION.md` and `provenance/damage-review.json` for that retained record and PR #46's explicit current-development disposition; use the current commands and files above for maintained work.
+The v14.1 restoration and numerical-review record remains the durable independent review basis; the frozen single v14.2 run is the current expanded-roster analytical snapshot. See `MIGRATION.md` and `provenance/damage-review.json` for the retained review record and current final-run disposition; use the current commands and files above for maintained work.
