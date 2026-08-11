@@ -55,6 +55,7 @@ from harness.control_graph import (
 from harness.control_state import (
     MOVEMENT_MODES,
     NORMALIZATION_RULES_VERSION,
+    ActiveComponent,
     ControlState,
     ControlStateError,
     NormalizationResult,
@@ -9860,6 +9861,35 @@ class ControlExecutionSession:
                 "Pending concentration failure does not match its issued check"
             )
 
+    def _scenario_bound_input(
+        self,
+        name: str,
+        *,
+        event_id: str,
+        target_id: str | None = None,
+        default: Any = _MISSING,
+    ) -> Any:
+        event_inputs = self._operation_inputs(event_id)
+        if name in event_inputs:
+            return event_inputs[name]
+        if target_id is not None:
+            mechanics = json.loads(self._target_mechanics_json).get(
+                target_id,
+                {},
+            )
+            per_event_name = f"{name}_by_event"
+            per_event = mechanics.get(per_event_name)
+            if isinstance(per_event, Mapping) and event_id in per_event:
+                return per_event[event_id]
+            if name in mechanics:
+                return mechanics[name]
+        if default is not _MISSING:
+            return default
+        raise ControlEngineError(
+            f"Scenario does not bind {name!r} for event "
+            f"{event_id!r}"
+        )
+
     def _bound_input(
         self,
         name: str,
@@ -9869,22 +9899,11 @@ class ControlExecutionSession:
     ) -> Any:
         if self._current_event is None:
             raise ControlEngineError("No schedule event is currently open")
-        event_inputs = self._operation_inputs(self._current_event.event_id)
-        if name in event_inputs:
-            return event_inputs[name]
-        if target_id is not None:
-            mechanics = self._target_mechanics(target_id)
-            per_event_name = f"{name}_by_event"
-            per_event = mechanics.get(per_event_name)
-            if isinstance(per_event, Mapping) and self._current_event.event_id in per_event:
-                return per_event[self._current_event.event_id]
-            if name in mechanics:
-                return mechanics[name]
-        if default is not _MISSING:
-            return default
-        raise ControlEngineError(
-            f"Scenario does not bind {name!r} for event "
-            f"{self._current_event.event_id!r}"
+        return self._scenario_bound_input(
+            name,
+            event_id=self._current_event.event_id,
+            target_id=target_id,
+            default=default,
         )
 
     def _require_current(
@@ -11250,6 +11269,19 @@ class ControlExecutionSession:
             fall_context,
             required=requires_condition_fall or requires_speed_zero_fall,
         )
+        bound_fall = self._validated_fall_context(
+            self._scenario_bound_input(
+                "fall_context",
+                event_id=event.event_id,
+                target_id=target,
+                default=None,
+            ),
+            required=requires_condition_fall or requires_speed_zero_fall,
+        )
+        if fall != bound_fall:
+            raise ControlEngineError(
+                "Condition fall context differs from the scenario-bound event input"
+            )
         if (
             fall is not None
             and current_fly_speed is not None
@@ -11812,6 +11844,33 @@ class ControlExecutionSession:
             _identifier(value, f"{label} source") for value in values
         }))
 
+    def _scenario_bound_opportunity_source_ids(
+        self,
+        *,
+        event_id: str,
+        target_id: str,
+    ) -> tuple[tuple[str, ...], tuple[str, ...]]:
+        return (
+            self._opportunity_source_ids(
+                self._scenario_bound_input(
+                    "advantage_source_ids",
+                    event_id=event_id,
+                    target_id=target_id,
+                    default=(),
+                ),
+                "scenario-bound advantage_source_ids",
+            ),
+            self._opportunity_source_ids(
+                self._scenario_bound_input(
+                    "disadvantage_source_ids",
+                    event_id=event_id,
+                    target_id=target_id,
+                    default=(),
+                ),
+                "scenario-bound disadvantage_source_ids",
+            ),
+        )
+
     @staticmethod
     def _normalization_record(result: NormalizationResult) -> dict[str, Any]:
         return {
@@ -12083,6 +12142,25 @@ class ControlExecutionSession:
             "resolution_created": bool(legality["allowed"]),
         }
         pre = _canonical_json(self._state.snapshot())
+        external_advantage_sources = self._opportunity_source_ids(
+            advantage_source_ids,
+            "advantage_source_ids",
+        )
+        external_disadvantage_sources = self._opportunity_source_ids(
+            disadvantage_source_ids,
+            "disadvantage_source_ids",
+        )
+        bound_external_sources = self._scenario_bound_opportunity_source_ids(
+            event_id=event.event_id,
+            target_id=attacker,
+        )
+        if (
+            external_advantage_sources,
+            external_disadvantage_sources,
+        ) != bound_external_sources:
+            raise ControlEngineError(
+                "Opportunity modifier sources differ from scenario-bound inputs"
+            )
         if not legality["allowed"]:
             payload = {
                 "kind": "attack_opportunity",
@@ -12142,14 +12220,8 @@ class ControlExecutionSession:
                     "prone_incoming_attack_context",
                 },
             )
-            advantage = set(self._opportunity_source_ids(
-                advantage_source_ids,
-                "advantage_source_ids",
-            ))
-            disadvantage = set(self._opportunity_source_ids(
-                disadvantage_source_ids,
-                "disadvantage_source_ids",
-            ))
+            advantage = set(external_advantage_sources)
+            disadvantage = set(external_disadvantage_sources)
             for contribution in preview_outgoing.contributions:
                 if contribution.primitive_id in {
                     "offensive_impairment_all_attacks",
@@ -12219,12 +12291,13 @@ class ControlExecutionSession:
                     f"branch:{gate_id}:{defender}"
                 )
                 self._current_required_operations.discard(f"branch:{gate_id}")
-        return self._issue(
+        issued = self._issue(
             record_kind="opportunity_roll",
             payload=payload,
             pre_operation_state_json=pre,
             target_id=attacker,
         )
+        return issued
 
     def resolve_save_opportunity(
         self,
@@ -12334,14 +12407,26 @@ class ControlExecutionSession:
             normalized,
             primitive_ids={"save_disadvantage", "save_auto_failure"},
         )
-        advantage = set(self._opportunity_source_ids(
+        external_advantage_sources = self._opportunity_source_ids(
             advantage_source_ids,
             "advantage_source_ids",
-        ))
-        disadvantage = set(self._opportunity_source_ids(
+        )
+        external_disadvantage_sources = self._opportunity_source_ids(
             disadvantage_source_ids,
             "disadvantage_source_ids",
-        ))
+        )
+        if (
+            external_advantage_sources,
+            external_disadvantage_sources,
+        ) != self._scenario_bound_opportunity_source_ids(
+            event_id=event.event_id,
+            target_id=actor,
+        ):
+            raise ControlEngineError(
+                "Opportunity modifier sources differ from scenario-bound inputs"
+            )
+        advantage = set(external_advantage_sources)
+        disadvantage = set(external_disadvantage_sources)
         auto_failure: set[str] = set()
         for contribution in normalized.contributions:
             if contribution.primitive_id == "save_disadvantage":
@@ -12379,12 +12464,13 @@ class ControlExecutionSession:
         self._current_required_operations.discard(
             f"opportunity_roll:save:{actor}"
         )
-        return self._issue(
+        issued = self._issue(
             record_kind="opportunity_roll",
             payload=payload,
             pre_operation_state_json=pre,
             target_id=actor,
         )
+        return issued
 
     def resolve_initiative_opportunity(
         self,
@@ -12417,14 +12503,26 @@ class ControlExecutionSession:
             context={},
             catalog=self._engine.catalog,
         )
-        advantage = set(self._opportunity_source_ids(
+        external_advantage_sources = self._opportunity_source_ids(
             advantage_source_ids,
             "advantage_source_ids",
-        ))
-        disadvantage = set(self._opportunity_source_ids(
+        )
+        external_disadvantage_sources = self._opportunity_source_ids(
             disadvantage_source_ids,
             "disadvantage_source_ids",
-        ))
+        )
+        if (
+            external_advantage_sources,
+            external_disadvantage_sources,
+        ) != self._scenario_bound_opportunity_source_ids(
+            event_id=event.event_id,
+            target_id=actor,
+        ):
+            raise ControlEngineError(
+                "Opportunity modifier sources differ from scenario-bound inputs"
+            )
+        advantage = set(external_advantage_sources)
+        disadvantage = set(external_disadvantage_sources)
         for contribution in normalized.contributions:
             if contribution.primitive_id == "initiative_disadvantage":
                 disadvantage.update(contribution.source_component_ids)
@@ -12441,12 +12539,13 @@ class ControlExecutionSession:
         }
         self._opportunity_roll_records.append(payload)
         self._current_required_operations.discard("opportunity_roll")
-        return self._issue(
+        issued = self._issue(
             record_kind="opportunity_roll",
             payload=payload,
             pre_operation_state_json=pre,
             target_id=actor,
         )
+        return issued
 
     def resolve_fall_transition(
         self,
@@ -15675,6 +15774,121 @@ class ControlExecutionSession:
                 )
             return list(value)
 
+        def movement_state_from_snapshot(
+            snapshot_json: str,
+            *,
+            label: str,
+        ) -> ControlState:
+            """Rebuild the exact active-component basis needed for movement replay."""
+
+            rows = json.loads(snapshot_json)
+            if not isinstance(rows, list):
+                raise ControlEngineError(f"Final {label} must be an array")
+            required_fields = {
+                "instance_id",
+                "effect_id",
+                "component_id",
+                "target_id",
+                "magnitude",
+                "duration",
+                "stacking",
+                "source_actor_id",
+                "applied_event_id",
+                "expiry_event_id",
+                "remaining_tokens",
+            }
+            rebuilt = ControlState(catalog=self._engine.catalog)
+            seen_instance_ids: set[str] = set()
+            for index, value in enumerate(rows):
+                if (
+                    not isinstance(value, Mapping)
+                    or set(value)
+                    not in (
+                        required_fields,
+                        required_fields | {"condition_instance_id"},
+                    )
+                ):
+                    raise ControlEngineError(
+                        f"Final {label}[{index}] has malformed component shape"
+                    )
+                row = dict(value)
+                instance_id = _identifier(
+                    row["instance_id"],
+                    f"{label}[{index}].instance_id",
+                )
+                if instance_id in seen_instance_ids:
+                    raise ControlEngineError(
+                        f"Final {label} contains duplicate component instances"
+                    )
+                seen_instance_ids.add(instance_id)
+                for field_name in ("magnitude", "duration", "stacking"):
+                    if not isinstance(row[field_name], Mapping):
+                        raise ControlEngineError(
+                            f"Final {label}[{index}].{field_name} must be an object"
+                        )
+                expiry_event_id = row["expiry_event_id"]
+                if expiry_event_id is not None:
+                    expiry_event_id = _identifier(
+                        expiry_event_id,
+                        f"{label}[{index}].expiry_event_id",
+                    )
+                remaining_tokens = row["remaining_tokens"]
+                if remaining_tokens is not None and (
+                    isinstance(remaining_tokens, bool)
+                    or not isinstance(remaining_tokens, int)
+                    or remaining_tokens < 0
+                ):
+                    raise ControlEngineError(
+                        f"Final {label}[{index}].remaining_tokens is malformed"
+                    )
+                condition_instance_id = row.get("condition_instance_id")
+                if condition_instance_id is not None:
+                    condition_instance_id = _identifier(
+                        condition_instance_id,
+                        f"{label}[{index}].condition_instance_id",
+                    )
+                component = ActiveComponent(
+                    instance_id=instance_id,
+                    effect_id=_identifier(
+                        row["effect_id"],
+                        f"{label}[{index}].effect_id",
+                    ),
+                    component_id=_identifier(
+                        row["component_id"],
+                        f"{label}[{index}].component_id",
+                    ),
+                    target_id=_identifier(
+                        row["target_id"],
+                        f"{label}[{index}].target_id",
+                    ),
+                    magnitude=deepcopy(dict(row["magnitude"])),
+                    duration=deepcopy(dict(row["duration"])),
+                    stacking=deepcopy(dict(row["stacking"])),
+                    source_actor_id=_identifier(
+                        row["source_actor_id"],
+                        f"{label}[{index}].source_actor_id",
+                    ),
+                    applied_event_id=_identifier(
+                        row["applied_event_id"],
+                        f"{label}[{index}].applied_event_id",
+                    ),
+                    expiry_event_id=expiry_event_id,
+                    remaining_tokens=remaining_tokens,
+                    condition_instance_id=condition_instance_id,
+                )
+                rebuilt._active.setdefault(component.target_id, []).append(
+                    component
+                )
+            for components in rebuilt._active.values():
+                components.sort(
+                    key=lambda component: (
+                        component.effect_id,
+                        component.component_id,
+                        component.instance_id,
+                    )
+                )
+            return rebuilt
+
         def snapshot_condition_rows(
             snapshot_json: str,
             *,
@@ -15996,14 +16210,28 @@ class ControlExecutionSession:
                         "or rewritten"
                     )
                 try:
-                    self._validated_fall_context(
+                    replayed_fall_context = self._validated_fall_context(
                         payload.get("fall_context"),
                         required=False,
+                    )
+                    bound_fall_context = self._validated_fall_context(
+                        self._scenario_bound_input(
+                            "fall_context",
+                            event_id=record.event_id,
+                            target_id=str(record.target_id),
+                            default=None,
+                        ),
+                        required=replayed_fall_context is not None,
                     )
                 except ControlEngineError as error:
                     raise ControlEngineError(
                         "Final condition application proposal fall context is malformed"
                     ) from error
+                if replayed_fall_context != bound_fall_context:
+                    raise ControlEngineError(
+                        "Final condition application proposal fall context does not "
+                        "match its scenario-bound input"
+                    )
 
             elif record.record_kind == "condition_application":
                 expected_fields = {
@@ -16039,9 +16267,14 @@ class ControlExecutionSession:
                 proposal_payload = json.loads(proposal_record.payload_json)
                 root_id = payload.get("root_condition_instance_id")
                 lineage = lineage_for_root(str(root_id))
-                expected_created = [
-                    application_projection(row) for row in lineage
-                ]
+                expected_created = sorted(
+                    (application_projection(row) for row in lineage),
+                    key=lambda row: (
+                        row["application_sequence"],
+                        row["target_id"],
+                        row["instance_id"],
+                    ),
+                )
                 post_condition_ids = sorted({
                     row["condition_id"]
                     for row in snapshot_condition_rows(
@@ -16137,6 +16370,11 @@ class ControlExecutionSession:
                         application_projection(row)
                         for row in lineage_for_root(root_id)
                     )
+                expected_created.sort(key=lambda row: (
+                    row["application_sequence"],
+                    row["target_id"],
+                    row["instance_id"],
+                ))
                 if created_rows != expected_created:
                     raise ControlEngineError(
                         "Final branch condition-instance delta does not replay"
@@ -16208,6 +16446,14 @@ class ControlExecutionSession:
                             "Final opportunity sources contain a foreign live "
                             "condition identity"
                         )
+            bound_advantage_values, bound_disadvantage_values = (
+                self._scenario_bound_opportunity_source_ids(
+                    event_id=record.event_id,
+                    target_id=str(record.target_id),
+                )
+            )
+            bound_advantage = set(bound_advantage_values)
+            bound_disadvantage = set(bound_disadvantage_values)
 
             if opportunity_kind == "attack_opportunity":
                 expected_fields = {
@@ -16305,8 +16551,9 @@ class ControlExecutionSession:
                     for source_id in row.get("source_component_ids", ())
                 }
                 if (
-                    not required_advantage.issubset(advantage)
-                    or not required_disadvantage.issubset(disadvantage)
+                    set(advantage) != required_advantage | bound_advantage
+                    or set(disadvantage)
+                    != required_disadvantage | bound_disadvantage
                     or payload.get("roll_mode")
                     != resolve_roll_mode(len(advantage), len(disadvantage))
                 ):
@@ -16395,7 +16642,9 @@ class ControlExecutionSession:
                 if (
                     set(auto_sources) != required_auto
                     or payload.get("automatic_failure") is not automatic_failure
-                    or not required_disadvantage.issubset(disadvantage)
+                    or set(advantage) != bound_advantage
+                    or set(disadvantage)
+                    != required_disadvantage | bound_disadvantage
                     or payload.get("roll_created") is automatic_failure
                     or payload.get("probability_branch_created")
                     is automatic_failure
@@ -16451,9 +16700,13 @@ class ControlExecutionSession:
                     if row.get("primitive_id") == "initiative_disadvantage"
                     for source_id in row.get("source_component_ids", ())
                 }
-                if not required_disadvantage.issubset(disadvantage):
+                if (
+                    set(advantage) != bound_advantage
+                    or set(disadvantage)
+                    != required_disadvantage | bound_disadvantage
+                ):
                     raise ControlEngineError(
-                        "Final initiative opportunity omitted live condition sources"
+                        "Final initiative opportunity sources do not replay"
                     )
             else:
                 raise ControlEngineError(
@@ -16521,6 +16774,90 @@ class ControlExecutionSession:
                         "Final replay contains duplicate fall execution"
                     )
                 executed_falls.add(identity)
+            if record.record_kind == "fall_transition":
+                bound_context = self._validated_fall_context(
+                    self._scenario_bound_input(
+                        "fall_context",
+                        event_id=record.event_id,
+                        target_id=str(record.target_id),
+                        default=None,
+                    ),
+                    required=True,
+                )
+                if bound_context is None or bound_context["fly_speed_ft"] != 0:
+                    raise ControlEngineError(
+                        "Final standalone fall requires scenario-bound Fly Speed 0"
+                    )
+                bound_source = self._scenario_bound_input(
+                    "fall_source",
+                    event_id=record.event_id,
+                    target_id=str(record.target_id),
+                    default=None,
+                )
+                source_fields = {
+                    "source_actor_id",
+                    "source_effect_id",
+                    "source_component_id",
+                    "source_issuance_id",
+                }
+                if (
+                    not isinstance(bound_source, Mapping)
+                    or set(bound_source) != source_fields
+                ):
+                    raise ControlEngineError(
+                        "Final standalone fall source binding is malformed"
+                    )
+                expected_source = {
+                    field_name: _identifier(
+                        bound_source[field_name],
+                        f"scenario-bound fall_source.{field_name}",
+                    )
+                    for field_name in sorted(source_fields)
+                }
+                expected_transition = airborne_fall_transition(
+                    target_id=str(record.target_id),
+                    airborne=bound_context["airborne"],
+                    can_hover=bound_context["can_hover"],
+                    fly_speed_ft=0,
+                    explicit_prevents_fall=bound_context[
+                        "explicit_prevents_fall"
+                    ],
+                    source_component_id=expected_source[
+                        "source_component_id"
+                    ],
+                )
+                expected_fall = {
+                    "kind": "fall_transition",
+                    "event_id": record.event_id,
+                    "event_sequence": record.event_sequence,
+                    "target_id": record.target_id,
+                    **expected_source,
+                    "duplicate_trigger_collapsed": False,
+                    "executed": bool(expected_transition["falls"]),
+                    "transition": expected_transition,
+                }
+                if dict(fall) != expected_fall:
+                    raise ControlEngineError(
+                        "Final standalone fall context or source does not replay"
+                    )
+                continue
+            if set(fall) != {
+                "kind",
+                "event_id",
+                "event_sequence",
+                "target_id",
+                "trigger_condition_instance_ids",
+                "trigger_fly_speed_zero_source_component_ids",
+                "source_actor_ids",
+                "source_effect_ids",
+                "source_component_ids",
+                "duplicate_trigger_collapsed",
+                "executed",
+                "transition",
+            }:
+                raise ControlEngineError(
+                    "Final condition fall transition shape is malformed"
+                )
             trigger_ids = fall.get("trigger_condition_instance_ids")
             if trigger_ids is not None:
                 trigger_ids = sorted_unique_strings(
@@ -16534,30 +16871,34 @@ class ControlExecutionSession:
                 instances = [registry.get(instance_id) for instance_id in trigger_ids]
                 fly_source_actors: set[str] = set()
                 fly_source_effects: set[str] = set()
-                for component_id in fly_source_ids:
-                    matching_conditions = [
-                        row for row in registry.values()
-                        if row["target_id"] == record.target_id
-                        and row["application_event_id"] == record.event_id
-                        and row["source_component_id"] == component_id
-                    ]
-                    if matching_conditions:
-                        fly_source_actors.update(
-                            row["source_actor_id"] for row in matching_conditions
-                        )
-                        fly_source_effects.update(
-                            row["source_effect_id"] for row in matching_conditions
-                        )
-                        continue
-                    try:
-                        self._program.component(component_id)
-                    except Exception as error:
-                        raise ControlEngineError(
-                            "Final Fly-Speed-0 fall references a foreign source "
-                            "component"
-                        ) from error
-                    fly_source_actors.add(self._source_actor_id)
-                    fly_source_effects.add(self._program.effect_id)
+                replayed_fly_sources, pre_transition_fly_speed = (
+                    self._fly_speed_zero_transition_sources(
+                        before_state=movement_state_from_snapshot(
+                            record.pre_operation_state_json,
+                            label="fall pre-operation state",
+                        ),
+                        after_state=movement_state_from_snapshot(
+                            record.post_operation_state_json,
+                            label="fall post-operation state",
+                        ),
+                        target_id=str(record.target_id),
+                    )
+                )
+                expected_fly_source_ids = sorted(
+                    component.component_id
+                    for component in replayed_fly_sources
+                )
+                if fly_source_ids != expected_fly_source_ids:
+                    raise ControlEngineError(
+                        "Final Fly-Speed-0 fall source components do not replay"
+                    )
+                fly_source_actors.update(
+                    component.source_actor_id
+                    for component in replayed_fly_sources
+                )
+                fly_source_effects.update(
+                    component.effect_id for component in replayed_fly_sources
+                )
                 expected_component_ids = sorted(
                     {
                         instance["source_component_id"]
@@ -16566,20 +16907,54 @@ class ControlExecutionSession:
                     }
                     | set(fly_source_ids)
                 )
-                expected_reason = (
-                    "prone"
-                    if any(
+                bound_context = self._validated_fall_context(
+                    self._scenario_bound_input(
+                        "fall_context",
+                        event_id=record.event_id,
+                        target_id=str(record.target_id),
+                        default=None,
+                    ),
+                    required=True,
+                )
+                if bound_context is None:  # pragma: no cover - required above
+                    raise ControlEngineError(
+                        "Final condition fall lacks scenario-bound context"
+                    )
+                if (
+                    replayed_fly_sources
+                    and bound_context["fly_speed_ft"]
+                    != pre_transition_fly_speed
+                ):
+                    raise ControlEngineError(
+                        "Final Fly-Speed-0 fall context differs from the "
+                        "pre-transition movement state"
+                    )
+                expected_transition = airborne_fall_transition(
+                    target_id=str(record.target_id),
+                    airborne=bound_context["airborne"],
+                    can_hover=bound_context["can_hover"],
+                    prone=any(
                         instance is not None
                         and instance["condition_id"] == "prone"
                         for instance in instances
-                    )
-                    else "incapacitated"
-                    if any(
+                    ),
+                    incapacitated=any(
                         instance is not None
                         and instance["condition_id"] == "incapacitated"
                         for instance in instances
-                    )
-                    else "fly_speed_zero"
+                    ),
+                    fly_speed_ft=(
+                        0
+                        if replayed_fly_sources
+                        else bound_context["fly_speed_ft"]
+                    ),
+                    explicit_prevents_fall=bound_context[
+                        "explicit_prevents_fall"
+                    ],
+                    source_component_id=(
+                        expected_component_ids[0]
+                        if len(expected_component_ids) == 1 else None
+                    ),
                 )
                 if (
                     not trigger_ids and not fly_source_ids
@@ -16615,12 +16990,7 @@ class ControlExecutionSession:
                         expected_component_ids[0]
                         if len(expected_component_ids) == 1 else None
                     )
-                    or transition.get("reason")
-                    not in {
-                        expected_reason,
-                        "not_airborne",
-                        "hover_or_explicit_prevention",
-                    }
+                    or transition != expected_transition
                 ):
                     raise ControlEngineError(
                         "Final condition fall provenance does not replay"
@@ -18386,8 +18756,13 @@ class ControlExecutionSession:
 
         self._validate_scenario_identity()
         self._validate_ambient_membership_state()
+        validated_result = self._assemble_for_test()
         if self._cached_result is None:
-            self._cached_result = self._assemble_for_test()
+            self._cached_result = validated_result
+        elif self._cached_result.to_dict() != validated_result.to_dict():
+            raise ControlEngineError(
+                "Cached final result no longer matches the validated execution"
+            )
         return self._cached_result
 
 
