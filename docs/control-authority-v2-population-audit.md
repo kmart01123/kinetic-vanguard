@@ -128,6 +128,8 @@ These changes correct representational defects; they do not change canonical sub
 
 ## Control-target supplement design
 
+Historical scope note: this section records the exact v14.1/Control Authority v2 population evidence as it existed when reviewed. Issue #55 later retired these current-development paths after an exact old-28 migration proof. The maintained successor is the shared catalog/profile/projection contract documented in [`srd-creature-catalog-audit.md`](srd-creature-catalog-audit.md); the filenames and hashes below remain historical evidence, not live input instructions.
+
 Maintained files:
 
 - harness/data/srd_control_targets.json
@@ -154,6 +156,8 @@ Readiness remains honestly separated:
 No monster tactics, pathfinding, altitude selection, line-of-sight simulation, or behavioral heuristics enter the supplement or loader. A future methodology that needs Truesight must introduce a distinct visual-special-sense contract rather than reclassifying it as nonvisual.
 
 ## Damage roster baseline and boundary
+
+Historical scope note: the CSV identity and unchanged-damage proof below describe this audit's original boundary. The file was subsequently retired by issue #55 after exact projection equivalence was proved; frozen refs and Git history preserve it.
 
 - File: harness/data/srd_targets.csv
 - Baseline rows: 28 data rows plus one header row
