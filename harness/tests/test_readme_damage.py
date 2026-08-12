@@ -592,6 +592,10 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         )
 
         invalidated = deepcopy(source)
+        invalidated_row = invalidated["current_development_disposition"]
+        invalidated_row["review_disposition"] = INVALIDATED_PREMERGE_REVIEW
+        invalidated_row["fresh_full_roster_run"] = False
+        invalidated_row["fresh_run_evidence"] = None
         loaded_invalidated = load(invalidated)
         self.assertEqual(
             loaded_invalidated.review_disposition,
@@ -678,7 +682,7 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         with self.assertRaisesRegex(MatrixSyncError, "preserved pre-correction record"):
             load(rewritten_invalidated)
 
-    def test_current_invalidated_evidence_preserves_original_run_as_comparison(
+    def test_current_fresh_evidence_preserves_original_run_as_comparison(
         self,
     ) -> None:
         source = json.loads(
@@ -687,9 +691,14 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         pinned = source["pinned_srd"]
         current = source["current_development_disposition"]
         invalidated = current["invalidated_run_evidence"]
-        self.assertEqual(current["review_disposition"], INVALIDATED_PREMERGE_REVIEW)
-        self.assertFalse(current["fresh_full_roster_run"])
-        self.assertIsNone(current["fresh_run_evidence"])
+        fresh = current["fresh_run_evidence"]
+        self.assertEqual(
+            current["review_disposition"], FRESH_EXPANDED_ROSTER_REVIEW
+        )
+        self.assertTrue(current["fresh_full_roster_run"])
+        self.assertFalse(current["fresh_numerical_certification"])
+        self.assertFalse(current["fresh_monte_carlo_certification"])
+        self.assertIsNotNone(fresh)
         self.assertEqual(
             invalidated["invalidation_disposition"],
             INVALIDATED_PREMERGE_REVIEW,
@@ -716,6 +725,32 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
                 "matrix_html": "963cceba16ac9a1db894e02407d1fa22333215c279425083458af14a92e27639",
             },
         )
+        self.assertEqual(
+            fresh["run_manifest_sha256"],
+            "3986173ebb182c809e0d977ae4f24124b5fa9ffba37b2332492e496b54cf1b98",
+        )
+        self.assertEqual(
+            fresh["damage_consumer_requirements_sha256"],
+            "a394e60b24aa2901369b12877adb6fad5e2b1be8180c416c3441361be6dd1ac1",
+        )
+        self.assertEqual(
+            fresh["damage_target_projection_sha256"],
+            "42d733f68b6e706801bb3dc470717ac4841bf48ee8c88fde9530b717b355a4b1",
+        )
+        self.assertEqual(
+            fresh["evaluator_implementation_sha256"],
+            "7907904abe5cdcf0a46d8888101a8e8cd4888202a34ba3577870dcb1a11a1f7e",
+        )
+        self.assertEqual(
+            fresh["output_sha256"],
+            {
+                "detail_csv": "b8840c398dbb11e6225270cffb7312cb096a9711095d14208393107190652c0b",
+                "matrix_csv": "109f17a20c9a86b6e55a831ac7292eb4079dc0d5c2cd194d3a1bd5d8c09a6866",
+                "matrix_markdown": "6ba68dc1dae86d2f534caa5e17c6402c0064dfafd156f2e174c7743b65209340",
+                "matrix_html": "2115627df7ec259e5fd5bb40e609d26627fd524f696e06d5abd2e937ce92c94d",
+            },
+        )
+        self.assertEqual(fresh["row_counts"], {"detail": 564, "matrix": 96})
         self.assertEqual(
             pinned["damage_consumer_requirements_sha256"],
             _current_damage_bundle().identity[

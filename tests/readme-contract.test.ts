@@ -465,16 +465,18 @@ test("expanded-roster damage delta audit is compact, complete, and provenance-bo
   ]);
   const audit = JSON.parse(source) as any;
   const review = JSON.parse(reviewSource) as any;
-  const evidence = review.current_development_disposition.invalidated_run_evidence;
+  const invalidatedEvidence = review.current_development_disposition.invalidated_run_evidence;
+  const replacementEvidence = review.current_development_disposition.fresh_run_evidence;
 
-  assert.equal(audit.schema_version, "1.2.0");
+  assert.equal(audit.schema_version, "1.3.0");
   assert.deepEqual(audit.evidence_disposition, {
-    current: "invalidated_premerge_provenance_boundary_correction",
-    numerical_evidence_role: "comparison_evidence_only",
+    current: "FRESH_EXPANDED_ROSTER_RUN_WITHOUT_INDEPENDENT_CERTIFICATION",
+    numerical_evidence_role: "corrected_contract_replacement_evidence",
     numerical_defect_demonstrated: false,
-    corrected_contract_replacement_run_performed: false,
-    superseded_audit_sha256: "b000f3c87bcc8ffda2c88823877885a7b0af5c9ec3c3da7c4ac10a7b1ef8c969",
-    reason: "The v14.2 manifest predates the corrected consumer-scoped requirements and sibling-projection implementation identities; its bytes and numerical comparison remain preserved evidence."
+    corrected_contract_replacement_run_performed: true,
+    invalidated_premerge_comparison_preserved: true,
+    superseded_audit_sha256: "fa1a207881a9de81b035f4b4e11526eef18d997c20607476ae50f45a901429d3",
+    reason: "The completed corrected-contract replacement differs from the invalidated pre-merge run only in corrected provenance identities and resulting manifest/report digests; all 564 detail rows and 96 matrix rows are numerically and classificationally identical. A separately recorded first attempt failed before producing output."
   });
   assert.equal(audit.method.result_generation, "read-only comparison of existing artifacts; evaluator was not invoked");
   assert.match(audit.method.primary_target_population, /cluster sizes 1, 3, and 6/);
@@ -489,6 +491,24 @@ test("expanded-roster damage delta audit is compact, complete, and provenance-bo
   assert.equal(audit.validation.baseline_matrix_row_count, 96);
   assert.equal(audit.validation.invalidated_premerge_comparison_matrix_row_count, 96);
   assert.equal(audit.validation.invalidated_premerge_comparison_detail_row_count, 564);
+  assert.equal(audit.validation.corrected_contract_replacement_matrix_row_count, 96);
+  assert.equal(audit.validation.corrected_contract_replacement_detail_row_count, 564);
+  assert.deepEqual(audit.validation.invalidated_to_replacement_exact_equality, {
+    detail_compared_fields_per_row: 30,
+    detail_comparison_count: 16920,
+    detail_row_count: 564,
+    differing_provenance_fields: [
+      "Provenance Consumer Requirements Sha256 -> Provenance Damage Consumer Requirements Sha256",
+      "Provenance Damage Target Projection Sha256",
+      "Provenance Evaluator Implementation Sha256"
+    ],
+    matrix_compared_fields_per_row: 17,
+    matrix_comparison_count: 1632,
+    matrix_row_count: 96,
+    notice_fields_equal: true,
+    ordered_row_identities_equal: true,
+    result_and_classification_fields_equal: true
+  });
   assert.deepEqual(audit.newly_unevaluable_rows, []);
   assert.equal(audit.primary_target_changes.length, 16);
   assert.equal(audit.aggregate_scope_changes.length, 48);
@@ -502,11 +522,31 @@ test("expanded-roster damage delta audit is compact, complete, and provenance-bo
   assert.equal(audit.absolute_dpr_delta.overall.max_absolute_dpr_delta, "39.306652");
   assert.equal(
     audit.artifacts_and_provenance.invalidated_premerge_comparison.reports.run_manifest.sha256,
-    evidence.run_manifest_sha256
+    invalidatedEvidence.run_manifest_sha256
   );
   assert.equal(
     audit.artifacts_and_provenance.invalidated_premerge_comparison.reports.matrix_csv.sha256,
-    evidence.output_sha256.matrix_csv
+    invalidatedEvidence.output_sha256.matrix_csv
+  );
+  assert.equal(
+    audit.artifacts_and_provenance.corrected_contract_replacement.reports.run_manifest.sha256,
+    replacementEvidence.run_manifest_sha256
+  );
+  assert.equal(
+    audit.artifacts_and_provenance.corrected_contract_replacement.reports.detail_csv.sha256,
+    replacementEvidence.output_sha256.detail_csv
+  );
+  assert.equal(
+    audit.artifacts_and_provenance.corrected_contract_replacement.reports.matrix_csv.sha256,
+    replacementEvidence.output_sha256.matrix_csv
+  );
+  assert.equal(
+    audit.artifacts_and_provenance.corrected_contract_replacement.reports.matrix_markdown.sha256,
+    replacementEvidence.output_sha256.matrix_markdown
+  );
+  assert.equal(
+    audit.artifacts_and_provenance.corrected_contract_replacement.reports.matrix_html.sha256,
+    replacementEvidence.output_sha256.matrix_html
   );
   assert.equal(
     audit.artifacts_and_provenance.baseline.reports.matrix_csv.sha256,
@@ -517,8 +557,11 @@ test("expanded-roster damage delta audit is compact, complete, and provenance-bo
   assert.equal(source.trimEnd().includes("\n"), false, "delta audit remains compact");
   assert.ok(harnessReadme.includes("provenance/damage-delta-v14.1-to-v14.2.json"));
   assert.ok(harnessReadme.includes("invalidated_premerge_provenance_boundary_correction"));
+  assert.ok(harnessReadme.includes(replacementEvidence.run_manifest_sha256));
   assert.ok(auditDoc.includes("harness/provenance/damage-delta-v14.1-to-v14.2.json"));
   assert.ok(auditDoc.includes("invalidated_premerge_provenance_boundary_correction"));
+  assert.ok(auditDoc.includes(replacementEvidence.run_manifest_sha256));
+  assert.match(auditDoc, /first attempt that failed before producing output/);
   assert.ok(auditDoc.includes(review.pinned_srd.consumer_requirements_registry_sha256));
   assert.ok(auditDoc.includes(review.pinned_srd.damage_consumer_requirements_sha256));
   assert.ok(auditDoc.includes("2549ae2884aeb11bf53e3f079afc094172f5288276cd036ea86181381c4fd3d5"));

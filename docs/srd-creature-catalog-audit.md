@@ -1,6 +1,6 @@
 # SRD 5.2.1 creature catalog and roster audit
 
-Status: implemented; the source catalog and source-only roster were frozen in issue #55 comment `5252064760`. The pre-correction v14.2 expanded-roster run is permanently marked `invalidated_premerge_provenance_boundary_correction` and retained only as comparison evidence. No corrected-contract replacement run has been performed, no numerical defect has been demonstrated, and no independent numerical or Monte Carlo certification is claimed.
+Status: implemented; the source catalog and source-only roster were frozen in issue #55 comment `5252064760`. The pre-correction v14.2 expanded-roster run is permanently marked `invalidated_premerge_provenance_boundary_correction` and retained only as comparison evidence. One completed corrected-contract replacement now binds the consumer-scoped damage provenance and exactly matches every numerical and classification field in the invalidated run. No numerical defect was demonstrated, and no independent numerical or Monte Carlo certification is claimed.
 
 ## Authority and extraction
 
@@ -105,11 +105,24 @@ That run completed in about 255 seconds across all 47 source-ordered headline ta
 | Matrix Markdown | 96 | `7d8cd1e4316ee28f589b2ad47a1de1418d0c9b80389f0fb2bac9a82467c3c87c` |
 | Matrix HTML | 96 | `963cceba16ac9a1db894e02407d1fa22333215c279425083458af14a92e27639` |
 
-The README writer and checker both consumed that exact manifest and its bound outputs; neither reran the evaluator. The later consumer-scoped requirements and sibling-projection implementation correction made that coarse provenance identity stale. The manifest is not rewritten or re-signed and cannot serve as corrected-contract evidence. Its bytes and numerical outputs remain permanent `comparison_evidence_only`; no numerical defect has been demonstrated. No corrected-contract replacement full-roster run has been authorized or performed.
+The README writer and checker both consumed that exact manifest and its bound outputs; neither reran the evaluator. The later consumer-scoped requirements and sibling-projection implementation correction made that coarse provenance identity stale. The manifest is not rewritten or re-signed and cannot serve as corrected-contract evidence. Its bytes and numerical outputs remain permanent `comparison_evidence_only`; no numerical defect was demonstrated.
+
+## Corrected-contract v14.2 replacement-run record
+
+Issue #55 comment `5261639551` records the authorized replacement gate, the first attempt that failed before producing output, and the amended freeze used for the retry. The private retry scratch directory was created at `2026-08-12T03:57:30Z`; its manifest completed at `2026-08-12T04:02:32Z`, about five minutes end-to-end, after evaluating all 47 source-ordered headline targets. Its evaluator implementation SHA-256 is `7907904abe5cdcf0a46d8888101a8e8cd4888202a34ba3577870dcb1a11a1f7e`. Its `run-manifest.json` has SHA-256 `3986173ebb182c809e0d977ae4f24124b5fa9ffba37b2332492e496b54cf1b98` and binds these outputs:
+
+| Output | Rows | SHA-256 |
+| --- | ---: | --- |
+| Detail CSV | 564 | `b8840c398dbb11e6225270cffb7312cb096a9711095d14208393107190652c0b` |
+| Matrix CSV | 96 | `109f17a20c9a86b6e55a831ac7292eb4079dc0d5c2cd194d3a1bd5d8c09a6866` |
+| Matrix Markdown | 96 | `6ba68dc1dae86d2f534caa5e17c6402c0064dfafd156f2e174c7743b65209340` |
+| Matrix HTML | 96 | `2115627df7ec259e5fd5bb40e609d26627fd524f696e06d5abd2e937ce92c94d` |
+
+The invalidated and replacement outputs join in the same order on all 564 detail and 96 matrix identities. All 16,920 comparisons across 30 non-provenance detail fields and all 1,632 comparisons across 17 non-provenance matrix fields are exact, and all notice fields are identical. Differences are confined to the generic-to-damage-scoped consumer-requirements field, DamageTarget projection digest, evaluator implementation digest, and resulting report and manifest digests. The replacement was required by a pre-merge provenance-contract correction, not changed damage mechanics. It is fresh full-roster evidence without fresh independent numerical or Monte Carlo certification.
 
 ## Mechanical v14.1 to v14.2 damage delta
 
-The accepted v14.1 release matrix (`e0a9aec2d5c8da9409b8158163d44085001c26686385ddacb7108ff48d2326b4`) and the invalidated pre-merge v14.2 comparison matrix (`aaa5883bf18ac1ccde6cbb1af21290e5add47c36ec3babba36d95e5101cd1263`) join exactly on all 96 unique level, discipline, cluster-size, damage-scope, profile, and benchmark-type identities. No row is missing, new, duplicated, or newly unevaluable. The comparison used exact decimal arithmetic over the existing artifacts and did not invoke the evaluator. These findings characterize the retained comparison bytes, not a corrected-contract replacement.
+The accepted v14.1 release matrix (`e0a9aec2d5c8da9409b8158163d44085001c26686385ddacb7108ff48d2326b4`) and the invalidated pre-merge v14.2 comparison matrix (`aaa5883bf18ac1ccde6cbb1af21290e5add47c36ec3babba36d95e5101cd1263`) join exactly on all 96 unique level, discipline, cluster-size, damage-scope, profile, and benchmark-type identities. No row is missing, new, duplicated, or newly unevaluable. The comparison used exact decimal arithmetic over the existing artifacts and did not invoke the evaluator. Because the corrected-contract replacement is numerically and classificationally identical to that invalidated comparison, the same v14.1-to-v14.2 findings apply without recomputation.
 
 Headline target counts changed from 8, 6, 6, and 8 at levels 7, 11, 15, and 20 to 12, 12, 11, and 12 respectively: 28 to 47 overall. Aggregate-scope mean signed DPR changes (after minus before) by level are:
 
@@ -124,4 +137,4 @@ The same aggregate-scope KV means by discipline are Cryokinesis -0.764780, Elect
 
 Comparator identities did not change: Eldritch Knight remains the lower boundary and Battle Master the upper boundary in all 96 rows, although both numeric boundaries changed in every row. Bands changed from 70 IDEAL, 19 COLD, and 7 HOT rows to 63 IDEAL, 28 COLD, and 5 HOT rows. Eleven rows changed classification: nine IDEAL to COLD and two HOT to IDEAL. Across all 288 displayed DPR cells, the mean absolute delta is 3.336333510417 and the maximum is 39.306652, the KV level-15 Electrokinesis cluster-6 aggregate row (170.851108 to 131.544456).
 
-The complete deterministic record—including matrix-wide and aggregate-scope means by level, discipline, and cluster; primary-target means across cluster sizes by level and discipline; all 48 aggregate-scope row deltas; boundary and classification transitions; exact sums and denominators; and every preserved input/report digest—is [`harness/provenance/damage-delta-v14.1-to-v14.2.json`](../harness/provenance/damage-delta-v14.1-to-v14.2.json). The record marks the v14.2 side as invalidated comparison evidence and records that no numerical defect was demonstrated. Roster membership remained frozen after results were inspected.
+The complete deterministic record—including matrix-wide and aggregate-scope means by level, discipline, and cluster; primary-target means across cluster sizes by level and discipline; all 48 aggregate-scope row deltas; boundary and classification transitions; exact sums and denominators; both v14.2 manifest/report inventories; and the exact invalidated-to-replacement equality proof—is [`harness/provenance/damage-delta-v14.1-to-v14.2.json`](../harness/provenance/damage-delta-v14.1-to-v14.2.json). It preserves the invalidated comparison separately from the corrected-contract replacement and records that no numerical defect was demonstrated. Roster membership remained frozen after results were inspected.
