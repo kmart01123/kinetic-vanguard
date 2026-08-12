@@ -4,16 +4,46 @@ from __future__ import annotations
 
 import argparse
 import csv
+import hashlib
+import json
 from collections import defaultdict
 from concurrent.futures import ProcessPoolExecutor
 from dataclasses import dataclass
+from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
 from .authority import DamageAuthorityModel,DEFAULT_AUTHORITY
-from .damage_report import NOTICE_COLUMNS,damage_matrix_row,write_damage_matrix
-from .model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_ROSTER,Target,file_sha256,level_config,load_comparators,load_config,load_targets,save_success_probability
+from .creature_catalog import (
+    ROSTER_CONTRACT_VERSION,
+    CONSUMER_REQUIREMENTS_VERSION,
+    RosterEntry,
+    load_catalog,
+    load_consumer_requirements,
+    load_profile,
+)
+from .creature_damage_projection import (
+    DAMAGE_PROJECTION_ID,
+    DAMAGE_PROJECTION_VERSION,
+    DamageTarget,
+    project_damage_target,
+)
+from .damage_report import NOTICE_COLUMNS,damage_matrix_row,provenance_columns,write_damage_matrix
+from .model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,file_sha256,level_config,load_comparators,load_config,save_success_probability
+
+
+DAMAGE_RESULT_CONTRACT_VERSION = "2.0.0"
+DAMAGE_EVALUATOR_ID = "exact_analytical_enumeration"
+RUN_MANIFEST_FILENAME = "run-manifest.json"
+DAMAGE_EVALUATOR_IMPLEMENTATION_PATHS = (
+    ("harness/authority.py", Path(__file__).with_name("authority.py")),
+    ("harness/creature_catalog.py", Path(__file__).with_name("creature_catalog.py")),
+    ("harness/creature_damage_projection.py", Path(__file__).with_name("creature_damage_projection.py")),
+    ("harness/damage_harness.py", Path(__file__)),
+    ("harness/damage_report.py", Path(__file__).with_name("damage_report.py")),
+    ("harness/model.py", Path(__file__).with_name("model.py")),
+)
 
 
 @dataclass(frozen=True)
@@ -34,6 +64,16 @@ class _Score:
 @dataclass(frozen=True)
 class _Decision:
     score:_Score;choice:tuple[Any,...]
+
+
+@dataclass(frozen=True)
+class DamageInputBundle:
+    model:DamageAuthorityModel
+    config:dict[str,Any]
+    comparators:dict[str,Any]
+    entries:tuple[RosterEntry,...]
+    targets:tuple[DamageTarget,...]
+    identity:dict[str,Any]
 
 
 def _target_count(rule:dict[str,Any],tier:int,cluster_size:int,pb:int)->int:
@@ -67,13 +107,10 @@ def _raw_distribution(damage:dict[str,Any],strike_die:int,psi_modifier:int)->dic
     raise ValueError(f"Unsupported damage kind: {kind}")
 
 
-def _rule_damage(target:Target,damage:dict[str,Any],damage_type:str,strike_die:int,psi_modifier:int,save_probability:float|None,ignore_resistance:bool=False)->float:
+def _rule_damage(target:DamageTarget,damage:dict[str,Any],damage_type:str,strike_die:int,psi_modifier:int,save_probability:float|None,ignore_resistance:bool=False)->float:
     distribution=_raw_distribution(damage,strike_die,psi_modifier)
     def profiled(value:int)->int:
-        if ignore_resistance and damage_type.lower() in target.damage_resistances:
-            adjusted=Target(**{**target.__dict__,"damage_resistances":frozenset(item for item in target.damage_resistances if item!=damage_type.lower())})
-            return _profile_damage(adjusted,damage_type,value)
-        return _profile_damage(target,damage_type,value)
+        return _profile_damage(target,damage_type,value,ignore_resistance)
     full=sum(probability*profiled(value) for value,probability in distribution.items());resolution=damage["resolution"]
     if resolution=="always":return full
     if save_probability is None:raise ValueError("Save-gated damage lacks a canonical save")
@@ -84,7 +121,7 @@ def _rule_damage(target:Target,damage:dict[str,Any],damage_type:str,strike_die:i
     raise ValueError(f"Unsupported damage resolution: {resolution}")
 
 
-def _strike_packet_options(model:DamageAuthorityModel,target:Target,discipline_id:str,level:int,psi_modifier:int,strike_die:int)->tuple[tuple[str,tuple[float,float,float]],...]:
+def _strike_packet_options(model:DamageAuthorityModel,target:DamageTarget,discipline_id:str,level:int,psi_modifier:int,strike_die:int)->tuple[tuple[str,tuple[float,float,float]],...]:
     """Return every undominated pre-roll Manifested Strike damage-type declaration."""
     discipline=model.disciplines[discipline_id];core=model.projection["core"]["manifested_strike"];normal_type=discipline["damage_type"];force_type=core["holdout_damage_type"];divisor=int(core["holdout_damage_divisor"])
     def packets(damage_type:str,holdout:bool)->tuple[float,float,float]:
@@ -98,7 +135,7 @@ def _strike_packet_options(model:DamageAuthorityModel,target:Target,discipline_i
     return (("normal",normal),("holdout",holdout))
 
 
-def _rider_values(model:DamageAuthorityModel,target:Target,discipline_id:str,cluster_size:int,level:int,pb:int,psi_modifier:int,strike_die:int,package:Package)->tuple[float,float]:
+def _rider_values(model:DamageAuthorityModel,target:DamageTarget,discipline_id:str,cluster_size:int,level:int,pb:int,psi_modifier:int,strike_die:int,package:Package)->tuple[float,float]:
     if package.entity_id is None:return 0.0,0.0
     rule=model.features[package.entity_id];tier_row=next(item for item in rule["damage_tiers"] if int(item["tier"])==package.tier);discipline=model.disciplines[discipline_id];damage_type=discipline["damage_type"] if rule["damage_type"]=="discipline" else rule["damage_type"]
     save=tier_row.get("save");save_probability=None
@@ -117,7 +154,7 @@ def _fracture(rule:dict[str,Any],tier:int)->int:
 class _KVDamagePlanner:
     """Exact finite-horizon policy over only information observable at each declaration."""
 
-    def __init__(self,model:DamageAuthorityModel,target:Target,packages:tuple[Package,...],rider_values:dict[Package,tuple[float,float]],strike_options:tuple[tuple[str,tuple[float,float,float]],...],standalones_by_round:tuple[tuple[Standalone,...],...],attack_bonus:int,attacks_per_action:int,action_slots_by_round:tuple[int,...],studied_enabled:bool,prowess_enabled:bool,psi_pool:int,blood_budget:int,mastery:dict[str,Any],mastery_uses:int,standalone_limit:int)->None:
+    def __init__(self,model:DamageAuthorityModel,target:DamageTarget,packages:tuple[Package,...],rider_values:dict[Package,tuple[float,float]],strike_options:tuple[tuple[str,tuple[float,float,float]],...],standalones_by_round:tuple[tuple[Standalone,...],...],attack_bonus:int,attacks_per_action:int,action_slots_by_round:tuple[int,...],studied_enabled:bool,prowess_enabled:bool,psi_pool:int,blood_budget:int,mastery:dict[str,Any],mastery_uses:int,standalone_limit:int)->None:
         self.model=model;self.target=target;self.packages=packages;self.rider_values=rider_values;self.strike_options=strike_options;self.standalones_by_round=standalones_by_round;self.attack_bonus=attack_bonus;self.attacks_per_action=attacks_per_action;self.action_slots_by_round=action_slots_by_round;self.studied_enabled=studied_enabled;self.prowess_enabled=prowess_enabled;self.psi_pool=psi_pool;self.blood_budget=blood_budget;self.mastery=mastery;self.mastery_uses=mastery_uses;self.standalone_limit=standalone_limit
         limited=sorted({str(package.entity_id) for package in packages if package.entity_id and model.features[package.entity_id]["repeatability"]=="once_per_attack_action"});bits={entity_id:1<<index for index,entity_id in enumerate(limited)}
         self.package_bits=tuple(bits.get(package.entity_id,0) for package in packages);self.fractures=tuple(_fracture(model.features[package.entity_id],package.tier) if package.entity_id else 0 for package in packages);self.tier_two_limit=int(model.projection["core"]["overload"]["tier_two_limit_per_attack_action"]);self._roll_probability_cache={}
@@ -264,9 +301,9 @@ def _validate_damage_policy_contract(model:DamageAuthorityModel,config:dict[str,
     if config["kv_profile"]["attack_replacement_policy"]!="all_manifested_strikes":raise ValueError("Unsupported KV attack replacement policy")
 
 
-def _kv_dpr(model:DamageAuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,cluster_size:int)->tuple[float,float,str]:
+def _kv_dpr(model:DamageAuthorityModel,config:dict[str,Any],target:DamageTarget,level:int,discipline_id:str,cluster_size:int)->tuple[float,float,str]:
     _validate_damage_policy_contract(model,config)
-    level=target.level;profile=config["kv_profile"];psi_modifier=int(profile["psionic_ability_modifier"]);pb=model.progression("proficiency_bonus",level);strike_die=model.progression("manifested_strike_die",level);psi_pool=model.progression("psi_points",level);progression=level_config(config,level);attacks_per_action=int(progression["attacks_per_action"]);action_slots=tuple(int(value) for value in progression["action_slots_by_round"]);studied_enabled=bool(progression["studied_attacks"]);prowess_enabled=bool(progression["combat_prowess"]);attack_bonus=model.kv_attack_bonus(level,psi_modifier)+int(profile["archery_attack_bonus"])
+    profile=config["kv_profile"];psi_modifier=int(profile["psionic_ability_modifier"]);pb=model.progression("proficiency_bonus",level);strike_die=model.progression("manifested_strike_die",level);psi_pool=model.progression("psi_points",level);progression=level_config(config,level);attacks_per_action=int(progression["attacks_per_action"]);action_slots=tuple(int(value) for value in progression["action_slots_by_round"]);studied_enabled=bool(progression["studied_attacks"]);prowess_enabled=bool(progression["combat_prowess"]);attack_bonus=model.kv_attack_bonus(level,psi_modifier)+int(profile["archery_attack_bonus"])
     mastery=model.projection["core"]["overload"]["mastery"];hp=int(profile["hit_point_model"]["first_level_base"])+int(profile["constitution_modifier"])+(level-1)*(int(profile["hit_point_model"]["later_level_average"])+int(profile["constitution_modifier"]));blood_budget=int(hp*float(profile["blood_tax_hp_fraction"]));mastery_uses=int(mastery["uses_per_rest"]) if level>=int(mastery["minimum_level"]) else 0
     exclusions={item["entity_id"] for item in config["damage_matrix"]["excluded_stateful_features"]}
     for entity_id in exclusions:
@@ -310,10 +347,10 @@ def _die_distribution(count:int,sides:int,minimum:int|None=None)->dict[int,float
     return distribution
 
 
-def _profile_damage(target:Target,damage_type:str,value:int)->int:
+def _profile_damage(target:DamageTarget,damage_type:str,value:int,ignore_resistance:bool=False)->int:
     damage_type=damage_type.lower()
     if damage_type in target.damage_immunities:return 0
-    resistant=damage_type in target.damage_resistances
+    resistant=damage_type in target.damage_resistances and not ignore_resistance
     vulnerable=damage_type in target.damage_vulnerabilities
     if resistant and vulnerable:return value
     if resistant:return value//2
@@ -321,7 +358,7 @@ def _profile_damage(target:Target,damage_type:str,value:int)->int:
     return value
 
 
-def _expected_packet(target:Target,damage_type:str,dice:list[tuple[int,int,int|None]],flat:int=0)->float:
+def _expected_packet(target:DamageTarget,damage_type:str,dice:list[tuple[int,int,int|None]],flat:int=0)->float:
     distribution={0:1.0}
     for count,sides,minimum in dice:
         die_distribution=_die_distribution(count,sides,minimum)
@@ -341,10 +378,10 @@ def _natural_probabilities(advantage:bool)->dict[int,float]:
     return dict(values)
 
 
-def _eldritch_knight_dpr(model:DamageAuthorityModel,config:dict[str,Any],row:dict[str,Any],target:Target)->float:
+def _eldritch_knight_dpr(model:DamageAuthorityModel,config:dict[str,Any],row:dict[str,Any],target:DamageTarget,level:int)->float:
     policy=row["tactical_policy"];expected_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","true_strike_choice_timing":"before_attack_roll","decision_information":"observed_state_only","true_strike_use_count":"exactly_configured_per_attack_action"}
     if policy!=expected_policy:raise ValueError("Unsupported Eldritch Knight tactical policy")
-    level=target.level;progression=level_config(config,level);pb=model.progression("proficiency_bonus",level)
+    progression=level_config(config,level);pb=model.progression("proficiency_bonus",level)
     studied_enabled=bool(progression["studied_attacks"]);prowess_enabled=bool(progression["combat_prowess"]);attacks=int(progression["attacks_per_action"]);actions_by_round=tuple(int(value) for value in progression["action_slots_by_round"])
     weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(level)]);regular_ability=int(row["regular_attack_ability_modifier"]);true_ability=int(row["true_strike_ability_modifier_by_level"][str(level)])
     true_damage=row["true_strike_damage_by_level"][str(level)];true_count=int(true_damage["count"]);true_sides=int(true_damage["sides"])
@@ -387,17 +424,17 @@ def _eldritch_knight_dpr(model:DamageAuthorityModel,config:dict[str,Any],row:dic
     return optimize(0,0,attacks,true_uses,False,prowess_enabled)/3.0
 
 
-def _battle_master_damage(row:dict[str,Any],target:Target,pb:int,level:int,critical:bool,maneuver_sides:int,part_of_action:bool)->float:
+def _battle_master_damage(row:dict[str,Any],target:DamageTarget,pb:int,level:int,critical:bool,maneuver_sides:int,part_of_action:bool)->float:
     weapon=row["weapon"];weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(level)]);ability=int(row["ability_modifier"]);dice=[(int(weapon["count"])*(2 if critical else 1),int(weapon["sides"]),3 if weapon["great_weapon_fighting"] else None)]
     if maneuver_sides:dice.append((2 if critical else 1,maneuver_sides,None))
     gwm_bonus=pb if row["great_weapon_master_attack_action_bonus"]=="proficiency_bonus" and part_of_action else 0
     return _expected_packet(target,weapon["damage_type"],dice,ability+weapon_bonus+gwm_bonus)
 
 
-def _battle_master_dpr(model:DamageAuthorityModel,config:dict[str,Any],row:dict[str,Any],target:Target)->float:
+def _battle_master_dpr(model:DamageAuthorityModel,config:dict[str,Any],row:dict[str,Any],target:DamageTarget,level:int)->float:
     policy=row["tactical_policy"];expected_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","maneuver_choice_timing":"after_observed_attack_roll_result","on_hit_die_effect":"damage","on_miss_die_effect":"attack_roll_bonus","maneuver_die_consumption":"on_use_before_die_result","maximum_maneuver_dice_per_attack":1,"relentless_die_options":"same_as_superiority_die","relentless_uses_per_turn":1,"relentless_superiority_pool_cost":0,"relentless_refresh":"start_of_next_turn","hew_choice_timing":"after_observed_critical"}
     if policy!=expected_policy:raise ValueError("Unsupported Battle Master tactical policy")
-    level=target.level;progression=level_config(config,level);pb=model.progression("proficiency_bonus",level);studied_enabled=bool(progression["studied_attacks"]);prowess_enabled=bool(progression["combat_prowess"]);attacks=int(progression["attacks_per_action"]);relentless_per_turn=int(policy["relentless_uses_per_turn"]) if level>=int(row["relentless_minimum_level"]) else 0;relentless_pool_cost=int(policy["relentless_superiority_pool_cost"]);hew_enabled=bool(row["hew_critical_bonus_attack_once_per_round"]);pool=int(row["superiority_pool_by_level"][str(level)]);prowess_after_failed_bonus=bool(config["fighter_mechanics"]["combat_prowess"]["eligible_after_failed_attack_roll_bonus"])
+    progression=level_config(config,level);pb=model.progression("proficiency_bonus",level);studied_enabled=bool(progression["studied_attacks"]);prowess_enabled=bool(progression["combat_prowess"]);attacks=int(progression["attacks_per_action"]);relentless_per_turn=int(policy["relentless_uses_per_turn"]) if level>=int(row["relentless_minimum_level"]) else 0;relentless_pool_cost=int(policy["relentless_superiority_pool_cost"]);hew_enabled=bool(row["hew_critical_bonus_attack_once_per_round"]);pool=int(row["superiority_pool_by_level"][str(level)]);prowess_after_failed_bonus=bool(config["fighter_mechanics"]["combat_prowess"]["eligible_after_failed_attack_roll_bonus"])
     attacks_by_round=tuple(int(actions)*attacks for actions in progression["action_slots_by_round"]);weapon=row["weapon"];weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(level)]);ability=int(row["ability_modifier"]);attack_bonus=ability+pb+weapon_bonus;superiority_sides=int(row["superiority_die_by_level"][str(level)]);relentless_sides=int(row["relentless_die"]);graze=float(_profile_damage(target,weapon["damage_type"],int(row["graze_damage"])))
 
     @lru_cache(maxsize=None)
@@ -449,55 +486,109 @@ def _battle_master_dpr(model:DamageAuthorityModel,config:dict[str,Any],row:dict[
     return optimize(0,attacks_by_round[0],False,pool,prowess_enabled,relentless_per_turn,hew_enabled)/3.0
 
 
-def _comparator_dpr(model:DamageAuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,comparator_id:str)->float:
+def _comparator_dpr(model:DamageAuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:DamageTarget,level:int,comparator_id:str)->float:
     row=comparators["damage"][comparator_id]
-    return _battle_master_dpr(model,config,row,target) if comparator_id=="battle_master" else _eldritch_knight_dpr(model,config,row,target)
+    return _battle_master_dpr(model,config,row,target,level) if comparator_id=="battle_master" else _eldritch_knight_dpr(model,config,row,target,level)
 
 
-def _discipline_damage_rows(arguments:tuple[DamageAuthorityModel,dict[str,Any],Target,str,list[int],float,float])->list[dict[str,Any]]:
-    model,config,target,discipline,clusters,ek,bm=arguments;kv_cache={};detail=[]
+def _discipline_damage_rows(arguments:tuple[DamageAuthorityModel,dict[str,Any],RosterEntry,DamageTarget,str,list[int],float,float])->list[dict[str,Any]]:
+    model,config,entry,target,discipline,clusters,ek,bm=arguments;kv_cache={};detail=[];level=entry.benchmark_level
     for cluster in clusters:
-        signature=_cluster_signature(model,config,discipline,target.level,int(cluster))
-        if signature not in kv_cache:kv_cache[signature]=_kv_dpr(model,config,target,discipline,int(cluster))
-        primary,aggregate,selection=kv_cache[signature];detail.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"Cluster Size":cluster,"KV Primary DPR":primary,"KV Aggregate DPR":aggregate,"Eldritch Knight DPR":ek,"Battle Master DPR":bm,"Selection":selection})
+        signature=_cluster_signature(model,config,discipline,level,int(cluster))
+        if signature not in kv_cache:kv_cache[signature]=_kv_dpr(model,config,target,level,discipline,int(cluster))
+        primary,aggregate,selection=kv_cache[signature];detail.append({"Level":level,"Creature ID":target.creature_id,"Target":target.name,"Target Profile ID":entry.profile_id,"Target Profile SHA-256":entry.profile_sha256,"Target Weight Numerator":entry.weight.numerator,"Target Weight Denominator":entry.weight.denominator,"Discipline":discipline,"Cluster Size":cluster,"KV Primary DPR":primary,"KV Aggregate DPR":aggregate,"Eldritch Knight DPR":ek,"Battle Master DPR":bm,"Selection":selection})
     return detail
 
 
-def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,trials:int,seed:int,write_detail:bool=True,write_headline:bool=True,workers:int=1)->dict[str,Any]:
-    model=DamageAuthorityModel.load(authority);config=load_config();comparators=load_comparators();targets=load_targets(levels=levels,limit=target_limit);clusters=config["methodology"]["cluster_sizes"]
+def _canonical_sha256(value:Any)->str:
+    encoded=json.dumps(value,sort_keys=True,separators=(",",":"),ensure_ascii=False).encode("utf-8")
+    return hashlib.sha256(encoded).hexdigest()
+
+
+def evaluator_implementation_sha256(paths:tuple[tuple[str,Path],...]=DAMAGE_EVALUATOR_IMPLEMENTATION_PATHS)->str:
+    """Bind every maintained Python module that can change damage results."""
+    labels=[label for label,_ in paths]
+    if labels!=sorted(labels) or len(labels)!=len(set(labels)):raise ValueError("Damage evaluator implementation paths must have unique sorted labels")
+    return _canonical_sha256([{"path":label,"sha256":file_sha256(path)} for label,path in paths])
+
+
+def _detail_scope_evidence(row:dict[str,Any])->dict[str,str]:
+    evidence:dict[str,str]={}
+    for prefix,value_field in (("Primary Target","KV Primary DPR"),("Aggregate Cluster","KV Aggregate DPR")):
+        scope=damage_matrix_row({},float(row[value_field]),float(row["Eldritch Knight DPR"]),float(row["Battle Master DPR"]))
+        for field in ("KV as % of EK","KV as % of BM","Lower Comparator","Upper Comparator","Lower Boundary","Upper Boundary","Band","Boundary Delta %"):
+            evidence[f"{prefix} {field}"]=scope[field]
+    return evidence
+
+
+def _projection_digest(entries:list[RosterEntry],targets:list[DamageTarget])->str:
+    if not entries or len(entries)!=len(targets):raise ValueError("Damage target projections must cover a non-empty active roster profile exactly")
+    for entry,target in zip(entries,targets,strict=True):
+        if entry.creature_id!=target.creature_id or entry.catalog_sha256!=target.catalog_sha256:raise ValueError("Damage target projections do not match active roster identities")
+        target.validate_identity()
+    return _canonical_sha256({"projection_id":DAMAGE_PROJECTION_ID,"projection_version":DAMAGE_PROJECTION_VERSION,"profile_id":entries[0].profile_id,"profile_sha256":entries[0].profile_sha256,"targets":[{"creature_id":entry.creature_id,"target_sha256":target.target_sha256} for entry,target in zip(entries,targets,strict=True)]})
+
+
+def load_damage_input_bundle(authority:Path,levels:set[int],trials:int,seed:int)->DamageInputBundle:
+    model=DamageAuthorityModel.load(authority);config=load_config();comparators=load_comparators();catalog=load_catalog();requirements=load_consumer_requirements(catalog=catalog);profile_id=str(config["methodology"]["target_profile_id"]);entries=load_profile(profile_id,levels,catalog=catalog);targets=[project_damage_target(entry.creature_id,catalog=catalog,requirements=requirements) for entry in entries]
+    if any(entry.profile_id!=entries[0].profile_id or entry.profile_sha256!=entries[0].profile_sha256 or entry.roster_sha256!=entries[0].roster_sha256 for entry in entries):raise ValueError("Active target profile identities are inconsistent")
+    projection_sha256=_projection_digest(entries,targets)
+    identity={"damage_result_contract_version":DAMAGE_RESULT_CONTRACT_VERSION,"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"catalog_contract_version":targets[0].catalog_contract_version,"catalog_sha256":targets[0].catalog_sha256,"roster_contract_version":ROSTER_CONTRACT_VERSION,"roster_sha256":entries[0].roster_sha256,"target_profile_id":entries[0].profile_id,"target_profile_version":entries[0].profile_version,"target_profile_sha256":entries[0].profile_sha256,"damage_target_projection_id":DAMAGE_PROJECTION_ID,"damage_target_projection_version":DAMAGE_PROJECTION_VERSION,"damage_target_projection_sha256":projection_sha256,"consumer_requirements_version":CONSUMER_REQUIREMENTS_VERSION,"damage_consumer_requirements_sha256":requirements.sha256_for("damage_target"),"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"evaluator":DAMAGE_EVALUATOR_ID,"evaluator_implementation_sha256":evaluator_implementation_sha256(),"trials":trials,"seed":seed,"trial_seed_role":"historical_compatibility_metadata","aggregation":"exact rational target-profile weights; percentages from displayed aggregates","status":config["methodology"]["status"]}
+    return DamageInputBundle(model,config,comparators,tuple(entries),tuple(targets),identity)
+
+
+def _write_run_manifest(output_dir:Path,inputs:dict[str,Any],outputs:dict[str,Path],detail_rows:int,matrix_rows:int)->Path:
+    manifest={"format_version":1,"damage_result_contract_version":DAMAGE_RESULT_CONTRACT_VERSION,"inputs":inputs,"outputs":{name:{"file":path.name,"sha256":file_sha256(path)} for name,path in sorted(outputs.items())},"row_counts":{"detail":detail_rows,"matrix":matrix_rows}}
+    path=output_dir/RUN_MANIFEST_FILENAME
+    path.write_text(json.dumps(manifest,indent=2,sort_keys=True)+"\n",encoding="utf-8")
+    return path
+
+
+def run(authority:Path,output_dir:Path,levels:set[int],trials:int,seed:int,write_detail:bool=True,write_headline:bool=True,workers:int=1)->dict[str,Any]:
+    inputs=load_damage_input_bundle(authority,levels,trials,seed);model=inputs.model;config=inputs.config;comparators=inputs.comparators;entries=list(inputs.entries);targets=list(inputs.targets);input_identity=inputs.identity;projection_sha256=str(input_identity["damage_target_projection_sha256"]);clusters=config["methodology"]["cluster_sizes"]
     arguments=[]
-    for target in targets:
-        ek=_comparator_dpr(model,config,comparators,target,"eldritch_knight");bm=_comparator_dpr(model,config,comparators,target,"battle_master")
-        for discipline in model.disciplines:arguments.append((model,config,target,discipline,[int(cluster) for cluster in clusters],ek,bm))
+    for entry,target in zip(entries,targets,strict=True):
+        level=entry.benchmark_level;ek=_comparator_dpr(model,config,comparators,target,level,"eldritch_knight");bm=_comparator_dpr(model,config,comparators,target,level,"battle_master")
+        for discipline in model.disciplines:arguments.append((model,config,entry,target,discipline,[int(cluster) for cluster in clusters],ek,bm))
     if workers==1:discipline_rows=map(_discipline_damage_rows,arguments)
     else:
         with ProcessPoolExecutor(max_workers=workers,max_tasks_per_child=1) as executor:discipline_rows=executor.map(_discipline_damage_rows,arguments)
-    detail=[row for rows in discipline_rows for row in rows]
+    detail=[{**row,**_detail_scope_evidence(row)} for rows in discipline_rows for row in rows]
     slug=model.rules_version.replace(".","-");output_dir.mkdir(parents=True,exist_ok=True)
-    source_columns={"Rules Version":model.rules_version,"Authority SHA-256":model.authority_sha256,"Roster SHA-256":file_sha256(DEFAULT_ROSTER),"Config SHA-256":file_sha256(DEFAULT_CONFIG),"Comparator Config SHA-256":file_sha256(DEFAULT_COMPARATORS),**NOTICE_COLUMNS}
+    source_columns={**provenance_columns(input_identity),**NOTICE_COLUMNS}
+    output_paths:dict[str,Path]={}
     if write_detail:
         detail_rows=[{**row,**source_columns} for row in detail]
-        with (output_dir/f"kv-{slug}-damage-detail.csv").open("w",newline="",encoding="utf-8") as stream:
+        detail_path=output_dir/f"kv-{slug}-damage-detail.csv"
+        with detail_path.open("w",newline="",encoding="utf-8") as stream:
             writer=csv.DictWriter(stream,fieldnames=list(detail_rows[0]));writer.writeheader();writer.writerows(detail_rows)
+        output_paths["detail_csv"]=detail_path
     groups:dict[tuple[int,str,int],list[dict[str,Any]]]=defaultdict(list)
     for row in detail:groups[(int(row["Level"]),str(row["Discipline"]),int(row["Cluster Size"]))].append(row)
     rows=[]
     for (level,discipline,cluster),values in sorted(groups.items()):
+        weights=[Fraction(int(item["Target Weight Numerator"]),int(item["Target Weight Denominator"])) for item in values];weight_total=sum(weights,Fraction())
+        if weight_total!=1:raise ValueError(f"Active target-profile weights for level {level} do not sum to one")
         for scope,field in (("primary-target DPR","KV Primary DPR"),("aggregate cluster DPR","KV Aggregate DPR")):
-            mean=lambda key:sum(float(item[key]) for item in values)/len(values)
-            rows.append(damage_matrix_row({"Level":level,"Discipline":discipline,"Cluster Size":cluster,"Damage Scope":scope,"Profile":config["kv_profile"]["id"]},mean(field),mean("Eldritch Knight DPR"),mean("Battle Master DPR")))
-    provenance={"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"roster_sha256":file_sha256(DEFAULT_ROSTER),"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"trials":trials,"seed":seed,"evaluator":"exact_analytical_enumeration","trial_seed_role":"historical_compatibility_metadata","aggregation":"equal-weight roster means; percentages from displayed aggregates","status":config["methodology"]["status"]}
-    paths=write_damage_matrix(output_dir,model.rules_version,rows,provenance) if write_headline else {}
-    return {"rules_version":model.rules_version,"detail_rows":len(detail),"matrix_rows":len(rows),"paths":paths}
+            weighted=lambda key:sum(float(weight)*float(item[key]) for weight,item in zip(weights,values,strict=True))
+            rows.append(damage_matrix_row({"Level":level,"Discipline":discipline,"Cluster Size":cluster,"Damage Scope":scope,"Profile":config["kv_profile"]["id"]},weighted(field),weighted("Eldritch Knight DPR"),weighted("Battle Master DPR")))
+    if write_headline:
+        matrix_paths=write_damage_matrix(output_dir,model.rules_version,rows,input_identity)
+        output_paths.update({f"matrix_{name}":path for name,path in matrix_paths.items()})
+    manifest_path=_write_run_manifest(output_dir,input_identity,output_paths,len(detail),len(rows));output_paths["manifest"]=manifest_path
+    return {"rules_version":model.rules_version,"detail_rows":len(detail),"matrix_rows":len(rows),"paths":output_paths,"inputs":input_identity}
 
 
 def main()->None:
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--authority",type=Path,default=DEFAULT_AUTHORITY);parser.add_argument("--output-dir",type=Path,required=True);parser.add_argument("--levels",default="7,11,15,20");parser.add_argument("--target-limit",type=int);parser.add_argument("--trials",type=int);parser.add_argument("--seed",type=int);parser.add_argument("--workers",type=int,default=1);parser.add_argument("--validate-only",action="store_true");parser.add_argument("--matrix-only",action="store_true");parser.add_argument("--no-matrix",action="store_true");args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--authority",type=Path,default=DEFAULT_AUTHORITY);parser.add_argument("--output-dir",type=Path,required=True);parser.add_argument("--levels",default="7,11,15,20");parser.add_argument("--trials",type=int);parser.add_argument("--seed",type=int);parser.add_argument("--workers",type=int,default=1);parser.add_argument("--validate-only",action="store_true");parser.add_argument("--matrix-only",action="store_true");parser.add_argument("--no-matrix",action="store_true");args=parser.parse_args()
     model=DamageAuthorityModel.load(args.authority)
-    if args.validate_only:load_config();load_comparators();print(f"Validated Kinetic Vanguard {model.rules_version} authority {model.authority_sha256} and isolated comparator config");return
+    if args.validate_only:
+        config=load_config();load_comparators();catalog=load_catalog();requirements=load_consumer_requirements(catalog=catalog);entries=load_profile(str(config["methodology"]["target_profile_id"]),catalog=catalog)
+        for entry in entries:project_damage_target(entry.creature_id,catalog=catalog,requirements=requirements)
+        print(f"Validated Kinetic Vanguard {model.rules_version} authority {model.authority_sha256}, catalog {catalog.sha256}, and {len(entries)} headline DamageTarget projections");return
     config=load_config();trials=args.trials if args.trials is not None else int(config["methodology"]["damage_default_trials"]);seed=args.seed if args.seed is not None else int(config["methodology"]["damage_seed"]);levels={int(value) for value in args.levels.split(",")}
-    if trials<=0 or args.workers<=0 or (args.target_limit is not None and args.target_limit<=0):parser.error("--trials, --workers, and --target-limit must be positive")
-    result=run(args.authority,args.output_dir,levels,args.target_limit,trials,seed,not args.matrix_only,not args.no_matrix,args.workers);print(f"Damage harness wrote {result['detail_rows']} detail rows and {result['matrix_rows']} matrix rows for rules {result['rules_version']}")
+    if trials<=0 or args.workers<=0:parser.error("--trials and --workers must be positive")
+    result=run(args.authority,args.output_dir,levels,trials,seed,not args.matrix_only,not args.no_matrix,args.workers);print(f"Damage harness wrote {result['detail_rows']} detail rows and {result['matrix_rows']} matrix rows for rules {result['rules_version']}")
 
 
 if __name__=="__main__":main()

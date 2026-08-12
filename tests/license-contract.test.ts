@@ -18,6 +18,25 @@ const requiredInputRoles = new Map([
   ["LICENSE-CONTENT", "original_content_license_notice"],
   ["NOTICE.md", "attribution_notice"]
 ]);
+const requiredSrdInventoryRoles = new Map([
+  ["harness/data/srd_creatures.json", "pinned_srd_creature_catalog"],
+  ["harness/data/srd_creature_rosters.json", "pinned_srd_creature_rosters"],
+  ["harness/provenance/srd-creatures.json", "harness_provenance"],
+  ["docs/srd-creature-catalog-audit.md", "harness_documentation"]
+]);
+const retiredSrdInventory = [
+  "harness/data/srd_targets.csv",
+  "harness/data/srd_control_targets.json",
+  "harness/provenance/srd-control-targets.json"
+] as const;
+const retiredTrackedPaths = new Set([
+  "harness/control_targets.py",
+  ...retiredSrdInventory,
+  "harness/tests/test_control_targets.py",
+  "src/control-targets.ts",
+  "tests/control-targets.test.ts"
+]);
+const srdCreatureModification = "Selected source-authored creature facts were transcribed, structured, normalized, assigned deterministic IDs, and dispositioned for maintained consumer contracts. Full stat-block and trait prose is not reproduced.";
 
 const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const staleCustomGrant = "Commercial use requires " + "prior written permission";
@@ -26,7 +45,7 @@ const bsdReservation = "All rights " + "reserved.";
 
 test("repository and generated publication expose the approved component license boundaries", async () => {
   await Promise.all([...requiredLicenseFiles, "docs/licensing-audit.md"].map(path => access(path)));
-  const [{ authority }, licenseIndex, codeLicense, contentLicense, notice, yaml, workflow, promote, inputsText, audit, packageJsonText, packageLockText] = await Promise.all([
+  const [{ authority }, licenseIndex, codeLicense, contentLicense, notice, yaml, workflow, promote, inputsText, audit, srdProvenanceText, packageJsonText, packageLockText] = await Promise.all([
     loadAuthority(),
     readFile("LICENSE.md", "utf8"),
     readFile("LICENSE-CODE", "utf8"),
@@ -37,11 +56,19 @@ test("repository and generated publication expose the approved component license
     readFile("src/promote.ts", "utf8"),
     readFile("build/inputs.json", "utf8"),
     readFile("docs/licensing-audit.md", "utf8"),
+    readFile("harness/provenance/srd-creatures.json", "utf8"),
     readFile("package.json", "utf8"),
     readFile("package-lock.json", "utf8")
   ]);
   const inputs = JSON.parse(inputsText).inputs as Array<{path:string;role:string}>;
   const inputRoles = new Map(inputs.map(input => [input.path, input.role]));
+  const srdProvenance = JSON.parse(srdProvenanceText) as {
+    readonly source: { readonly ruleset: string; readonly official_pdf_url: string };
+    readonly catalog: { readonly file: string };
+    readonly rosters: { readonly file: string };
+    readonly modifications: string;
+    readonly license: string;
+  };
   const packageJson = JSON.parse(packageJsonText), packageLock = JSON.parse(packageLockText);
 
   assert.match(licenseIndex, /component-based licensing/i);
@@ -94,6 +121,20 @@ test("repository and generated publication expose the approved component license
     assert.match(workflow, new RegExp(escaped(path)));
     assert.match(promote, new RegExp(escaped(path)));
   }
+  for (const [path, role] of requiredSrdInventoryRoles) assert.equal(inputRoles.get(path), role, path);
+  for (const path of retiredSrdInventory) assert.equal(inputRoles.has(path), false, path);
+  for (const path of [
+    "harness/data/srd_creatures.json",
+    "harness/data/srd_creature_rosters.json",
+    "harness/provenance/srd-creatures.json"
+  ]) assert.ok(audit.includes(`\`${path}\``), `licensing audit inventories ${path}`);
+  for (const path of retiredSrdInventory) assert.ok(!audit.includes(`\`${path}\``), `licensing audit retires ${path}`);
+  assert.equal(srdProvenance.source.ruleset, "D&D SRD 5.2.1");
+  assert.equal(srdProvenance.source.official_pdf_url, "https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf");
+  assert.equal(srdProvenance.catalog.file, "harness/data/srd_creatures.json");
+  assert.equal(srdProvenance.rosters.file, "harness/data/srd_creature_rosters.json");
+  assert.equal(srdProvenance.modifications, srdCreatureModification);
+  assert.equal(srdProvenance.license, "Creative Commons Attribution 4.0 International (CC BY 4.0)");
   assert.equal(inputRoles.get("tests/license-contract.test.ts"), "test_source");
   assert.equal(packageJson.license, "SEE LICENSE IN LICENSE.md");
   assert.equal(packageLock.packages[""].license, packageJson.license);
@@ -181,7 +222,16 @@ test("tracked licensing language has no stale custom grant or blanket reservatio
   const paths = execFileSync("git", ["ls-files"], { encoding: "utf8" }).trim().split("\n").filter(Boolean);
   for (const path of paths) {
     if (path === "docs/licensing-audit.md") continue;
-    const content = await readFile(path, "utf8");
+    let content: string;
+    try {
+      content = await readFile(path, "utf8");
+    } catch (error) {
+      if ((error as NodeJS.ErrnoException).code === "ENOENT") {
+        assert.ok(retiredTrackedPaths.has(path), `unexpected missing tracked path: ${path}`);
+        continue;
+      }
+      throw error;
+    }
     assert.equal(content.toLowerCase().includes(staleCustomGrant.toLowerCase()), false, path);
     if (content.includes(bsdReservation)) assert.equal(path, "LICENSE-CODE");
   }

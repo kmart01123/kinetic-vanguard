@@ -108,17 +108,18 @@ test("control 2.1 semantic mutations fail closed with focused diagnostics",async
 test("official harness sources and shared parity inputs are declared positive inputs",async()=>{
   const inputs=JSON.parse(await readFile("build/inputs.json","utf8")).inputs as Array<{path:string;role:string}>,paths=inputs.map(input=>input.path);
   for(const required of [
-    "src/harness-authority.ts","src/control-targets.ts","harness/authority.py","harness/control_targets.py",
+    "src/harness-authority.ts","src/creature-catalog.ts","harness/authority.py","harness/creature_catalog.py",
+    "harness/creature_damage_projection.py","harness/creature_control_projection.py",
     "harness/damage_harness.py","harness/damage_report.py","harness/readme_damage.py",
-    "harness/config/benchmark.json","harness/comparators/fighter-subclasses.json",
-    "harness/data/srd_targets.csv","harness/data/srd_control_targets.json",
-    "harness/provenance/damage-review.json","harness/provenance/srd-control-targets.json",
+    "harness/config/benchmark.json","harness/config/creature-consumers.json","harness/comparators/fighter-subclasses.json",
+    "harness/data/srd_creatures.json","harness/data/srd_creature_rosters.json",
+    "harness/provenance/damage-review.json","harness/provenance/damage-delta-v14.1-to-v14.2.json","harness/provenance/srd-creatures.json",
     "harness/tests/test_authority_v2.py","harness/tests/test_authority_v2_parity.py",
-    "harness/tests/test_control_targets.py","harness/tests/test_harness.py","harness/tests/test_readme_damage.py",
+    "harness/tests/test_creature_catalog.py","harness/tests/test_creature_rosters.py","harness/tests/test_target_projections.py","harness/tests/test_harness.py","harness/tests/test_readme_damage.py",
     "tests/harness-authority.test.ts","tests/control-authority-v2-parity.test.ts",
-    "tests/control-targets.test.ts","tests/fixtures/control-authority-v2-parity.json",
+    "tests/creature-catalog.test.ts","tests/fixtures/control-authority-v2-parity.json",
   ])assert.ok(paths.includes(required),required);
-  for(const retired of ["harness/control_harness.py","harness/readme_matrices.py","harness/comparison_report.py","harness/provenance/legacy-import.json"])assert.equal(paths.includes(retired),false,retired);
+  for(const retired of ["harness/control_harness.py","harness/readme_matrices.py","harness/comparison_report.py","harness/provenance/legacy-import.json","harness/control_targets.py","src/control-targets.ts","harness/data/srd_targets.csv","harness/data/srd_control_targets.json","harness/provenance/srd-control-targets.json"])assert.equal(paths.includes(retired),false,retired);
   assert.ok(paths.every(path=>!path.startsWith(".codex-import/")&&!path.endsWith(".zip")&&!path.includes("harness/results")));
   const [ignore,workflow,packageJson]=await Promise.all([readFile(".gitignore","utf8"),readFile(".github/workflows/ci.yml","utf8"),readFile("package.json","utf8")]);assert.match(ignore,/^\.codex-import\/$/m);assert.match(ignore,/^harness\/results\/$/m);assert.match(workflow,/npm run test:harness/);assert.match(workflow,/npm run harness:validate/);assert.match(packageJson,/"test:harness"/);
 });

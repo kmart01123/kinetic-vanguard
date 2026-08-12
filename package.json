@@ -20,11 +20,11 @@
     "test:determinism": "tsx src/determinism.ts",
     "control:engine:validate": "python3 -m harness.control_engine --validate-only",
     "control:engine:fixtures": "python3 -m unittest harness.tests.test_control_engine_fixtures",
-    "harness:validate": "python3 -m harness.damage_harness --output-dir /tmp/kv-harness-validation --validate-only && python3 -m harness.authority --projection-version 2.1.0 --require-benchmark-ready && python3 -m harness.control_targets && python3 -m harness.control_engine --validate-only",
+    "harness:validate": "python3 -m harness.creature_catalog && python3 -m harness.damage_harness --output-dir /tmp/kv-harness-validation --validate-only && python3 -m harness.authority --projection-version 2.1.0 --require-benchmark-ready && python3 -m harness.control_engine --validate-only",
     "test:harness": "python3 -m unittest discover -s harness/tests -p 'test_*.py'",
     "harness:damage": "python3 -m harness.damage_harness",
-    "readme:damage": "python3 -m harness.readme_damage --write --workers 4",
-    "readme:damage:check": "python3 -m harness.readme_damage --check --workers 4"
+    "readme:damage": "python3 -m harness.readme_damage --write",
+    "readme:damage:check": "python3 -m harness.readme_damage --check"
   },
   "dependencies": {
     "ajv": "8.20.0",

@@ -9,3 +9,9 @@ The v14.1 Control Reliability evaluator, flattened control mechanics, comparator
 Maintained work now uses the damage-only commands and architecture documented in `README.md`. Control Authority v2 is a separate structured redesign contract and must not be populated from this historical mapping.
 
 The surviving damage review provenance is recorded in `provenance/damage-review.json`. No legacy import, compatibility alias, parity gate, or golden output is a maintained migration path.
+
+## v14.2 creature-input retirement boundary
+
+Issue #55 replaced the current-development `data/srd_targets.csv`, `data/srd_control_targets.json`, their exact level/name join, and `control_targets.py`/TypeScript twin with one 330-record catalog, separate deterministic roster profiles, consumer requirements, and sibling thin projections. Before deletion, a private machine comparison against base commit `279bb4edfe0e6a52a7ecae60d39957e3bde56b0f` joined 28/28 historical rows in order and matched 812/812 required consumed fields plus 28/28 CR facts after documented structural normalization.
+
+The old files remain historical evidence through Git and frozen v14.1 refs. They are not copied, aliased, dual-read, or retained as a golden. Maintained work uses common catalog/roster logic in `creature_catalog.py`, sibling projections in `creature_damage_projection.py` and `creature_control_projection.py`, `data/srd_creatures.json`, `data/srd_creature_rosters.json`, `config/creature-consumers.json`, and `provenance/srd-creatures.json`. Neither sibling restores or aliases the retired v14.1 control supplement, and live scenario state stays outside these static records and projections.

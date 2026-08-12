@@ -1,5 +1,5 @@
 {
-  "format_version": 1,
+  "format_version": 2,
   "methodology": {
     "status": "REVIEWED_WITH_DOCUMENTED_DIFFERENCES",
     "historical_source": "Kinetic Vanguard v12.1.0 carry-forward of certified v12.0.0 methodology",
@@ -15,7 +15,8 @@
       3,
       6
     ],
-    "target_weighting": "equal_weight_within_level",
+    "target_profile_id": "srd521_headline_source_diversity_v1",
+    "target_weighting": "explicit_rational_profile_weights",
     "target_death": false,
     "ally_turns": false,
     "legal_positioning_assumed": true,

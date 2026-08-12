@@ -16,16 +16,18 @@ Version 14.0.0 introduced the deterministic offline Calculator, advanced the aut
 
 Version 14.1.0 restored damage and Control Reliability benchmark evidence. Those frozen results remain reproducible from the release, tag, release branch, evidence assets, and Git history.
 
-Version 14.2.0 development retires the superseded Control Reliability implementation from current `main`. The maintained damage benchmark now has an explicit damage-authority boundary; Control Authority v2 remains separate infrastructure for the redesign work and does not publish a current control result.
+Version 14.2.0 development retires the superseded Control Reliability implementation from current `main`. One authoritative SRD 5.2.1 creature catalog now feeds separate source-only roster profiles and thin damage/control projections; the old CSV and control supplement are retired. The maintained damage benchmark has an explicit damage-authority boundary, while Control Authority v2 remains separate infrastructure for the redesign work and does not publish a current control result.
 
 <!-- BEGIN GENERATED DAMAGE MATRIX -->
 ## Damage benchmark snapshot
 
 **Current canonical damage authority:** rules **v14.2.0**.
 
-Profile: `official_default_25_percent_hp`.
+Kinetic Vanguard profile: `official_default_25_percent_hp`.
 
-Numerical-review basis: reviewed rules **v14.1.0** evidence (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`). Snapshot values are carried forward from that reviewed evidence and were not regenerated for **v14.2.0**. No fresh **v14.2.0** full-roster run, numerical certification, or Monte Carlo certification was performed. Reason: No intentional change to damage-relevant mechanics or numerical evaluator semantics.
+Target profile: `srd521_headline_source_diversity_v1` (47 source-ordered targets).
+
+A corrected-contract replacement exact analytical run for **v14.2.0** used all 47 targets in `srd521_headline_source_diversity_v1`. It replaces the invalidated pre-merge comparison snapshot (`invalidated_premerge_provenance_boundary_correction`; prior manifest SHA-256 `a6ad2a6ca1b56c08ce95668f0825d2959d7b8f3ea8dd2f10b498d3536a25e1b8`), while the independently reviewed rules **v14.1.0** evidence remains the review basis (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`). No fresh independent numerical or Monte Carlo certification is claimed. Run-manifest SHA-256: `3986173ebb182c809e0d977ae4f24124b5fa9ffba37b2332492e496b54cf1b98`.
 
 Battle Master and Eldritch Knight define the comparison envelope. `IDEAL` means Kinetic Vanguard falls between the two damage results, inclusive. `COLD` is below both; `HOT` is above both. The percentage on COLD and HOT cells is the signed distance outside the nearest envelope boundary. `N/A` is reserved for a comparison that cannot be evaluated.
 
@@ -34,11 +36,11 @@ This single-target view is primary-target DPR at cluster size 1. README cells co
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
 | 7 | IDEAL | IDEAL | IDEAL | IDEAL |
-| 11 | COLD (-9.75%) | IDEAL | IDEAL | IDEAL |
-| 15 | IDEAL | IDEAL | IDEAL | IDEAL |
-| 20 | COLD (-40.35%) | IDEAL | COLD (-9.30%) | COLD (-14.31%) |
+| 11 | COLD (-18.76%) | IDEAL | IDEAL | IDEAL |
+| 15 | COLD (-5.70%) | IDEAL | IDEAL | COLD (-6.12%) |
+| 20 | COLD (-35.69%) | IDEAL | COLD (-14.10%) | COLD (-15.70%) |
 
-Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the [maintained damage harness guide](harness/README.md), [methodology configuration](harness/config/benchmark.json), [SRD target roster](harness/data/srd_targets.csv), and [comparator assumptions](harness/comparators/fighter-subclasses.json).
+Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the [maintained damage harness guide](harness/README.md), [methodology configuration](harness/config/benchmark.json), [SRD creature catalog audit](docs/srd-creature-catalog-audit.md), and [comparator assumptions](harness/comparators/fighter-subclasses.json).
 
 Battle Master and Eldritch Knight are referenced solely as unofficial third-party comparative benchmarks. The Kinetic Vanguard project is not affiliated with or endorsed by Wizards of the Coast. No project license purports to grant rights in Wizards-owned material outside the System Reference Document. See [`LICENSE.md`](LICENSE.md) for component boundaries and [`NOTICE.md`](NOTICE.md) for attribution and notices.
 <!-- END GENERATED DAMAGE MATRIX -->
@@ -80,10 +82,10 @@ npm run test:determinism
 npm run test:layout
 npm run harness:validate
 npm run test:harness
-npm run readme:damage:check
+npm run readme:damage:check -- --report-input /path/to/corrected-contract-run/run-manifest.json
 ```
 
-The optional full-roster command is `npm run harness:damage -- --output-dir harness/results/damage`. Generated results are ignored. See `harness/README.md` for methodology, provenance, damage-matrix interpretation, and the distinction between current authority and its durable numerical-review basis.
+The optional full-roster command is `npm run harness:damage -- --output-dir harness/results/damage`. It writes a provenance-bearing run manifest beside generated outputs. Reuse that exact manifest with `npm run readme:damage -- --report-input ...` and the check command; neither README command reruns the evaluator. Generated results are ignored. See `harness/README.md` for methodology, provenance, damage-matrix interpretation, and the distinction between current authority and its durable numerical-review basis.
 `npm run build` writes the development publication to `artifacts/KineticVanguard.prototype.html`. It always carries a visible and accessibility-exposed `NON-RELEASE PROTOTYPE` identity.
 
 
@@ -108,7 +110,7 @@ The top-level onboarding authority is canonical and validated but remains outsid
 
 The completed one-time Markdown migration has been retired. Contributors edit `KineticVanguard.yaml` directly; there is no Markdown synchronization step.
 
-The maintained Python damage harness consumes `DamageHarnessProjection`, emitted by the TypeScript YAML loader and semantic validator through `createDamageHarnessProjection`, and loads it through Python's `DamageAuthorityModel`. Kinetic Vanguard mechanics remain exclusively in YAML; project-authored damage methodology remains in `harness/config/`; minimal BM/EK damage comparator parameters remain isolated in `harness/comparators/`; and pinned SRD roster data remains in `harness/data/`.
+The maintained Python damage harness consumes `DamageHarnessProjection`, emitted by the TypeScript YAML loader and semantic validator through `createDamageHarnessProjection`, and loads it through Python's `DamageAuthorityModel`. Kinetic Vanguard mechanics remain exclusively in YAML; project-authored damage methodology remains in `harness/config/`; minimal BM/EK damage comparator parameters remain isolated in `harness/comparators/`; and the shared SRD creature catalog, complete accounting, and roster profiles remain in `harness/data/`. Python owns creature semantics and thin target projections; TypeScript performs only cheap catalog shape/digest/manifest validation.
 
 Control Authority v2 is a separate, fail-closed structured authority contract with shared TypeScript/Python parity coverage. It is preserved for the redesign sequence, but it is not part of the damage projection and does not evaluate or publish a v14.2 control result.
 

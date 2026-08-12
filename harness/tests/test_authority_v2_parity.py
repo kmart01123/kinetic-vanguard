@@ -1,14 +1,12 @@
 from __future__ import annotations
 
 import json
-import tempfile
 import unittest
 from copy import deepcopy
 from pathlib import Path
 from typing import Any
 
 from harness.authority import AuthorityError, load_control_projection_v2, validate_control_projection_v2
-from harness.control_targets import DEFAULT_CONTROL_PROVENANCE, DEFAULT_CONTROL_SUPPLEMENT, load_control_targets
 
 
 CORPUS_PATH = (
@@ -101,43 +99,12 @@ class ControlAuthorityV2ParityTests(unittest.TestCase):
     def setUpClass(cls) -> None:
         cls.projection = load_control_projection_v2()
         cls.corpus = json.loads(CORPUS_PATH.read_text(encoding="utf-8"))
-        cls.supplement = json.loads(DEFAULT_CONTROL_SUPPLEMENT.read_text(encoding="utf-8"))
-        cls.provenance = json.loads(DEFAULT_CONTROL_PROVENANCE.read_text(encoding="utf-8"))
         if cls.corpus.get("version") != 1 or not isinstance(cls.corpus.get("cases"), list):
             raise AssertionError("Control-authority parity corpus must use version 1 with a cases array")
 
     def test_shared_typescript_python_mutation_corpus(self) -> None:
         for case in self.corpus["cases"]:
             with self.subTest(case=case["id"]):
-                if case["target"]["kind"] == "control_targets":
-                    wrapper = {"supplement": deepcopy(self.supplement), "provenance": deepcopy(self.provenance)}
-                    for operation in case["operations"]:
-                        _apply_operation(wrapper, operation)
-                    try:
-                        with tempfile.TemporaryDirectory() as directory:
-                            temporary = Path(directory)
-                            supplement_path = DEFAULT_CONTROL_SUPPLEMENT
-                            provenance_path = DEFAULT_CONTROL_PROVENANCE
-                            if wrapper["supplement"] != self.supplement:
-                                supplement_path = temporary / "srd_control_targets.json"
-                                supplement_path.write_text(json.dumps(wrapper["supplement"]), encoding="utf-8")
-                            if wrapper["provenance"] != self.provenance:
-                                provenance_path = temporary / "srd-control-targets.json"
-                                provenance_path.write_text(json.dumps(wrapper["provenance"]), encoding="utf-8")
-                            load_control_targets(
-                                supplement_path=supplement_path,
-                                provenance_path=provenance_path,
-                            )
-                    except ValueError:
-                        actual_valid = False
-                    else:
-                        actual_valid = True
-                    self.assertEqual(
-                        actual_valid,
-                        case["expected_valid"],
-                        f"Python control-target acceptance diverged for shared parity case {case['id']!r}",
-                    )
-                    continue
                 projection = deepcopy(self.projection)
                 target = _resolve_target(projection["control_authority"], case["target"])
                 for operation in case["operations"]:
