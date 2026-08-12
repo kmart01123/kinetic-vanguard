@@ -7,7 +7,8 @@ import json
 from pathlib import Path
 from typing import Any
 
-from .creature_catalog import DamageTarget, HEADLINE_PROFILE_ID
+from .creature_catalog import HEADLINE_PROFILE_ID
+from .creature_damage_projection import DamageTarget
 
 HARNESS_ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = HARNESS_ROOT / "config" / "benchmark.json"

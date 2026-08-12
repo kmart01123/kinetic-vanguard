@@ -109,6 +109,7 @@ test("official harness sources and shared parity inputs are declared positive in
   const inputs=JSON.parse(await readFile("build/inputs.json","utf8")).inputs as Array<{path:string;role:string}>,paths=inputs.map(input=>input.path);
   for(const required of [
     "src/harness-authority.ts","src/creature-catalog.ts","harness/authority.py","harness/creature_catalog.py",
+    "harness/creature_damage_projection.py","harness/creature_control_projection.py",
     "harness/damage_harness.py","harness/damage_report.py","harness/readme_damage.py",
     "harness/config/benchmark.json","harness/config/creature-consumers.json","harness/comparators/fighter-subclasses.json",
     "harness/data/srd_creatures.json","harness/data/srd_creature_rosters.json",

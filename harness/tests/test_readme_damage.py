@@ -29,11 +29,14 @@ from harness.readme_damage import (
     EXPANDED_ROSTER_BASELINE_EVIDENCE_SHA256,
     END_MARKER,
     FRESH_EXPANDED_ROSTER_REVIEW,
+    INVALIDATED_NUMERICAL_EVIDENCE_ROLE,
+    INVALIDATED_PREMERGE_REVIEW,
     PROVENANCE_FIELDS,
     DamageOutputSha256,
     DamageReviewDisposition,
     DamageRowCounts,
     FreshRunEvidence,
+    InvalidatedRunEvidence,
     MatrixSyncError,
     README_DISCIPLINES,
     VerifiedDamageRun,
@@ -68,7 +71,7 @@ EXPECTED_PROVENANCE_FIELDS = (
     "Provenance Damage Target Projection Version",
     "Provenance Damage Target Projection Sha256",
     "Provenance Consumer Requirements Version",
-    "Provenance Consumer Requirements Sha256",
+    "Provenance Damage Consumer Requirements Sha256",
     "Provenance Config Sha256",
     "Provenance Comparator Config Sha256",
     "Provenance Evaluator",
@@ -187,6 +190,18 @@ def _synthetic_review(
     current = DamageAuthorityModel.load(DEFAULT_AUTHORITY).rules_version
     fresh = disposition == FRESH_EXPANDED_ROSTER_REVIEW
     verified = _synthetic_verified_run() if fresh and verified is None else verified
+    preserve_invalidated = disposition in {
+        INVALIDATED_PREMERGE_REVIEW,
+        FRESH_EXPANDED_ROSTER_REVIEW,
+    }
+    current_review = (
+        load_damage_review_disposition(
+            current,
+            str(load_config()["methodology"]["status"]),
+        )
+        if preserve_invalidated
+        else None
+    )
     return DamageReviewDisposition(
         expanded_roster_baseline_evidence=EXPANDED_ROSTER_BASELINE_EVIDENCE,
         current_rules_version=current,
@@ -198,6 +213,11 @@ def _synthetic_review(
         fresh_monte_carlo_certification=False,
         reason="Synthetic disposition reason.",
         durable_record="Synthetic test record.",
+        invalidated_run_evidence=(
+            current_review.invalidated_run_evidence
+            if current_review is not None
+            else None
+        ),
         fresh_run_evidence=(
             fresh_run_evidence_from_verified(
                 EXPANDED_ROSTER_BASELINE_EVIDENCE,
@@ -411,10 +431,13 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         bundle = _current_damage_bundle()
         manifest_sha256 = "b" * 64
         verified = _synthetic_verified_run(manifest_sha256)
+        review = _synthetic_review(FRESH_EXPANDED_ROSTER_REVIEW, verified)
+        invalidated = review.invalidated_run_evidence
+        self.assertIsNotNone(invalidated)
         rendered = render_damage_region(
             _full_authoritative_rows(),
             model.rules_version,
-            _synthetic_review(FRESH_EXPANDED_ROSTER_REVIEW, verified),
+            review,
             "synthetic_profile",
             str(bundle.identity["target_profile_id"]),
             len(bundle.entries),
@@ -422,8 +445,15 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
             tuple(int(value) for value in config["methodology"]["cluster_sizes"]),
         )
         self.assertIn(
-            f"A fresh exact analytical run for **v{model.rules_version}** used all "
+            "A corrected-contract replacement exact analytical run for "
+            f"**v{model.rules_version}** used all "
             "47 targets in `srd521_headline_source_diversity_v1`.",
+            rendered,
+        )
+        self.assertIn(f"`{INVALIDATED_PREMERGE_REVIEW}`", rendered)
+        self.assertIn(
+            "prior manifest SHA-256 "
+            f"`{invalidated.run_manifest_sha256}`",
             rendered,
         )
         self.assertIn(
@@ -431,6 +461,40 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         )
         self.assertIn(f"Run-manifest SHA-256: `{manifest_sha256}`.", rendered)
         self.assertNotIn("were not regenerated", rendered)
+
+    def test_invalidated_premerge_disposition_is_rendered_as_comparison_only(
+        self,
+    ) -> None:
+        model = DamageAuthorityModel.load(DEFAULT_AUTHORITY)
+        config = load_config()
+        bundle = _current_damage_bundle()
+        review = _synthetic_review(INVALIDATED_PREMERGE_REVIEW)
+        invalidated = review.invalidated_run_evidence
+        self.assertIsNotNone(invalidated)
+        rendered = render_damage_region(
+            _full_authoritative_rows(),
+            model.rules_version,
+            review,
+            "synthetic_profile",
+            str(bundle.identity["target_profile_id"]),
+            len(bundle.entries),
+            "b" * 64,
+            tuple(int(value) for value in config["methodology"]["cluster_sizes"]),
+        )
+        self.assertIn(f"`{INVALIDATED_PREMERGE_REVIEW}`", rendered)
+        self.assertIn(
+            f"Its manifest SHA-256 is `{invalidated.run_manifest_sha256}`.",
+            rendered,
+        )
+        self.assertIn("retained only as comparison evidence", rendered)
+        self.assertIn("no numerical defect has been demonstrated", rendered)
+        self.assertIn(
+            f"No corrected-contract replacement **v{model.rules_version}** "
+            "full-roster run has been performed.",
+            rendered,
+        )
+        self.assertNotIn("replacement exact analytical run", rendered)
+        self.assertNotIn("`" + "b" * 64 + "`", rendered)
 
     def test_review_disposition_rejects_stale_current_or_basis_versions(self) -> None:
         source = json.loads(
@@ -457,7 +521,7 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
                         path,
                     )
 
-    def test_review_loader_accepts_only_coherent_carried_and_fresh_dispositions(
+    def test_review_loader_accepts_only_coherent_review_timeline_dispositions(
         self,
     ) -> None:
         source = json.loads(
@@ -487,6 +551,7 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
                 "fresh_full_roster_run": False,
                 "fresh_numerical_certification": False,
                 "fresh_monte_carlo_certification": False,
+                "invalidated_run_evidence": None,
                 "fresh_run_evidence": None,
             }
         )
@@ -502,6 +567,11 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         fresh_row = fresh["current_development_disposition"]
         fresh_row["review_disposition"] = FRESH_EXPANDED_ROSTER_REVIEW
         fresh_row["fresh_full_roster_run"] = True
+        fresh_row["invalidated_run_evidence"] = deepcopy(
+            source["current_development_disposition"][
+                "invalidated_run_evidence"
+            ]
+        )
         fresh_row["fresh_run_evidence"] = asdict(
             fresh_run_evidence_from_verified(
                 EXPANDED_ROSTER_BASELINE_EVIDENCE,
@@ -516,6 +586,23 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         self.assertFalse(loaded_fresh.fresh_numerical_certification)
         self.assertFalse(loaded_fresh.fresh_monte_carlo_certification)
         self.assertIsInstance(loaded_fresh.fresh_run_evidence, FreshRunEvidence)
+        self.assertIsInstance(
+            loaded_fresh.invalidated_run_evidence,
+            InvalidatedRunEvidence,
+        )
+
+        invalidated = deepcopy(source)
+        loaded_invalidated = load(invalidated)
+        self.assertEqual(
+            loaded_invalidated.review_disposition,
+            INVALIDATED_PREMERGE_REVIEW,
+        )
+        self.assertFalse(loaded_invalidated.fresh_full_roster_run)
+        self.assertIsNone(loaded_invalidated.fresh_run_evidence)
+        self.assertIsInstance(
+            loaded_invalidated.invalidated_run_evidence,
+            InvalidatedRunEvidence,
+        )
 
         invalid_cases = (
             (carried, "fresh_full_roster_run", True, "cannot claim a fresh run"),
@@ -544,6 +631,24 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
                 None,
                 "requires fresh_run_evidence",
             ),
+            (
+                invalidated,
+                "fresh_full_roster_run",
+                True,
+                "cannot claim a fresh run",
+            ),
+            (
+                invalidated,
+                "invalidated_run_evidence",
+                None,
+                "requires invalidated_run_evidence",
+            ),
+            (
+                fresh,
+                "invalidated_run_evidence",
+                None,
+                "must preserve invalidated_run_evidence",
+            ),
         )
         for base, field, value, pattern in invalid_cases:
             with self.subTest(field=field):
@@ -558,6 +663,75 @@ class ReadmeDamageRenderingTests(unittest.TestCase):
         ]["unexpected"] = True
         with self.assertRaisesRegex(MatrixSyncError, "fresh_run_evidence keys"):
             load(unknown_fresh_key)
+
+        unknown_invalidated_key = deepcopy(invalidated)
+        unknown_invalidated_key["current_development_disposition"][
+            "invalidated_run_evidence"
+        ]["unexpected"] = True
+        with self.assertRaisesRegex(MatrixSyncError, "invalidated_run_evidence keys"):
+            load(unknown_invalidated_key)
+
+        rewritten_invalidated = deepcopy(invalidated)
+        rewritten_invalidated["current_development_disposition"][
+            "invalidated_run_evidence"
+        ]["run_manifest_sha256"] = "0" * 64
+        with self.assertRaisesRegex(MatrixSyncError, "preserved pre-correction record"):
+            load(rewritten_invalidated)
+
+    def test_current_invalidated_evidence_preserves_original_run_as_comparison(
+        self,
+    ) -> None:
+        source = json.loads(
+            readme_damage.DAMAGE_REVIEW_PATH.read_text(encoding="utf-8")
+        )
+        pinned = source["pinned_srd"]
+        current = source["current_development_disposition"]
+        invalidated = current["invalidated_run_evidence"]
+        self.assertEqual(current["review_disposition"], INVALIDATED_PREMERGE_REVIEW)
+        self.assertFalse(current["fresh_full_roster_run"])
+        self.assertIsNone(current["fresh_run_evidence"])
+        self.assertEqual(
+            invalidated["invalidation_disposition"],
+            INVALIDATED_PREMERGE_REVIEW,
+        )
+        self.assertEqual(
+            invalidated["numerical_evidence_role"],
+            INVALIDATED_NUMERICAL_EVIDENCE_ROLE,
+        )
+        self.assertFalse(invalidated["numerical_defect_demonstrated"])
+        self.assertEqual(
+            invalidated["run_manifest_sha256"],
+            "a6ad2a6ca1b56c08ce95668f0825d2959d7b8f3ea8dd2f10b498d3536a25e1b8",
+        )
+        self.assertEqual(
+            invalidated["consumer_requirements_sha256"],
+            "b3aebbf3e6a9ec6dcf26b2427bfa607a0b8ee9bd31b288c1372ed489820d971d",
+        )
+        self.assertEqual(
+            invalidated["output_sha256"],
+            {
+                "detail_csv": "6147aca22e5881741628dcdc5527175facd1107b98e66eff4660db852103b1b9",
+                "matrix_csv": "aaa5883bf18ac1ccde6cbb1af21290e5add47c36ec3babba36d95e5101cd1263",
+                "matrix_markdown": "7d8cd1e4316ee28f589b2ad47a1de1418d0c9b80389f0fb2bac9a82467c3c87c",
+                "matrix_html": "963cceba16ac9a1db894e02407d1fa22333215c279425083458af14a92e27639",
+            },
+        )
+        self.assertEqual(
+            pinned["damage_consumer_requirements_sha256"],
+            _current_damage_bundle().identity[
+                "damage_consumer_requirements_sha256"
+            ],
+        )
+        self.assertEqual(
+            pinned["consumer_requirements_registry_sha256"],
+            file_sha256(
+                readme_damage.PROJECT_ROOT
+                / "harness"
+                / "config"
+                / "creature-consumers.json"
+            ),
+        )
+        self.assertNotIn("consumer_requirements_sha256", pinned)
 
     def test_review_loader_pins_exact_v14_1_release_baseline_evidence(self) -> None:
         source = json.loads(
@@ -715,7 +889,11 @@ class VerifiedDamageRunTests(unittest.TestCase):
             self.assertEqual(asdict(verified.row_counts), manifest["row_counts"])
 
     def test_manifest_input_identity_and_output_digests_fail_closed(self) -> None:
-        for field in ("catalog_sha256", "evaluator_implementation_sha256"):
+        for field in (
+            "catalog_sha256",
+            "damage_consumer_requirements_sha256",
+            "evaluator_implementation_sha256",
+        ):
             with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
                 manifest_path, _, manifest = _write_verified_run_fixture(root)
@@ -730,6 +908,24 @@ class VerifiedDamageRunTests(unittest.TestCase):
                         MatrixSyncError, f"stale or foreign: {field}"
                     ):
                         load_verified_damage_run(manifest_path)
+
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            manifest_path, _, manifest = _write_verified_run_fixture(root)
+            manifest["inputs"]["consumer_requirements_sha256"] = manifest[
+                "inputs"
+            ].pop("damage_consumer_requirements_sha256")
+            manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+            with patch.object(
+                readme_damage,
+                "load_damage_input_bundle",
+                return_value=_current_damage_bundle(),
+            ):
+                with self.assertRaisesRegex(
+                    MatrixSyncError,
+                    "consumer_requirements_sha256.*damage_consumer_requirements_sha256",
+                ):
+                    load_verified_damage_run(manifest_path)
 
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -812,6 +1008,8 @@ class DamageReviewRunEvidenceTests(unittest.TestCase):
                 "damage_target_projection_id",
                 "damage_target_projection_version",
                 "damage_target_projection_sha256",
+                "consumer_requirements_version",
+                "damage_consumer_requirements_sha256",
                 "evaluator",
                 "evaluator_implementation_sha256",
                 "output_sha256",
@@ -855,6 +1053,19 @@ class DamageReviewRunEvidenceTests(unittest.TestCase):
                 replace(evidence, target_profile_id="stale_profile"),
                 "target_profile_id",
             ),
+            (
+                "damage requirements",
+                replace(
+                    evidence,
+                    damage_consumer_requirements_sha256="0" * 64,
+                ),
+                "damage_consumer_requirements_sha256",
+            ),
+            (
+                "damage requirements version",
+                replace(evidence, consumer_requirements_version="stale_version"),
+                "consumer_requirements_version",
+            ),
         )
         for label, mutated_evidence, pattern in cases:
             with self.subTest(label=label):
@@ -895,6 +1106,14 @@ class DamageReviewRunEvidenceTests(unittest.TestCase):
                 replace(self.review, review_basis_rules_version="14.0.0"),
                 self.verified,
             )
+
+    def test_invalidated_disposition_cannot_accept_a_report_input(self) -> None:
+        invalidated = _synthetic_review(INVALIDATED_PREMERGE_REVIEW)
+        with self.assertRaisesRegex(
+            MatrixSyncError,
+            "cannot accept report input; a corrected-contract replacement run is required",
+        ):
+            validate_damage_review_run_evidence(invalidated, self.verified)
 
 
 class ReadmeDamageCliTests(unittest.TestCase):

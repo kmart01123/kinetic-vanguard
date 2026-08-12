@@ -6,6 +6,7 @@ import unittest
 from copy import deepcopy
 from fractions import Fraction
 from pathlib import Path
+from types import MappingProxyType
 
 from harness.creature_catalog import (
     CATALOG_CONTRACT_ID,
@@ -16,6 +17,8 @@ from harness.creature_catalog import (
     OFFICIAL_SOURCE_SHA256,
     PASSIVE_TRAIT_REGISTRY_ID,
     PASSIVE_TRAIT_REGISTRY_VERSION,
+    SKILL_IDS,
+    CreatureCatalog,
     CreatureCatalogError,
     canonical_sha256,
     file_sha256,
@@ -68,6 +71,30 @@ class CreatureCatalogTests(unittest.TestCase):
         self.assertEqual(canonical_sha256(self.raw), canonical_sha256(reordered))
         self.assertEqual(self.catalog.sha256, file_sha256(DEFAULT_CATALOG))
 
+    def test_catalog_rejects_mutable_records_with_a_stale_digest(self) -> None:
+        mutable_record = deepcopy(self.raw["creatures"][0])
+        with self.assertRaisesRegex(
+            CreatureCatalogError, "validated catalog loader"
+        ):
+            CreatureCatalog()
+        with self.assertRaisesRegex(TypeError, "unexpected keyword argument"):
+            CreatureCatalog(
+                records=(mutable_record,),
+                by_id=MappingProxyType(
+                    {mutable_record["creature_id"]: mutable_record}
+                ),
+                contract_id=self.catalog.contract_id,
+                contract_version=self.catalog.contract_version,
+                sha256=self.catalog.sha256,
+                source_url=self.catalog.source_url,
+                source_sha256=self.catalog.source_sha256,
+                provenance=self.catalog.provenance,
+            )
+        with self.assertRaises(TypeError):
+            self.catalog.records[0]["abilities"]["strength"]["modifier"] = 99
+        with self.assertRaises(TypeError):
+            self.catalog.records[0]["classification"]["sizes"][0] = "mutable"
+
     def test_provenance_pins_official_source_and_generated_digests(self) -> None:
         provenance = self.catalog.provenance
         self.assertEqual(provenance["source"]["official_pdf_sha256"], OFFICIAL_SOURCE_SHA256)
@@ -110,6 +137,17 @@ class CreatureCatalogTests(unittest.TestCase):
             {"modifier": -2, "score": 13, "advantage": True, "qualifier": None},
         )
 
+    def test_skill_vocabulary_is_closed_and_source_rows_are_canonical(self) -> None:
+        self.assertIn("athletics", SKILL_IDS)
+        self.assertIn("perception", SKILL_IDS)
+        self.assertEqual(len(SKILL_IDS), 18)
+        for creature in self.catalog.records:
+            skill_ids = [item["skill"] for item in creature["skills"]]
+            self.assertEqual(skill_ids, sorted(skill_ids), creature["creature_id"])
+            self.assertEqual(len(skill_ids), len(set(skill_ids)), creature["creature_id"])
+            self.assertTrue(set(skill_ids).issubset(SKILL_IDS))
+            self.assertIsInstance(creature["passive_perception"], int)
+
     def test_ac_hp_movement_senses_communication_defenses_and_gear_sentinels(self) -> None:
         werebear = self.catalog.creature("srd521:werebear")
         self.assertEqual(werebear["armor_class"]["resolution"], "resolved")
@@ -117,7 +155,7 @@ class CreatureCatalogTests(unittest.TestCase):
         self.assertIsInstance(werebear["hit_points"]["hit_dice"], str)
         self.assertEqual(werebear["movement"]["modes"]["climb"][0]["qualifier"], "bear form only")
         swarm = self.catalog.creature("srd521:swarm-of-insects")
-        self.assertEqual(swarm["movement"]["choice_groups"][0]["modes"], ["climb", "fly"])
+        self.assertEqual(swarm["movement"]["choice_groups"][0]["modes"], ("climb", "fly"))
         storm_giant = self.catalog.creature("srd521:storm-giant")
         self.assertTrue(storm_giant["movement"]["hover"])
         self.assertTrue(storm_giant["senses"]["darkvision"])
@@ -195,6 +233,52 @@ class CreatureCatalogTests(unittest.TestCase):
             path.write_text(json.dumps(provenance), encoding="utf-8")
             with self.assertRaisesRegex(CreatureCatalogError, "source digest or identity mismatch"):
                 load_catalog(DEFAULT_CATALOG, path, DEFAULT_ROSTERS)
+
+    def test_missing_or_nonintegral_passive_perception_fails_closed(self) -> None:
+        self.assert_catalog_mutation_rejected(
+            lambda value: value["creatures"][0].pop("passive_perception"),
+            "passive_perception",
+        )
+        self.assert_catalog_mutation_rejected(
+            lambda value: value["creatures"][0].__setitem__(
+                "passive_perception", 10.5
+            ),
+            "passive_perception must be an integer",
+        )
+
+    def test_invalid_skill_rows_fail_closed(self) -> None:
+        skill_index = next(
+            index
+            for index, creature in enumerate(self.raw["creatures"])
+            if len(creature["skills"]) >= 2
+        )
+
+        def duplicate(value: dict) -> None:
+            value["creatures"][skill_index]["skills"].append(
+                deepcopy(value["creatures"][skill_index]["skills"][0])
+            )
+
+        def unknown(value: dict) -> None:
+            value["creatures"][skill_index]["skills"][0]["skill"] = "unknown_skill"
+
+        def reordered(value: dict) -> None:
+            value["creatures"][skill_index]["skills"].reverse()
+
+        def nonintegral(value: dict) -> None:
+            value["creatures"][skill_index]["skills"][0]["bonus"] = 1.5
+
+        def scenario_state(value: dict) -> None:
+            value["creatures"][skill_index]["skills"][0]["current_position"] = [0, 0]
+
+        for label, mutate, pattern in (
+            ("duplicate", duplicate, "duplicate skill"),
+            ("unknown", unknown, "skill is unknown"),
+            ("order", reordered, "canonical skill ordering"),
+            ("nonintegral", nonintegral, "bonus must be an integer"),
+            ("scenario state", scenario_state, "keys are invalid"),
+        ):
+            with self.subTest(label=label):
+                self.assert_catalog_mutation_rejected(mutate, pattern)
 
 
 if __name__ == "__main__":

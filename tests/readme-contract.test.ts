@@ -102,12 +102,13 @@ test("README and release process stay synchronized with canonical development st
 });
 
 test("README keeps current authority, historical review basis, and publication status distinct", async () => {
-  const [{ authority }, readme, packageJsonSource, benchmarkConfigSource, damageReviewSource, harnessReadme, readmeWriter] = await Promise.all([
+  const [{ authority }, readme, packageJsonSource, benchmarkConfigSource, damageReviewSource, consumerRequirementsSource, harnessReadme, readmeWriter] = await Promise.all([
     loadAuthority(),
     readFile("README.md", "utf8"),
     readFile("package.json", "utf8"),
     readFile("harness/config/benchmark.json", "utf8"),
     readFile("harness/provenance/damage-review.json", "utf8"),
+    readFile("harness/config/creature-consumers.json", "utf8"),
     readFile("harness/README.md", "utf8"),
     readFile("harness/readme_damage.py", "utf8")
   ]);
@@ -119,6 +120,11 @@ test("README keeps current authority, historical review basis, and publication s
     readonly methodology: { readonly target_profile_id: string };
   };
   const damageReview = JSON.parse(damageReviewSource) as {
+    readonly pinned_srd: {
+      readonly consumer_requirements_version: string;
+      readonly consumer_requirements_registry_sha256: string;
+      readonly damage_consumer_requirements_sha256: string;
+    };
     readonly current_damage_review: {
       readonly rules_version: string;
       readonly status: string;
@@ -145,6 +151,22 @@ test("README keeps current authority, historical review basis, and publication s
       readonly fresh_monte_carlo_certification: boolean;
       readonly reason: string;
       readonly durable_record: string;
+      readonly invalidated_run_evidence: null | {
+        readonly invalidation_disposition: string;
+        readonly reason: string;
+        readonly numerical_evidence_role: string;
+        readonly numerical_defect_demonstrated: boolean;
+        readonly run_manifest_sha256: string;
+        readonly consumer_requirements_sha256: string;
+        readonly rules_version: string;
+        readonly target_profile_id: string;
+        readonly target_profile_sha256: string;
+        readonly damage_target_projection_sha256: string;
+        readonly evaluator: string;
+        readonly evaluator_implementation_sha256: string;
+        readonly output_sha256: Readonly<Record<string, string>>;
+        readonly row_counts: { readonly detail: number; readonly matrix: number };
+      };
       readonly fresh_run_evidence: null | {
         readonly run_manifest_sha256: string;
         readonly baseline_evidence_sha256: string;
@@ -152,6 +174,8 @@ test("README keeps current authority, historical review basis, and publication s
         readonly target_profile_id: string;
         readonly target_profile_sha256: string;
         readonly damage_target_projection_sha256: string;
+        readonly consumer_requirements_version: string;
+        readonly damage_consumer_requirements_sha256: string;
         readonly evaluator: string;
         readonly evaluator_implementation_sha256: string;
         readonly output_sha256: Readonly<Record<string, string>>;
@@ -162,8 +186,15 @@ test("README keeps current authority, historical review basis, and publication s
   const review = damageReview.current_damage_review;
   const baseline = damageReview.expanded_roster_baseline_evidence;
   const disposition = damageReview.current_development_disposition;
+  assert.equal(damageReview.pinned_srd.consumer_requirements_version, "1.0.0");
+  assert.equal(
+    damageReview.pinned_srd.consumer_requirements_registry_sha256,
+    createHash("sha256").update(consumerRequirementsSource).digest("hex")
+  );
+  assert.match(damageReview.pinned_srd.damage_consumer_requirements_sha256, /^[0-9a-f]{64}$/);
   const carriedForward = "CARRIED_FORWARD_WITHOUT_FRESH_NUMERICAL_REVIEW";
   const freshExpandedRoster = "FRESH_EXPANDED_ROSTER_RUN_WITHOUT_INDEPENDENT_CERTIFICATION";
+  const invalidatedPremerge = "invalidated_premerge_provenance_boundary_correction";
   assert.equal(disposition.current_rules_version, authority.rules_version);
   assert.equal(disposition.review_basis_rules_version, review.rules_version);
   assert.notEqual(disposition.current_rules_version, disposition.review_basis_rules_version);
@@ -182,7 +213,7 @@ test("README keeps current authority, historical review basis, and publication s
     evaluator: "exact_analytical_enumeration"
   });
   assert.ok(
-    [carriedForward, freshExpandedRoster].includes(disposition.review_disposition),
+    [carriedForward, invalidatedPremerge, freshExpandedRoster].includes(disposition.review_disposition),
     `supported development disposition: ${disposition.review_disposition}`
   );
   assert.equal(disposition.fresh_full_roster_run, disposition.review_disposition === freshExpandedRoster);
@@ -191,13 +222,36 @@ test("README keeps current authority, historical review basis, and publication s
   assert.ok(disposition.reason.length > 0);
   assert.ok(disposition.durable_record.length > 0);
   if (disposition.review_disposition === carriedForward) {
+    assert.equal(disposition.invalidated_run_evidence, null);
     assert.equal(disposition.fresh_run_evidence, null);
+  } else if (disposition.review_disposition === invalidatedPremerge) {
+    const invalidated = disposition.invalidated_run_evidence;
+    assert.ok(invalidated, "invalidated disposition preserves exact comparison evidence");
+    assert.equal(disposition.fresh_run_evidence, null);
+    assert.equal(invalidated.invalidation_disposition, invalidatedPremerge);
+    assert.equal(invalidated.numerical_evidence_role, "comparison_evidence_only");
+    assert.equal(invalidated.numerical_defect_demonstrated, false);
+    assert.equal(invalidated.rules_version, authority.rules_version);
+    assert.equal(invalidated.target_profile_id, benchmarkConfig.methodology.target_profile_id);
+    assert.equal(invalidated.evaluator, "exact_analytical_enumeration");
+    assert.deepEqual(invalidated.row_counts, { detail: 564, matrix: 96 });
+    assert.deepEqual(Object.keys(invalidated.output_sha256).sort(), ["detail_csv", "matrix_csv", "matrix_html", "matrix_markdown"]);
+    for (const digest of [
+      invalidated.run_manifest_sha256,
+      invalidated.consumer_requirements_sha256,
+      invalidated.target_profile_sha256,
+      invalidated.damage_target_projection_sha256,
+      invalidated.evaluator_implementation_sha256,
+      ...Object.values(invalidated.output_sha256)
+    ]) assert.match(digest, /^[0-9a-f]{64}$/);
   } else {
+    assert.ok(disposition.invalidated_run_evidence, "replacement evidence preserves the invalidated predecessor");
     const evidence = disposition.fresh_run_evidence;
     assert.ok(evidence, "fresh expanded-roster disposition binds exact run evidence");
     assert.equal(evidence.rules_version, authority.rules_version);
     assert.equal(evidence.target_profile_id, benchmarkConfig.methodology.target_profile_id);
     assert.equal(evidence.evaluator, "exact_analytical_enumeration");
+    assert.equal(evidence.consumer_requirements_version, damageReview.pinned_srd.consumer_requirements_version);
     assert.deepEqual(evidence.row_counts, { detail: 564, matrix: 96 });
     assert.deepEqual(Object.keys(evidence.output_sha256).sort(), ["detail_csv", "matrix_csv", "matrix_html", "matrix_markdown"]);
     for (const digest of [
@@ -205,6 +259,7 @@ test("README keeps current authority, historical review basis, and publication s
       evidence.baseline_evidence_sha256,
       evidence.target_profile_sha256,
       evidence.damage_target_projection_sha256,
+      evidence.damage_consumer_requirements_sha256,
       evidence.evaluator_implementation_sha256,
       ...Object.values(evidence.output_sha256)
     ]) assert.match(digest, /^[0-9a-f]{64}$/);
@@ -258,16 +313,28 @@ test("README keeps current authority, historical review basis, and publication s
       `Snapshot values are carried forward from that reviewed evidence and were not regenerated for **v${authority.rules_version}**. No fresh **v${authority.rules_version}** full-roster run, numerical certification, or Monte Carlo certification was performed.`
     ));
     assert.ok(region.includes(`Reason: ${disposition.reason}`));
-    assert.doesNotMatch(region, /A fresh exact analytical run/);
+    assert.doesNotMatch(region, /replacement exact analytical run/);
+  } else if (disposition.review_disposition === invalidatedPremerge) {
+    const invalidated = disposition.invalidated_run_evidence!;
+    assert.ok(region.includes(`\`${invalidatedPremerge}\``));
+    assert.ok(region.includes(
+      `Its manifest SHA-256 is \`${invalidated.run_manifest_sha256}\`.`
+    ));
+    assert.match(region, /retained only as comparison evidence/);
+    assert.match(region, /no numerical defect has been demonstrated/i);
+    assert.ok(region.includes(
+      `No corrected-contract replacement **v${authority.rules_version}** full-roster run has been performed.`
+    ));
+    assert.doesNotMatch(region, /replacement exact analytical run/);
   } else {
     assert.ok(region.includes(
-      `A fresh exact analytical run for **v${authority.rules_version}**`
+      `A corrected-contract replacement exact analytical run for **v${authority.rules_version}**`
     ));
     assert.ok(region.includes(
       `used all `
     ));
     assert.ok(region.includes(
-      ` targets in \`${benchmarkConfig.methodology.target_profile_id}\`. It replaces the carried-forward snapshot`
+      ` targets in \`${benchmarkConfig.methodology.target_profile_id}\`. It replaces the invalidated pre-merge comparison snapshot`
     ));
     assert.ok(region.includes(
       `independently reviewed rules **v${review.rules_version}** evidence remains the review basis (\`${review.status}\`)`
@@ -300,13 +367,17 @@ test("README keeps current authority, historical review basis, and publication s
   });
 
   assert.match(region, /primary-target DPR at cluster size 1/);
-  assert.match(region, /all other primary-target and aggregate-cluster results remain/);
+  assert.match(region, /all other primary-target and aggregate-cluster (?:results|values) remain/);
   assert.match(region, /Battle Master and Eldritch Knight define the comparison envelope/);
   assert.match(region, /IDEAL.*falls between.*inclusive/s);
   assert.match(region, /COLD.*below both.*HOT.*above both/s);
   assert.match(region, /signed distance outside the nearest envelope boundary/);
   assert.match(region, /N\/A.*reserved for a comparison that cannot be evaluated/);
-  assert.match(region, /Generated detailed analytical CSV, Markdown, and HTML reports retain raw/);
+  if (disposition.review_disposition === invalidatedPremerge) {
+    assert.match(region, /invalidated run's detailed analytical CSV, Markdown, and HTML reports preserve raw/);
+  } else {
+    assert.match(region, /Generated detailed analytical CSV, Markdown, and HTML reports retain raw/);
+  }
   assert.doesNotMatch(region, /KV DPR|KV as % of EK|KV as % of BM/);
   assert.doesNotMatch(region, /IDEAL \([^)]*%\)|COLD \(\+|HOT \(-/);
 
@@ -327,8 +398,12 @@ test("README keeps current authority, historical review basis, and publication s
   ]) assert.ok(harnessReadme.includes(statement), `harness guide states ${statement}`);
   if (disposition.review_disposition === carriedForward) {
     assert.match(harnessReadme, /No fresh v14\.2 full-roster run, numerical certification, or Monte Carlo certification was performed/);
+  } else if (disposition.review_disposition === invalidatedPremerge) {
+    assert.match(harnessReadme, /invalidated_premerge_provenance_boundary_correction/);
+    assert.match(harnessReadme, /No corrected-contract replacement v14\.2 full-roster run has been performed/);
+    assert.match(harnessReadme, /no numerical defect has been demonstrated/i);
   } else {
-    assert.match(harnessReadme, /fresh expanded-roster|fresh exact analytical run/i);
+    assert.match(harnessReadme, /fresh expanded-roster|corrected-contract replacement exact analytical run/i);
     assert.doesNotMatch(harnessReadme, /No fresh v14\.2 full-roster run/);
   }
   for (const path of [
@@ -337,6 +412,16 @@ test("README keeps current authority, historical review basis, and publication s
     "config/creature-consumers.json",
     "provenance/srd-creatures.json"
   ]) assert.ok(harnessReadme.includes(path), `harness guide links the maintained ${path}`);
+  for (const controlTargetContract of [
+    "passive Perception",
+    "canonically sorted, source-explicit skill facts",
+    "falls back to its associated raw ability modifier",
+    "Live Advantage, Disadvantage, roll mode",
+    "scenario/event state",
+    "429 explicit skill facts across 216 creatures",
+    "105 explicit skill facts across 40 targets",
+    "165 explicit skill facts across 71 targets"
+  ]) assert.ok(harnessReadme.includes(controlTargetContract), `harness guide states ${controlTargetContract}`);
   for (const retired of ["srd_targets.csv", "srd_control_targets.json", "srd-control-targets.json"]) {
     assert.ok(!readme.includes(retired), `README does not reference retired ${retired}`);
     assert.ok(!harnessReadme.includes(retired), `harness guide does not reference retired ${retired}`);
@@ -380,9 +465,17 @@ test("expanded-roster damage delta audit is compact, complete, and provenance-bo
   ]);
   const audit = JSON.parse(source) as any;
   const review = JSON.parse(reviewSource) as any;
-  const evidence = review.current_development_disposition.fresh_run_evidence;
+  const evidence = review.current_development_disposition.invalidated_run_evidence;
 
-  assert.equal(audit.schema_version, "1.1.0");
+  assert.equal(audit.schema_version, "1.2.0");
+  assert.deepEqual(audit.evidence_disposition, {
+    current: "invalidated_premerge_provenance_boundary_correction",
+    numerical_evidence_role: "comparison_evidence_only",
+    numerical_defect_demonstrated: false,
+    corrected_contract_replacement_run_performed: false,
+    superseded_audit_sha256: "b000f3c87bcc8ffda2c88823877885a7b0af5c9ec3c3da7c4ac10a7b1ef8c969",
+    reason: "The v14.2 manifest predates the corrected consumer-scoped requirements and sibling-projection implementation identities; its bytes and numerical comparison remain preserved evidence."
+  });
   assert.equal(audit.method.result_generation, "read-only comparison of existing artifacts; evaluator was not invoked");
   assert.match(audit.method.primary_target_population, /cluster sizes 1, 3, and 6/);
   assert.match(audit.method.absolute_delta_population, /288 entity values overall/);
@@ -394,8 +487,8 @@ test("expanded-roster damage delta audit is compact, complete, and provenance-bo
   ]);
   assert.equal(audit.validation.matching_row_identity_sets, true);
   assert.equal(audit.validation.baseline_matrix_row_count, 96);
-  assert.equal(audit.validation.final_matrix_row_count, 96);
-  assert.equal(audit.validation.final_detail_row_count, 564);
+  assert.equal(audit.validation.invalidated_premerge_comparison_matrix_row_count, 96);
+  assert.equal(audit.validation.invalidated_premerge_comparison_detail_row_count, 564);
   assert.deepEqual(audit.newly_unevaluable_rows, []);
   assert.equal(audit.primary_target_changes.length, 16);
   assert.equal(audit.aggregate_scope_changes.length, 48);
@@ -408,21 +501,31 @@ test("expanded-roster damage delta audit is compact, complete, and provenance-bo
   assert.equal(audit.absolute_dpr_delta.overall.mean_absolute_dpr_delta, "3.336333510417");
   assert.equal(audit.absolute_dpr_delta.overall.max_absolute_dpr_delta, "39.306652");
   assert.equal(
-    audit.artifacts_and_provenance.final.reports.run_manifest.sha256,
+    audit.artifacts_and_provenance.invalidated_premerge_comparison.reports.run_manifest.sha256,
     evidence.run_manifest_sha256
   );
   assert.equal(
-    audit.artifacts_and_provenance.final.reports.matrix_csv.sha256,
+    audit.artifacts_and_provenance.invalidated_premerge_comparison.reports.matrix_csv.sha256,
     evidence.output_sha256.matrix_csv
   );
   assert.equal(
     audit.artifacts_and_provenance.baseline.reports.matrix_csv.sha256,
     review.expanded_roster_baseline_evidence.sha256
   );
-  const digest = "b000f3c87bcc8ffda2c88823877885a7b0af5c9ec3c3da7c4ac10a7b1ef8c969";
-  assert.equal(createHash("sha256").update(source).digest("hex"), digest);
+  const digest = createHash("sha256").update(source).digest("hex");
+  assert.match(digest, /^[0-9a-f]{64}$/);
+  assert.equal(source.trimEnd().includes("\n"), false, "delta audit remains compact");
   assert.ok(harnessReadme.includes("provenance/damage-delta-v14.1-to-v14.2.json"));
-  assert.ok(harnessReadme.includes(digest));
+  assert.ok(harnessReadme.includes("invalidated_premerge_provenance_boundary_correction"));
   assert.ok(auditDoc.includes("harness/provenance/damage-delta-v14.1-to-v14.2.json"));
-  assert.ok(auditDoc.includes(digest));
+  assert.ok(auditDoc.includes("invalidated_premerge_provenance_boundary_correction"));
+  assert.ok(auditDoc.includes(review.pinned_srd.consumer_requirements_registry_sha256));
+  assert.ok(auditDoc.includes(review.pinned_srd.damage_consumer_requirements_sha256));
+  assert.ok(auditDoc.includes("2549ae2884aeb11bf53e3f079afc094172f5288276cd036ea86181381c4fd3d5"));
+  assert.match(auditDoc, /passive Perception for all 330 creatures/);
+  assert.match(auditDoc, /429 source-explicit skill facts across 216 creatures/);
+  assert.match(auditDoc, /105 explicit skill facts across 40 targets/);
+  assert.match(auditDoc, /165 explicit skill facts across 71 targets/);
+  assert.match(auditDoc, /later check resolution falls back to the associated raw ability modifier/);
+  assert.match(auditDoc, /all other check circumstances remain scenario\/event state/);
 });

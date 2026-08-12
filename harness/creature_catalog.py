@@ -1,9 +1,8 @@
-"""Authoritative SRD 5.2.1 creature catalog, rosters, and thin projections.
+"""Authoritative SRD 5.2.1 creature catalog and deterministic rosters.
 
-Python owns the maintained semantic validation and projection layer.  This
-module deliberately imports neither the damage evaluator nor the control
-engine, so both consumers depend on the shared source without depending on one
-another.
+Python owns this shared semantic validation layer. Consumer-specific target
+projections live in sibling modules, so damage and control depend on the same
+source without depending on one another.
 """
 
 from __future__ import annotations
@@ -14,9 +13,10 @@ import math
 import re
 import unicodedata
 from collections import defaultdict
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass, fields, is_dataclass
 from fractions import Fraction
 from pathlib import Path
+from types import MappingProxyType
 from typing import Any, Iterable, Mapping
 
 
@@ -39,10 +39,6 @@ SELECTION_ALGORITHM_ID = "srd521_source_diversity_greedy_v1"
 HEADLINE_PROFILE_ID = "srd521_headline_source_diversity_v1"
 CENSUS_PROFILE_ID = "srd521_eligible_census_v1"
 PROFILE_VERSION = "1.0.0"
-DAMAGE_PROJECTION_ID = "srd521_damage_target"
-DAMAGE_PROJECTION_VERSION = "1.0.0"
-CONTROL_PROJECTION_ID = "srd521_control_target"
-CONTROL_PROJECTION_VERSION = "1.0.0"
 PLANNER_PROJECTION_ID = "srd521_planner_static_target"
 PLANNER_PROJECTION_VERSION = "1.0.0"
 
@@ -54,6 +50,12 @@ OFFICIAL_SOURCE_PAGE_COUNT = 364
 PROVENANCE_ID = "official_srd_5_2_1_creatures"
 
 ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
+SKILL_IDS = (
+    "acrobatics", "animal_handling", "arcana", "athletics", "deception",
+    "history", "insight", "intimidation", "investigation", "medicine",
+    "nature", "perception", "performance", "persuasion", "religion",
+    "sleight_of_hand", "stealth", "survival",
+)
 MOVEMENT_MODES = ("walk", "fly", "swim", "climb", "burrow")
 SENSE_KINDS = ("darkvision", "blindsight", "tremorsense", "truesight")
 BENCHMARK_LEVELS = (7, 11, 15, 20)
@@ -92,9 +94,10 @@ _CONDITIONS = {
     "incapacitated", "invisible", "paralyzed", "petrified", "poisoned", "prone",
     "restrained", "stunned", "unconscious",
 }
-_SOURCE_DEFAULT_CONDITION_QUALIFIERS = {"source_default_mind_blank"}
 _SCENARIO_FIELD_NAMES = {
-    "airborne", "altitude", "available_route", "concentration", "current_condition",
+    "airborne", "altitude", "available_route", "check_advantage_sources",
+    "check_circumstances", "check_disadvantage_sources", "check_roll_mode",
+    "concentration", "current_condition",
     "current_conditions", "current_hit_points", "current_position", "dropped", "held",
     "intent", "legal_disarming_attack_target", "line_of_sight", "occupying_hand",
     "reaction_available", "retrievable", "visibility_relation", "wielded", "worn",
@@ -172,7 +175,7 @@ class CreatureCatalogError(ValueError):
     """Raised when a catalog, roster, provenance, or projection fails closed."""
 
 
-@dataclass(frozen=True)
+@dataclass(frozen=True, init=False)
 class CreatureCatalog:
     records: tuple[Mapping[str, Any], ...]
     by_id: Mapping[str, Mapping[str, Any]]
@@ -182,6 +185,25 @@ class CreatureCatalog:
     source_url: str
     source_sha256: str
     provenance: Mapping[str, Any]
+
+    def __init__(self) -> None:
+        raise CreatureCatalogError(
+            "CreatureCatalog must be created by the validated catalog loader"
+        )
+
+    def __post_init__(self) -> None:
+        if type(self.by_id) is not MappingProxyType or any(
+            not isinstance(record, Mapping) for record in self.records
+        ):
+            raise CreatureCatalogError(
+                "CreatureCatalog must be created by the validated catalog loader"
+            )
+        if tuple(self.by_id.values()) != self.records:
+            raise CreatureCatalogError(
+                "Creature catalog ID index disagrees with its immutable records"
+            )
+        if not re.fullmatch(r"[0-9a-f]{64}", self.sha256):
+            raise CreatureCatalogError("Creature catalog SHA-256 must be lower-case hexadecimal")
 
     def creature(self, creature_id: str) -> Mapping[str, Any]:
         try:
@@ -193,13 +215,40 @@ class CreatureCatalog:
 @dataclass(frozen=True)
 class ConsumerRequirements:
     data: Mapping[str, Any]
-    sha256: str
+    registry_sha256: str
+    consumer_sha256_by_id: Mapping[str, str]
+
+    def __post_init__(self) -> None:
+        frozen_data = _deep_freeze(self.data)
+        recomputed = consumer_requirements_sha256_by_id(frozen_data)
+        if dict(self.consumer_sha256_by_id) != dict(recomputed):
+            raise CreatureCatalogError(
+                "Consumer requirement digests disagree with their canonical payloads"
+            )
+        if not re.fullmatch(r"[0-9a-f]{64}", self.registry_sha256):
+            raise CreatureCatalogError(
+                "Consumer requirement registry SHA-256 must be lower-case hexadecimal"
+            )
+        object.__setattr__(self, "data", frozen_data)
+        object.__setattr__(self, "consumer_sha256_by_id", recomputed)
 
     def consumer(self, consumer_id: str) -> Mapping[str, Any]:
         try:
             return self.data["consumers"][consumer_id]
         except KeyError as error:
             raise CreatureCatalogError(f"Unknown creature consumer {consumer_id!r}") from error
+
+    def sha256_for(self, consumer_id: str) -> str:
+        try:
+            stored = self.consumer_sha256_by_id[consumer_id]
+        except KeyError as error:
+            raise CreatureCatalogError(f"Unknown creature consumer {consumer_id!r}") from error
+        recomputed = consumer_requirements_sha256_by_id(self.data)[consumer_id]
+        if stored != recomputed:
+            raise CreatureCatalogError(
+                f"Creature consumer {consumer_id!r} changed after identity derivation"
+            )
+        return stored
 
 
 @dataclass(frozen=True)
@@ -217,153 +266,6 @@ class RosterEntry:
     profile_sha256: str
 
 
-@dataclass(frozen=True)
-class DefenseFact:
-    value: str | None
-    choices: tuple[str, ...]
-    qualifier_id: str | None
-    qualifier: str | None
-
-
-@dataclass(frozen=True)
-class MovementFact:
-    feet: int
-    qualifier: str | None
-    choice_group_id: str | None
-
-
-@dataclass(frozen=True)
-class MovementProfile:
-    walk: tuple[MovementFact, ...]
-    fly: tuple[MovementFact, ...]
-    swim: tuple[MovementFact, ...]
-    climb: tuple[MovementFact, ...]
-    burrow: tuple[MovementFact, ...]
-    hover: bool
-    choice_groups: tuple[tuple[str, tuple[str, ...], str], ...]
-
-    def sole_speed(self, mode: str) -> int | None:
-        facts = getattr(self, mode)
-        if not facts:
-            return None
-        if len(facts) != 1 or facts[0].choice_group_id is not None:
-            raise CreatureCatalogError(f"movement.{mode} does not have one unconditional speed")
-        return facts[0].feet
-
-
-@dataclass(frozen=True)
-class SenseFact:
-    range_feet: int
-    limitation: str | None
-
-
-@dataclass(frozen=True)
-class InitiativeFact:
-    modifier: int
-    score: int
-    advantage: bool
-    qualifier: str | None
-
-
-@dataclass(frozen=True)
-class LanguageFact:
-    identity: str
-    mode: str
-    limitation_id: str | None
-
-
-@dataclass(frozen=True)
-class TelepathyFact:
-    range_feet: int
-    limitation_id: str | None
-    limitation: str | None
-
-
-@dataclass(frozen=True)
-class CommunicationProfile:
-    languages: tuple[LanguageFact, ...]
-    all_languages: bool
-    additional_language_count: int
-    telepathy: TelepathyFact | None
-    limitations: tuple[str, ...]
-
-
-@dataclass(frozen=True)
-class StaticGearFact:
-    name: str
-    quantity: int
-    category: str
-
-
-@dataclass(frozen=True)
-class PassiveTraitFact:
-    trait_id: str
-    source_heading: str
-    parent_source_heading: str | None
-    parameters: Mapping[str, Any]
-
-
-@dataclass(frozen=True)
-class DamageTarget:
-    creature_id: str
-    name: str
-    ac: int
-    saves: dict[str, int]
-    magic_resistance: bool
-    legendary_resistance: int
-    legendary_resistance_lair: int | None
-    legendary_resistance_policy: str
-    size: str
-    creature_type: str
-    damage_resistances: frozenset[str]
-    damage_immunities: frozenset[str]
-    damage_vulnerabilities: frozenset[str]
-    hp: int
-    source_ruleset: str
-    source_page: int
-    source_anchor: str
-    source_url: str
-    catalog_contract_version: str
-    catalog_sha256: str
-    projection_id: str
-    projection_version: str
-    requirements_sha256: str
-    target_sha256: str
-
-
-@dataclass(frozen=True)
-class ControlTarget:
-    creature_id: str
-    name: str
-    ac: int
-    ability_modifiers: dict[str, int]
-    saves: dict[str, int]
-    magic_resistance: bool
-    legendary_resistance: int
-    legendary_resistance_lair: int | None
-    legendary_resistance_policy: str
-    size: str
-    creature_type: str
-    condition_immunities: frozenset[str]
-    condition_immunity_facts: tuple[DefenseFact, ...]
-    movement: MovementProfile
-    senses: dict[str, tuple[SenseFact, ...]]
-    initiative: InitiativeFact
-    communication: CommunicationProfile
-    gear: tuple[StaticGearFact, ...]
-    passive_traits: tuple[PassiveTraitFact, ...]
-    source_ruleset: str
-    source_page: int
-    source_anchor: str
-    source_url: str
-    catalog_contract_version: str
-    catalog_sha256: str
-    projection_id: str
-    projection_version: str
-    requirements_sha256: str
-    target_sha256: str
-
-
 def file_sha256(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open("rb") as stream:
@@ -379,9 +281,43 @@ def canonical_sha256(value: object) -> str:
     return hashlib.sha256(payload).hexdigest()
 
 
+def _deep_freeze(value: Any) -> Any:
+    """Recursively make validated source and contract values immutable."""
+
+    if isinstance(value, Mapping):
+        return MappingProxyType({key: _deep_freeze(item) for key, item in value.items()})
+    if isinstance(value, (tuple, list)):
+        return tuple(_deep_freeze(item) for item in value)
+    if isinstance(value, (set, frozenset)):
+        return frozenset(_deep_freeze(item) for item in value)
+    return value
+
+
+def consumer_requirements_sha256_by_id(
+    data: Mapping[str, Any],
+) -> Mapping[str, str]:
+    """Derive isolated canonical identities from a requirement-registry payload."""
+
+    consumers = data["consumers"]
+    return MappingProxyType({
+        consumer_id: canonical_sha256({
+            "consumer_requirements_contract": data["contract"],
+            "catalog_contract": data["catalog_contract"],
+            "passive_trait_registry": data["passive_trait_registry"],
+            "scenario_state_boundary": data["scenario_state_boundary"],
+            "consumer_id": consumer_id,
+            "consumer": consumers[consumer_id],
+        })
+        for consumer_id in sorted(consumers)
+    })
+
+
 def _json_safe(value: object) -> object:
-    if hasattr(value, "__dataclass_fields__"):
-        return _json_safe(asdict(value))
+    if is_dataclass(value) and not isinstance(value, type):
+        return {
+            field.name: _json_safe(getattr(value, field.name))
+            for field in fields(value)
+        }
     if isinstance(value, Fraction):
         return {"numerator": value.numerator, "denominator": value.denominator}
     if isinstance(value, Mapping):
@@ -734,15 +670,21 @@ def _validate_creature(
 
     skills = _array(row["skills"], f"{label}.skills")
     seen_skills: set[str] = set()
+    skill_ids: list[str] = []
     for skill_index, item in enumerate(skills):
         skill_label = f"{label}.skills[{skill_index}]"
         skill = _object(item, skill_label)
         _exact_keys(skill, {"skill", "bonus"}, skill_label)
         skill_id = _string(skill["skill"], f"{skill_label}.skill", lower=True)
+        if skill_id not in SKILL_IDS:
+            raise CreatureCatalogError(f"{skill_label}.skill is unknown: {skill_id!r}")
         _integer(skill["bonus"], f"{skill_label}.bonus")
         if skill_id in seen_skills:
             raise CreatureCatalogError(f"{label}.skills contains duplicate skill {skill_id!r}")
         seen_skills.add(skill_id)
+        skill_ids.append(skill_id)
+    if skill_ids != sorted(skill_ids):
+        raise CreatureCatalogError(f"{label}.skills must use canonical skill ordering")
     _integer(row["passive_perception"], f"{label}.passive_perception", 0)
 
     initiative = _object(row["initiative"], f"{label}.initiative")
@@ -1055,9 +997,9 @@ def load_catalog(
     provenance = _load_json(provenance_path, "creature provenance")
     _validate_provenance(provenance, catalog_path, roster_path, data)
     digest = file_sha256(catalog_path)
-    records = tuple(data["creatures"])
-    by_id = {record["creature_id"]: record for record in records}
-    return CreatureCatalog(
+    records = tuple(_deep_freeze(record) for record in data["creatures"])
+    by_id = MappingProxyType({record["creature_id"]: record for record in records})
+    return _creature_catalog_from_validated(
         records=records,
         by_id=by_id,
         contract_id=CATALOG_CONTRACT_ID,
@@ -1065,8 +1007,45 @@ def load_catalog(
         sha256=digest,
         source_url=OFFICIAL_SOURCE_URL,
         source_sha256=OFFICIAL_SOURCE_SHA256,
-        provenance=provenance,
+        provenance=_deep_freeze(provenance),
     )
+
+
+def _creature_catalog_from_validated(
+    *,
+    records: tuple[Mapping[str, Any], ...],
+    by_id: Mapping[str, Mapping[str, Any]],
+    contract_id: str,
+    contract_version: str,
+    sha256: str,
+    source_url: str,
+    source_sha256: str,
+    provenance: Mapping[str, Any],
+) -> CreatureCatalog:
+    """Construct an immutable catalog only after byte/provenance validation."""
+
+    frozen_records = tuple(_deep_freeze(record) for record in records)
+    expected_by_id = MappingProxyType(
+        {record["creature_id"]: record for record in frozen_records}
+    )
+    if dict(by_id) != dict(expected_by_id):
+        raise CreatureCatalogError(
+            "Creature catalog ID index disagrees with its immutable records"
+        )
+    catalog = object.__new__(CreatureCatalog)
+    for name, value in (
+        ("records", frozen_records),
+        ("by_id", expected_by_id),
+        ("contract_id", contract_id),
+        ("contract_version", contract_version),
+        ("sha256", sha256),
+        ("source_url", source_url),
+        ("source_sha256", source_sha256),
+        ("provenance", _deep_freeze(provenance)),
+    ):
+        object.__setattr__(catalog, name, value)
+    catalog.__post_init__()
+    return catalog
 
 
 def _validate_requirement_path(creature: Mapping[str, Any], path: str, label: str) -> None:
@@ -1100,34 +1079,56 @@ def load_consumer_requirements(
         raise CreatureCatalogError("Consumer requirements must declare the complete scenario-state exclusion boundary")
     consumers = _object(data["consumers"], "consumer requirements.consumers")
     _exact_keys(consumers, {"damage_target", "control_target", "planner_static_target"}, "consumer requirements.consumers")
-    expected_contracts = {
-        "damage_target": (True, DAMAGE_PROJECTION_ID, DAMAGE_PROJECTION_VERSION, "consume_declared_and_reject_declared_unsupported"),
-        "control_target": (True, CONTROL_PROJECTION_ID, CONTROL_PROJECTION_VERSION, "preserve_all_registry_modeled_typed"),
-        "planner_static_target": (False, PLANNER_PROJECTION_ID, PLANNER_PROJECTION_VERSION, "fail_closed_until_implemented"),
-    }
-    for consumer_id, (implemented, projection_id, version, trait_policy) in expected_contracts.items():
+    for consumer_id in ("damage_target", "control_target", "planner_static_target"):
         label = f"consumer requirements.consumers.{consumer_id}"
         consumer = _object(consumers[consumer_id], label)
         _exact_keys(consumer, {"implemented", "projection_contract", "required_catalog_paths", "typed_trait_policy", "required_typed_trait_ids", "unsupported_material_trait_ids", "qualifier_policy", "output_fields"}, label)
-        if _boolean(consumer["implemented"], f"{label}.implemented") != implemented:
-            raise CreatureCatalogError(f"{label}.implemented is unsupported")
-        _validate_contract(consumer["projection_contract"], f"{label}.projection_contract", projection_id, version)
+        implemented = _boolean(consumer["implemented"], f"{label}.implemented")
+        projection = _object(consumer["projection_contract"], f"{label}.projection_contract")
+        _exact_keys(projection, {"id", "version"}, f"{label}.projection_contract")
+        _string(projection["id"], f"{label}.projection_contract.id", lower=True)
+        _string(projection["version"], f"{label}.projection_contract.version")
         paths = _string_array(consumer["required_catalog_paths"], f"{label}.required_catalog_paths", nonempty=True)
         if len(paths) != len(set(paths)):
             raise CreatureCatalogError(f"{label}.required_catalog_paths contains duplicates")
-        if consumer["typed_trait_policy"] != trait_policy:
-            raise CreatureCatalogError(f"{label}.typed_trait_policy is unsupported")
+        _string(consumer["typed_trait_policy"], f"{label}.typed_trait_policy", lower=True)
         required_traits = _string_array(consumer["required_typed_trait_ids"], f"{label}.required_typed_trait_ids", lower=True, canonical=True)
         unsupported_traits = _string_array(consumer["unsupported_material_trait_ids"], f"{label}.unsupported_material_trait_ids", lower=True, canonical=True)
         if set(required_traits).intersection(unsupported_traits):
             raise CreatureCatalogError(f"{label} cannot both require and reject a trait")
-        _object(consumer["qualifier_policy"], f"{label}.qualifier_policy")
+        qualifier_policy = _object(consumer["qualifier_policy"], f"{label}.qualifier_policy")
+        for key, value in qualifier_policy.items():
+            _string(key, f"{label}.qualifier_policy key", lower=True)
+            _string(value, f"{label}.qualifier_policy.{key}", lower=True)
         output_fields = _string_array(consumer["output_fields"], f"{label}.output_fields")
-        dataclass_type = DamageTarget if consumer_id == "damage_target" else ControlTarget if consumer_id == "control_target" else None
-        if dataclass_type is not None and output_fields != list(dataclass_type.__dataclass_fields__):
-            raise CreatureCatalogError(f"{label}.output_fields disagrees with the maintained projection")
-        if dataclass_type is None and output_fields:
-            raise CreatureCatalogError("Unimplemented planner projection must not declare runtime output fields")
+        if implemented != (consumer_id != "planner_static_target"):
+            raise CreatureCatalogError(
+                f"{label}.implemented disagrees with the maintained runtime boundary"
+            )
+        if not implemented:
+            if projection != {
+                "id": PLANNER_PROJECTION_ID,
+                "version": PLANNER_PROJECTION_VERSION,
+            }:
+                raise CreatureCatalogError(
+                    f"{label}.projection_contract must retain the draft 1.0.0 identity"
+                )
+            if output_fields:
+                raise CreatureCatalogError(
+                    "Unimplemented projection must not declare runtime output fields"
+                )
+            if consumer["typed_trait_policy"] != "fail_closed_until_implemented":
+                raise CreatureCatalogError(
+                    "Unimplemented projection must fail closed on typed traits"
+                )
+            if required_traits or unsupported_traits:
+                raise CreatureCatalogError(
+                    "Unimplemented projection must not claim typed-trait support"
+                )
+            if qualifier_policy != {"all": "fail_closed_until_implemented"}:
+                raise CreatureCatalogError(
+                    "Unimplemented projection must fail closed on all qualifiers"
+                )
     if catalog is not None:
         definition_ids = {
             trait["trait_id"]
@@ -1142,7 +1143,38 @@ def load_consumer_requirements(
             for creature in catalog.records:
                 for path_value in consumer["required_catalog_paths"]:
                     _validate_requirement_path(creature, path_value, consumer_id)
-    return ConsumerRequirements(data=data, sha256=file_sha256(path))
+    return ConsumerRequirements(
+        data=data,
+        registry_sha256=file_sha256(path),
+        consumer_sha256_by_id=consumer_requirements_sha256_by_id(data),
+    )
+
+
+def validate_consumer_projection_contract(
+    requirements: ConsumerRequirements,
+    consumer_id: str,
+    *,
+    projection_id: str,
+    projection_version: str,
+    typed_trait_policy: str,
+    output_fields: Iterable[str],
+) -> Mapping[str, Any]:
+    """Bind one projection module to its exact consumer declaration."""
+
+    consumer = requirements.consumer(consumer_id)
+    label = f"consumer requirements.consumers.{consumer_id}"
+    if consumer["implemented"] is not True:
+        raise CreatureCatalogError(f"{label}.implemented must be true")
+    if consumer["projection_contract"] != {
+        "id": projection_id,
+        "version": projection_version,
+    }:
+        raise CreatureCatalogError(f"{label}.projection_contract disagrees with the maintained projection")
+    if consumer["typed_trait_policy"] != typed_trait_policy:
+        raise CreatureCatalogError(f"{label}.typed_trait_policy disagrees with the maintained projection")
+    if tuple(consumer["output_fields"]) != tuple(output_fields):
+        raise CreatureCatalogError(f"{label}.output_fields disagrees with the maintained projection")
+    return consumer
 
 
 def _challenge(creature: Mapping[str, Any]) -> Fraction:
@@ -1556,213 +1588,11 @@ def _projection_identity(record: Mapping[str, Any]) -> str:
     return canonical_sha256(record)
 
 
-def _unqualified_damage_types(creature: Mapping[str, Any], family: str) -> frozenset[str]:
-    output: set[str] = set()
-    for item in creature["defenses"][family]:
-        if item.get("damage_type") is None or item.get("qualifier_id") is not None:
-            raise CreatureCatalogError(
-                f"{creature['creature_id']} has an unresolved or qualified {family} fact"
-            )
-        output.add(item["damage_type"])
-    return frozenset(output)
-
-
-def project_damage_target(
-    creature_id: str,
-    *,
-    catalog: CreatureCatalog | None = None,
-    catalog_path: Path = DEFAULT_CATALOG,
-    provenance_path: Path = DEFAULT_PROVENANCE,
-    roster_path: Path = DEFAULT_ROSTERS,
-    requirements: ConsumerRequirements | None = None,
-    requirements_path: Path = DEFAULT_CONSUMER_REQUIREMENTS,
-) -> DamageTarget:
-    """Project only static damage-consumer facts for one canonical creature."""
-
-    catalog = _ensure_catalog(catalog, catalog_path, provenance_path, roster_path)
-    requirements = _ensure_requirements(requirements, requirements_path, catalog)
-    consumer = requirements.consumer("damage_target")
-    creature = catalog.creature(creature_id)
-    for path in consumer["required_catalog_paths"]:
-        _validate_requirement_path(creature, path, "damage_target")
-    if creature["armor_class"]["resolution"] != "resolved":
-        raise CreatureCatalogError(f"{creature_id} has unresolved Armor Class")
-    typed_traits = {
-        trait["trait_id"]
-        for trait in creature["passive_traits"]
-        if trait["disposition"] == "modeled_typed"
-    }
-    unsupported = sorted(typed_traits.intersection(consumer["unsupported_material_trait_ids"]))
-    if unsupported:
-        raise CreatureCatalogError(
-            f"{creature_id} has unsupported material passive traits {unsupported}"
-        )
-    base = {
-        "creature_id": creature_id,
-        "name": creature["display_name"],
-        "ac": creature["armor_class"]["default"],
-        "saves": {ability: creature["abilities"][ability]["save_bonus"] for ability in ABILITIES},
-        "magic_resistance": creature["magic_resistance"]["present"],
-        "legendary_resistance": creature["legendary_resistance"]["uses_per_day"],
-        "legendary_resistance_lair": creature["legendary_resistance"]["lair_uses_per_day"],
-        "legendary_resistance_policy": creature["legendary_resistance"]["policy"],
-        "size": creature["classification"]["sizes"][0],
-        "creature_type": creature["classification"]["creature_type"],
-        "damage_resistances": _unqualified_damage_types(creature, "damage_resistances"),
-        "damage_immunities": _unqualified_damage_types(creature, "damage_immunities"),
-        "damage_vulnerabilities": _unqualified_damage_types(creature, "damage_vulnerabilities"),
-        "hp": creature["hit_points"]["average"],
-        "source_ruleset": creature["source"]["ruleset"],
-        "source_page": creature["source"]["page"],
-        "source_anchor": creature["source"]["stat_block_anchor"],
-        "source_url": catalog.source_url,
-        "catalog_contract_version": catalog.contract_version,
-        "catalog_sha256": catalog.sha256,
-        "projection_id": DAMAGE_PROJECTION_ID,
-        "projection_version": DAMAGE_PROJECTION_VERSION,
-        "requirements_sha256": requirements.sha256,
-    }
-    return DamageTarget(**base, target_sha256=_projection_identity(base))
-
-
-def _defense_fact(item: Mapping[str, Any], field: str) -> DefenseFact:
-    return DefenseFact(
-        value=item[field],
-        choices=tuple(item.get("choices", ())),
-        qualifier_id=item.get("qualifier_id"),
-        qualifier=item.get("qualifier"),
-    )
-
-
-def _movement_profile(creature: Mapping[str, Any]) -> MovementProfile:
-    movement = creature["movement"]
-    facts = {
-        mode: tuple(
-            MovementFact(item["feet"], item["qualifier"], item["choice_group_id"])
-            for item in movement["modes"][mode]
-        )
-        for mode in MOVEMENT_MODES
-    }
-    groups = tuple(
-        (item["choice_group_id"], tuple(item["modes"]), item["qualifier"])
-        for item in movement["choice_groups"]
-    )
-    return MovementProfile(**facts, hover=movement["hover"], choice_groups=groups)
-
-
-def project_control_target(
-    creature_id: str,
-    *,
-    catalog: CreatureCatalog | None = None,
-    catalog_path: Path = DEFAULT_CATALOG,
-    provenance_path: Path = DEFAULT_PROVENANCE,
-    roster_path: Path = DEFAULT_ROSTERS,
-    requirements: ConsumerRequirements | None = None,
-    requirements_path: Path = DEFAULT_CONSUMER_REQUIREMENTS,
-) -> ControlTarget:
-    """Project static control facts without damage packets or live scenario state."""
-
-    catalog = _ensure_catalog(catalog, catalog_path, provenance_path, roster_path)
-    requirements = _ensure_requirements(requirements, requirements_path, catalog)
-    consumer = requirements.consumer("control_target")
-    creature = catalog.creature(creature_id)
-    for path in consumer["required_catalog_paths"]:
-        _validate_requirement_path(creature, path, "control_target")
-    if creature["armor_class"]["resolution"] != "resolved":
-        raise CreatureCatalogError(f"{creature_id} has unresolved Armor Class")
-    condition_facts = tuple(
-        _defense_fact(item, "condition")
-        for item in creature["defenses"]["condition_immunities"]
-    )
-    effective_conditions = frozenset(
-        item.value
-        for item in condition_facts
-        if item.value is not None and (
-            item.qualifier_id is None or item.qualifier_id in _SOURCE_DEFAULT_CONDITION_QUALIFIERS
-        )
-    )
-    communication = creature["communication"]
-    telepathy = communication["telepathy"]
-    base = {
-        "creature_id": creature_id,
-        "name": creature["display_name"],
-        "ac": creature["armor_class"]["default"],
-        "ability_modifiers": {ability: creature["abilities"][ability]["modifier"] for ability in ABILITIES},
-        "saves": {ability: creature["abilities"][ability]["save_bonus"] for ability in ABILITIES},
-        "magic_resistance": creature["magic_resistance"]["present"],
-        "legendary_resistance": creature["legendary_resistance"]["uses_per_day"],
-        "legendary_resistance_lair": creature["legendary_resistance"]["lair_uses_per_day"],
-        "legendary_resistance_policy": creature["legendary_resistance"]["policy"],
-        "size": creature["classification"]["sizes"][0],
-        "creature_type": creature["classification"]["creature_type"],
-        "condition_immunities": effective_conditions,
-        "condition_immunity_facts": condition_facts,
-        "movement": _movement_profile(creature),
-        "senses": {
-            kind: tuple(SenseFact(item["range_feet"], item["limitation"]) for item in creature["senses"][kind])
-            for kind in SENSE_KINDS
-        },
-        "initiative": InitiativeFact(**creature["initiative"]),
-        "communication": CommunicationProfile(
-            languages=tuple(LanguageFact(**item) for item in communication["languages"]),
-            all_languages=communication["all_languages"],
-            additional_language_count=communication["additional_language_count"],
-            telepathy=TelepathyFact(**telepathy) if telepathy is not None else None,
-            limitations=tuple(communication["limitations"]),
-        ),
-        "gear": tuple(StaticGearFact(**item) for item in creature["gear"]),
-        "passive_traits": tuple(
-            PassiveTraitFact(
-                trait_id=item["trait_id"],
-                source_heading=item["source_heading"],
-                parent_source_heading=item["parent_source_heading"],
-                parameters=item["parameters"],
-            )
-            for item in creature["passive_traits"]
-            if item["disposition"] == "modeled_typed"
-        ),
-        "source_ruleset": creature["source"]["ruleset"],
-        "source_page": creature["source"]["page"],
-        "source_anchor": creature["source"]["stat_block_anchor"],
-        "source_url": catalog.source_url,
-        "catalog_contract_version": catalog.contract_version,
-        "catalog_sha256": catalog.sha256,
-        "projection_id": CONTROL_PROJECTION_ID,
-        "projection_version": CONTROL_PROJECTION_VERSION,
-        "requirements_sha256": requirements.sha256,
-    }
-    return ControlTarget(**base, target_sha256=_projection_identity(base))
-
-
-def project_profile_damage_targets(
-    entries: Iterable[RosterEntry],
-    *,
-    catalog: CreatureCatalog,
-    requirements: ConsumerRequirements,
-) -> list[tuple[RosterEntry, DamageTarget]]:
-    """Project roster bindings without merging level/weight into target facts."""
-
-    output: list[tuple[RosterEntry, DamageTarget]] = []
-    for entry in entries:
-        if entry.catalog_sha256 != catalog.sha256:
-            raise CreatureCatalogError("Roster entry catalog digest does not match loaded catalog")
-        output.append(
-            (
-                entry,
-                project_damage_target(entry.creature_id, catalog=catalog, requirements=requirements),
-            )
-        )
-    return output
-
-
 if __name__ == "__main__":
     loaded_catalog = load_catalog()
-    loaded_requirements = load_consumer_requirements(catalog=loaded_catalog)
+    load_consumer_requirements(catalog=loaded_catalog)
     headline = load_profile(catalog=loaded_catalog)
-    project_profile_damage_targets(
-        headline, catalog=loaded_catalog, requirements=loaded_requirements
-    )
     print(
         f"Validated {len(loaded_catalog.records)} SRD creatures and "
-        f"{len(headline)} deterministic headline bindings."
+        f"{len(headline)} deterministic headline roster bindings."
     )

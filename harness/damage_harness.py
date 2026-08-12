@@ -16,15 +16,17 @@ from typing import Any
 
 from .authority import DamageAuthorityModel,DEFAULT_AUTHORITY
 from .creature_catalog import (
-    DAMAGE_PROJECTION_ID,
-    DAMAGE_PROJECTION_VERSION,
     ROSTER_CONTRACT_VERSION,
     CONSUMER_REQUIREMENTS_VERSION,
-    DamageTarget,
     RosterEntry,
     load_catalog,
     load_consumer_requirements,
     load_profile,
+)
+from .creature_damage_projection import (
+    DAMAGE_PROJECTION_ID,
+    DAMAGE_PROJECTION_VERSION,
+    DamageTarget,
     project_damage_target,
 )
 from .damage_report import NOTICE_COLUMNS,damage_matrix_row,provenance_columns,write_damage_matrix
@@ -37,6 +39,7 @@ RUN_MANIFEST_FILENAME = "run-manifest.json"
 DAMAGE_EVALUATOR_IMPLEMENTATION_PATHS = (
     ("harness/authority.py", Path(__file__).with_name("authority.py")),
     ("harness/creature_catalog.py", Path(__file__).with_name("creature_catalog.py")),
+    ("harness/creature_damage_projection.py", Path(__file__).with_name("creature_damage_projection.py")),
     ("harness/damage_harness.py", Path(__file__)),
     ("harness/damage_report.py", Path(__file__).with_name("damage_report.py")),
     ("harness/model.py", Path(__file__).with_name("model.py")),
@@ -519,16 +522,18 @@ def _detail_scope_evidence(row:dict[str,Any])->dict[str,str]:
 
 
 def _projection_digest(entries:list[RosterEntry],targets:list[DamageTarget])->str:
-    if len(entries)!=len(targets):raise ValueError("Damage target projection count differs from the active roster profile")
+    if not entries or len(entries)!=len(targets):raise ValueError("Damage target projections must cover a non-empty active roster profile exactly")
+    for entry,target in zip(entries,targets,strict=True):
+        if entry.creature_id!=target.creature_id or entry.catalog_sha256!=target.catalog_sha256:raise ValueError("Damage target projections do not match active roster identities")
+        target.validate_identity()
     return _canonical_sha256({"projection_id":DAMAGE_PROJECTION_ID,"projection_version":DAMAGE_PROJECTION_VERSION,"profile_id":entries[0].profile_id,"profile_sha256":entries[0].profile_sha256,"targets":[{"creature_id":entry.creature_id,"target_sha256":target.target_sha256} for entry,target in zip(entries,targets,strict=True)]})
 
 
 def load_damage_input_bundle(authority:Path,levels:set[int],trials:int,seed:int)->DamageInputBundle:
     model=DamageAuthorityModel.load(authority);config=load_config();comparators=load_comparators();catalog=load_catalog();requirements=load_consumer_requirements(catalog=catalog);profile_id=str(config["methodology"]["target_profile_id"]);entries=load_profile(profile_id,levels,catalog=catalog);targets=[project_damage_target(entry.creature_id,catalog=catalog,requirements=requirements) for entry in entries]
-    if not entries:raise ValueError("Target profile selection is empty")
     if any(entry.profile_id!=entries[0].profile_id or entry.profile_sha256!=entries[0].profile_sha256 or entry.roster_sha256!=entries[0].roster_sha256 for entry in entries):raise ValueError("Active target profile identities are inconsistent")
     projection_sha256=_projection_digest(entries,targets)
-    identity={"damage_result_contract_version":DAMAGE_RESULT_CONTRACT_VERSION,"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"catalog_contract_version":targets[0].catalog_contract_version,"catalog_sha256":targets[0].catalog_sha256,"roster_contract_version":ROSTER_CONTRACT_VERSION,"roster_sha256":entries[0].roster_sha256,"target_profile_id":entries[0].profile_id,"target_profile_version":entries[0].profile_version,"target_profile_sha256":entries[0].profile_sha256,"damage_target_projection_id":DAMAGE_PROJECTION_ID,"damage_target_projection_version":DAMAGE_PROJECTION_VERSION,"damage_target_projection_sha256":projection_sha256,"consumer_requirements_version":CONSUMER_REQUIREMENTS_VERSION,"consumer_requirements_sha256":requirements.sha256,"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"evaluator":DAMAGE_EVALUATOR_ID,"evaluator_implementation_sha256":evaluator_implementation_sha256(),"trials":trials,"seed":seed,"trial_seed_role":"historical_compatibility_metadata","aggregation":"exact rational target-profile weights; percentages from displayed aggregates","status":config["methodology"]["status"]}
+    identity={"damage_result_contract_version":DAMAGE_RESULT_CONTRACT_VERSION,"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"catalog_contract_version":targets[0].catalog_contract_version,"catalog_sha256":targets[0].catalog_sha256,"roster_contract_version":ROSTER_CONTRACT_VERSION,"roster_sha256":entries[0].roster_sha256,"target_profile_id":entries[0].profile_id,"target_profile_version":entries[0].profile_version,"target_profile_sha256":entries[0].profile_sha256,"damage_target_projection_id":DAMAGE_PROJECTION_ID,"damage_target_projection_version":DAMAGE_PROJECTION_VERSION,"damage_target_projection_sha256":projection_sha256,"consumer_requirements_version":CONSUMER_REQUIREMENTS_VERSION,"damage_consumer_requirements_sha256":requirements.sha256_for("damage_target"),"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"evaluator":DAMAGE_EVALUATOR_ID,"evaluator_implementation_sha256":evaluator_implementation_sha256(),"trials":trials,"seed":seed,"trial_seed_role":"historical_compatibility_metadata","aggregation":"exact rational target-profile weights; percentages from displayed aggregates","status":config["methodology"]["status"]}
     return DamageInputBundle(model,config,comparators,tuple(entries),tuple(targets),identity)
 
 

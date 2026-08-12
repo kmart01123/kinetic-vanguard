@@ -2,10 +2,13 @@ from __future__ import annotations
 
 import csv
 import json
+import multiprocessing
+import pickle
 import subprocess
 import tempfile
 import unittest
 from collections import Counter
+from concurrent.futures import ProcessPoolExecutor
 from copy import deepcopy
 from dataclasses import replace
 from fractions import Fraction
@@ -14,7 +17,8 @@ from unittest.mock import patch
 
 import harness.authority as authority_module
 from harness.authority import AuthorityError,DamageAuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
-from harness.creature_catalog import DAMAGE_PROJECTION_ID,DAMAGE_PROJECTION_VERSION,HEADLINE_PROFILE_ID,DamageTarget,RosterEntry,load_catalog,load_consumer_requirements,load_profile,project_damage_target,project_profile_damage_targets
+from harness.creature_catalog import HEADLINE_PROFILE_ID,RosterEntry,load_catalog,load_consumer_requirements,load_profile
+from harness.creature_damage_projection import DAMAGE_PROJECTION_ID,DAMAGE_PROJECTION_VERSION,DamageTarget,project_damage_target,project_profile_damage_targets
 from harness.damage_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,damage_matrix_row,write_damage_matrix
 from harness.damage_harness import DAMAGE_EVALUATOR_ID,DAMAGE_EVALUATOR_IMPLEMENTATION_PATHS,DAMAGE_RESULT_CONTRACT_VERSION,RUN_MANIFEST_FILENAME,Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,_strike_packet_options,evaluator_implementation_sha256,run as run_damage
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,load_comparators,load_config
@@ -30,6 +34,29 @@ def _headline_bindings(levels:set[int]|None=None)->tuple[tuple[RosterEntry,Damag
         _HEADLINE_BINDINGS=tuple(project_profile_damage_targets(entries,catalog=catalog,requirements=requirements))
     if levels is None:return _HEADLINE_BINDINGS
     return tuple(binding for binding in _HEADLINE_BINDINGS if binding[0].benchmark_level in levels)
+
+
+def _inspect_damage_worker_argument(arguments:tuple[object,...])->tuple[object,...]:
+    model,config,entry,target,discipline,clusters,eldritch_knight,battle_master=arguments
+    assert isinstance(model,DamageAuthorityModel)
+    assert isinstance(config,dict)
+    assert isinstance(entry,RosterEntry)
+    assert isinstance(target,DamageTarget)
+    assert isinstance(discipline,str)
+    assert isinstance(clusters,list)
+    target.validate_identity()
+    return (
+        model.rules_version,
+        config["methodology"]["status"],
+        entry.creature_id,
+        target.creature_id,
+        target.target_sha256,
+        discipline,
+        tuple(clusters),
+        eldritch_knight,
+        battle_master,
+        tuple(target.saves.items()),
+    )
 
 
 def _headline_target(level:int,name:str|None=None)->DamageTarget:
@@ -202,7 +229,7 @@ class FrozenInputValidationTests(unittest.TestCase):
             "damage_resistances","damage_immunities","damage_vulnerabilities","hp",
             "source_ruleset","source_page","source_anchor","source_url",
             "catalog_contract_version","catalog_sha256","projection_id","projection_version",
-            "requirements_sha256","target_sha256",
+            "damage_consumer_requirements_sha256","target_sha256",
         })
         self.assertFalse({"benchmark_level","level","weight"}&set(DamageTarget.__dataclass_fields__))
         entry,target=_headline_bindings()[0]
@@ -232,7 +259,10 @@ class FrozenInputValidationTests(unittest.TestCase):
         self.assertEqual(first,second)
         self.assertEqual(first.target_sha256,second.target_sha256)
         self.assertEqual(first.catalog_sha256,entry.catalog_sha256)
-        self.assertEqual(first.requirements_sha256,requirements.sha256)
+        self.assertEqual(
+            first.damage_consumer_requirements_sha256,
+            requirements.sha256_for("damage_target"),
+        )
 
 
 class FighterNumericalTests(unittest.TestCase):
@@ -549,6 +579,38 @@ class ClassificationTests(unittest.TestCase):
 
 
 class SmokeAndBoundaryTests(unittest.TestCase):
+    def test_damage_target_pickle_round_trip_preserves_identity_and_immutability(self)->None:
+        target=_headline_bindings({7})[0][1]
+        restored=pickle.loads(pickle.dumps(target,protocol=pickle.HIGHEST_PROTOCOL))
+        self.assertEqual(restored,target)
+        self.assertEqual(restored.target_sha256,target.target_sha256)
+        self.assertEqual(dict(restored.saves),dict(target.saves))
+        restored.validate_identity()
+        with self.assertRaises(TypeError):
+            restored.saves["strength"]=99  # type: ignore[index]
+
+    def test_damage_worker_argument_crosses_spawned_executor_without_evaluation(self)->None:
+        model=DamageAuthorityModel.load();config=load_config();entry,target=_headline_bindings({7})[0]
+        arguments=(model,config,entry,target,"pyrokinesis",[1],20.0,30.0)
+        expected=(
+            model.rules_version,
+            config["methodology"]["status"],
+            entry.creature_id,
+            target.creature_id,
+            target.target_sha256,
+            "pyrokinesis",
+            (1,),
+            20.0,
+            30.0,
+            tuple(target.saves.items()),
+        )
+        with ProcessPoolExecutor(
+            max_workers=1,
+            max_tasks_per_child=1,
+            mp_context=multiprocessing.get_context("spawn"),
+        ) as executor:
+            self.assertEqual(executor.submit(_inspect_damage_worker_argument,arguments).result(timeout=60),expected)
+
     def test_one_level_diagnostic_uses_profile_weights_and_writes_bound_manifest(self)->None:
         def comparator(_model:object,_config:object,_comparators:object,_target:DamageTarget,_level:int,comparator_id:str)->float:
             return 20.0 if comparator_id=="eldritch_knight" else 30.0
@@ -628,7 +690,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
                 "catalog_contract_version","catalog_sha256","roster_contract_version","roster_sha256",
                 "target_profile_id","target_profile_version","target_profile_sha256",
                 "damage_target_projection_id","damage_target_projection_version","damage_target_projection_sha256",
-                "consumer_requirements_version","consumer_requirements_sha256","config_sha256",
+                "consumer_requirements_version","damage_consumer_requirements_sha256","config_sha256",
                 "comparator_config_sha256","evaluator","evaluator_implementation_sha256","trials","seed",
                 "trial_seed_role","aggregation","status",
             })
@@ -639,7 +701,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             self.assertEqual(inputs["evaluator"],DAMAGE_EVALUATOR_ID)
             self.assertEqual((inputs["trials"],inputs["seed"]),(2,16))
             self.assertEqual(inputs["aggregation"],"exact rational target-profile weights; percentages from displayed aggregates")
-            self.assertTrue(all(inputs[key] for key in ("catalog_sha256","roster_sha256","target_profile_sha256","damage_target_projection_sha256","consumer_requirements_sha256")))
+            self.assertTrue(all(inputs[key] for key in ("catalog_sha256","roster_sha256","target_profile_sha256","damage_target_projection_sha256","damage_consumer_requirements_sha256")))
             self.assertEqual(
                 {key:damage_row[key] for key in (
                     f"Provenance {str(name).replace('_',' ').title()}" for name in inputs
@@ -663,6 +725,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             [
                 "harness/authority.py",
                 "harness/creature_catalog.py",
+                "harness/creature_damage_projection.py",
                 "harness/damage_harness.py",
                 "harness/damage_report.py",
                 "harness/model.py",

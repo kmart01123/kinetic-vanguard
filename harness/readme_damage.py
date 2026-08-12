@@ -58,7 +58,7 @@ PROVENANCE_FIELDS = (
     "Provenance Damage Target Projection Version",
     "Provenance Damage Target Projection Sha256",
     "Provenance Consumer Requirements Version",
-    "Provenance Consumer Requirements Sha256",
+    "Provenance Damage Consumer Requirements Sha256",
     "Provenance Config Sha256",
     "Provenance Comparator Config Sha256",
     "Provenance Evaluator",
@@ -73,6 +73,13 @@ MatrixRow = dict[str, str]
 CARRIED_FORWARD_REVIEW = "CARRIED_FORWARD_WITHOUT_FRESH_NUMERICAL_REVIEW"
 FRESH_EXPANDED_ROSTER_REVIEW = (
     "FRESH_EXPANDED_ROSTER_RUN_WITHOUT_INDEPENDENT_CERTIFICATION"
+)
+INVALIDATED_PREMERGE_REVIEW = (
+    "invalidated_premerge_provenance_boundary_correction"
+)
+INVALIDATED_NUMERICAL_EVIDENCE_ROLE = "comparison_evidence_only"
+INVALIDATED_RUN_EVIDENCE_SHA256 = (
+    "ef3dd8ad992b455bb35543406106f10287504f6787ca9981855c9f1967bd623a"
 )
 
 
@@ -124,6 +131,37 @@ class FreshRunEvidence:
     damage_target_projection_id: str
     damage_target_projection_version: str
     damage_target_projection_sha256: str
+    consumer_requirements_version: str
+    damage_consumer_requirements_sha256: str
+    evaluator: str
+    evaluator_implementation_sha256: str
+    output_sha256: DamageOutputSha256
+    row_counts: DamageRowCounts
+
+
+@dataclass(frozen=True)
+class InvalidatedRunEvidence:
+    invalidation_disposition: str
+    reason: str
+    numerical_evidence_role: str
+    numerical_defect_demonstrated: bool
+    run_manifest_sha256: str
+    baseline_evidence_sha256: str
+    damage_result_contract_version: str
+    rules_version: str
+    authority_sha256: str
+    catalog_contract_version: str
+    catalog_sha256: str
+    roster_contract_version: str
+    roster_sha256: str
+    target_profile_id: str
+    target_profile_version: str
+    target_profile_sha256: str
+    consumer_requirements_version: str
+    consumer_requirements_sha256: str
+    damage_target_projection_id: str
+    damage_target_projection_version: str
+    damage_target_projection_sha256: str
     evaluator: str
     evaluator_implementation_sha256: str
     output_sha256: DamageOutputSha256
@@ -142,6 +180,7 @@ class DamageReviewDisposition:
     fresh_monte_carlo_certification: bool
     reason: str
     durable_record: str
+    invalidated_run_evidence: InvalidatedRunEvidence | None
     fresh_run_evidence: FreshRunEvidence | None
 
 
@@ -185,7 +224,6 @@ def _canonical_sha256(value: object) -> str:
 EXPANDED_ROSTER_BASELINE_EVIDENCE_SHA256 = _canonical_sha256(
     asdict(EXPANDED_ROSTER_BASELINE_EVIDENCE)
 )
-
 
 def _review_object(value: object, label: str) -> dict[str, object]:
     if not isinstance(value, dict):
@@ -314,6 +352,8 @@ def _load_fresh_run_evidence(value: object) -> FreshRunEvidence:
         "damage_target_projection_id",
         "damage_target_projection_version",
         "damage_target_projection_sha256",
+        "consumer_requirements_version",
+        "damage_consumer_requirements_sha256",
         "evaluator",
         "evaluator_implementation_sha256",
         "output_sha256",
@@ -329,6 +369,7 @@ def _load_fresh_run_evidence(value: object) -> FreshRunEvidence:
         "target_profile_version",
         "damage_target_projection_id",
         "damage_target_projection_version",
+        "consumer_requirements_version",
         "evaluator",
     )
     strings = {
@@ -343,6 +384,7 @@ def _load_fresh_run_evidence(value: object) -> FreshRunEvidence:
         "roster_sha256",
         "target_profile_sha256",
         "damage_target_projection_sha256",
+        "damage_consumer_requirements_sha256",
         "evaluator_implementation_sha256",
     )
     shas = {
@@ -367,6 +409,10 @@ def _load_fresh_run_evidence(value: object) -> FreshRunEvidence:
             "damage_target_projection_version"
         ],
         damage_target_projection_sha256=shas["damage_target_projection_sha256"],
+        consumer_requirements_version=strings["consumer_requirements_version"],
+        damage_consumer_requirements_sha256=shas[
+            "damage_consumer_requirements_sha256"
+        ],
         evaluator=strings["evaluator"],
         evaluator_implementation_sha256=shas["evaluator_implementation_sha256"],
         output_sha256=_load_output_sha256(
@@ -374,6 +420,133 @@ def _load_fresh_run_evidence(value: object) -> FreshRunEvidence:
         ),
         row_counts=_load_row_counts(raw["row_counts"], f"{label}.row_counts"),
     )
+
+
+def _load_invalidated_run_evidence(value: object) -> InvalidatedRunEvidence:
+    label = "current_development_disposition.invalidated_run_evidence"
+    raw = _review_object(value, label)
+    required = {
+        "invalidation_disposition",
+        "reason",
+        "numerical_evidence_role",
+        "numerical_defect_demonstrated",
+        "run_manifest_sha256",
+        "baseline_evidence_sha256",
+        "damage_result_contract_version",
+        "rules_version",
+        "authority_sha256",
+        "catalog_contract_version",
+        "catalog_sha256",
+        "roster_contract_version",
+        "roster_sha256",
+        "target_profile_id",
+        "target_profile_version",
+        "target_profile_sha256",
+        "consumer_requirements_version",
+        "consumer_requirements_sha256",
+        "damage_target_projection_id",
+        "damage_target_projection_version",
+        "damage_target_projection_sha256",
+        "evaluator",
+        "evaluator_implementation_sha256",
+        "output_sha256",
+        "row_counts",
+    }
+    _review_exact_keys(raw, required, label)
+    string_fields = (
+        "invalidation_disposition",
+        "reason",
+        "numerical_evidence_role",
+        "damage_result_contract_version",
+        "rules_version",
+        "catalog_contract_version",
+        "roster_contract_version",
+        "target_profile_id",
+        "target_profile_version",
+        "consumer_requirements_version",
+        "damage_target_projection_id",
+        "damage_target_projection_version",
+        "evaluator",
+    )
+    strings = {
+        field: _review_string(raw[field], f"{label}.{field}")
+        for field in string_fields
+    }
+    sha_fields = (
+        "run_manifest_sha256",
+        "baseline_evidence_sha256",
+        "authority_sha256",
+        "catalog_sha256",
+        "roster_sha256",
+        "target_profile_sha256",
+        "consumer_requirements_sha256",
+        "damage_target_projection_sha256",
+        "evaluator_implementation_sha256",
+    )
+    shas = {
+        field: _review_sha256(raw[field], f"{label}.{field}")
+        for field in sha_fields
+    }
+    if type(raw["numerical_defect_demonstrated"]) is not bool:
+        raise MatrixSyncError(
+            f"{label}.numerical_defect_demonstrated must be a boolean"
+        )
+    result = InvalidatedRunEvidence(
+        invalidation_disposition=strings["invalidation_disposition"],
+        reason=strings["reason"],
+        numerical_evidence_role=strings["numerical_evidence_role"],
+        numerical_defect_demonstrated=raw["numerical_defect_demonstrated"],
+        run_manifest_sha256=shas["run_manifest_sha256"],
+        baseline_evidence_sha256=shas["baseline_evidence_sha256"],
+        damage_result_contract_version=strings[
+            "damage_result_contract_version"
+        ],
+        rules_version=strings["rules_version"],
+        authority_sha256=shas["authority_sha256"],
+        catalog_contract_version=strings["catalog_contract_version"],
+        catalog_sha256=shas["catalog_sha256"],
+        roster_contract_version=strings["roster_contract_version"],
+        roster_sha256=shas["roster_sha256"],
+        target_profile_id=strings["target_profile_id"],
+        target_profile_version=strings["target_profile_version"],
+        target_profile_sha256=shas["target_profile_sha256"],
+        consumer_requirements_version=strings[
+            "consumer_requirements_version"
+        ],
+        consumer_requirements_sha256=shas["consumer_requirements_sha256"],
+        damage_target_projection_id=strings["damage_target_projection_id"],
+        damage_target_projection_version=strings[
+            "damage_target_projection_version"
+        ],
+        damage_target_projection_sha256=shas[
+            "damage_target_projection_sha256"
+        ],
+        evaluator=strings["evaluator"],
+        evaluator_implementation_sha256=shas[
+            "evaluator_implementation_sha256"
+        ],
+        output_sha256=_load_output_sha256(
+            raw["output_sha256"], f"{label}.output_sha256"
+        ),
+        row_counts=_load_row_counts(raw["row_counts"], f"{label}.row_counts"),
+    )
+    if result.invalidation_disposition != INVALIDATED_PREMERGE_REVIEW:
+        raise MatrixSyncError(
+            "Invalidated-run evidence has the wrong invalidation disposition"
+        )
+    if result.numerical_evidence_role != INVALIDATED_NUMERICAL_EVIDENCE_ROLE:
+        raise MatrixSyncError(
+            "Invalidated-run evidence must be comparison evidence only"
+        )
+    if result.numerical_defect_demonstrated:
+        raise MatrixSyncError(
+            "Invalidated-run evidence cannot claim a demonstrated numerical defect"
+        )
+    if _canonical_sha256(asdict(result)) != INVALIDATED_RUN_EVIDENCE_SHA256:
+        raise MatrixSyncError(
+            "Invalidated-run evidence differs from the preserved pre-correction record"
+        )
+    return result
 
 
 def load_damage_review_disposition(
@@ -413,6 +586,7 @@ def load_damage_review_disposition(
         "fresh_monte_carlo_certification",
         "reason",
         "durable_record",
+        "invalidated_run_evidence",
         "fresh_run_evidence",
     }
     _review_exact_keys(raw, required, "current_development_disposition")
@@ -481,6 +655,27 @@ def load_damage_review_disposition(
             "Damage matrix review status differs from the durable review basis"
         )
     disposition = strings["review_disposition"]
+    invalidated_run_evidence = (
+        None
+        if raw["invalidated_run_evidence"] is None
+        else _load_invalidated_run_evidence(raw["invalidated_run_evidence"])
+    )
+    if invalidated_run_evidence is not None:
+        if (
+            invalidated_run_evidence.baseline_evidence_sha256
+            != _canonical_sha256(asdict(baseline_evidence))
+        ):
+            raise MatrixSyncError(
+                "Invalidated-run evidence baseline_evidence_sha256 differs from "
+                "the maintained baseline evidence"
+            )
+        if invalidated_run_evidence.rules_version != strings[
+            "current_rules_version"
+        ]:
+            raise MatrixSyncError(
+                "Invalidated-run evidence rules version differs from current rules "
+                "version"
+            )
     fresh_run_evidence: FreshRunEvidence | None
     if disposition == CARRIED_FORWARD_REVIEW:
         if strings["review_basis_rules_version"] == strings["current_rules_version"]:
@@ -494,6 +689,28 @@ def load_damage_review_disposition(
         if raw["fresh_run_evidence"] is not None:
             raise MatrixSyncError(
                 "Carried-forward damage evidence requires null fresh_run_evidence"
+            )
+        if invalidated_run_evidence is not None:
+            raise MatrixSyncError(
+                "Carried-forward damage evidence requires null "
+                "invalidated_run_evidence"
+            )
+        fresh_run_evidence = None
+    elif disposition == INVALIDATED_PREMERGE_REVIEW:
+        if any(booleans.values()):
+            raise MatrixSyncError(
+                "Invalidated pre-replacement damage evidence cannot claim a fresh "
+                "run or certification"
+            )
+        if raw["fresh_run_evidence"] is not None:
+            raise MatrixSyncError(
+                "Invalidated pre-replacement damage evidence requires null "
+                "fresh_run_evidence"
+            )
+        if invalidated_run_evidence is None:
+            raise MatrixSyncError(
+                "Invalidated pre-replacement disposition requires "
+                "invalidated_run_evidence"
             )
         fresh_run_evidence = None
     elif disposition == FRESH_EXPANDED_ROSTER_REVIEW:
@@ -511,6 +728,11 @@ def load_damage_review_disposition(
         if raw["fresh_run_evidence"] is None:
             raise MatrixSyncError(
                 "Expanded-roster disposition requires fresh_run_evidence"
+            )
+        if invalidated_run_evidence is None:
+            raise MatrixSyncError(
+                "Replacement expanded-roster disposition must preserve "
+                "invalidated_run_evidence"
             )
         fresh_run_evidence = _load_fresh_run_evidence(raw["fresh_run_evidence"])
         if (
@@ -541,6 +763,7 @@ def load_damage_review_disposition(
         ],
         reason=strings["reason"],
         durable_record=strings["durable_record"],
+        invalidated_run_evidence=invalidated_run_evidence,
         fresh_run_evidence=fresh_run_evidence,
     )
 
@@ -801,6 +1024,12 @@ def fresh_run_evidence_from_verified(
         damage_target_projection_sha256=_verified_input_string(
             verified, "damage_target_projection_sha256", sha256=True
         ),
+        consumer_requirements_version=_verified_input_string(
+            verified, "consumer_requirements_version"
+        ),
+        damage_consumer_requirements_sha256=_verified_input_string(
+            verified, "damage_consumer_requirements_sha256", sha256=True
+        ),
         evaluator=_verified_input_string(verified, "evaluator"),
         evaluator_implementation_sha256=_verified_input_string(
             verified, "evaluator_implementation_sha256", sha256=True
@@ -849,9 +1078,54 @@ def validate_damage_review_run_evidence(
             raise MatrixSyncError(
                 "Carried-forward damage review requires null fresh_run_evidence"
             )
+        if review.invalidated_run_evidence is not None:
+            raise MatrixSyncError(
+                "Carried-forward damage review requires null "
+                "invalidated_run_evidence"
+            )
         return
+    if review.review_disposition == INVALIDATED_PREMERGE_REVIEW:
+        invalidated = review.invalidated_run_evidence
+        if invalidated is None:
+            raise MatrixSyncError(
+                "Invalidated pre-replacement damage review requires "
+                "invalidated_run_evidence"
+            )
+        if review.fresh_run_evidence is not None:
+            raise MatrixSyncError(
+                "Invalidated pre-replacement damage review requires null "
+                "fresh_run_evidence"
+            )
+        if any(
+            (
+                review.fresh_full_roster_run,
+                review.fresh_numerical_certification,
+                review.fresh_monte_carlo_certification,
+            )
+        ):
+            raise MatrixSyncError(
+                "Invalidated pre-replacement damage-review flags are inconsistent"
+            )
+        if (
+            invalidated.invalidation_disposition != INVALIDATED_PREMERGE_REVIEW
+            or invalidated.numerical_evidence_role
+            != INVALIDATED_NUMERICAL_EVIDENCE_ROLE
+            or invalidated.numerical_defect_demonstrated
+        ):
+            raise MatrixSyncError(
+                "Invalidated-run comparison-evidence disposition is inconsistent"
+            )
+        raise MatrixSyncError(
+            "Invalidated pre-replacement damage review cannot accept report input; "
+            "a corrected-contract replacement run is required"
+        )
     if review.review_disposition != FRESH_EXPANDED_ROSTER_REVIEW:
         raise MatrixSyncError("Unsupported damage-review evidence disposition")
+    if review.invalidated_run_evidence is None:
+        raise MatrixSyncError(
+            "Replacement expanded-roster damage review must preserve "
+            "invalidated_run_evidence"
+        )
     if review.fresh_run_evidence is None:
         raise MatrixSyncError(
             "Fresh expanded-roster damage review requires fresh_run_evidence"
@@ -1122,17 +1396,75 @@ def render_damage_region(
             "certification, or Monte Carlo certification was performed. "
             f"Reason: {review.reason}"
         )
-    elif review.review_disposition == FRESH_EXPANDED_ROSTER_REVIEW:
-        if not review.fresh_full_roster_run or review.fresh_numerical_certification or review.fresh_monte_carlo_certification:
-            raise MatrixSyncError("Fresh expanded-roster review flags are inconsistent")
+        detailed_report_text = (
+            "Generated detailed analytical CSV, Markdown, and HTML reports retain "
+            "raw aggregates, ratios, boundaries, classifications, and provenance; "
+            "all other primary-target and aggregate-cluster results remain in those "
+            "reports."
+        )
+    elif review.review_disposition == INVALIDATED_PREMERGE_REVIEW:
+        invalidated = review.invalidated_run_evidence
+        if invalidated is None or any(
+            (
+                review.fresh_full_roster_run,
+                review.fresh_numerical_certification,
+                review.fresh_monte_carlo_certification,
+            )
+        ):
+            raise MatrixSyncError(
+                "Invalidated pre-replacement damage-review flags are inconsistent"
+            )
+        if review.fresh_run_evidence is not None:
+            raise MatrixSyncError(
+                "Invalidated pre-replacement damage review requires null "
+                "fresh_run_evidence"
+            )
         review_text = (
-            f"A fresh exact analytical run for **v{review.current_rules_version}** "
-            f"used all {target_count} targets in `{target_profile}`. It replaces the "
-            "carried-forward snapshot, while the independently reviewed rules "
+            "The prior exact analytical run is invalidated for current publication "
+            f"under `{INVALIDATED_PREMERGE_REVIEW}` because its manifest predates "
+            "the corrected consumer-scoped requirements and implementation-identity "
+            "boundaries. Its manifest SHA-256 is "
+            f"`{invalidated.run_manifest_sha256}`. Its numerical outputs and the "
+            "table below are retained only as comparison evidence; no numerical "
+            "defect has been demonstrated. No corrected-contract replacement "
+            f"**v{review.current_rules_version}** full-roster run has been performed. "
+            "The independently reviewed rules "
+            f"**v{review.review_basis_rules_version}** evidence remains the review "
+            f"basis (`{review.review_status}`). Reason: {review.reason}"
+        )
+        detailed_report_text = (
+            "The retained invalidated run's detailed analytical CSV, Markdown, and "
+            "HTML reports preserve raw aggregates, ratios, boundaries, "
+            "classifications, and provenance only as comparison evidence; all other "
+            "primary-target and aggregate-cluster values remain in those reports."
+        )
+    elif review.review_disposition == FRESH_EXPANDED_ROSTER_REVIEW:
+        if (
+            not review.fresh_full_roster_run
+            or review.fresh_numerical_certification
+            or review.fresh_monte_carlo_certification
+            or review.invalidated_run_evidence is None
+        ):
+            raise MatrixSyncError("Fresh expanded-roster review flags are inconsistent")
+        invalidated = review.invalidated_run_evidence
+        assert invalidated is not None
+        review_text = (
+            "A corrected-contract replacement exact analytical run for "
+            f"**v{review.current_rules_version}** used all {target_count} targets in "
+            f"`{target_profile}`. It replaces the invalidated pre-merge comparison "
+            f"snapshot (`{INVALIDATED_PREMERGE_REVIEW}`; prior manifest SHA-256 "
+            f"`{invalidated.run_manifest_sha256}`), while the independently reviewed "
+            "rules "
             f"**v{review.review_basis_rules_version}** evidence remains the review "
             f"basis (`{review.review_status}`). No fresh independent numerical or "
             "Monte Carlo certification is claimed. "
             f"Run-manifest SHA-256: `{run_manifest_sha256}`."
+        )
+        detailed_report_text = (
+            "Generated detailed analytical CSV, Markdown, and HTML reports retain "
+            "raw aggregates, ratios, boundaries, classifications, and provenance; "
+            "all other primary-target and aggregate-cluster results remain in those "
+            "reports."
         )
     else:
         raise MatrixSyncError("Unsupported README damage-review disposition")
@@ -1158,10 +1490,7 @@ def render_damage_region(
         "",
         (
             "This single-target view is primary-target DPR at cluster size 1. README "
-            "cells contain only the public damage result. Generated detailed analytical "
-            "CSV, Markdown, and HTML reports retain raw aggregates, ratios, boundaries, "
-            "classifications, and provenance; all other primary-target and "
-            "aggregate-cluster results remain in those reports."
+            "cells contain only the public damage result. " + detailed_report_text
         ),
         "",
         render_single_target_damage(damage_rows, disciplines),

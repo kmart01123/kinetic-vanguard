@@ -17,6 +17,10 @@
       "airborne",
       "altitude",
       "available_route",
+      "check_advantage_sources",
+      "check_circumstances",
+      "check_disadvantage_sources",
+      "check_roll_mode",
       "concentration",
       "current_condition",
       "current_conditions",
@@ -110,7 +114,7 @@
         "catalog_sha256",
         "projection_id",
         "projection_version",
-        "requirements_sha256",
+        "damage_consumer_requirements_sha256",
         "target_sha256"
       ]
     },
@@ -140,6 +144,8 @@
         "abilities.wisdom.save_bonus",
         "abilities.charisma.modifier",
         "abilities.charisma.save_bonus",
+        "skills",
+        "passive_perception",
         "classification.sizes",
         "classification.creature_type",
         "magic_resistance.present",
@@ -172,13 +178,16 @@
         "armor_class": "reject_unresolved",
         "condition_immunities": "preserve_structured_and_apply_source_default_only",
         "movement": "preserve_structured",
-        "size": "first_source_authored_option"
+        "size": "first_source_authored_option",
+        "skills": "listed_final_bonus_else_associated_raw_ability_modifier"
       },
       "output_fields": [
         "creature_id",
         "name",
         "ac",
         "ability_modifiers",
+        "skills",
+        "passive_perception",
         "saves",
         "magic_resistance",
         "legendary_resistance",
@@ -202,7 +211,7 @@
         "catalog_sha256",
         "projection_id",
         "projection_version",
-        "requirements_sha256",
+        "control_consumer_requirements_sha256",
         "target_sha256"
       ]
     },

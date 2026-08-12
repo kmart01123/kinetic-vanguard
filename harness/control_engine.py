@@ -34,19 +34,21 @@ from harness.control_catalog import (
 )
 from harness.creature_catalog import (
     CONSUMER_REQUIREMENTS_VERSION,
-    CONTROL_PROJECTION_ID,
-    CONTROL_PROJECTION_VERSION,
     DEFAULT_CATALOG as DEFAULT_CREATURE_CATALOG,
     DEFAULT_CONSUMER_REQUIREMENTS,
     DEFAULT_PROVENANCE as DEFAULT_CREATURE_PROVENANCE,
     DEFAULT_ROSTERS as DEFAULT_CREATURE_ROSTERS,
     HEADLINE_PROFILE_ID,
     ROSTER_CONTRACT_VERSION,
-    ControlTarget,
     RosterEntry,
     load_catalog as load_creature_catalog,
     load_consumer_requirements,
     load_profile,
+)
+from harness.creature_control_projection import (
+    CONTROL_PROJECTION_ID,
+    CONTROL_PROJECTION_VERSION,
+    ControlTarget,
     project_control_target,
 )
 from harness.control_graph import (
@@ -106,6 +108,19 @@ from harness.control_timeline import (
 )
 ENGINE_VERSION = "2.0.0"
 CONTROL_ENGINE_RESULT_CONTRACT_VERSION = "3.0.0"
+CONTROL_ENGINE_IMPLEMENTATION_PATHS = (
+    ("harness/authority.py", Path(__file__).with_name("authority.py")),
+    ("harness/control_catalog.py", Path(__file__).with_name("control_catalog.py")),
+    ("harness/control_engine.py", Path(__file__)),
+    ("harness/control_graph.py", Path(__file__).with_name("control_graph.py")),
+    ("harness/control_state.py", Path(__file__).with_name("control_state.py")),
+    ("harness/control_timeline.py", Path(__file__).with_name("control_timeline.py")),
+    ("harness/creature_catalog.py", Path(__file__).with_name("creature_catalog.py")),
+    (
+        "harness/creature_control_projection.py",
+        Path(__file__).with_name("creature_control_projection.py"),
+    ),
+)
 CONTROL_QUERY_SENSE_KINDS = ("blindsight", "tremorsense")
 DEFAULT_FIXTURE_CORPUS = (
     Path(__file__).resolve().parent / "tests" / "fixtures" / "control_engine_v2.json"
@@ -346,6 +361,21 @@ def _file_sha256(path: Path) -> str:
     return digest.hexdigest()
 
 
+def control_engine_implementation_sha256(
+    paths: tuple[tuple[str, Path], ...] = CONTROL_ENGINE_IMPLEMENTATION_PATHS,
+) -> str:
+    """Bind every maintained Python module that can change control results."""
+
+    labels = [label for label, _path in paths]
+    if labels != sorted(labels) or len(labels) != len(set(labels)):
+        raise ControlEngineError(
+            "Control engine implementation paths must have unique sorted labels"
+        )
+    return _sha256_record(
+        [{"path": label, "sha256": _file_sha256(path)} for label, path in paths]
+    )
+
+
 def _require_string_mapping_keys(value: Any, path: str) -> None:
     """Reject lossy JSON key coercion in scenario identity inputs."""
 
@@ -443,7 +473,7 @@ class ControlTargetInputIdentity:
     control_target_projection_version: str
     control_target_projection_sha256: str
     consumer_requirements_version: str
-    consumer_requirements_sha256: str
+    control_consumer_requirements_sha256: str
 
 
 def _control_target_projection_digest(
@@ -454,7 +484,17 @@ def _control_target_projection_digest(
         raise ControlEngineError(
             "ControlTarget projections must cover a non-empty profile exactly"
         )
+    for target in targets:
+        target.validate_identity()
     first_entry = entries[0]
+    if any(
+        entry.creature_id != target.creature_id
+        or entry.catalog_sha256 != target.catalog_sha256
+        for entry, target in zip(entries, targets, strict=True)
+    ):
+        raise ControlEngineError(
+            "ControlTarget projections do not match active profile identities"
+        )
     return _sha256_record({
         "projection_id": CONTROL_PROJECTION_ID,
         "projection_version": CONTROL_PROJECTION_VERSION,
@@ -488,7 +528,7 @@ class VersionProvenance:
     control_target_projection_version: str
     control_target_projection_sha256: str
     consumer_requirements_version: str
-    consumer_requirements_sha256: str
+    control_consumer_requirements_sha256: str
     consequence_catalog_version: str
     consequence_catalog_digest: str
     primitive_contract_version: str
@@ -1263,8 +1303,8 @@ class ControlEngine:
             != target_input_identity.control_target_projection_id
             or target.projection_version
             != target_input_identity.control_target_projection_version
-            or target.requirements_sha256
-            != target_input_identity.consumer_requirements_sha256
+            or target.control_consumer_requirements_sha256
+            != target_input_identity.control_consumer_requirements_sha256
             for target in self.targets
         ):
             raise ControlEngineError(
@@ -1374,7 +1414,9 @@ class ControlEngine:
                 control_target_projection_version=CONTROL_PROJECTION_VERSION,
                 control_target_projection_sha256=projection_sha256,
                 consumer_requirements_version=CONSUMER_REQUIREMENTS_VERSION,
-                consumer_requirements_sha256=requirements.sha256,
+                control_consumer_requirements_sha256=requirements.sha256_for(
+                    "control_target"
+                ),
             ),
         )
 
@@ -4106,7 +4148,7 @@ class ControlEngine:
                 CONTROL_ENGINE_RESULT_CONTRACT_VERSION
             ),
             engine_version=ENGINE_VERSION,
-            engine_implementation_digest=_file_sha256(Path(__file__)),
+            engine_implementation_digest=control_engine_implementation_sha256(),
             authority_projection_version=self.authority.projection_version,
             authority_projection_digest=self.authority.authority_sha256,
             catalog_contract_version=target_inputs.catalog_contract_version,
@@ -4128,8 +4170,8 @@ class ControlEngine:
             consumer_requirements_version=(
                 target_inputs.consumer_requirements_version
             ),
-            consumer_requirements_sha256=(
-                target_inputs.consumer_requirements_sha256
+            control_consumer_requirements_sha256=(
+                target_inputs.control_consumer_requirements_sha256
             ),
             consequence_catalog_version=self.catalog.catalog_version,
             consequence_catalog_digest=self.catalog.digest,

@@ -4,9 +4,11 @@ from __future__ import annotations
 
 import hashlib
 import json
+import tempfile
 import unittest
 from dataclasses import replace
 from fractions import Fraction
+from pathlib import Path
 from types import MappingProxyType
 from typing import Any, Mapping, Sequence
 
@@ -18,10 +20,12 @@ from harness.control_engine import (
     ControlEngine,
     ControlEngineError,
     ControlEngineResult,
+    CONTROL_ENGINE_IMPLEMENTATION_PATHS,
     CONTROL_ENGINE_RESULT_CONTRACT_VERSION,
     ENGINE_VERSION,
     ScenarioConvention,
     VersionProvenance,
+    control_engine_implementation_sha256,
     control_target_sense_query_input,
     reliability_result_to_dict,
     validate_engine,
@@ -310,6 +314,7 @@ class ControlEngineFacadeTests(unittest.TestCase):
         )
         self.assertEqual(identity["control_target_projection_version"], "1.0.0")
         self.assertEqual(identity["consumer_requirements_version"], "1.0.0")
+        self.assertNotIn("consumer_requirements_sha256", identity)
         self.assertEqual(identity["consequence_catalog_version"], "2.0.0")
         self.assertEqual(identity["primitive_contract_version"], "2.0.0")
         self.assertEqual(identity["normalization_rules_version"], "2.0.0")
@@ -322,11 +327,46 @@ class ControlEngineFacadeTests(unittest.TestCase):
             "roster_sha256",
             "target_profile_sha256",
             "control_target_projection_sha256",
-            "consumer_requirements_sha256",
+            "control_consumer_requirements_sha256",
             "consequence_catalog_digest",
             "engine_config_digest",
         ):
             self.assertRegex(identity[key], r"^[0-9a-f]{64}$")
+
+    def test_control_implementation_digest_binds_common_and_control_runtime_only(self) -> None:
+        self.assertEqual(
+            [label for label, _path in CONTROL_ENGINE_IMPLEMENTATION_PATHS],
+            [
+                "harness/authority.py",
+                "harness/control_catalog.py",
+                "harness/control_engine.py",
+                "harness/control_graph.py",
+                "harness/control_state.py",
+                "harness/control_timeline.py",
+                "harness/creature_catalog.py",
+                "harness/creature_control_projection.py",
+            ],
+        )
+        self.assertNotIn(
+            "harness/creature_damage_projection.py",
+            {label for label, _path in CONTROL_ENGINE_IMPLEMENTATION_PATHS},
+        )
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            engine = root / "control_engine.py"
+            projection = root / "creature_control_projection.py"
+            engine.write_text("engine-v1\n", encoding="utf-8")
+            projection.write_text("projection-v1\n", encoding="utf-8")
+            paths = (
+                ("harness/control_engine.py", engine),
+                ("harness/creature_control_projection.py", projection),
+            )
+            original = control_engine_implementation_sha256(paths)
+            engine.write_text("engine-v2\n", encoding="utf-8")
+            self.assertNotEqual(control_engine_implementation_sha256(paths), original)
+            changed = control_engine_implementation_sha256(paths)
+            projection.write_text("projection-v2\n", encoding="utf-8")
+            self.assertNotEqual(control_engine_implementation_sha256(paths), changed)
 
     def test_control_targets_retain_all_senses_while_query_adapter_stays_nonvisual(self) -> None:
         self.assertTrue(
@@ -355,6 +395,20 @@ class ControlEngineFacadeTests(unittest.TestCase):
                 target_input_identity=replace(
                     self.engine.target_input_identity,
                     control_target_projection_sha256="0" * 64,
+                ),
+            )
+
+    def test_constructor_rejects_stale_control_consumer_requirements_identity(self) -> None:
+        with self.assertRaisesRegex(ControlEngineError, "input provenance"):
+            ControlEngine(
+                catalog=self.engine.catalog,
+                config=self.engine.config,
+                authority=self.engine.authority,
+                targets=self.engine.targets,
+                target_profile_entries=self.engine.target_profile_entries,
+                target_input_identity=replace(
+                    self.engine.target_input_identity,
+                    control_consumer_requirements_sha256="0" * 64,
                 ),
             )
 

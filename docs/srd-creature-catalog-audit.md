@@ -1,6 +1,6 @@
 # SRD 5.2.1 creature catalog and roster audit
 
-Status: implemented; the source catalog and source-only roster were frozen in issue #55 comment `5252064760`, and the single authorized v14.2 expanded-roster damage run is recorded below. No independent numerical or Monte Carlo certification is claimed.
+Status: implemented; the source catalog and source-only roster were frozen in issue #55 comment `5252064760`. The pre-correction v14.2 expanded-roster run is permanently marked `invalidated_premerge_provenance_boundary_correction` and retained only as comparison evidence. No corrected-contract replacement run has been performed, no numerical defect has been demonstrated, and no independent numerical or Monte Carlo certification is claimed.
 
 ## Authority and extraction
 
@@ -22,13 +22,15 @@ The extraction provenance, tool options, intermediate digests, visual-check page
 | ControlTarget projection | `srd521_control_target` | 1.0.0 |
 | Future planner static projection | `srd521_planner_static_target` | 1.0.0, declared but not implemented |
 
+The current whole consumer-requirements registry SHA-256 is `5ceaae5dd15bc1dd1fe7dc04d57033fd6d7514fa30b066183162daf12f21d58e`; it is repository-integrity metadata. The current damage-consumer requirements SHA-256 is `a394e60b24aa2901369b12877adb6fad5e2b1be8180c416c3441361be6dd1ac1`, and the current control-consumer requirements SHA-256 is `2549ae2884aeb11bf53e3f079afc094172f5288276cd036ea86181381c4fd3d5`. Future evidence must bind its precise consumer-scoped field rather than the coarse whole-registry digest. The invalidated comparison manifest permanently retains its original coarse digest as historical evidence.
+
 [`harness/data/srd_creatures.json`](../harness/data/srd_creatures.json) is the sole maintained source-fact catalog. [`harness/data/srd_creature_rosters.json`](../harness/data/srd_creature_rosters.json) separately owns eligibility, complete candidate accounting, profile membership, exact rational weights, greedy traces, numeric bucket maps, token universes, coverage, and family audits. Python is the semantic owner; TypeScript performs only inexpensive shape, digest, ordering, and manifest checks.
 
-Catalog facts, roster facts, and live scenario state are separate. `DamageTarget` and `ControlTarget` are sibling projections. Neither owns benchmark level or weight, and neither contains current position, visibility relation, airborne state, route, concentration, Reaction availability, current conditions, held/wielded/dropped state, or intent. A roster entry supplies level and exact weight at the benchmark boundary.
+Catalog facts, roster facts, and live scenario state are separate. `DamageTarget` and `ControlTarget` are sibling projections. `ControlTarget` includes passive Perception and a canonically sorted tuple of sparse, source-explicit skill facts. Each fact retains the canonical skill ID, its canonical associated ability ID, the final source-authored bonus, and source-explicit status. An unlisted skill has no fabricated row and later check resolution falls back to the associated raw ability modifier; absence is not an explicit +0. Live Advantage, Disadvantage, roll mode, condition or equipment effects, and all other check circumstances remain scenario/event state. Neither projection owns benchmark level or weight, and neither contains current position, visibility relation, airborne state, route, concentration, Reaction availability, current conditions, held/wielded/dropped state, or intent. A roster entry supplies level and exact weight at the benchmark boundary.
 
 ## Source population audit
 
-The catalog contains 330 unique canonical IDs and source identities, 1,980 independently validated ability cells, 216 explicit-skill blocks, 45 static-Gear blocks, 36 multi-size blocks, seven swarms, 16 hover facts, 25 telepathy facts, and 27 alternate in-lair XP facts. Special-sense occurrences are Darkvision 201, Blindsight 80, Tremorsense 6, and Truesight 16.
+The catalog contains 330 unique canonical IDs and source identities, 1,980 independently validated ability cells, passive Perception for all 330 creatures, 429 source-explicit skill facts across 216 creatures, 45 static-Gear blocks, 36 multi-size blocks, seven swarms, 16 hover facts, 25 telepathy facts, and 27 alternate in-lair XP facts. The 47-target headline retains all 47 passive-Perception facts and 105 explicit skill facts across 40 targets; the 93-target census retains all 93 passive-Perception facts and 165 explicit skill facts across 71 targets. Special-sense occurrences are Darkvision 201, Blindsight 80, Tremorsense 6, and Truesight 16.
 
 All 337 passive-trait heading occurrences are closed over 115 source headings: 329 top-level headings plus eight ordered Vampire Weakness child clauses. Every occurrence is modeled through a typed ID, retained with a closed non-consumption reason, or declared irrelevant to the maintained consumer boundary. Static Gear is transcribed only from the source Gear field; attack/action prose is not used to reconstruct equipment.
 
@@ -84,9 +86,9 @@ The complete per-dimension exact coverage, every uncovered token, every numeric 
 
 A private machine comparison against the exact base commit joined all old 28 rows in order and reproduced all 812 required consumed-field comparisons plus 28 CR checks. Intentional representation changes are canonical ID plus display name, integer source pages, structured qualified atoms, separate final saves, richer Legendary Resistance policies, and retained Darkvision/Truesight facts. No old-28 golden, alias, fallback, or compatibility runtime is retained.
 
-The damage benchmark consumes the headline profile through `DamageTarget`; the control engine consumes the same profile through `ControlTarget`. The catalog and profiles do not alter Kinetic Vanguard rules, comparator mechanics/packages, Control Authority mechanics, primitive weights, or Control Value. The catalog, roster, projections, report-input behavior, and complete non-analytical suite were frozen before the full expanded damage run.
+The damage benchmark consumes the headline profile through `DamageTarget`; the control engine consumes the same profile through `ControlTarget`. The catalog and profiles do not alter Kinetic Vanguard rules, comparator mechanics/packages, Control Authority mechanics, primitive weights, or Control Value. The catalog and roster were frozen before the full expanded damage run; the then-current projection and report-input boundaries passed their complete non-analytical gate, but their later pre-merge provenance correction is why that run is now comparison-only.
 
-## Frozen v14.2 final run record
+## Invalidated pre-merge v14.2 comparison-run record
 
 Issue #55 comment `5252064760` records the pre-run source-only freeze. An attempted `/usr/bin/time` wrapper failed before `npm` started, so it did not invoke the evaluator and is not counted as a run. The evaluator was then invoked exactly once with:
 
@@ -94,7 +96,7 @@ Issue #55 comment `5252064760` records the pre-run source-only freeze. An attemp
 npm run harness:damage -- --output-dir /tmp/kv-issue-55-final-damage.NU1wCZ/damage --workers 4
 ```
 
-That run completed in about 255 seconds across all 47 source-ordered headline targets. Its evaluator implementation SHA-256 is `9838c390ef6c8a05ffcc9f6b67ca4e867da16277f8838a99015ae919e3a18c4d`. The final `run-manifest.json` has SHA-256 `a6ad2a6ca1b56c08ce95668f0825d2959d7b8f3ea8dd2f10b498d3536a25e1b8` and binds these outputs:
+That run completed in about 255 seconds across all 47 source-ordered headline targets. Its evaluator implementation SHA-256 is `9838c390ef6c8a05ffcc9f6b67ca4e867da16277f8838a99015ae919e3a18c4d`. Its `run-manifest.json` has SHA-256 `a6ad2a6ca1b56c08ce95668f0825d2959d7b8f3ea8dd2f10b498d3536a25e1b8` and binds these preserved outputs:
 
 | Output | Rows | SHA-256 |
 | --- | ---: | --- |
@@ -103,11 +105,11 @@ That run completed in about 255 seconds across all 47 source-ordered headline ta
 | Matrix Markdown | 96 | `7d8cd1e4316ee28f589b2ad47a1de1418d0c9b80389f0fb2bac9a82467c3c87c` |
 | Matrix HTML | 96 | `963cceba16ac9a1db894e02407d1fa22333215c279425083458af14a92e27639` |
 
-The README writer and checker both consumed that exact manifest and its bound outputs; neither reran the evaluator. This is a final-run and report-reuse record, not an independent numerical review or Monte Carlo certification of the expanded-roster results.
+The README writer and checker both consumed that exact manifest and its bound outputs; neither reran the evaluator. The later consumer-scoped requirements and sibling-projection implementation correction made that coarse provenance identity stale. The manifest is not rewritten or re-signed and cannot serve as corrected-contract evidence. Its bytes and numerical outputs remain permanent `comparison_evidence_only`; no numerical defect has been demonstrated. No corrected-contract replacement full-roster run has been authorized or performed.
 
 ## Mechanical v14.1 to v14.2 damage delta
 
-The accepted v14.1 release matrix (`e0a9aec2d5c8da9409b8158163d44085001c26686385ddacb7108ff48d2326b4`) and the final v14.2 matrix (`aaa5883bf18ac1ccde6cbb1af21290e5add47c36ec3babba36d95e5101cd1263`) join exactly on all 96 unique level, discipline, cluster-size, damage-scope, profile, and benchmark-type identities. No row is missing, new, duplicated, or newly unevaluable. The comparison used exact decimal arithmetic over the existing artifacts and did not invoke the evaluator.
+The accepted v14.1 release matrix (`e0a9aec2d5c8da9409b8158163d44085001c26686385ddacb7108ff48d2326b4`) and the invalidated pre-merge v14.2 comparison matrix (`aaa5883bf18ac1ccde6cbb1af21290e5add47c36ec3babba36d95e5101cd1263`) join exactly on all 96 unique level, discipline, cluster-size, damage-scope, profile, and benchmark-type identities. No row is missing, new, duplicated, or newly unevaluable. The comparison used exact decimal arithmetic over the existing artifacts and did not invoke the evaluator. These findings characterize the retained comparison bytes, not a corrected-contract replacement.
 
 Headline target counts changed from 8, 6, 6, and 8 at levels 7, 11, 15, and 20 to 12, 12, 11, and 12 respectively: 28 to 47 overall. Aggregate-scope mean signed DPR changes (after minus before) by level are:
 
@@ -122,4 +124,4 @@ The same aggregate-scope KV means by discipline are Cryokinesis -0.764780, Elect
 
 Comparator identities did not change: Eldritch Knight remains the lower boundary and Battle Master the upper boundary in all 96 rows, although both numeric boundaries changed in every row. Bands changed from 70 IDEAL, 19 COLD, and 7 HOT rows to 63 IDEAL, 28 COLD, and 5 HOT rows. Eleven rows changed classification: nine IDEAL to COLD and two HOT to IDEAL. Across all 288 displayed DPR cells, the mean absolute delta is 3.336333510417 and the maximum is 39.306652, the KV level-15 Electrokinesis cluster-6 aggregate row (170.851108 to 131.544456).
 
-The complete deterministic record—including matrix-wide and aggregate-scope means by level, discipline, and cluster; primary-target means across cluster sizes by level and discipline; all 48 aggregate-scope row deltas; boundary and classification transitions; exact sums and denominators; and every input/report digest—is [`harness/provenance/damage-delta-v14.1-to-v14.2.json`](../harness/provenance/damage-delta-v14.1-to-v14.2.json), SHA-256 `b000f3c87bcc8ffda2c88823877885a7b0af5c9ec3c3da7c4ac10a7b1ef8c969`. Roster membership remained frozen after results were inspected.
+The complete deterministic record—including matrix-wide and aggregate-scope means by level, discipline, and cluster; primary-target means across cluster sizes by level and discipline; all 48 aggregate-scope row deltas; boundary and classification transitions; exact sums and denominators; and every preserved input/report digest—is [`harness/provenance/damage-delta-v14.1-to-v14.2.json`](../harness/provenance/damage-delta-v14.1-to-v14.2.json). The record marks the v14.2 side as invalidated comparison evidence and records that no numerical defect was demonstrated. Roster membership remained frozen after results were inspected.

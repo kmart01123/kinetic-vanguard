@@ -42,6 +42,19 @@ test("catalog shape rejects contract drift, noncanonical ID order, and broken so
   reject(value=>{value.creatures[0].scenario_state={position:[0,0]};},/keys are invalid/);
 });
 
+test("catalog shape validates passive Perception and canonical explicit skill rows",async()=>{
+  const {catalog}=await fixture(),skilledIndex=catalog.creatures.findIndex((creature:any)=>creature.skills.length>=2);
+  assert.ok(skilledIndex>=0);
+  const reject=(mutate:(value:any)=>void,pattern:RegExp)=>{const value=structuredClone(catalog);mutate(value);assert.throws(()=>validateCreatureCatalog(value),pattern);};
+  reject(value=>{delete value.creatures[0].passive_perception;},/keys are invalid/);
+  reject(value=>{value.creatures[0].passive_perception=10.5;},/passive_perception must be an integer/);
+  reject(value=>{value.creatures[skilledIndex].skills[0].ability="wisdom";},/skills\[0\] keys are invalid/);
+  reject(value=>{value.creatures[skilledIndex].skills[0].skill="animal_lore";},/skill is unknown/);
+  reject(value=>{value.creatures[skilledIndex].skills[0].bonus=2.5;},/bonus must be an integer/);
+  reject(value=>{[value.creatures[skilledIndex].skills[0],value.creatures[skilledIndex].skills[1]]=[value.creatures[skilledIndex].skills[1],value.creatures[skilledIndex].skills[0]];},/strictly codepoint-sorted and unique/);
+  reject(value=>{value.creatures[skilledIndex].skills[1].skill=value.creatures[skilledIndex].skills[0].skill;},/strictly codepoint-sorted and unique/);
+});
+
 test("rosters reject catalog-binding, profile-identity, digest, order, and accounting drift without reevaluating selection",async()=>{
   const {catalog,catalogBytes,rosters}=await fixture(),validatedCatalog=validateCreatureCatalog(catalog);
   assert.doesNotThrow(()=>validateCreatureRosters(rosters,validatedCatalog,catalogBytes));

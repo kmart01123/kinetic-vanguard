@@ -27,11 +27,11 @@ Kinetic Vanguard profile: `official_default_25_percent_hp`.
 
 Target profile: `srd521_headline_source_diversity_v1` (47 source-ordered targets).
 
-A fresh exact analytical run for **v14.2.0** used all 47 targets in `srd521_headline_source_diversity_v1`. It replaces the carried-forward snapshot, while the independently reviewed rules **v14.1.0** evidence remains the review basis (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`). No fresh independent numerical or Monte Carlo certification is claimed. Run-manifest SHA-256: `a6ad2a6ca1b56c08ce95668f0825d2959d7b8f3ea8dd2f10b498d3536a25e1b8`.
+The prior exact analytical run is invalidated for current publication under `invalidated_premerge_provenance_boundary_correction` because its manifest predates the corrected consumer-scoped requirements and implementation-identity boundaries. Its manifest SHA-256 is `a6ad2a6ca1b56c08ce95668f0825d2959d7b8f3ea8dd2f10b498d3536a25e1b8`. Its numerical outputs and the table below are retained only as comparison evidence; no numerical defect has been demonstrated. No corrected-contract replacement **v14.2.0** full-roster run has been performed. The independently reviewed rules **v14.1.0** evidence remains the review basis (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`). Reason: The consumer-scoped requirements and sibling-projection implementation identities corrected a pre-merge provenance boundary. The previous run predates that boundary and is retained only as comparison evidence; no numerical defect has been demonstrated. A corrected-contract replacement full-roster run has not been authorized or performed.
 
 Battle Master and Eldritch Knight define the comparison envelope. `IDEAL` means Kinetic Vanguard falls between the two damage results, inclusive. `COLD` is below both; `HOT` is above both. The percentage on COLD and HOT cells is the signed distance outside the nearest envelope boundary. `N/A` is reserved for a comparison that cannot be evaluated.
 
-This single-target view is primary-target DPR at cluster size 1. README cells contain only the public damage result. Generated detailed analytical CSV, Markdown, and HTML reports retain raw aggregates, ratios, boundaries, classifications, and provenance; all other primary-target and aggregate-cluster results remain in those reports.
+This single-target view is primary-target DPR at cluster size 1. README cells contain only the public damage result. The retained invalidated run's detailed analytical CSV, Markdown, and HTML reports preserve raw aggregates, ratios, boundaries, classifications, and provenance only as comparison evidence; all other primary-target and aggregate-cluster values remain in those reports.
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
@@ -82,7 +82,7 @@ npm run test:determinism
 npm run test:layout
 npm run harness:validate
 npm run test:harness
-npm run readme:damage:check -- --report-input /path/to/final-run/run-manifest.json
+npm run readme:damage:check -- --report-input /path/to/corrected-contract-run/run-manifest.json
 ```
 
 The optional full-roster command is `npm run harness:damage -- --output-dir harness/results/damage`. It writes a provenance-bearing run manifest beside generated outputs. Reuse that exact manifest with `npm run readme:damage -- --report-input ...` and the check command; neither README command reruns the evaluator. Generated results are ignored. See `harness/README.md` for methodology, provenance, damage-matrix interpretation, and the distinction between current authority and its durable numerical-review basis.

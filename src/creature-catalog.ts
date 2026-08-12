@@ -68,6 +68,8 @@ const CATALOG_KEYS=["contract","creatures","passive_trait_registry","provenance_
 const CREATURE_KEYS=["abilities","armor_class","challenge","classification","communication","creature_id","defenses","display_name","gear","hit_points","initiative","legendary_resistance","magic_resistance","movement","passive_perception","passive_traits","senses","skills","source","source_variant_tags"];
 const CREATURE_OBJECT_FIELDS=["abilities","armor_class","challenge","classification","communication","defenses","hit_points","initiative","legendary_resistance","magic_resistance","movement","senses"];
 const CREATURE_ARRAY_FIELDS=["gear","passive_traits","skills","source_variant_tags"];
+const CANONICAL_SKILL_IDS=["acrobatics","animal_handling","arcana","athletics","deception","history","insight","intimidation","investigation","medicine","nature","perception","performance","persuasion","religion","sleight_of_hand","stealth","survival"] as const;
+const CANONICAL_SKILL_ID_SET:ReadonlySet<string>=new Set(CANONICAL_SKILL_IDS);
 const SOURCE_KEYS=["modification_notice","page","ruleset","stat_block_anchor","stat_block_order"];
 const ROSTER_KEYS=["accounting","catalog","contract","eligibility_policy","exclusion_reason_ids","profiles","selection_algorithm","selection_audit"];
 const PROFILE_KEYS=["entries","profile_id","profile_sha256","profile_version","purpose"];
@@ -216,6 +218,16 @@ export function validateCreatureCatalog(value:unknown):CreatureCatalogDocument{
     trimmedString(creature.display_name,`${label}.display_name`);
     CREATURE_OBJECT_FIELDS.forEach(field=>record(creature[field],`${label}.${field}`));
     CREATURE_ARRAY_FIELDS.forEach(field=>array(creature[field],`${label}.${field}`));
+    integer(creature.passive_perception,`${label}.passive_perception`);
+    const skillIds=array(creature.skills,`${label}.skills`).map((item,skillIndex)=>{
+      const skillLabel=`${label}.skills[${skillIndex}]`,skill=record(item,skillLabel);
+      exactKeys(skill,["bonus","skill"],skillLabel);
+      const skillId=trimmedString(skill.skill,`${skillLabel}.skill`);
+      if(!CANONICAL_SKILL_ID_SET.has(skillId))throw new Error(`${skillLabel}.skill is unknown`);
+      integer(skill.bonus,`${skillLabel}.bonus`);
+      return skillId;
+    });
+    assertStrictlySortedUnique(skillIds,`${label}.skills`);
     const challenge=record(creature.challenge,`${label}.challenge`);
     rational(challenge.rating,`${label}.challenge.rating`);
     const source=record(creature.source,`${label}.source`);

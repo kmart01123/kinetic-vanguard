@@ -51,6 +51,8 @@
     {"path":"harness/authority.py","role":"harness_source"},
     {"path":"harness/model.py","role":"harness_source"},
     {"path":"harness/creature_catalog.py","role":"harness_source"},
+    {"path":"harness/creature_damage_projection.py","role":"harness_source"},
+    {"path":"harness/creature_control_projection.py","role":"harness_source"},
     {"path":"harness/control_catalog.py","role":"harness_source"},
     {"path":"harness/control_graph.py","role":"harness_source"},
     {"path":"harness/control_state.py","role":"harness_source"},
