@@ -119,7 +119,7 @@ test("retired control runtime is absent while static target and damage boundarie
   await Promise.all([...retiredPaths,...compatibilityPaths].map(assertAbsent));
 
   const inputs=JSON.parse(await readFile("build/inputs.json","utf8")).inputs as Array<{path:string;role:string}>,inputRoles=new Map(inputs.map(input=>[input.path,input.role]));
-  assert.equal(inputs.length,82,"retirement removes exactly 15 of the 97 declared inputs");
+  assert.equal(inputs.length,84,"retirement removes exactly 15 inputs and legal hygiene adds two maintained records");
   for(const path of retiredPaths)assert.equal(inputRoles.has(path),false,`${path} is absent from build inputs`);
   const retainedInputs:ReadonlyArray<readonly [string,string]>=[
     ["src/control-authority-v2.ts","rule_source"],
