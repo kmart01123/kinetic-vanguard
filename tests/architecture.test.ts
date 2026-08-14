@@ -93,47 +93,84 @@ test("retired migration sources are absent from the active architecture",async()
   assert.match(await readFile("CHANGELOG.md","utf8"),/migration/i);
 });
 
-test("shared creature catalog feeds independent damage and control runtimes",async()=>{
-  const runtimeModules=[
-    "harness/control_catalog.py","harness/control_graph.py","harness/control_state.py","harness/control_timeline.py","harness/control_engine.py"
+test("retired control runtime is absent while static target and damage boundaries remain",async()=>{
+  const retiredPaths=[
+    "harness/control_catalog.py",
+    "harness/control_graph.py",
+    "harness/control_state.py",
+    "harness/control_timeline.py",
+    "harness/control_engine.py",
+    "harness/config/control-engine.json",
+    "harness/data/srd_control_consequences.json",
+    "harness/provenance/srd-control-consequences.json",
+    "harness/tests/fixtures/control_engine_v2.json",
+    "harness/tests/test_control_catalog.py",
+    "harness/tests/test_control_graph.py",
+    "harness/tests/test_control_state.py",
+    "harness/tests/test_control_timeline.py",
+    "harness/tests/test_control_engine.py",
+    "harness/tests/test_control_engine_fixtures.py"
   ] as const;
-  const projectionModules=["harness/creature_damage_projection.py","harness/creature_control_projection.py"] as const;
-  const expectedInputs:ReadonlyArray<readonly [string,string]>=[
-    ["harness/creature_catalog.py","harness_source"],
-    ...projectionModules.map(path=>[path,"harness_source"] as const),
-    ...runtimeModules.map(path=>[path,"harness_source"] as const),
-    ["harness/config/control-engine.json","control_engine_methodology_config"],
-    ["harness/data/srd_control_consequences.json","pinned_srd_control_consequence_catalog"],
-    ["harness/provenance/srd-control-consequences.json","harness_provenance"],
-    ["harness/tests/fixtures/control_engine_v2.json","reviewed_correctness_corpus"],
-    ["harness/tests/test_control_engine_fixtures.py","test_source"],
-    ...["catalog","graph","state","timeline","engine"].map(name=>[`harness/tests/test_control_${name}.py`,"test_source"] as const)
-  ];
-  await Promise.all(expectedInputs.map(([path])=>access(path)));
-  await assertAbsent("harness/tests/fixtures/control_engine_v1.json");
-  const twinStems=["catalog","graph","state","timeline","engine"] as const;
-  await Promise.all(twinStems.flatMap(stem=>[`src/control-${stem}.ts`,`src/control_${stem}.ts`]).map(assertAbsent));
-  await Promise.all(["tests/fixtures/control-engine-parity.json","tests/fixtures/control_engine_parity.json","tests/control-engine-parity.test.ts","tests/control_engine_parity.test.ts"].map(assertAbsent));
+  const compatibilityPaths=[
+    "harness/control_harness.py","harness/control_kernel.py","harness/control_ledgers.py","harness/control_package.py","harness/control_targets.py",
+    "harness/tests/test_control_kernel.py","harness/tests/test_control_ledgers.py","harness/tests/test_control_package.py","harness/tests/test_control_package_lifecycle.py","harness/tests/test_control_targets.py",
+    "harness/legacy","harness/archive","harness/compat","harness/deprecated"
+  ] as const;
+  await Promise.all([...retiredPaths,...compatibilityPaths].map(assertAbsent));
+
   const inputs=JSON.parse(await readFile("build/inputs.json","utf8")).inputs as Array<{path:string;role:string}>,inputRoles=new Map(inputs.map(input=>[input.path,input.role]));
-  for(const [path,role] of expectedInputs)assert.equal(inputRoles.get(path),role,path);
-  const runtimeSources=await Promise.all(runtimeModules.map(path=>readFile(path,"utf8")));
-  for(const [index,source] of runtimeSources.entries())assert.doesNotMatch(source,/\b(?:damage_harness|damage_report|readme_damage)\b|config\/benchmark\.json|comparators\/fighter-subclasses\.json/,runtimeModules[index]);
-  const damagePaths=["harness/model.py","harness/damage_harness.py","harness/damage_report.py","harness/readme_damage.py"] as const,damageSources=await Promise.all(damagePaths.map(path=>readFile(path,"utf8")));
-  for(const [index,source] of damageSources.entries())assert.doesNotMatch(source,/(?:from|import)\s+(?:harness\.)?\.?control_(?:catalog|graph|state|timeline|engine)\b/,damagePaths[index]);
-  const projectionSources=await Promise.all(["harness/creature_catalog.py",...projectionModules].map(path=>readFile(path,"utf8"))),creatureSource=projectionSources[0]!,damageProjection=projectionSources[1]!,controlProjection=projectionSources[2]!,damageHarness=damageSources[1]!,controlEngine=runtimeSources[4]!;
+  assert.equal(inputs.length,82,"retirement removes exactly 15 of the 97 declared inputs");
+  for(const path of retiredPaths)assert.equal(inputRoles.has(path),false,`${path} is absent from build inputs`);
+  const retainedInputs:ReadonlyArray<readonly [string,string]>=[
+    ["src/control-authority-v2.ts","rule_source"],
+    ["tests/control-authority-v2-population.test.ts","test_source"],
+    ["tests/control-authority-v2-parity.test.ts","test_source"],
+    ["tests/fixtures/control-authority-v2-parity.json","reviewed_correctness_corpus"],
+    ["harness/tests/test_authority_v2.py","test_source"],
+    ["harness/tests/test_authority_v2_parity.py","test_source"],
+    ["harness/authority.py","harness_source"],
+    ["harness/creature_catalog.py","harness_source"],
+    ["harness/creature_control_projection.py","harness_source"],
+    ["src/harness-authority.ts","harness_projection_source"],
+    ["src/creature-catalog.ts","harness_projection_source"],
+    ["src/types.ts","application_source"],
+    ["src/validate.ts","application_source"],
+    ["harness/config/creature-consumers.json","harness_consumer_contract"],
+    ["harness/data/srd_creatures.json","pinned_srd_creature_catalog"],
+    ["harness/data/srd_creature_rosters.json","pinned_srd_creature_rosters"]
+  ];
+  await Promise.all(retainedInputs.map(([path])=>access(path)));
+  for(const [path,role] of retainedInputs)assert.equal(inputRoles.get(path),role,path);
+  const consumers=JSON.parse(await readFile("harness/config/creature-consumers.json","utf8")).consumers;
+  assert.equal(consumers.control_target.implemented,true,"ControlTarget remains a static implemented projection");
+  assert.equal(consumers.planner_static_target.implemented,false,"the future static planner projection remains unimplemented");
+
+  const typeScriptTwins=(await filesUnder("src")).filter(path=>/\/control[-_](?:catalog|graph|state|timeline|engine|evaluator|runner)\.tsx?$/.test(path));
+  assert.deepEqual(typeScriptTwins,[],"no TypeScript semantic twin replaces the retired Python runtime");
+  await Promise.all(["tests/fixtures/control-engine-parity.json","tests/fixtures/control_engine_parity.json","tests/control-engine-parity.test.ts","tests/control_engine_parity.test.ts"].map(assertAbsent));
+
+  const retiredModule="control_(?:catalog|graph|state|timeline|engine)";
+  const retiredImport=new RegExp(`\\b(?:from\\s+(?:(?:harness\\.)?${retiredModule}|\\.${retiredModule})\\s+import|from\\s+(?:harness|\\.)\\s+import\\s+${retiredModule}|import\\s+(?:harness\\.)?${retiredModule})\\b`);
+  const maintainedPython=(await filesUnder("harness")).filter(path=>path.endsWith(".py")&&!path.includes("/tests/"));
+  for(const path of maintainedPython)assert.doesNotMatch(await readFile(path,"utf8"),retiredImport,`${path} does not import the retired runtime`);
+
+  const projectionModules=["harness/creature_damage_projection.py","harness/creature_control_projection.py"] as const;
+  const damagePaths=["harness/model.py","harness/creature_damage_projection.py","harness/damage_harness.py","harness/damage_report.py","harness/readme_damage.py"] as const;
+  const damageSources=await Promise.all(damagePaths.map(path=>readFile(path,"utf8")));
+  for(const [index,source] of damageSources.entries())assert.doesNotMatch(source,/\bControlTarget\b|creature_control_projection|control_(?:catalog|graph|state|timeline|engine)\b/,`${damagePaths[index]} remains isolated from ControlTarget and control-only code`);
+  const projectionSources=await Promise.all(["harness/creature_catalog.py",...projectionModules].map(path=>readFile(path,"utf8"))),creatureSource=projectionSources[0]!,damageProjection=projectionSources[1]!,controlProjection=projectionSources[2]!,damageHarness=damageSources[2]!;
   assert.match(damageHarness,/(?:from\s+\.creature_catalog|from\s+harness\.creature_catalog\s+import)/);
   assert.match(damageHarness,/(?:from\s+\.creature_damage_projection|from\s+harness\.creature_damage_projection\s+import)/);
-  assert.match(controlEngine,/(?:from\s+\.creature_catalog|from\s+harness\.creature_catalog\s+import)/);
-  assert.match(controlEngine,/(?:from\s+\.creature_control_projection|from\s+harness\.creature_control_projection\s+import)/);
   assert.match(damageProjection,/(?:from\s+\.creature_catalog|from\s+harness\.creature_catalog\s+import)/);
   assert.match(controlProjection,/(?:from\s+\.creature_catalog|from\s+harness\.creature_catalog\s+import)/);
   assert.doesNotMatch(creatureSource,/(?:from|import)\s+(?:harness\.)?\.?(?:creature_damage_projection|creature_control_projection|damage_harness|damage_report|control_catalog|control_graph|control_state|control_timeline|control_engine)\b/);
-  assert.doesNotMatch(damageProjection,/(?:from|import)\s+(?:harness\.)?\.?(?:creature_control_projection|damage_harness|control_engine)\b/);
-  assert.doesNotMatch(controlProjection,/(?:from|import)\s+(?:harness\.)?\.?(?:creature_damage_projection|damage_harness|control_engine)\b/);
-  assert.doesNotMatch(damageHarness,/(?:from|import)\s+(?:harness\.)?\.?(?:creature_control_projection|control_engine)\b/);
-  assert.doesNotMatch(controlEngine,/(?:from|import)\s+(?:harness\.)?\.?(?:creature_damage_projection|damage_harness)\b/);
+  assert.doesNotMatch(damageProjection,/(?:from|import)\s+(?:harness\.)?\.?(?:creature_control_projection|damage_harness|control_catalog|control_graph|control_state|control_timeline|control_engine)\b/);
+  assert.doesNotMatch(controlProjection,/(?:from|import)\s+(?:harness\.)?\.?(?:creature_damage_projection|damage_harness|control_catalog|control_graph|control_state|control_timeline|control_engine)\b/);
+  assert.doesNotMatch(damageHarness,/(?:from|import)\s+(?:harness\.)?\.?(?:creature_control_projection|control_catalog|control_graph|control_state|control_timeline|control_engine)\b/);
+
   const scripts=JSON.parse(await readFile("package.json","utf8")).scripts as Record<string,string>;
-  assert.deepEqual(Object.keys(scripts).filter(name=>name.startsWith("control:engine:")).sort(),["control:engine:fixtures","control:engine:validate"]);
+  for(const name of ["control:engine:validate","control:engine:fixtures"])assert.equal(Object.hasOwn(scripts,name),false,`${name} remains absent`);
+  assert.deepEqual(Object.keys(scripts).filter(name=>name.startsWith("control:engine:")),[]);
 });
 
 test("active CI publication names derive from the canonical rules version",async()=>{

@@ -1,5 +1,7 @@
 # Control Authority v2 population audit
 
+> **Historical source-contract evidence only.** This audit is not a current control evaluator, and the commands and paths recorded below document the original review rather than current instructions. Control Authority v2 and `ControlTarget` are retained as static inputs only; this document is not the future minimum execution contract or named-condition runner and publishes no current v14.2 control result.
+
 Status: Implementation self-audit complete; independent review pending.
 
 Canonical basis: KineticVanguard.yaml is the sole mechanics authority. The table below records the complete resolved control semantics for the exact 26 rows that replace the pending authority ledger. Damage values are mentioned only when their ordering gates a control effect; they are not Control Value components.

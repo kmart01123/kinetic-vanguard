@@ -16,7 +16,9 @@ Version 14.0.0 introduced the deterministic offline Calculator, advanced the aut
 
 Version 14.1.0 restored damage and Control Reliability benchmark evidence. Those frozen results remain reproducible from the release, tag, release branch, evidence assets, and Git history.
 
-Version 14.2.0 development retires the superseded Control Reliability implementation from current `main`. One authoritative SRD 5.2.1 creature catalog now feeds separate source-only roster profiles and thin damage/control projections; the old CSV and control supplement are retired. The maintained damage benchmark has an explicit damage-authority boundary, while Control Authority v2 remains separate infrastructure for the redesign work and does not publish a current control result.
+Version 14.2.0 development retains the maintained damage benchmark and its accepted 47-target evidence. One authoritative SRD 5.2.1 creature catalog feeds separate source-only roster profiles and thin `DamageTarget` and `ControlTarget` projections; the old CSV and control supplement are retired.
+
+The superseded current-development control execution runtime has also been retired. No maintained v14.2 control evaluator or current v14.2 control result exists. Control Authority v2 and `ControlTarget` are retained as static inputs only; neither is a benchmark methodology nor an execution runtime. A minimum execution contract and a simpler named-condition runner are separate future work and remain unimplemented. Historical control implementations remain available through Git history and frozen release evidence; no compatibility or fallback runtime is maintained.
 
 <!-- BEGIN GENERATED DAMAGE MATRIX -->
 ## Damage benchmark snapshot
@@ -45,11 +47,11 @@ Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.ya
 Battle Master and Eldritch Knight are referenced solely as unofficial third-party comparative benchmarks. The Kinetic Vanguard project is not affiliated with or endorsed by Wizards of the Coast. No project license purports to grant rights in Wizards-owned material outside the System Reference Document. See [`LICENSE.md`](LICENSE.md) for component boundaries and [`NOTICE.md`](NOTICE.md) for attribution and notices.
 <!-- END GENERATED DAMAGE MATRIX -->
 
-## Control methodology status
+## Control capability status
 
 The v14.1 **Control Reliability** benchmark is historical release evidence, not maintained current-development methodology. Its reproducible outputs remain permanently available with the [v14.1.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.1.0), frozen release branch and tag, evidence assets, and Git history.
 
-The v14.2 control methodology is being redesigned under [#32](https://github.com/kmart01123/kinetic-vanguard/issues/32) and issues #39–#42: [#39](https://github.com/kmart01123/kinetic-vanguard/issues/39), [#40](https://github.com/kmart01123/kinetic-vanguard/issues/40), [#41](https://github.com/kmart01123/kinetic-vanguard/issues/41), and [#42](https://github.com/kmart01123/kinetic-vanguard/issues/42). No v14.2 control headline, matrix, or HOT/IDEAL/COLD classification is authoritative until #42 promotes the replacement methodology.
+Current v14.2 development has no maintained control evaluator and no current v14.2 control result. The retired runtime has no compatibility or fallback path. Retained Control Authority v2 validation and `ControlTarget` facts are static inputs only, not a benchmark methodology or execution runtime. A minimum execution contract and a simpler named-condition runner will be designed separately; neither is implemented by the current repository.
 
 ## Publication interface
 
@@ -112,7 +114,7 @@ The completed one-time Markdown migration has been retired. Contributors edit `K
 
 The maintained Python damage harness consumes `DamageHarnessProjection`, emitted by the TypeScript YAML loader and semantic validator through `createDamageHarnessProjection`, and loads it through Python's `DamageAuthorityModel`. Kinetic Vanguard mechanics remain exclusively in YAML; project-authored damage methodology remains in `harness/config/`; minimal BM/EK damage comparator parameters remain isolated in `harness/comparators/`; and the shared SRD creature catalog, complete accounting, and roster profiles remain in `harness/data/`. Python owns creature semantics and thin target projections; TypeScript performs only cheap catalog shape/digest/manifest validation.
 
-Control Authority v2 is a separate, fail-closed structured authority contract with shared TypeScript/Python parity coverage. It is preserved for the redesign sequence, but it is not part of the damage projection and does not evaluate or publish a v14.2 control result.
+Control Authority v2 is a separate, fail-closed static authority contract with shared TypeScript/Python parity coverage, and `ControlTarget` is a static creature-fact projection. Both are retained inputs only: neither is a current methodology or evaluator, neither participates in the damage projection, and neither publishes a v14.2 control result.
 
 ## Licensing
 

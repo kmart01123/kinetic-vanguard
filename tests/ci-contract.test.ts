@@ -37,11 +37,15 @@ test("CI exposes a stable main branch gate backed by complete verification", asy
   assert.equal(verification["continue-on-error"], undefined);
   assert.equal(
     verification.steps?.find((step: any) => step.run === "npm run harness:validate")?.name,
-    "Validate damage authority, Control Authority v2, control-target inputs, and shared control engine"
+    "Validate damage authority, creature inputs, and Control Authority v2"
   );
   assert.equal(
     verification.steps?.find((step: any) => step.run === "npm run test:harness")?.name,
-    "Test maintained damage, Control Authority v2, control-target, and shared control-engine contracts"
+    "Test maintained damage, static target, and authority contracts"
+  );
+  assert.ok(
+    verification.steps?.every((step: any) => typeof step.name !== "string" || !/(?:active|maintained|shared) control[- ]engine/i.test(step.name)),
+    "CI labels do not claim an active control engine"
   );
   const requiredVerificationCommands = [
     "npm run typecheck",
@@ -81,23 +85,18 @@ test("CI exposes a stable main branch gate backed by complete verification", asy
   );
 });
 
-test("control-engine validation entrypoints are exact and reuse the maintained verification job", async () => {
+test("retired control-engine entrypoints are absent and maintained harness validation is exact", async () => {
   const packageJson = JSON.parse(await readFile("package.json", "utf8")) as {
     readonly scripts: Readonly<Record<string, string>>;
   };
-  assert.equal(
-    packageJson.scripts["control:engine:validate"],
-    "python3 -m harness.control_engine --validate-only"
-  );
-  assert.equal(
-    packageJson.scripts["control:engine:fixtures"],
-    "python3 -m unittest harness.tests.test_control_engine_fixtures"
-  );
+  for (const name of ["control:engine:validate", "control:engine:fixtures"]) {
+    assert.equal(Object.hasOwn(packageJson.scripts, name), false, `${name} remains absent`);
+  }
   assert.equal(
     packageJson.scripts["harness:validate"],
-    "python3 -m harness.creature_catalog && python3 -m harness.damage_harness --output-dir /tmp/kv-harness-validation --validate-only && python3 -m harness.authority --projection-version 2.1.0 --require-benchmark-ready && python3 -m harness.control_engine --validate-only"
+    "python3 -m harness.creature_catalog && python3 -m harness.damage_harness --output-dir /tmp/kv-harness-validation --validate-only && python3 -m harness.authority --projection-version 2.1.0 --require-benchmark-ready"
   );
-  assert.doesNotMatch(packageJson.scripts["harness:validate"] ?? "", /harness:damage|readme:damage|--fixtures-only/);
+  assert.doesNotMatch(packageJson.scripts["harness:validate"] ?? "", /control_engine|harness:damage|readme:damage|--fixtures-only/);
 });
 test("maintained automation cannot execute retired Control Reliability or regenerate analytical evidence in ordinary CI", async () => {
   const [workflows, packageJsonSource] = await Promise.all([
@@ -147,6 +146,11 @@ test("maintained automation cannot execute retired Control Reliability or regene
   ]) {
     assert.ok(!ordinaryCiRuns.includes(analyticalEntrypoint), `ordinary CI does not run ${analyticalEntrypoint}`);
   }
+  assert.doesNotMatch(
+    ordinaryCiRuns,
+    /control:engine|harness\.control_engine|\bplanner\b|\bsensitivity\b|Control (?:Value|Reliability)/i,
+    "ordinary CI has no analytical control, planner, or sensitivity command"
+  );
 });
 
 test("release-gate orchestration authorizes one release build and uploads every required artifact", async () => {
