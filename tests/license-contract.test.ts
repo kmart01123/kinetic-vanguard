@@ -132,6 +132,38 @@ function assertNoPositiveBrandRelationshipClaim(content:string,path:string):void
   for(const line of content.split(/\r?\n/))assert.doesNotMatch(line,positiveBrandBannerPattern,`${path} must not present a positive Wizards/D&D relationship or official-status banner`);
 }
 
+function validateResolvedAuditPolicy(audit:string):void{
+  assert.match(audit,/Kyle Martin, NixNinja, and `kmart01123` are the same natural person/);
+  assert.match(audit,/NixNinja is Kyle Martin’s public creator pseudonym/);
+  assert.match(audit,/`kmart01123` is his repository account/);
+  assert.match(audit,/Kyle Martin states that he authored or has authority to license the project-authored contributions attributed to NixNinja/);
+  assert.match(audit,/Existing public attribution remains NixNinja/);
+  assert.match(audit,/No email address is published/);
+  assert.doesNotMatch(audit,/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i);
+  assert.match(audit,/no holder-text change, DCO, CLA, or contributor agreement/i);
+  assert.match(audit,/original Kinetic Vanguard homebrew rules and content[\s\S]{0,160}remain CC BY-NC-SA 4\.0/i);
+  assert.match(audit,/project software remains BSD-3-Clause/);
+  assert.match(audit,/SRD material remains CC BY 4\.0/);
+  assert.match(audit,/third-party material remains outside the project’s licenses/);
+  assertNoActiveWholeProjectGrant(audit,"docs/licensing-audit.md");
+  assert.match(audit,/CC BY-NC-SA 4\.0 does not license Wizards names or mechanics/);
+  assert.match(audit,/accepted maintainer risk disposition only as narrow unofficial identifiers needed for benchmark intelligibility and reproducibility/);
+  assert.match(audit,/not branding, product titles, logos, badges, or promotional hooks/);
+  assert.match(audit,/complete current-tree coverage for its hardcoded official-example and current-comparator lexicon/);
+  assert.match(audit,/bounded scope is accepted audit methodology, not an unresolved implementation defect/);
+  assert.match(audit,/not legal advice or a claim of legal clearance/);
+  assert.match(audit,/This is not legal clearance/);
+  assert.doesNotMatch(audit,/attorney (?:has )?approved/i);
+  assert.match(audit,/Hew’s complete official fact is owner-source verified[\s\S]{0,260}immediately after a Critical Hit or after reducing a target to 0 Hit Points[\s\S]{0,100}Bonus Action attack with the same weapon/);
+  assert.match(audit,/current critical-only, once-per-round representation is retained as deliberate conservative project methodology/);
+  assert.match(audit,/accepted damage methodology is explicitly no-target-death and carries no remaining-HP, kill, overkill, replacement-target, or target-availability state/);
+  assert.match(audit,/documented damage-methodology capability gap that must be resolved when the replacement damage model is independently confirmed/);
+  assert.match(audit,/retain no-target-death sustained DPR as the nominal result and add a named finite-HP\/kill-cleave sensitivity/);
+  assert.match(audit,/replace the nominal model with fair target-death and retargeting semantics applied consistently to Kinetic Vanguard, Battle Master, and Eldritch Knight/);
+  assert.match(audit,/implementation of the zero-HP trigger is outside issue #63 and requires fresh comparator\/evaluator review and fresh affected analytical evidence/);
+  for(const forbidden of ["waived","irrelevant","permanently excluded","fully represented"])assert.equal(audit.toLowerCase().includes(forbidden),false,`Hew zero-HP route must not be described as ${forbidden}`);
+}
+
 const comparatorSourceClassifications = new Set([
   "srd_5_2_1_fact",
   "non_srd_official_fact",
@@ -154,7 +186,6 @@ const comparatorLeafKeys = new Set([
   "source_id",
   "locator",
   "accepted_github_audit_record",
-  "evidence_gap",
   "public_name_required",
   "rationale",
   "unresolved_counsel"
@@ -244,11 +275,29 @@ const relationalFactLeafPaths=new Set([
   "damage.eldritch_knight.true_strike_damage_type",
   "damage.eldritch_knight.weapon.damage_type"
 ]);
-const evidenceGapContract=new Map([
-  ["damage.battle_master.great_weapon_master_attack_action_bonus","Accepted #52 freezes profile inclusion but does not independently record the proficiency-bonus formula."],
-  ["damage.battle_master.hew_critical_bonus_attack_once_per_round","Accepted #52 does not decompose the official feat; this scalar is the frozen critical-only comparator scope."],
-  ["damage.eldritch_knight.dueling_damage_bonus","Accepted #50 freezes the inherited profile but does not independently record the +2 Dueling value."]
-]);
+const resolvedComparatorLeafContract={
+  "damage.battle_master.great_weapon_master_attack_action_bonus":{
+    value_sha256:"20181d48feb7224a01fd863d75f587f6b18e2e2f409570db1f5ac4bb78f58770",
+    source_classification:"non_srd_official_fact",expression_classification:"compact_independently_phrased_relational_fact",source_id:"phb_2024",
+    locator:"2024 PHB digital > https://www.dndbeyond.com/feats/1789149-great-weapon-master > Heavy Weapon Mastery; owner-source issue #52 comment 5291985967",
+    rationale:"Owner-source verifies that qualifying use with a weapon that has the Heavy property adds the attacker’s Proficiency Bonus to target damage; the relation is compact and not copied feat prose.",
+    unresolved_counsel:true,comparator_id:"battle_master",accepted_github_audit_record:"https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
+  },
+  "damage.battle_master.hew_critical_bonus_attack_once_per_round":{
+    value_sha256:"b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+    source_classification:"project_authored_benchmark_assumption",expression_classification:"project_authored_policy",source_id:"project_comparator_methodology",
+    locator:"damage.battle_master.hew_critical_bonus_attack_once_per_round; #52:5291985967; https://www.dndbeyond.com/feats/1789149-great-weapon-master; immediately after Critical Hit or reducing target to 0 Hit Points -> same-weapon Bonus Action attack",
+    rationale:"Official feat has Critical Hit and reduce-to-0-HP triggers; conservative project methodology credits only Critical Hit, omits reduce-to-0-HP, and retains once-per-round. This scalar does not represent every official Hew trigger.",
+    unresolved_counsel:false,comparator_id:"battle_master",accepted_github_audit_record:"https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
+  },
+  "damage.eldritch_knight.dueling_damage_bonus":{
+    value_sha256:"d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
+    source_classification:"non_srd_official_fact",expression_classification:"bare_numeric_fact",source_id:"phb_2024",
+    locator:"2024 PHB digital > https://www.dndbeyond.com/feats/1789131-dueling > Dueling; owner-source issue #50 comment 5291987976",
+    rationale:"Owner-source verifies +2 damage while holding one melee weapon in one hand and no other weapon; the configured sword-and-board profile remains a separate project choice.",
+    unresolved_counsel:true,comparator_id:"eldritch_knight",accepted_github_audit_record:"https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5291987976"
+  }
+} as const;
 const comparatorSourceKeyContract=new Map<string,string[]>([
   ["github_issue_50_accepted_audit",["kind","official_source_id","repository","issue_number","issue_url","accepted_records","continuation_precedence","scope"]],
   ["github_issue_52_accepted_audit",["kind","official_source_id","repository","issue_number","issue_url","accepted_records","scope"]],
@@ -267,7 +316,8 @@ const comparatorSourceContract={
       "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5239283977",
       "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5240411953",
       "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5240545305",
-      "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5246155660"
+      "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5246155660",
+      "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5291987976"
     ],
     continuation_precedence:"Comments 5240411953, 5240545305, and 5246155660 control package/profile matters superseding the cumulative-package aspect of 5239283977.",
     scope:"Eldritch Knight source scope, delivery facts, spell inventory, and controlling approved profile continuations."
@@ -280,7 +330,8 @@ const comparatorSourceContract={
       "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5246520863",
       "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5246526864",
       "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5246563926",
-      "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5247187489"
+      "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5247187489",
+      "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
     ],
     scope:"Battle Master progression, resources, triggers, compact decompositions, and frozen comparator profile."
   },
@@ -369,7 +420,7 @@ function validateComparatorProvenance(comparator:unknown,provenance:any,comparat
     assert.equal(leaf.comparator_id,expectedComparatorId,`${leaf.field_path} comparator ID binding`);
     const expectedKeys=[
       "field_path","value_sha256","source_classification","expression_classification","source_id","locator","public_name_required","rationale",
-      ...(evidenceGapContract.has(leaf.field_path)?["evidence_gap"]:[]),"unresolved_counsel",
+      "unresolved_counsel",
       ...(expectedComparatorId===undefined?[]:["comparator_id"]),...(leaf.accepted_github_audit_record===undefined?[]:["accepted_github_audit_record"])
     ];
     assert.deepEqual(keys,expectedKeys,`${leaf.field_path} leaf schema and order`);
@@ -390,10 +441,8 @@ function validateComparatorProvenance(comparator:unknown,provenance:any,comparat
       :"project_comparator_methodology";
     assert.equal(leaf.source_id,expectedSource,`${leaf.field_path} source chain`);
     if(!leaf.field_path.startsWith("primary_comparator_ids["))assert.equal(leaf.public_name_required,false,`${leaf.field_path} does not require a public subclass name`);
-    const expectedGap=evidenceGapContract.get(leaf.field_path);
-    if(expectedGap===undefined)assert.equal(leaf.evidence_gap,undefined,`${leaf.field_path} must not invent an evidence gap`);
-    else assert.equal(leaf.evidence_gap,expectedGap,`${leaf.field_path} evidence gap`);
-    assert.equal(leaf.unresolved_counsel,expectedClassification==="non_srd_official_fact"||expectedClassification==="narrow_nominative_identifier"||expectedGap!==undefined,`${leaf.field_path} counsel binding`);
+    assert.equal(Object.hasOwn(leaf,"evidence_gap"),false,`${leaf.field_path} must not contain evidence_gap`);
+    assert.equal(leaf.unresolved_counsel,expectedClassification==="non_srd_official_fact"||expectedClassification==="narrow_nominative_identifier",`${leaf.field_path} counsel binding`);
 
     if(leaf.accepted_github_audit_record){
       const issueSource=leaf.comparator_id==="battle_master"?provenance.sources.github_issue_52_accepted_audit
@@ -424,9 +473,17 @@ function validateComparatorProvenance(comparator:unknown,provenance:any,comparat
       assert.equal(leaf.unresolved_counsel,true);
     }
   }
+  for(const [fieldPath,expectedContract] of Object.entries(resolvedComparatorLeafContract)){
+    const leaf=leaves.find(candidate=>candidate.field_path===fieldPath);assert.ok(leaf,fieldPath);
+    assert.deepEqual({
+      value_sha256:leaf.value_sha256,source_classification:leaf.source_classification,expression_classification:leaf.expression_classification,
+      source_id:leaf.source_id,locator:leaf.locator,rationale:leaf.rationale,unresolved_counsel:leaf.unresolved_counsel,
+      comparator_id:leaf.comparator_id,accepted_github_audit_record:leaf.accepted_github_audit_record
+    },expectedContract,`${fieldPath} resolved owner-source and methodology contract`);
+  }
   const dueling=leaves.find(leaf=>leaf.field_path==="damage.eldritch_knight.dueling_damage_bonus");
   assert.equal(dueling?.source_classification,"non_srd_official_fact");
-  assert.equal(dueling?.unresolved_counsel,true,"the bounded Dueling evidence gap remains flagged for counsel");
+  assert.equal(dueling?.unresolved_counsel,true,"Dueling retains only a residual-use legal caution, not a source gap");
   assert.doesNotMatch(JSON.stringify(provenance),rejectedBasicRulesPattern,"D&D Beyond Basic Rules are not provenance anywhere");
 }
 
@@ -725,6 +782,11 @@ test("repository and generated publication expose the approved component license
   assert.equal(inputRoles.get("tests/license-contract.test.ts"), "test_source");
   assert.equal(packageJson.license, "SEE LICENSE IN LICENSE.md");
   assert.equal(packageLock.packages[""].license, packageJson.license);
+  validateResolvedAuditPolicy(audit);
+  const unknownIdentity=audit.replace("are the same natural person","have an unknown identity relationship");
+  assert.throws(()=>validateResolvedAuditPolicy(unknownIdentity));
+  const blanketNoncommercial=`${audit}\n${["Everything","in this repository","is licensed under","CC BY-NC-SA 4.0."].join(" ")}\n`;
+  assert.throws(()=>validateResolvedAuditPolicy(blanketNoncommercial));
 
   for (const section of ["Maintained component boundaries", "Complete current-tree inventory", "Intentionally unchanged", "Residual risk and independent review"]) assert.match(audit, new RegExp(section));
 
@@ -878,7 +940,7 @@ test("comparator provenance covers every scalar with compact independently class
     project_authored_tactical_policy:15,
     narrow_nominative_identifier:2
   });
-  assert.equal((provenance.leaves as ComparatorLeaf[]).filter(leaf=>leaf.unresolved_counsel).length,16);
+  assert.equal((provenance.leaves as ComparatorLeaf[]).filter(leaf=>leaf.unresolved_counsel).length,15);
 
   const inputRoles=new Map((JSON.parse(inputsBytes).inputs as Array<{path:string;role:string}>).map(input=>[input.path,input.role]));
   assert.equal(inputRoles.get("harness/provenance/fighter-subclass-comparators.json"),"comparator_provenance");
@@ -914,10 +976,26 @@ test("comparator provenance covers every scalar with compact independently class
   assert.throws(()=>validateComparatorProvenance(comparator,injectedAudit,comparatorBytes));
   const sparseSource=structuredClone(provenance);sparseSource.sources.phb_2024={kind:"official_non_srd_source"};
   assert.throws(()=>validateComparatorProvenance(comparator,sparseSource,comparatorBytes));
-  const missingGap=structuredClone(provenance);delete missingGap.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path==="damage.battle_master.great_weapon_master_attack_action_bonus").evidence_gap;
-  assert.throws(()=>validateComparatorProvenance(comparator,missingGap,comparatorBytes));
-  const inventedGap=structuredClone(provenance);inventedGap.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path==="damage.battle_master.ability_modifier").evidence_gap="Synthetic unsupported gap";
-  assert.throws(()=>validateComparatorProvenance(comparator,inventedGap,comparatorBytes));
+  for(const [sourceId,record] of [
+    ["github_issue_52_accepted_audit","https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"],
+    ["github_issue_50_accepted_audit","https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5291987976"]
+  ] as const){
+    const removedOwnerRecord=structuredClone(provenance);
+    removedOwnerRecord.sources[sourceId].accepted_records=removedOwnerRecord.sources[sourceId].accepted_records.filter((candidate:string)=>candidate!==record);
+    assert.throws(()=>validateComparatorProvenance(comparator,removedOwnerRecord,comparatorBytes));
+  }
+  for(const fieldPath of Object.keys(resolvedComparatorLeafContract)){
+    const inventedGap=structuredClone(provenance);
+    inventedGap.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path===fieldPath).evidence_gap="Synthetic unsupported gap";
+    assert.throws(()=>validateComparatorProvenance(comparator,inventedGap,comparatorBytes));
+  }
+  const mislabeledHew=structuredClone(provenance),mislabeledHewLeaf=mislabeledHew.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path==="damage.battle_master.hew_critical_bonus_attack_once_per_round");
+  mislabeledHewLeaf.source_classification="non_srd_official_fact";mislabeledHewLeaf.expression_classification="bare_numeric_fact";mislabeledHewLeaf.source_id="phb_2024";mislabeledHewLeaf.unresolved_counsel=true;
+  assert.throws(()=>validateComparatorProvenance(comparator,mislabeledHew,comparatorBytes));
+  const falselyModeledZeroHp=structuredClone(provenance);falselyModeledZeroHp.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path==="damage.battle_master.hew_critical_bonus_attack_once_per_round").rationale="Synthetic policy claims the reduce-to-0-HP trigger is modeled.";
+  assert.throws(()=>validateComparatorProvenance(comparator,falselyModeledZeroHp,comparatorBytes));
+  const inventedPrintPage=structuredClone(provenance);inventedPrintPage.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path==="damage.battle_master.great_weapon_master_attack_action_bonus").locator="2024 PHB p. 999 > Synthetic Great Weapon Master";
+  assert.throws(()=>validateComparatorProvenance(comparator,inventedPrintPage,comparatorBytes));
   const missingComparator=structuredClone(provenance);delete missingComparator.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path==="damage.battle_master.ability_modifier").comparator_id;
   assert.throws(()=>validateComparatorProvenance(comparator,missingComparator,comparatorBytes));
   const reorderedLeaf=structuredClone(provenance);const reorderedTarget=reorderedLeaf.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path==="damage.battle_master.ability_modifier"),reorderedSourceId=reorderedTarget.source_id;delete reorderedTarget.source_id;reorderedTarget.source_id=reorderedSourceId;
@@ -933,6 +1011,7 @@ test("tracked and generated Wizards/SRD references exactly match the classified 
     readFile("review/wizards-ip-reference-register.json","utf8"),readFile("NOTICE.md","utf8")
   ]);
   const register=JSON.parse(registerBytes) as any;
+  const regenerate=process.env.KV_REGENERATE_REFERENCE_REGISTER==="1";
   assert.deepEqual(Object.keys(register),[
     "format_version","audit","official_sources","classification_definitions","reference_categories","term_dispositions","approved_noncode_assets","entries"
   ]);
@@ -965,7 +1044,7 @@ test("tracked and generated Wizards/SRD references exactly match the classified 
   assert.equal(register.audit.tracked_path_sha256,sha256(trackedPathBytes));
   assert.match(register.audit.tracked_content_sha256,/^[0-9a-f]{64}$/);
   assert.equal(register.audit.tracked_content_self_canonicalization,"SHA-256 frames every tracked candidate path and bytes after blanking only audit.tracked_content_sha256 in this register.");
-  assert.equal(register.audit.tracked_content_sha256,await trackedContentSha256(trackedPaths));
+  if(!regenerate)assert.equal(register.audit.tracked_content_sha256,await trackedContentSha256(trackedPaths));
   assertCompactStrings(register.audit,"audit");
   assertCompactStrings(register.official_sources,"official_sources");
   assertCompactStrings(register.term_dispositions,"term_dispositions");
@@ -1010,7 +1089,27 @@ test("tracked and generated Wizards/SRD references exactly match the classified 
   }
   assert.match(notice,/not affiliated with or endorsed by Wizards of the Coast/i,"adjacent notice carries the full relationship boundary");
 
-  const derived=deriveReferenceEntries([...trackedSurfaces,...generatedSurfaces]);
+  let derived=deriveReferenceEntries([...trackedSurfaces,...generatedSurfaces]);
+  if(regenerate){
+    const registerPath="review/wizards-ip-reference-register.json",registerSurface=trackedSurfaces.find(surface=>surface.path===registerPath);
+    assert.ok(registerSurface);let stable=false;
+    for(let iteration=0;iteration<20;iteration+=1){
+      register.audit.tracked_path_count=trackedPaths.length;
+      register.audit.tracked_path_sha256=sha256(trackedPathBytes);
+      register.audit.tracked_content_sha256="";
+      register.audit.generated_artifact_inventory=generatedInventory;
+      register.entries=derived.map(entry=>({...entry,...expectedRegisterMetadata(entry)}));
+      await writeFile(registerPath,`${JSON.stringify(register,null,2)}\n`);
+      registerSurface.content=decodeApprovedAsset(registerPath,await readFile(registerPath));
+      const next=deriveReferenceEntries([...trackedSurfaces,...generatedSurfaces]);
+      if(JSON.stringify(next)===JSON.stringify(derived)){stable=true;break;}
+      derived=next;
+    }
+    assert.equal(stable,true,"reference-register self-scan must reach a fixed point");
+    register.audit.tracked_content_sha256=await trackedContentSha256(trackedPaths);
+    await writeFile(registerPath,`${JSON.stringify(register,null,2)}\n`);
+    return;
+  }
   const registered=(register.entries as any[]).map(entry=>({
     surface_id:entry.surface_id,path:entry.path,category_id:entry.category_id,matched_terms:entry.matched_terms,
     expected_hit_count:entry.expected_hit_count,surface:entry.surface

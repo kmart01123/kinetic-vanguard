@@ -22,7 +22,8 @@
         "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5239283977",
         "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5240411953",
         "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5240545305",
-        "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5246155660"
+        "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5246155660",
+        "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5291987976"
       ],
       "continuation_precedence": "Comments 5240411953, 5240545305, and 5246155660 control package/profile matters superseding the cumulative-package aspect of 5239283977.",
       "scope": "Eldritch Knight source scope, delivery facts, spell inventory, and controlling approved profile continuations."
@@ -38,7 +39,8 @@
         "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5246520863",
         "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5246526864",
         "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5246563926",
-        "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5247187489"
+        "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5247187489",
+        "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
       ],
       "scope": "Battle Master progression, resources, triggers, compact decompositions, and frozen comparator profile."
     },
@@ -112,13 +114,12 @@
       "source_classification": "non_srd_official_fact",
       "expression_classification": "compact_independently_phrased_relational_fact",
       "source_id": "phb_2024",
-      "locator": "2024 PHB digital > Feats > Great Weapon Master > Heavy Weapon Mastery",
+      "locator": "2024 PHB digital > https://www.dndbeyond.com/feats/1789149-great-weapon-master > Heavy Weapon Mastery; owner-source issue #52 comment 5291985967",
       "public_name_required": false,
-      "rationale": "Compact parameterization of the attack-action damage bonus; the accepted audit keeps GWM damage separate.",
-      "evidence_gap": "Accepted #52 freezes profile inclusion but does not independently record the proficiency-bonus formula.",
+      "rationale": "Owner-source verifies that qualifying use with a weapon that has the Heavy property adds the attacker’s Proficiency Bonus to target damage; the relation is compact and not copied feat prose.",
       "unresolved_counsel": true,
       "comparator_id": "battle_master",
-      "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5246563926"
+      "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
     },
     {
       "field_path": "damage.battle_master.hew_critical_bonus_attack_once_per_round",
@@ -126,13 +127,12 @@
       "source_classification": "project_authored_benchmark_assumption",
       "expression_classification": "project_authored_policy",
       "source_id": "project_comparator_methodology",
-      "locator": "Issue #52 comment 5246563926 > Explicit control comparator profile > Hew damage metadata",
+      "locator": "damage.battle_master.hew_critical_bonus_attack_once_per_round; #52:5291985967; https://www.dndbeyond.com/feats/1789149-great-weapon-master; immediately after Critical Hit or reducing target to 0 Hit Points -> same-weapon Bonus Action attack",
       "public_name_required": false,
-      "rationale": "Frozen critical-only Hew scope for this comparator's damage model.",
-      "evidence_gap": "Accepted #52 does not decompose the official feat; this scalar is the frozen critical-only comparator scope.",
-      "unresolved_counsel": true,
+      "rationale": "Official feat has Critical Hit and reduce-to-0-HP triggers; conservative project methodology credits only Critical Hit, omits reduce-to-0-HP, and retains once-per-round. This scalar does not represent every official Hew trigger.",
+      "unresolved_counsel": false,
       "comparator_id": "battle_master",
-      "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5246563926"
+      "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
     },
     {
       "field_path": "damage.battle_master.magic_weapon_bonus_by_level.11",
@@ -513,13 +513,12 @@
       "source_classification": "non_srd_official_fact",
       "expression_classification": "bare_numeric_fact",
       "source_id": "phb_2024",
-      "locator": "2024 PHB digital > Feats > Fighting Style Feats > Dueling",
+      "locator": "2024 PHB digital > https://www.dndbeyond.com/feats/1789131-dueling > Dueling; owner-source issue #50 comment 5291987976",
       "public_name_required": false,
-      "rationale": "Compact +2 Dueling damage value used by the frozen sword-and-board profile.",
-      "evidence_gap": "Accepted #50 freezes the inherited profile but does not independently record the +2 Dueling value.",
+      "rationale": "Owner-source verifies +2 damage while holding one melee weapon in one hand and no other weapon; the configured sword-and-board profile remains a separate project choice.",
       "unresolved_counsel": true,
       "comparator_id": "eldritch_knight",
-      "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5246155660"
+      "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5291987976"
     },
     {
       "field_path": "damage.eldritch_knight.magic_weapon_bonus_by_level.11",

@@ -2,7 +2,7 @@
 
 Audit date: 2026-08-14
 Audited base: `main` at `e5d81ab1271b305bee5b92bca22bb9acce0275e9`
-Governing work order: GitHub issue #63 and owner authorization comment `5289581036`
+Governing work order: GitHub issue #63, owner authorization comment `5289581036`, and maintainer resolution comment `5291975732`
 
 This is repository compliance engineering, not legal advice or a claim of legal clearance. It records source evidence, component boundaries, confirmed corrections, intentionally unchanged material, and questions that repository evidence cannot resolve. Automated scans cannot prove the absence of all protectable expression, and no audit or notice guarantees that a demand letter will not be made.
 
@@ -54,7 +54,7 @@ Each entry records one required classification, matched term identities, public/
 
 Within that lexicon, the scan found no current `remove_or_rename` disposition and no tracked private source capture, authenticated HTML, PDF, image, logo, map, screenshot, font, audio, video, or other binary Wizards brand asset. All 102 candidate paths are regular UTF-8 text with no NUL bytes or prohibited file signatures. Historical release workflows remain classified as historical current documentation; frozen branches, tags, Releases, and published assets were not rewritten.
 
-This scanner provides complete current-tree coverage for its hardcoded official-example and current-comparator lexicon, including the expanded omitted/replacement examples above. No finite lexicon proves that all protected names, other subject matter, or protectable expression has been found, and the result does not claim broad recapture or universal IP detection.
+This scanner provides complete current-tree coverage for its hardcoded official-example and current-comparator lexicon, including the expanded omitted/replacement examples above. No finite lexicon proves that all protected names, other subject matter, or protectable expression has been found, and the result does not claim broad recapture or universal IP detection. This bounded scope is accepted audit methodology, not an unresolved implementation defect.
 
 ## Maintained component boundaries
 
@@ -65,7 +65,7 @@ This scanner provides complete current-tree coverage for its hardcoded official-
 | Original documentation | Root Markdown, `.github/pull_request_template.md`, `docs/*`, `policy/*`, `harness/*.md` | Original expression is CC BY-NC-SA 4.0. Embedded SRD and third-party references retain their separate source boundary. |
 | Application, harness, schemas, and tests | `src/*`, Python under `harness/`, schemas, configuration, and tests | Project-authored software and technical structures are BSD-3-Clause. Embedded facts and fixtures retain their source status. |
 | Comparator configuration | `harness/comparators/fighter-subclasses.json` | Frozen damage input: project-authored structure and benchmark policy plus compact independently phrased facts. No project license covers the non-SRD names or mechanics. |
-| Comparator provenance | `harness/provenance/fighter-subclass-comparators.json` | Value-bound legal/source metadata covering every scalar comparator leaf, including explicit unresolved evidence gaps. It is a build input but never a damage evaluator or comparator-hash input. |
+| Comparator provenance | `harness/provenance/fighter-subclass-comparators.json` | Value-bound legal/source metadata covering every scalar comparator leaf. Three formerly open source/methodology records are resolved through owner-source records; the residual `unresolved_counsel` flags on the two non-SRD official facts are legal-use cautions, not missing-source evidence. It is a build input but never a damage evaluator or comparator-hash input. |
 | SRD creature catalog, rosters, and provenance | `harness/data/srd_creatures.json`, `harness/data/srd_creature_rosters.json`, `harness/provenance/srd-creatures.json` | Selected normalized SRD facts remain CC BY 4.0 with attribution and modification marking; full stat-block and trait prose is not reproduced. |
 | Reference register | `review/wizards-ip-reference-register.json` | Project-authored, content-bound audit metadata for the declared scanner lexicon. It records classifications and does not itself grant third-party rights or prove universal discovery. |
 | Generated publications and bundles | Prototype/release HTML and release legal assets | Mixed publication with scoped notices; current release/deployable paths retain the four legal assets. |
@@ -73,40 +73,57 @@ This scanner provides complete current-tree coverage for its hardcoded official-
 
 Package metadata continues to use `SEE LICENSE IN LICENSE.md`; dependency licenses remain their own. A blanket SPDX identifier would be inaccurate for mixed YAML, configuration, reports, and generated HTML.
 
+## Maintainer identity, authority, and product policy
+
+The maintainer resolution in issue #63 comment `5291975732` states that Kyle Martin, NixNinja, and `kmart01123` are the same natural person; NixNinja is Kyle Martin’s public creator pseudonym, and `kmart01123` is his repository account. Kyle Martin states that he authored or has authority to license the project-authored contributions attributed to NixNinja. Existing public attribution remains NixNinja. No email address is published, and this resolution introduces no holder-text change, DCO, CLA, or contributor agreement.
+
+The declared permanent product policy is noncommercial for the original Kinetic Vanguard homebrew rules and content, which remain CC BY-NC-SA 4.0. The maintainer does not intend to sell, crowdfund, commercially license, or commercially promote that homebrew content. This is not a blanket whole-repository relicense: project software remains BSD-3-Clause, SRD material remains CC BY 4.0, and third-party material remains outside the project’s licenses. The existing license files already express these component boundaries and are intentionally unchanged.
+
+CC BY-NC-SA 4.0 does not license Wizards names or mechanics, apply to the whole repository, override BSD-3-Clause or CC BY 4.0 rights, guarantee that no legal objection will arise, or supply rights the maintainer does not own.
+
 ## Comparator field provenance result
 
-`harness/provenance/fighter-subclass-comparators.json` covers all 65 scalar leaves of `harness/comparators/fighter-subclasses.json` one-to-one. Stable dotted paths and array indexes identify leaves, and each row binds the current scalar through SHA-256 of its canonical JSON value. No comparator value, field, policy, or source configuration changed.
+`harness/provenance/fighter-subclass-comparators.json` covers all 65 scalar leaves of `harness/comparators/fighter-subclasses.json` one-to-one. Stable dotted paths and array indexes identify leaves, and each row binds the current scalar through SHA-256 of its canonical JSON value. No comparator value or policy, evaluator input, or accepted damage evidence changed; this amendment changes provenance and audit records only.
 
 The source model separates:
 
 - official SRD 5.2.1 and its pinned PDF identity;
 - `Wizards of the Coast LLC, Player’s Handbook, 2024`;
-- accepted compact Battle Master audit records on issue #52;
-- accepted compact Eldritch Knight audit records on issue #50; and
+- accepted compact Battle Master records, including owner-source issue #52 comment `5291985967`;
+- accepted compact Eldritch Knight records, including owner-source issue #50 comment `5291987976`; and
 - project-authored benchmark methodology, loadout/profile assumptions, and tactical-policy decisions.
 
-Where a non-SRD official fact is treated as source-supported, its row uses an exact page already preserved by an accepted audit record, or a stable current-digital section/anchor together with that accepted comment. This metadata contract checks the presence and shape of a source chain; it does not itself establish source clearance. No page was guessed. Project-authored methodology is not mislabeled as a Player’s Handbook fact. Records contain compact facts and locators, not feature descriptions, examples, flavor, spell text, sourcebook sentences, or multiline source prose.
+A source-supported non-SRD official fact uses an exact print page only when personally verified; otherwise it uses a stable current-digital section or record plus owner-source attestation. No page was guessed, and no source bytes are retained. This metadata establishes a repository source chain, not legal clearance. Project-authored methodology is not mislabeled as a Player’s Handbook fact, and records contain compact facts and locators rather than copied source prose.
 
-Three scalar records retain material evidence gaps:
+The three formerly open source/methodology records are resolved:
 
-- Great Weapon Master’s proficiency-bonus damage formula has a stable digital feature locator, but accepted issue #52 comment `5246563926` freezes only the feat’s inclusion in the benchmark profile; it does not independently record that formula.
-- The Hew boolean is a project-authored critical-only comparator scope. Accepted issue #52 does not provide an official decomposition, so this abstraction is not presented as an independently substantiated official feature fact.
-- The Dueling `+2` value has a stable digital feature locator and is retained in the frozen benchmark profile. Accepted issue #50 comment `5246155660` freezes the inherited sword-and-board profile but does not independently record the `+2` rule value.
+- Great Weapon Master’s Proficiency Bonus relation is owner-source verified through issue #52 comment `5291985967` and `https://www.dndbeyond.com/feats/1789149-great-weapon-master`.
+- Dueling’s one-hand/no-other-weapon condition and `+2` value are owner-source verified through issue #50 comment `5291987976` and `https://www.dndbeyond.com/feats/1789131-dueling`.
+- Hew’s complete official fact is owner-source verified through issue #52 comment `5291985967` and `https://www.dndbeyond.com/feats/1789149-great-weapon-master`: immediately after a Critical Hit or after reducing a target to 0 Hit Points, the character can make a Bonus Action attack with the same weapon.
 
-All three records carry an explicit evidence-gap note and remain flagged for maintainer or qualified counsel review. They are not source-cleared by the accepted comments, the provenance schema, or the automated tests.
+Great Weapon Master and Dueling retain `unresolved_counsel=true` only as conservative residual-use/legal cautions, not as missing-source evidence. Hew has `unresolved_counsel=false`. No comparator value or policy, evaluator input, or accepted damage evidence changed.
+
+The maintained Hew comparator scalar remains `true` and the accepted damage evidence remains unchanged. The current critical-only, once-per-round representation is retained as deliberate conservative project methodology; it does not claim to represent every official Hew trigger. The evaluator currently credits only the Critical Hit route because the accepted damage methodology is explicitly no-target-death and carries no remaining-HP, kill, overkill, replacement-target, or target-availability state. This is a documented damage-methodology capability gap that must be resolved when the replacement damage model is independently confirmed.
+
+Correct support in the replacement damage model requires one explicit future ruling:
+
+- retain no-target-death sustained DPR as the nominal result and add a named finite-HP/kill-cleave sensitivity; or
+- replace the nominal model with fair target-death and retargeting semantics applied consistently to Kinetic Vanguard, Battle Master, and Eldritch Knight.
+
+Any implementation of the zero-HP trigger is outside issue #63 and requires fresh comparator/evaluator review and fresh affected analytical evidence.
 
 The source classifications are `srd_5_2_1_fact`, `non_srd_official_fact`, `project_authored_benchmark_assumption`, `project_authored_tactical_policy`, and `narrow_nominative_identifier`. Expression classifications distinguish bare numeric facts, compact independently phrased relational facts, project policy, and identifiers. These labels record a conservative engineering boundary; they do not decide whether an individual mechanic is copyrightable.
 
 ## Public naming and trademark disposition
 
-`Battle Master` and `Eldritch Knight` are retained under the maintainer’s explicit ruling as narrow unofficial comparator identifiers. They occur in comparator configuration/provenance, benchmark implementation and reports, tests, and explanatory documentation. Exact names make benchmark selection and prior evidence intelligible; neutral labels would obscure what was modeled, weaken reproducibility, and require a separately reviewed methodology/evidence migration. They must not be used as project branding, logos, badges, or promotional hooks. Public uses require the existing unofficial, no-affiliation, no-endorsement, and no-project-license boundary. Whether each use is legally permissible remains a context- and jurisdiction-dependent counsel question.
+`Battle Master` and `Eldritch Knight` are retained under an accepted maintainer risk disposition only as narrow unofficial identifiers needed for benchmark intelligibility and reproducibility. The homebrew product is permanently noncommercial. These names are not branding, product titles, logos, badges, or promotional hooks; existing unofficial, no-affiliation, no-endorsement, and no-project-license boundaries remain. This is not legal clearance. Reopen the review if the distribution context changes materially; permissibility remains context- and jurisdiction-dependent.
 
 The other explicit dispositions are:
 
 - `D&D` and `Dungeons & Dragons`: retain only where needed to identify official sources or describe the audited boundary; no logo, trade dress, or official-status presentation.
 - `D&D Beyond`: retain in official source URLs and narrow bibliographic/source references. Its Basic Rules are not an accepted publishing source.
 - `Wizards of the Coast`: retain in the exact SRD attribution, separate official bibliography, legal-boundary statements, and historical records. Do not embellish the supplied attribution.
-- `Player’s Handbook`: retain only as a non-SRD bibliographic title with exact page or stable digital locator plus an accepted audit record; do not characterize it as CC-licensed by this project.
+- `Player’s Handbook`: retain only as a non-SRD bibliographic title with a personally verified exact print page, or a stable current-digital section/record plus owner-source attestation; do not characterize it as CC-licensed by this project.
 - `Dungeon Master’s Guide` and `Monster Manual`: current mentions are audit/search terms or boundary explanations, not project source claims.
 
 No disposition asserts ownership of a Wizards mark, that names or mechanics are CC-licensed, or that nominative/reference treatment is guaranteed in every jurisdiction.
@@ -132,7 +149,7 @@ The release manifest changed only because the two new maintained records were ad
 
 The issue #63 implementation used the accepted compact GitHub records from issues #50 and #52 and did not perform a broad or narrow Player’s Handbook recapture. The candidate repository tree contains no authenticated HTML, screenshot, PDF, browser storage, cookie, session or entitlement metadata, copied feature/spell description, or other private source material. The audit makes no broader claim about material outside that candidate tree and the submitted issue #63 evidence.
 
-Future unresolved non-SRD locators must prefer an already recorded exact page, then a stable current-digital anchor plus accepted audit record. A missing locator is a residual finding, not permission to guess. Any separately authorized narrow recapture must remain host-only, contain the minimum section, and be deleted after compact independently written facts and a locator are recorded.
+The accepted locator policy uses an exact print page only when personally verified; otherwise it uses a stable current-digital section or record plus owner-source attestation. Never guess a page, and retain no source bytes. This amendment required no private recapture.
 
 ## Automated guards and limits
 
@@ -141,26 +158,28 @@ Future unresolved non-SRD locators must prefer an already recorded exact page, t
 - byte-exact SRD attribution plus modification/disclaimer notices;
 - absence of a project license claim over non-SRD Wizards material;
 - exact one-to-one scalar comparator/provenance coverage and canonical value identities;
-- required official source, locator, accepted audit record, and independent-expression metadata shape for non-SRD facts, while preserving the three explicit unresolved evidence gaps;
+- required owner-source audit records and stable digital locators for Great Weapon Master, Hew, and Dueling, no `evidence_gap` on those records, and Hew’s current Critical-Hit-only credit as a no-target-death damage-methodology capability gap;
 - separation of project methodology from official rules;
 - deterministic keys/enums, compact single-line prose, and rejection of Basic Rules provenance;
+- resolved identity and authority without a published email, retained NixNinja attribution, component-scoped noncommercial policy, narrow unofficial comparator names, bounded scanner scope, and no legal-clearance claim;
 - exact tracked-tree/reference-register set and hit-count equality for the declared hardcoded lexicon, including recursively discovered generated prototype/release surfaces;
 - no tracked private/authenticated capture path and no prohibited binary extension or signature;
 - the combined generated boundary: inline no-endorsement plus linked `NOTICE.md` no-affiliation/no-endorsement wording; and
 - continued four-asset release bundles and rejection of OGL, stale commercial permission, or blanket licensing wording.
 
-In-memory mutations remove/add provenance rows, change a comparator scalar, relabel project policy as an official fact, substitute Basic Rules, add multiline source-like prose, add an unregistered reference, and inject synthetic PDF/logo/private-HTML signatures. The tests must reject each mutation without embedding actual Wizards text or assets.
+In-memory mutations remove/add provenance rows, change a comparator scalar, remove either owner-source record, reintroduce `evidence_gap`, relabel the maintained Hew comparator scalar as fully representing the complete official rule, falsely claim the zero-HP trigger is modeled, revert identity to unknown, assert a blanket repository-wide CC BY-NC-SA license, invent a print page, substitute Basic Rules, add multiline source-like prose, add an unregistered reference, and inject synthetic PDF/logo/private-HTML signatures. The tests must reject each mutation without embedding actual Wizards text or assets.
 
-These checks are compact-fact, provenance, asset, and regression guards. Metadata presence does not resolve an evidence gap, and a length limit or hardcoded lexicon cannot prove non-infringement, discover every protected name or protectable paraphrase, or decide trademark/copyright law.
+These checks are compact-fact, provenance, asset, and regression guards; they do not establish legal clearance. A length limit or hardcoded lexicon cannot prove non-infringement, discover every protected name or protectable paraphrase, or decide trademark/copyright law. The scanner’s complete coverage of its declared lexicon and audited surfaces is accepted methodology, not an unresolved implementation defect.
 
 Adding the comparator-provenance and reference-register records to `build/inputs.json` necessarily increased its maintained input count from 82 to 84. The corresponding `tests/architecture.test.ts` 82→84 expectation update is the documented exception to the issue’s expected-path list; it updates only manifest cardinality and does not alter a product, comparator, evaluator, damage input, or analytical boundary.
 
 ## Confirmed corrections in issue #63
 
-- Added one-to-one, value-bound scalar-leaf provenance with explicit unresolved evidence gaps instead of treating comparator configuration as proof of mechanics.
-- Added a deterministic, content-bound reference register that is complete for the declared hardcoded official-example/current-comparator lexicon rather than a hand-selected path list; it does not claim universal protected-name or expression discovery.
+- Added one-to-one, value-bound scalar-leaf provenance; owner-source records now resolve Great Weapon Master, Dueling, and the complete Hew official fact while the current Hew modeling limit is recorded as a replacement-model capability gap, without changing a comparator scalar or value identity.
+- Added a deterministic, content-bound reference register that is complete for the declared hardcoded official-example/current-comparator lexicon rather than a hand-selected path list; it does not claim universal protected-name or expression discovery. This bounded scope is accepted methodology, not an unresolved implementation defect.
 - Added the two maintained records to the positive build-input manifest with precise non-analytical roles.
 - Added focused metadata-shape, compactness, private-capture, binary-asset, generated-surface, and mutation guards, plus the necessary 82→84 architecture-count update.
+- Recorded the resolved maintainer identity and authority, component-scoped permanent noncommercial product policy, and accepted narrow comparator-name risk disposition without changing holder or license text.
 - Updated this audit against the exact current base and current official creator guidance.
 
 No defect was found in the existing exact SRD attribution, component licenses, holder text, README notice boundary, harness notice boundary, or release legal-asset inventory. Those files were not rewritten for style.
@@ -183,13 +202,12 @@ Those accepted corrections remain in force. Historical release assets and frozen
 
 ## Residual risk and independent review
 
-The following require maintainer or qualified IP-attorney judgment rather than an engineering inference:
+The following remain legal-review questions rather than engineering conclusions:
 
 1. Whether each non-SRD comparator fact and exact subclass-name use is permissible in its full public context, including jurisdiction-specific copyright and trademark treatment.
-2. The Great Weapon Master proficiency-bonus formula, the project-defined critical-only Hew scope, and the Dueling `+2` value are not independently substantiated by the accepted comments cited for their frozen profiles. Their locators and classifications remain maintainer/counsel questions; they are not source-cleared.
-3. Whether any other retained page/digital locator is adequate, whether the field source classifications are complete, and whether any compact independently phrased field could still be considered protectable expression; automated checks cannot prove the negative.
-4. Which additional protected-name, omitted-name, replacement-name, or expression patterns future inventories should add. The expanded current lexicon is deliberately bounded and cannot prove universal discovery.
-5. Repository licensing designates `NixNinja`, while Git history and hosting use Kyle Martin and `kmart01123`. Repository evidence does not establish that they are the same person or independently prove chain of title. No holder change, DCO, CLA, contributor agreement, or new legal representation was added.
-6. Whether the existing disclaimer and citation presentation is sufficient for all intended distribution contexts. No notice supplies rights that the applicable rights holder did not grant.
+2. Owner-source verification resolves repository provenance and the Hew source-versus-methodology classification, not the documented zero-HP modeling capability gap; it is not legal clearance or attorney approval. The Great Weapon Master and Dueling counsel flags remain only residual legal-use cautions.
+3. Whether another retained or future locator satisfies the accepted locator policy, whether field classifications are complete, and whether compact independent wording could be protectable expression; the locator policy itself is settled.
+4. Whether material outside the declared lexicon and audited tracked/generated surfaces raises a legal issue. The scanner is complete for those declared bounds; non-universal detection is accepted methodology, not an implementation defect.
+5. Whether the existing disclaimer and citation presentation is sufficient in every intended distribution context. No notice or project license supplies third-party rights.
 
 Exact comparator permissibility can depend on jurisdiction and context. This audit deliberately leaves those legal interpretations unresolved and makes no demand-letter guarantee.

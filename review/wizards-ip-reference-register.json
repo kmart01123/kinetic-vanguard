@@ -5,7 +5,7 @@
     "audited_base_commit": "e5d81ab1271b305bee5b92bca22bb9acce0275e9",
     "tracked_path_count": 102,
     "tracked_path_sha256": "003cdfef582840a3341e3da7c99689f3cd0c197b3bcc7906600747765c6994da",
-    "tracked_content_sha256": "527fbb930ef749149b1f67c128fc4e7bb3c57e46ed8a396ae34b0c72a1bf5666",
+    "tracked_content_sha256": "d4ac9d9e56319acfb8ea5f7911ec026dfd3145685d45d5163b9279e2c82afe90",
     "tracked_content_self_canonicalization": "SHA-256 frames every tracked candidate path and bytes after blanking only audit.tracked_content_sha256 in this register.",
     "scope": "Sorted stage-zero path names and strict UTF-8 contents, framed candidate-tree SHA-256 with one blanked self field, plus every recursively discovered prototype and authorized release artifact.",
     "generated_artifact_inventory": [
@@ -1161,7 +1161,7 @@
         "dnd_beyond_name",
         "dnd_beyond_domain"
       ],
-      "expected_hit_count": 16,
+      "expected_hit_count": 19,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
@@ -1192,7 +1192,7 @@
         "battle_master",
         "eldritch_knight"
       ],
-      "expected_hit_count": 10,
+      "expected_hit_count": 12,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
@@ -1214,7 +1214,7 @@
         "war_magic",
         "precision_attack"
       ],
-      "expected_hit_count": 14,
+      "expected_hit_count": 31,
       "surface": "public",
       "classification": "original_project_content",
       "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
@@ -1914,7 +1914,7 @@
         "dnd_abbreviation",
         "dnd_beyond_domain"
       ],
-      "expected_hit_count": 3,
+      "expected_hit_count": 6,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
@@ -1930,7 +1930,7 @@
         "battle_master",
         "eldritch_knight"
       ],
-      "expected_hit_count": 153,
+      "expected_hit_count": 154,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
@@ -1950,10 +1950,9 @@
         "relentless",
         "superiority_die",
         "war_magic",
-        "precision_attack",
-        "great_weapon_master_initialism"
+        "precision_attack"
       ],
-      "expected_hit_count": 45,
+      "expected_hit_count": 44,
       "surface": "public",
       "classification": "independently_expressed_factual_mechanic",
       "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
@@ -2328,7 +2327,7 @@
         "war_magic",
         "precision_attack"
       ],
-      "expected_hit_count": 67,
+      "expected_hit_count": 66,
       "surface": "public",
       "classification": "original_project_content",
       "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
@@ -2600,7 +2599,7 @@
         "dnd_beyond_name",
         "dnd_beyond_domain"
       ],
-      "expected_hit_count": 40,
+      "expected_hit_count": 43,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
@@ -2631,7 +2630,7 @@
         "battle_master",
         "eldritch_knight"
       ],
-      "expected_hit_count": 66,
+      "expected_hit_count": 73,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
@@ -2654,7 +2653,7 @@
         "war_magic",
         "precision_attack"
       ],
-      "expected_hit_count": 31,
+      "expected_hit_count": 42,
       "surface": "public",
       "classification": "original_project_content",
       "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
@@ -2671,7 +2670,7 @@
         "dungeon_masters_guide",
         "monster_manual"
       ],
-      "expected_hit_count": 22,
+      "expected_hit_count": 28,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Narrow non-SRD bibliography, source locator, or audit-boundary reference; no project license is asserted.",
@@ -2703,7 +2702,7 @@
         "srd",
         "system_reference_document"
       ],
-      "expected_hit_count": 119,
+      "expected_hit_count": 123,
       "surface": "public",
       "classification": "original_project_content",
       "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
