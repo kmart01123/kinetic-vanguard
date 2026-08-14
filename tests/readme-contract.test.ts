@@ -55,7 +55,7 @@ test("README and release process stay synchronized with canonical development st
   for (const heading of [
     "Release status",
     "Damage benchmark snapshot",
-    "Control methodology status",
+    "Control capability status",
     "Publication interface",
     "Commands",
     "Architecture",
@@ -273,12 +273,12 @@ test("README keeps current authority, historical review basis, and publication s
 
   const begin = readme.indexOf(beginMarker);
   const end = readme.indexOf(endMarker);
-  const controlStatus = readme.indexOf("## Control methodology status");
+  const controlStatus = readme.indexOf("## Control capability status");
   const publication = readme.indexOf("## Publication interface");
   assert.ok(begin >= 0 && end > begin, "generated damage-region markers are ordered");
   assert.ok(controlStatus > end && publication > controlStatus);
   assert.ok(
-    readme.slice(end + endMarker.length).trimStart().startsWith("## Control methodology status"),
+    readme.slice(end + endMarker.length).trimStart().startsWith("## Control capability status"),
     "static control status follows the generated damage region immediately"
   );
   const precedingLevelTwoHeadings = [...readme.slice(0, begin).matchAll(/^## (.+)$/gm)].map((match) => match[1]);
@@ -415,13 +415,13 @@ test("README keeps current authority, historical review basis, and publication s
   for (const controlTargetContract of [
     "passive Perception",
     "canonically sorted, source-explicit skill facts",
-    "falls back to its associated raw ability modifier",
     "Live Advantage, Disadvantage, roll mode",
     "scenario/event state",
     "429 explicit skill facts across 216 creatures",
     "105 explicit skill facts across 40 targets",
     "165 explicit skill facts across 71 targets"
   ]) assert.ok(harnessReadme.includes(controlTargetContract), `harness guide states ${controlTargetContract}`);
+  assert.match(harnessReadme, /fall(?:s)? back to its associated raw ability modifier/);
   for (const retired of ["srd_targets.csv", "srd_control_targets.json", "srd-control-targets.json"]) {
     assert.ok(!readme.includes(retired), `README does not reference retired ${retired}`);
     assert.ok(!harnessReadme.includes(retired), `harness guide does not reference retired ${retired}`);
@@ -430,9 +430,14 @@ test("README keeps current authority, historical review basis, and publication s
   const status = readme.slice(controlStatus, publication);
   assert.match(status, /v14\.1.*Control Reliability.*historical release evidence/s);
   assert.match(status, /v14\.1\.0 GitHub Release/);
-  assert.match(status, /v14\.2 control methodology is being redesigned/);
-  for (const issue of ["#32", "#39", "#40", "#41", "#42"]) assert.ok(status.includes(issue));
-  assert.match(status, /No v14\.2 control headline, matrix, or HOT\/IDEAL\/COLD classification is authoritative until #42/);
+  assert.match(status, /v14\.2.*no maintained control evaluator/s);
+  assert.match(status, /no current v14\.2 control result/);
+  assert.match(status, /retired runtime.*no compatibility or fallback path/s);
+  assert.match(status, /Control Authority v2.*ControlTarget.*static inputs only/s);
+  assert.match(status, /not a benchmark methodology or execution runtime/);
+  assert.match(status, /minimum execution contract.*named-condition runner.*designed separately/s);
+  assert.match(status, /neither is implemented/);
+  assert.doesNotMatch(status, /being redesigned.*#42|until #42 promotes|shared control[- ]engine/is);
   assert.doesNotMatch(status, /^\|/m, "control status contains no table");
 
   assert.deepEqual(

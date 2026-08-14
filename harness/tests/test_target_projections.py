@@ -35,7 +35,6 @@ from harness.creature_damage_projection import (
     project_damage_target,
     project_profile_damage_targets,
 )
-from harness.control_engine import _control_target_projection_digest
 from harness.damage_harness import _projection_digest as _damage_target_projection_digest
 
 
@@ -492,7 +491,7 @@ class TargetProjectionTests(unittest.TestCase):
             with self.assertRaisesRegex(CreatureCatalogError, "changed after identity"):
                 replace(target, **replacement)
 
-    def test_control_only_projection_facts_change_control_but_not_damage_projection(self) -> None:
+    def test_control_only_projection_facts_change_static_identity_but_not_damage_projection(self) -> None:
         creature_id = "srd521:giant-ape"
         entry = next(
             item
@@ -504,9 +503,6 @@ class TargetProjectionTests(unittest.TestCase):
         )
         baseline_damage = project_damage_target(
             creature_id, catalog=self.catalog, requirements=self.requirements
-        )
-        baseline_aggregate = _control_target_projection_digest(
-            (entry,), (baseline_control,)
         )
         baseline_damage_aggregate = _damage_target_projection_digest(
             [entry], [baseline_damage]
@@ -532,10 +528,6 @@ class TargetProjectionTests(unittest.TestCase):
                     target_sha256=canonical_sha256(payload),
                 )
                 self.assertNotEqual(changed_control.target_sha256, baseline_control.target_sha256)
-                self.assertNotEqual(
-                    _control_target_projection_digest((entry,), (changed_control,)),
-                    baseline_aggregate,
-                )
                 self.assertEqual(
                     project_damage_target(
                         creature_id,
@@ -587,7 +579,7 @@ class TargetProjectionTests(unittest.TestCase):
                     pattern,
                 )
 
-    def test_projection_modules_and_consumers_follow_one_way_import_boundaries(self) -> None:
+    def test_projection_modules_and_damage_consumer_follow_one_way_import_boundaries(self) -> None:
         harness_root = Path(__file__).parents[1]
 
         def imports(filename: str) -> set[str]:
@@ -604,7 +596,6 @@ class TargetProjectionTests(unittest.TestCase):
         damage = imports("creature_damage_projection.py")
         control = imports("creature_control_projection.py")
         damage_harness = imports("damage_harness.py")
-        control_engine = imports("control_engine.py")
 
         self.assertFalse(
             common.intersection(
@@ -633,10 +624,6 @@ class TargetProjectionTests(unittest.TestCase):
             {"creature_catalog", "creature_damage_projection"}.issubset(damage_harness)
         )
         self.assertNotIn("creature_control_projection", damage_harness)
-        self.assertTrue(
-            {"creature_catalog", "creature_control_projection"}.issubset(control_engine)
-        )
-        self.assertNotIn("creature_damage_projection", control_engine)
 
 
 if __name__ == "__main__":

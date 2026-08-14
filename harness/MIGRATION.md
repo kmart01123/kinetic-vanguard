@@ -6,9 +6,13 @@ Version 14.1 moved Kinetic Vanguard mechanics into a validated projection of the
 
 The v14.1 Control Reliability evaluator, flattened control mechanics, comparator scenarios, configuration, reports, selection audit, README matrix, and publication workflow were retired from current development in v14.2. Their reproducibility remains permanently available through frozen `release/14.1.0`, tag `v14.1.0`, the v14.1 GitHub Release and evidence assets, and Git history.
 
-Maintained work now uses the damage-only commands and architecture documented in `README.md`. Control Authority v2 is a separate structured redesign contract and must not be populated from this historical mapping.
+Maintained work now uses the damage-only commands and architecture documented in `README.md`. Control Authority v2 and `ControlTarget` survive only as static input contracts for separately approved future design and must not be populated from this historical mapping.
 
 The surviving damage review provenance is recorded in `provenance/damage-review.json`. No legacy import, compatibility alias, parity gate, or golden output is a maintained migration path.
+
+## Current v14.2 control boundary
+
+The superseded current-development control execution runtime is retired. No maintained v14.2 control evaluator or current v14.2 control result exists, and no compatibility or fallback runtime is retained. Future replacement work must begin from a separately approved minimum execution contract; the simpler named-condition runner is also future work and remains unimplemented.
 
 ## v14.2 creature-input retirement boundary
 
