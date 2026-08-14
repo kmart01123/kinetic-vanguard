@@ -1,0 +1,2809 @@
+{
+  "format_version": 1,
+  "audit": {
+    "audit_date": "2026-08-14",
+    "audited_base_commit": "e5d81ab1271b305bee5b92bca22bb9acce0275e9",
+    "tracked_path_count": 102,
+    "tracked_path_sha256": "003cdfef582840a3341e3da7c99689f3cd0c197b3bcc7906600747765c6994da",
+    "tracked_content_sha256": "d4ac9d9e56319acfb8ea5f7911ec026dfd3145685d45d5163b9279e2c82afe90",
+    "tracked_content_self_canonicalization": "SHA-256 frames every tracked candidate path and bytes after blanking only audit.tracked_content_sha256 in this register.",
+    "scope": "Sorted stage-zero path names and strict UTF-8 contents, framed candidate-tree SHA-256 with one blanked self field, plus every recursively discovered prototype and authorized release artifact.",
+    "generated_artifact_inventory": [
+      "generated:prototype/KineticVanguard.prototype.html",
+      "generated:prototype/build-manifest.json",
+      "generated:prototype/coverage-ledger.json",
+      "generated:prototype/filtered-search-integrity.json",
+      "generated:release/KineticVanguard.html",
+      "generated:release/build-manifest.json",
+      "generated:release/coverage-ledger.json",
+      "generated:release/filtered-search-integrity.json"
+    ]
+  },
+  "official_sources": {
+    "cc_by_4_0": {
+      "url": "https://creativecommons.org/licenses/by/4.0/legalcode",
+      "text_url": "https://creativecommons.org/licenses/by/4.0/legalcode.txt",
+      "retrieved_on": "2026-08-14",
+      "text_sha256": "9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411"
+    },
+    "cc_marking_guidance": {
+      "url": "https://creativecommons.org/cc-license-your-work/",
+      "retrieved_on": "2026-08-14"
+    },
+    "creator_faq": {
+      "url": "https://www.dndbeyond.com/creator-faq",
+      "displayed_publication_date": "2025-04-22",
+      "retrieved_on": "2026-08-14"
+    },
+    "fan_content_policy": {
+      "url": "https://company.wizards.com/en/legal/fancontentpolicy",
+      "displayed_update_date": "2017-11-15",
+      "retrieved_on": "2026-08-14",
+      "use_boundary": "Non-TRPG fan-content distinction only; not comparator or SRD publication authority."
+    },
+    "phb_2024": {
+      "bibliography": "Wizards of the Coast LLC, Player's Handbook, 2024",
+      "boundary": "Non-SRD official bibliography only; exact pages or stable digital locators remain in accepted issue #50 and #52 audit records."
+    },
+    "srd_5_2_1_page": {
+      "url": "https://www.dndbeyond.com/srd",
+      "displayed_update_date": "2026-03-02",
+      "retrieved_on": "2026-08-14"
+    },
+    "srd_5_2_1_pdf": {
+      "url": "https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf",
+      "published_on": "2025-05-01",
+      "retrieved_on": "2026-08-14",
+      "size_bytes": 6031375,
+      "sha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87"
+    }
+  },
+  "classification_definitions": {
+    "srd_5_2_1_licensed_use": "SRD 5.2.1 source material or required attribution used under CC BY 4.0.",
+    "original_project_content": "Project-authored code, policy, tests, audit language, or compact technical structure.",
+    "narrow_nominative_reference": "Limited unofficial reference needed to identify a source, product, publisher, or comparator.",
+    "independently_expressed_factual_mechanic": "Compact fact or relation expressed independently without source descriptive prose.",
+    "historical_reference_in_current_documentation": "Current tracked record describing frozen or superseded history without reactivating it.",
+    "uncertain_counsel_review": "Engineering evidence is insufficient for a legal disposition; qualified counsel review remains.",
+    "remove_or_rename": "Reference is not justified by the current audited purpose and should be removed or renamed."
+  },
+  "reference_categories": [
+    {
+      "id": "dnd_brand_reference",
+      "definition": "D&D, Dungeons & Dragons, and D&D Beyond names or official-domain references.",
+      "patterns": [
+        {
+          "id": "dnd_abbreviation",
+          "source": "(?<![A-Za-z0-9])D&D(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "dungeons_and_dragons",
+          "source": "Dungeons\\s*&\\s*Dragons",
+          "flags": "giu"
+        },
+        {
+          "id": "dnd_beyond_name",
+          "source": "D&D\\s+Beyond",
+          "flags": "giu"
+        },
+        {
+          "id": "dnd_beyond_domain",
+          "source": "dndbeyond\\.com",
+          "flags": "giu"
+        }
+      ]
+    },
+    {
+      "id": "wizards_corporate_reference",
+      "definition": "Wizards of the Coast identity, ownership shorthand, or official corporate-domain reference.",
+      "patterns": [
+        {
+          "id": "wizards_of_the_coast",
+          "source": "Wizards\\s+of\\s+the\\s+Coast",
+          "flags": "giu"
+        },
+        {
+          "id": "wizards_owned",
+          "source": "Wizards-owned",
+          "flags": "giu"
+        },
+        {
+          "id": "wizards_domain",
+          "source": "company\\.wizards\\.com",
+          "flags": "giu"
+        }
+      ]
+    },
+    {
+      "id": "non_srd_comparator_identifier",
+      "definition": "Current non-SRD Battle Master or Eldritch Knight natural or stable machine identifier.",
+      "patterns": [
+        {
+          "id": "battle_master",
+          "source": "Battle[ _-]Master",
+          "flags": "giu"
+        },
+        {
+          "id": "eldritch_knight",
+          "source": "Eldritch[ _-]Knight",
+          "flags": "giu"
+        },
+        {
+          "id": "battle_master_initialism",
+          "source": "(?<![A-Za-z0-9])B(?:M)(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "eldritch_knight_initialism",
+          "source": "(?<![A-Za-z0-9])E(?:K)(?![A-Za-z0-9])",
+          "flags": "giu"
+        }
+      ]
+    },
+    {
+      "id": "non_srd_feat_feature_reference",
+      "definition": "Bounded current non-SRD comparator feat, feature, and maneuver names.",
+      "patterns": [
+        {
+          "id": "great_weapon_master",
+          "source": "Great[ _-]+Weapon[ _-]+Master",
+          "flags": "giu"
+        },
+        {
+          "id": "heavy_weapon_mastery",
+          "source": "Heavy[ _-]+Weapon[ _-]+Mastery",
+          "flags": "giu"
+        },
+        {
+          "id": "hew",
+          "source": "(?<![A-Za-z0-9])H(?:ew)(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "dueling",
+          "source": "(?<![A-Za-z0-9])Duel(?:ing)(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "relentless",
+          "source": "(?<![A-Za-z0-9])Relent(?:less)(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "combat_superiority",
+          "source": "(?:(?:Improved|Ultimate)[ _-]+)?Combat[ _-]+Superiority",
+          "flags": "giu"
+        },
+        {
+          "id": "superiority_die",
+          "source": "Superiority[ _-]+D(?:ie|ice)",
+          "flags": "giu"
+        },
+        {
+          "id": "war_magic",
+          "source": "War[ _-]+Magic",
+          "flags": "giu"
+        },
+        {
+          "id": "precision_attack",
+          "source": "Precision[ _-]+Attack",
+          "flags": "giu"
+        },
+        {
+          "id": "great_weapon_master_initialism",
+          "source": "(?<![A-Za-z0-9])G(?:WM)(?![A-Za-z0-9])",
+          "flags": "giu"
+        }
+      ]
+    },
+    {
+      "id": "bounded_omitted_name_reference",
+      "definition": "Bounded official SRD-page examples of names omitted from SRD 5.2.1.",
+      "patterns": [
+        {
+          "id": "deck_of_many_things",
+          "source": "Deck\\s+of\\s+Many\\s+Things",
+          "flags": "giu"
+        },
+        {
+          "id": "orb_of_dragonkind",
+          "source": "Orb\\s+of\\s+Dragonkind",
+          "flags": "giu"
+        },
+        {
+          "id": "artificer",
+          "source": "(?<![A-Za-z0-9])Artific(?:er)(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "aasimar",
+          "source": "(?<![A-Za-z0-9])Aasim(?:ar)(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "beholder",
+          "source": "(?<![A-Za-z0-9])Behold(?:er)(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "strahd",
+          "source": "(?<![A-Za-z0-9])Stra(?:hd)(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "orcus",
+          "source": "(?<![A-Za-z0-9])Orc(?:us)(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "tiamat",
+          "source": "(?<![A-Za-z0-9])Tia(?:mat)(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "forgotten_realms",
+          "source": "Forgotten\\s+Realms",
+          "flags": "giu"
+        }
+      ]
+    },
+    {
+      "id": "srd_replacement_name_reference",
+      "definition": "Bounded SRD 5.2.1 replacement names identified by the official SRD page.",
+      "patterns": [
+        {
+          "id": "mysterious_deck",
+          "source": "Mysterious\\s+Deck",
+          "flags": "giu"
+        },
+        {
+          "id": "dragon_orb",
+          "source": "Dragon\\s+Orb",
+          "flags": "giu"
+        }
+      ]
+    },
+    {
+      "id": "official_book_reference",
+      "definition": "Player's Handbook, Dungeon Master's Guide, Monster Manual, PHB, or DMG bibliographic reference.",
+      "patterns": [
+        {
+          "id": "players_handbook",
+          "source": "Player(?:[’']s|s)\\s+Handbook|(?<![A-Za-z0-9])PHB(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "dungeon_masters_guide",
+          "source": "Dungeon\\s+Master(?:[’']s|s)\\s+Guide|(?<![A-Za-z0-9])DMG(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "monster_manual",
+          "source": "Monster\\s+Manual",
+          "flags": "giu"
+        }
+      ]
+    },
+    {
+      "id": "srd_reference",
+      "definition": "SRD, SRD 5.2.1, SRD machine identifier, or System Reference Document reference.",
+      "patterns": [
+        {
+          "id": "srd",
+          "source": "(?<![A-Za-z0-9])SRD(?:\\s*5\\.2\\.1|_CC_v5\\.2\\.1|_?521)?(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "system_reference_document",
+          "source": "System\\s+Reference\\s+Document",
+          "flags": "giu"
+        }
+      ]
+    },
+    {
+      "id": "basic_rules_reference",
+      "definition": "D&D Beyond Basic Rules reference, which may appear only as a rejected provenance boundary.",
+      "patterns": [
+        {
+          "id": "basic_rules",
+          "source": "Basic(?:[ _-]+Rules|Rules)",
+          "flags": "giu"
+        },
+        {
+          "id": "basic_rules_url",
+          "source": "(?<![A-Za-z0-9])(?:(?:(?:https?://)?(?:www\\.)?dndbeyond\\.com/)?sources/dnd/br-2024)(?![A-Za-z0-9])",
+          "flags": "giu"
+        }
+      ]
+    },
+    {
+      "id": "ogl_reference",
+      "definition": "OGL or Open Game License reference, limited to negative or historical discussion.",
+      "patterns": [
+        {
+          "id": "ogl",
+          "source": "(?<![A-Za-z0-9])OGL(?![A-Za-z0-9])",
+          "flags": "giu"
+        },
+        {
+          "id": "open_game_license",
+          "source": "Open\\s+Game\\s+License",
+          "flags": "giu"
+        }
+      ]
+    },
+    {
+      "id": "fan_content_policy_reference",
+      "definition": "Wizards Fan Content Policy name or official policy URL.",
+      "patterns": [
+        {
+          "id": "fan_content_policy",
+          "source": "Fan\\s+Content\\s+Policy|company\\.wizards\\.com/en/legal/fancontentpolicy",
+          "flags": "giu"
+        }
+      ]
+    },
+    {
+      "id": "brand_relationship_claim",
+      "definition": "Affiliation, endorsement, sponsorship, connection, or official-status wording relevant to source and brand boundaries.",
+      "patterns": [
+        {
+          "id": "relationship",
+          "source": "(?:Wizards|SRD|D&D|Battle[ _-]Master|Eldritch[ _-]Knight).{0,160}\\b(?:affiliat(?:e|ed|ion)|endors(?:e|ed|ement)|sponsor(?:ed|ship)|connection|official[ -]status)\\b|\\b(?:affiliat(?:e|ed|ion)|endors(?:e|ed|ement)|sponsor(?:ed|ship)|connection|official[ -]status)\\b.{0,160}(?:Wizards|SRD|D&D|Battle[ _-]Master|Eldritch[ _-]Knight)",
+          "flags": "gisu"
+        }
+      ]
+    },
+    {
+      "id": "wizards_rights_claim",
+      "definition": "Statement about project licensing, copyright, trademark, ownership, or rights in Wizards material.",
+      "patterns": [
+        {
+          "id": "rights_boundary",
+          "source": "Wizards-owned|rights?\\s+in\\s+Wizards|project\\s+license.{0,120}Wizards|Wizards.{0,120}(?:copyright|trademark|ownership)",
+          "flags": "gisu"
+        }
+      ]
+    },
+    {
+      "id": "blanket_license_claim",
+      "definition": "Whole-repository, blanket-license, or single-SPDX wording requiring a scoped negative disposition.",
+      "patterns": [
+        {
+          "id": "blanket_license",
+          "source": "whole[- ]repository\\s+license|blanket\\s+(?:whole[- ]repository\\s+)?license|single\\s+SPDX",
+          "flags": "giu"
+        },
+        {
+          "id": "active_blanket_license",
+          "source": "(?:(?<!not\\s)(?:everything\\s+in\\s+(?:this|the)\\s+(?:repository|project)|every\\s+file\\s+in\\s+(?:this|the)\\s+(?:repository|project)).{0,100}\\b(?:is|are)\\s+(?!not\\b|never\\b)(?:licensed|released|available)\\s+under\\b|(?<!not\\s)(?:this|the)\\s+(?:repository|project)\\s+(?:is|are|remains?)\\s+(?!not\\b|never\\b)(?:licensed|released|distributed|available)\\s+under\\b)",
+          "flags": "gisu"
+        }
+      ]
+    }
+  ],
+  "term_dispositions": [
+    {
+      "term": "Battle Master",
+      "disposition": "retain_narrow_unofficial_identifier",
+      "public_use": "Benchmark labels and reproducibility references only; no branding or promotional use.",
+      "rationale": "Exact name identifies the frozen comparator; a neutral label would obscure prior evidence and methodology.",
+      "residual_counsel": true
+    },
+    {
+      "term": "D&D",
+      "disposition": "retain_narrow_source_reference",
+      "public_use": "Official-source identification and audited boundary only; no logo or official-status presentation.",
+      "rationale": "Short source name is sometimes needed for intelligibility but is not project branding.",
+      "residual_counsel": false
+    },
+    {
+      "term": "D&D Beyond",
+      "disposition": "retain_source_and_url_reference",
+      "public_use": "Official URLs and bibliography only; Basic Rules are rejected as publication provenance.",
+      "rationale": "The host identifies current official guidance and SRD downloads.",
+      "residual_counsel": false
+    },
+    {
+      "term": "Dungeons & Dragons",
+      "disposition": "retain_only_when_source_identification_requires",
+      "public_use": "Audit/search definition and necessary official-source identification only.",
+      "rationale": "No current product-branding use is needed.",
+      "residual_counsel": false
+    },
+    {
+      "term": "Eldritch Knight",
+      "disposition": "retain_narrow_unofficial_identifier",
+      "public_use": "Benchmark labels and reproducibility references only; no branding or promotional use.",
+      "rationale": "Exact name identifies the frozen comparator; a neutral label would obscure prior evidence and methodology.",
+      "residual_counsel": true
+    },
+    {
+      "term": "Player's Handbook",
+      "disposition": "retain_non_srd_bibliography",
+      "public_use": "Title, publisher, year, and exact page or accepted stable digital locator only.",
+      "rationale": "The title identifies non-SRD source records without claiming a project license.",
+      "residual_counsel": true
+    },
+    {
+      "term": "Wizards of the Coast",
+      "disposition": "retain_exact_attribution_and_bibliography",
+      "public_use": "Exact SRD attribution, separate bibliography, and scoped legal-boundary statements only.",
+      "rationale": "Publisher identification and required attribution are necessary; embellishment is prohibited.",
+      "residual_counsel": false
+    }
+  ],
+  "approved_noncode_assets": [],
+  "entries": [
+    {
+      "surface_id": "generated:prototype/KineticVanguard.prototype.html",
+      "path": "KineticVanguard.prototype.html",
+      "category_id": "brand_relationship_claim",
+      "matched_terms": [
+        "relationship"
+      ],
+      "expected_hit_count": 2,
+      "surface": "generated",
+      "classification": "original_project_content",
+      "rationale": "Project-authored or required no-affiliation, no-endorsement, sponsorship, connection, or official-status boundary.",
+      "required_notice_or_locator": "NOTICE.md > Third-party comparator references",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "generated:prototype/KineticVanguard.prototype.html",
+      "path": "KineticVanguard.prototype.html",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 2,
+      "surface": "generated",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "generated:prototype/KineticVanguard.prototype.html",
+      "path": "KineticVanguard.prototype.html",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd",
+        "system_reference_document"
+      ],
+      "expected_hit_count": 14,
+      "surface": "generated",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "generated:prototype/KineticVanguard.prototype.html",
+      "path": "KineticVanguard.prototype.html",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_of_the_coast"
+      ],
+      "expected_hit_count": 2,
+      "surface": "generated",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "generated:prototype/build-manifest.json",
+      "path": "build-manifest.json",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 6,
+      "surface": "generated",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "generated:release/KineticVanguard.html",
+      "path": "KineticVanguard.html",
+      "category_id": "brand_relationship_claim",
+      "matched_terms": [
+        "relationship"
+      ],
+      "expected_hit_count": 2,
+      "surface": "generated",
+      "classification": "original_project_content",
+      "rationale": "Project-authored or required no-affiliation, no-endorsement, sponsorship, connection, or official-status boundary.",
+      "required_notice_or_locator": "NOTICE.md > Third-party comparator references",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "generated:release/KineticVanguard.html",
+      "path": "KineticVanguard.html",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 2,
+      "surface": "generated",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "generated:release/KineticVanguard.html",
+      "path": "KineticVanguard.html",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd",
+        "system_reference_document"
+      ],
+      "expected_hit_count": 14,
+      "surface": "generated",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "generated:release/KineticVanguard.html",
+      "path": "KineticVanguard.html",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_of_the_coast"
+      ],
+      "expected_hit_count": 2,
+      "surface": "generated",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "generated:release/build-manifest.json",
+      "path": "build-manifest.json",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 6,
+      "surface": "generated",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:.github/workflows/publish-v13.2.0.yml",
+      "path": ".github/workflows/publish-v13.2.0.yml",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "historical_reference_in_current_documentation",
+      "rationale": "Frozen workflow reference records superseded publication history without reactivating it.",
+      "required_notice_or_locator": "Tracked historical workflow; NOTICE.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:CHANGELOG.md",
+      "path": "CHANGELOG.md",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:CHANGELOG.md",
+      "path": "CHANGELOG.md",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:CHANGELOG.md",
+      "path": "CHANGELOG.md",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_owned"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:CHANGELOG.md",
+      "path": "CHANGELOG.md",
+      "category_id": "wizards_rights_claim",
+      "matched_terms": [
+        "rights_boundary"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored scope statement limits project licensing and does not manufacture third-party rights.",
+      "required_notice_or_locator": "LICENSE.md; NOTICE.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:KineticVanguard.yaml",
+      "path": "KineticVanguard.yaml",
+      "category_id": "brand_relationship_claim",
+      "matched_terms": [
+        "relationship"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored or required no-affiliation, no-endorsement, sponsorship, connection, or official-status boundary.",
+      "required_notice_or_locator": "NOTICE.md > Third-party comparator references",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:KineticVanguard.yaml",
+      "path": "KineticVanguard.yaml",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:KineticVanguard.yaml",
+      "path": "KineticVanguard.yaml",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd",
+        "system_reference_document"
+      ],
+      "expected_hit_count": 7,
+      "surface": "public",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:KineticVanguard.yaml",
+      "path": "KineticVanguard.yaml",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_of_the_coast"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:LICENSE-CONTENT",
+      "path": "LICENSE-CONTENT",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:LICENSE.md",
+      "path": "LICENSE.md",
+      "category_id": "blanket_license_claim",
+      "matched_terms": [
+        "blanket_license"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Negative scope guard; no whole-repository license or single SPDX claim is asserted.",
+      "required_notice_or_locator": "LICENSE.md; docs/licensing-audit.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:LICENSE.md",
+      "path": "LICENSE.md",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:LICENSE.md",
+      "path": "LICENSE.md",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd",
+        "system_reference_document"
+      ],
+      "expected_hit_count": 11,
+      "surface": "public",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:LICENSE.md",
+      "path": "LICENSE.md",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_owned"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:LICENSE.md",
+      "path": "LICENSE.md",
+      "category_id": "wizards_rights_claim",
+      "matched_terms": [
+        "rights_boundary"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored scope statement limits project licensing and does not manufacture third-party rights.",
+      "required_notice_or_locator": "LICENSE.md; NOTICE.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:NOTICE.md",
+      "path": "NOTICE.md",
+      "category_id": "brand_relationship_claim",
+      "matched_terms": [
+        "relationship"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored or required no-affiliation, no-endorsement, sponsorship, connection, or official-status boundary.",
+      "required_notice_or_locator": "NOTICE.md > Third-party comparator references",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:NOTICE.md",
+      "path": "NOTICE.md",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:NOTICE.md",
+      "path": "NOTICE.md",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:NOTICE.md",
+      "path": "NOTICE.md",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd",
+        "system_reference_document"
+      ],
+      "expected_hit_count": 12,
+      "surface": "public",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:NOTICE.md",
+      "path": "NOTICE.md",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_of_the_coast",
+        "wizards_owned"
+      ],
+      "expected_hit_count": 3,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:NOTICE.md",
+      "path": "NOTICE.md",
+      "category_id": "wizards_rights_claim",
+      "matched_terms": [
+        "rights_boundary"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored scope statement limits project licensing and does not manufacture third-party rights.",
+      "required_notice_or_locator": "LICENSE.md; NOTICE.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:README.md",
+      "path": "README.md",
+      "category_id": "blanket_license_claim",
+      "matched_terms": [
+        "blanket_license"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Negative scope guard; no whole-repository license or single SPDX claim is asserted.",
+      "required_notice_or_locator": "LICENSE.md; docs/licensing-audit.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:README.md",
+      "path": "README.md",
+      "category_id": "brand_relationship_claim",
+      "matched_terms": [
+        "relationship"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored or required no-affiliation, no-endorsement, sponsorship, connection, or official-status boundary.",
+      "required_notice_or_locator": "NOTICE.md > Third-party comparator references",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:README.md",
+      "path": "README.md",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight",
+        "battle_master_initialism",
+        "eldritch_knight_initialism"
+      ],
+      "expected_hit_count": 8,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:README.md",
+      "path": "README.md",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd",
+        "system_reference_document"
+      ],
+      "expected_hit_count": 11,
+      "surface": "public",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:README.md",
+      "path": "README.md",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_of_the_coast",
+        "wizards_owned"
+      ],
+      "expected_hit_count": 3,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:README.md",
+      "path": "README.md",
+      "category_id": "wizards_rights_claim",
+      "matched_terms": [
+        "rights_boundary"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored scope statement limits project licensing and does not manufacture third-party rights.",
+      "required_notice_or_locator": "LICENSE.md; NOTICE.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:RELEASE_CHECKLIST.md",
+      "path": "RELEASE_CHECKLIST.md",
+      "category_id": "blanket_license_claim",
+      "matched_terms": [
+        "blanket_license"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Negative scope guard; no whole-repository license or single SPDX claim is asserted.",
+      "required_notice_or_locator": "LICENSE.md; docs/licensing-audit.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:RELEASE_CHECKLIST.md",
+      "path": "RELEASE_CHECKLIST.md",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight",
+        "battle_master_initialism",
+        "eldritch_knight_initialism"
+      ],
+      "expected_hit_count": 4,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:RELEASE_CHECKLIST.md",
+      "path": "RELEASE_CHECKLIST.md",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 3,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:build/inputs.json",
+      "path": "build/inputs.json",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/control-authority-v2-population-audit.md",
+      "path": "docs/control-authority-v2-population-audit.md",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 8,
+      "surface": "public",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "basic_rules_reference",
+      "matched_terms": [
+        "basic_rules"
+      ],
+      "expected_hit_count": 8,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Rejected source boundary; not an accepted publication, creature, or comparator provenance source.",
+      "required_notice_or_locator": "docs/licensing-audit.md > SRD, Basic Rules, and non-SRD bibliography boundary",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "blanket_license_claim",
+      "matched_terms": [
+        "blanket_license"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Negative scope guard; no whole-repository license or single SPDX claim is asserted.",
+      "required_notice_or_locator": "LICENSE.md; docs/licensing-audit.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "bounded_omitted_name_reference",
+      "matched_terms": [
+        "deck_of_many_things",
+        "orb_of_dragonkind",
+        "artificer",
+        "aasimar",
+        "beholder",
+        "strahd",
+        "orcus",
+        "tiamat",
+        "forgotten_realms"
+      ],
+      "expected_hit_count": 9,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Bounded official SRD-page omitted-name example retained only for audit and regression detection.",
+      "required_notice_or_locator": "https://www.dndbeyond.com/srd; docs/licensing-audit.md",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "brand_relationship_claim",
+      "matched_terms": [
+        "relationship"
+      ],
+      "expected_hit_count": 7,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored or required no-affiliation, no-endorsement, sponsorship, connection, or official-status boundary.",
+      "required_notice_or_locator": "NOTICE.md > Third-party comparator references",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_abbreviation",
+        "dungeons_and_dragons",
+        "dnd_beyond_name",
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 19,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "fan_content_policy_reference",
+      "matched_terms": [
+        "fan_content_policy"
+      ],
+      "expected_hit_count": 4,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow official-policy boundary reference; the policy is not comparator or SRD publication authority.",
+      "required_notice_or_locator": "https://company.wizards.com/en/legal/fancontentpolicy",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 12,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "great_weapon_master",
+        "heavy_weapon_mastery",
+        "hew",
+        "dueling",
+        "relentless",
+        "superiority_die",
+        "war_magic",
+        "precision_attack"
+      ],
+      "expected_hit_count": 31,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "official_book_reference",
+      "matched_terms": [
+        "players_handbook",
+        "dungeon_masters_guide",
+        "monster_manual"
+      ],
+      "expected_hit_count": 9,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow non-SRD bibliography, source locator, or audit-boundary reference; no project license is asserted.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "ogl_reference",
+      "matched_terms": [
+        "ogl"
+      ],
+      "expected_hit_count": 3,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Negative or historical open-license guard; no active grant is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Prior audit history preserved",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd",
+        "system_reference_document"
+      ],
+      "expected_hit_count": 56,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "srd_replacement_name_reference",
+      "matched_terms": [
+        "mysterious_deck",
+        "dragon_orb"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_of_the_coast",
+        "wizards_domain"
+      ],
+      "expected_hit_count": 4,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/licensing-audit.md",
+      "path": "docs/licensing-audit.md",
+      "category_id": "wizards_rights_claim",
+      "matched_terms": [
+        "rights_boundary"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored scope statement limits project licensing and does not manufacture third-party rights.",
+      "required_notice_or_locator": "LICENSE.md; NOTICE.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/srd-creature-catalog-audit.md",
+      "path": "docs/srd-creature-catalog-audit.md",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_abbreviation",
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:docs/srd-creature-catalog-audit.md",
+      "path": "docs/srd-creature-catalog-audit.md",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:docs/srd-creature-catalog-audit.md",
+      "path": "docs/srd-creature-catalog-audit.md",
+      "category_id": "official_book_reference",
+      "matched_terms": [
+        "players_handbook"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow non-SRD bibliography, source locator, or audit-boundary reference; no project license is asserted.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:docs/srd-creature-catalog-audit.md",
+      "path": "docs/srd-creature-catalog-audit.md",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 24,
+      "surface": "public",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/MIGRATION.md",
+      "path": "harness/MIGRATION.md",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/README.md",
+      "path": "harness/README.md",
+      "category_id": "brand_relationship_claim",
+      "matched_terms": [
+        "relationship"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored or required no-affiliation, no-endorsement, sponsorship, connection, or official-status boundary.",
+      "required_notice_or_locator": "NOTICE.md > Third-party comparator references",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/README.md",
+      "path": "harness/README.md",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 10,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/README.md",
+      "path": "harness/README.md",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd",
+        "system_reference_document"
+      ],
+      "expected_hit_count": 9,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/README.md",
+      "path": "harness/README.md",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_of_the_coast",
+        "wizards_owned"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/README.md",
+      "path": "harness/README.md",
+      "category_id": "wizards_rights_claim",
+      "matched_terms": [
+        "rights_boundary"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored scope statement limits project licensing and does not manufacture third-party rights.",
+      "required_notice_or_locator": "LICENSE.md; NOTICE.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/comparators/fighter-subclasses.json",
+      "path": "harness/comparators/fighter-subclasses.json",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 4,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/comparators/fighter-subclasses.json",
+      "path": "harness/comparators/fighter-subclasses.json",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "great_weapon_master",
+        "hew",
+        "dueling",
+        "relentless",
+        "superiority_die"
+      ],
+      "expected_hit_count": 12,
+      "surface": "public",
+      "classification": "independently_expressed_factual_mechanic",
+      "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/config/benchmark.json",
+      "path": "harness/config/benchmark.json",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/config/creature-consumers.json",
+      "path": "harness/config/creature-consumers.json",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/creature_catalog.py",
+      "path": "harness/creature_catalog.py",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_abbreviation",
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/creature_catalog.py",
+      "path": "harness/creature_catalog.py",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 33,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/creature_control_projection.py",
+      "path": "harness/creature_control_projection.py",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/creature_damage_projection.py",
+      "path": "harness/creature_damage_projection.py",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/damage_harness.py",
+      "path": "harness/damage_harness.py",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight",
+        "battle_master_initialism",
+        "eldritch_knight_initialism"
+      ],
+      "expected_hit_count": 29,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/damage_harness.py",
+      "path": "harness/damage_harness.py",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "great_weapon_master",
+        "hew",
+        "dueling",
+        "relentless",
+        "superiority_die",
+        "great_weapon_master_initialism"
+      ],
+      "expected_hit_count": 75,
+      "surface": "public",
+      "classification": "independently_expressed_factual_mechanic",
+      "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/damage_report.py",
+      "path": "harness/damage_report.py",
+      "category_id": "brand_relationship_claim",
+      "matched_terms": [
+        "relationship"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored or required no-affiliation, no-endorsement, sponsorship, connection, or official-status boundary.",
+      "required_notice_or_locator": "NOTICE.md > Third-party comparator references",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/damage_report.py",
+      "path": "harness/damage_report.py",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/damage_report.py",
+      "path": "harness/damage_report.py",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight",
+        "battle_master_initialism",
+        "eldritch_knight_initialism"
+      ],
+      "expected_hit_count": 48,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/damage_report.py",
+      "path": "harness/damage_report.py",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd",
+        "system_reference_document"
+      ],
+      "expected_hit_count": 18,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/damage_report.py",
+      "path": "harness/damage_report.py",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_of_the_coast",
+        "wizards_owned"
+      ],
+      "expected_hit_count": 3,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/damage_report.py",
+      "path": "harness/damage_report.py",
+      "category_id": "wizards_rights_claim",
+      "matched_terms": [
+        "rights_boundary"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored scope statement limits project licensing and does not manufacture third-party rights.",
+      "required_notice_or_locator": "LICENSE.md; NOTICE.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/data/srd_creature_rosters.json",
+      "path": "harness/data/srd_creature_rosters.json",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 1660,
+      "surface": "public",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/data/srd_creatures.json",
+      "path": "harness/data/srd_creatures.json",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_abbreviation"
+      ],
+      "expected_hit_count": 331,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/data/srd_creatures.json",
+      "path": "harness/data/srd_creatures.json",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 665,
+      "surface": "public",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/model.py",
+      "path": "harness/model.py",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight",
+        "battle_master_initialism",
+        "eldritch_knight_initialism"
+      ],
+      "expected_hit_count": 68,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/model.py",
+      "path": "harness/model.py",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "great_weapon_master",
+        "hew",
+        "dueling",
+        "relentless",
+        "superiority_die",
+        "great_weapon_master_initialism"
+      ],
+      "expected_hit_count": 31,
+      "surface": "public",
+      "classification": "independently_expressed_factual_mechanic",
+      "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/provenance/damage-delta-v14.1-to-v14.2.json",
+      "path": "harness/provenance/damage-delta-v14.1-to-v14.2.json",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 192,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/provenance/damage-delta-v14.1-to-v14.2.json",
+      "path": "harness/provenance/damage-delta-v14.1-to-v14.2.json",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 9,
+      "surface": "public",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/provenance/damage-review.json",
+      "path": "harness/provenance/damage-review.json",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_abbreviation"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/provenance/damage-review.json",
+      "path": "harness/provenance/damage-review.json",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 4,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/provenance/damage-review.json",
+      "path": "harness/provenance/damage-review.json",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 7,
+      "surface": "public",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/provenance/fighter-subclass-comparators.json",
+      "path": "harness/provenance/fighter-subclass-comparators.json",
+      "category_id": "brand_relationship_claim",
+      "matched_terms": [
+        "relationship"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored or required no-affiliation, no-endorsement, sponsorship, connection, or official-status boundary.",
+      "required_notice_or_locator": "NOTICE.md > Third-party comparator references",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/provenance/fighter-subclass-comparators.json",
+      "path": "harness/provenance/fighter-subclass-comparators.json",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_abbreviation",
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/provenance/fighter-subclass-comparators.json",
+      "path": "harness/provenance/fighter-subclass-comparators.json",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 154,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/provenance/fighter-subclass-comparators.json",
+      "path": "harness/provenance/fighter-subclass-comparators.json",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "great_weapon_master",
+        "heavy_weapon_mastery",
+        "hew",
+        "dueling",
+        "relentless",
+        "superiority_die",
+        "war_magic",
+        "precision_attack"
+      ],
+      "expected_hit_count": 44,
+      "surface": "public",
+      "classification": "independently_expressed_factual_mechanic",
+      "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/provenance/fighter-subclass-comparators.json",
+      "path": "harness/provenance/fighter-subclass-comparators.json",
+      "category_id": "official_book_reference",
+      "matched_terms": [
+        "players_handbook"
+      ],
+      "expected_hit_count": 30,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow non-SRD bibliography, source locator, or audit-boundary reference; no project license is asserted.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/provenance/fighter-subclass-comparators.json",
+      "path": "harness/provenance/fighter-subclass-comparators.json",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 83,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/provenance/fighter-subclass-comparators.json",
+      "path": "harness/provenance/fighter-subclass-comparators.json",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_of_the_coast"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/provenance/srd-creatures.json",
+      "path": "harness/provenance/srd-creatures.json",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_abbreviation",
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/provenance/srd-creatures.json",
+      "path": "harness/provenance/srd-creatures.json",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 11,
+      "surface": "public",
+      "classification": "srd_5_2_1_licensed_use",
+      "rationale": "Reference remains within the exact SRD attribution, modification, disclaimer, and CC BY 4.0 component boundary.",
+      "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/readme_damage.py",
+      "path": "harness/readme_damage.py",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 4,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/readme_damage.py",
+      "path": "harness/readme_damage.py",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/tests/test_creature_catalog.py",
+      "path": "harness/tests/test_creature_catalog.py",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 15,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/tests/test_creature_rosters.py",
+      "path": "harness/tests/test_creature_rosters.py",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/tests/test_harness.py",
+      "path": "harness/tests/test_harness.py",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight",
+        "battle_master_initialism",
+        "eldritch_knight_initialism"
+      ],
+      "expected_hit_count": 122,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/tests/test_harness.py",
+      "path": "harness/tests/test_harness.py",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "great_weapon_master",
+        "hew",
+        "relentless",
+        "precision_attack",
+        "great_weapon_master_initialism"
+      ],
+      "expected_hit_count": 35,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/tests/test_harness.py",
+      "path": "harness/tests/test_harness.py",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/tests/test_readme_damage.py",
+      "path": "harness/tests/test_readme_damage.py",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight",
+        "battle_master_initialism",
+        "eldritch_knight_initialism"
+      ],
+      "expected_hit_count": 13,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/tests/test_readme_damage.py",
+      "path": "harness/tests/test_readme_damage.py",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 5,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/tests/test_target_projections.py",
+      "path": "harness/tests/test_target_projections.py",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 27,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "basic_rules_reference",
+      "matched_terms": [
+        "basic_rules",
+        "basic_rules_url"
+      ],
+      "expected_hit_count": 17,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Rejected source boundary; not an accepted publication, creature, or comparator provenance source.",
+      "required_notice_or_locator": "docs/licensing-audit.md > SRD, Basic Rules, and non-SRD bibliography boundary",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "blanket_license_claim",
+      "matched_terms": [
+        "blanket_license"
+      ],
+      "expected_hit_count": 12,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Negative scope guard; no whole-repository license or single SPDX claim is asserted.",
+      "required_notice_or_locator": "LICENSE.md; docs/licensing-audit.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "bounded_omitted_name_reference",
+      "matched_terms": [
+        "artificer",
+        "aasimar",
+        "beholder",
+        "strahd",
+        "orcus",
+        "tiamat"
+      ],
+      "expected_hit_count": 24,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored audit or guard text names the bounded omitted example without treating it as licensed source material.",
+      "required_notice_or_locator": "https://www.dndbeyond.com/srd; docs/licensing-audit.md",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "brand_relationship_claim",
+      "matched_terms": [
+        "relationship"
+      ],
+      "expected_hit_count": 5,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored or required no-affiliation, no-endorsement, sponsorship, connection, or official-status boundary.",
+      "required_notice_or_locator": "NOTICE.md > Third-party comparator references",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_abbreviation",
+        "dungeons_and_dragons",
+        "dnd_beyond_name",
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 20,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "fan_content_policy_reference",
+      "matched_terms": [
+        "fan_content_policy"
+      ],
+      "expected_hit_count": 5,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow official-policy boundary reference; the policy is not comparator or SRD publication authority.",
+      "required_notice_or_locator": "https://company.wizards.com/en/legal/fancontentpolicy",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 68,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "great_weapon_master",
+        "heavy_weapon_mastery",
+        "hew",
+        "dueling",
+        "relentless",
+        "combat_superiority",
+        "superiority_die",
+        "war_magic",
+        "precision_attack"
+      ],
+      "expected_hit_count": 66,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "official_book_reference",
+      "matched_terms": [
+        "players_handbook",
+        "dungeon_masters_guide",
+        "monster_manual"
+      ],
+      "expected_hit_count": 10,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow non-SRD bibliography, source locator, or audit-boundary reference; no project license is asserted.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "ogl_reference",
+      "matched_terms": [
+        "ogl",
+        "open_game_license"
+      ],
+      "expected_hit_count": 11,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Negative or historical open-license guard; no active grant is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Prior audit history preserved",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd",
+        "system_reference_document"
+      ],
+      "expected_hit_count": 272,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_of_the_coast",
+        "wizards_owned",
+        "wizards_domain"
+      ],
+      "expected_hit_count": 9,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:review/wizards-ip-reference-register.json",
+      "path": "review/wizards-ip-reference-register.json",
+      "category_id": "wizards_rights_claim",
+      "matched_terms": [
+        "rights_boundary"
+      ],
+      "expected_hit_count": 7,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored scope statement limits project licensing and does not manufacture third-party rights.",
+      "required_notice_or_locator": "LICENSE.md; NOTICE.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:src/creature-catalog.ts",
+      "path": "src/creature-catalog.ts",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_abbreviation",
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:src/creature-catalog.ts",
+      "path": "src/creature-catalog.ts",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 16,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:src/promote.ts",
+      "path": "src/promote.ts",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/architecture.test.ts",
+      "path": "tests/architecture.test.ts",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/creature-catalog.test.ts",
+      "path": "tests/creature-catalog.test.ts",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/harness-authority.test.ts",
+      "path": "tests/harness-authority.test.ts",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 4,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:tests/harness-authority.test.ts",
+      "path": "tests/harness-authority.test.ts",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "basic_rules_reference",
+      "matched_terms": [
+        "basic_rules",
+        "basic_rules_url"
+      ],
+      "expected_hit_count": 21,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Rejected source boundary; not an accepted publication, creature, or comparator provenance source.",
+      "required_notice_or_locator": "docs/licensing-audit.md > SRD, Basic Rules, and non-SRD bibliography boundary",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "blanket_license_claim",
+      "matched_terms": [
+        "blanket_license"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Negative scope guard; no whole-repository license or single SPDX claim is asserted.",
+      "required_notice_or_locator": "LICENSE.md; docs/licensing-audit.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "bounded_omitted_name_reference",
+      "matched_terms": [
+        "artificer",
+        "aasimar",
+        "beholder",
+        "strahd",
+        "orcus",
+        "tiamat"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored audit or guard text names the bounded omitted example without treating it as licensed source material.",
+      "required_notice_or_locator": "https://www.dndbeyond.com/srd; docs/licensing-audit.md",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "brand_relationship_claim",
+      "matched_terms": [
+        "relationship"
+      ],
+      "expected_hit_count": 17,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored or required no-affiliation, no-endorsement, sponsorship, connection, or official-status boundary.",
+      "required_notice_or_locator": "NOTICE.md > Third-party comparator references",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "dnd_brand_reference",
+      "matched_terms": [
+        "dnd_abbreviation",
+        "dungeons_and_dragons",
+        "dnd_beyond_name",
+        "dnd_beyond_domain"
+      ],
+      "expected_hit_count": 43,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Public naming and trademark disposition",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "fan_content_policy_reference",
+      "matched_terms": [
+        "fan_content_policy"
+      ],
+      "expected_hit_count": 3,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow official-policy boundary reference; the policy is not comparator or SRD publication authority.",
+      "required_notice_or_locator": "https://company.wizards.com/en/legal/fancontentpolicy",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 73,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "great_weapon_master",
+        "heavy_weapon_mastery",
+        "hew",
+        "dueling",
+        "relentless",
+        "combat_superiority",
+        "superiority_die",
+        "war_magic",
+        "precision_attack"
+      ],
+      "expected_hit_count": 42,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "official_book_reference",
+      "matched_terms": [
+        "players_handbook",
+        "dungeon_masters_guide",
+        "monster_manual"
+      ],
+      "expected_hit_count": 28,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow non-SRD bibliography, source locator, or audit-boundary reference; no project license is asserted.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "ogl_reference",
+      "matched_terms": [
+        "ogl",
+        "open_game_license"
+      ],
+      "expected_hit_count": 12,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Negative or historical open-license guard; no active grant is asserted.",
+      "required_notice_or_locator": "docs/licensing-audit.md > Prior audit history preserved",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd",
+        "system_reference_document"
+      ],
+      "expected_hit_count": 123,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_of_the_coast",
+        "wizards_owned",
+        "wizards_domain"
+      ],
+      "expected_hit_count": 19,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/license-contract.test.ts",
+      "path": "tests/license-contract.test.ts",
+      "category_id": "wizards_rights_claim",
+      "matched_terms": [
+        "rights_boundary"
+      ],
+      "expected_hit_count": 9,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored scope statement limits project licensing and does not manufacture third-party rights.",
+      "required_notice_or_locator": "LICENSE.md; NOTICE.md",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/readme-contract.test.ts",
+      "path": "tests/readme-contract.test.ts",
+      "category_id": "brand_relationship_claim",
+      "matched_terms": [
+        "relationship"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored or required no-affiliation, no-endorsement, sponsorship, connection, or official-status boundary.",
+      "required_notice_or_locator": "NOTICE.md > Third-party comparator references",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/readme-contract.test.ts",
+      "path": "tests/readme-contract.test.ts",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight",
+        "battle_master_initialism",
+        "eldritch_knight_initialism"
+      ],
+      "expected_hit_count": 4,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:tests/readme-contract.test.ts",
+      "path": "tests/readme-contract.test.ts",
+      "category_id": "srd_reference",
+      "matched_terms": [
+        "srd"
+      ],
+      "expected_hit_count": 16,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
+      "required_notice_or_locator": "NOTICE.md; source identifier context in the recorded path",
+      "mechanically_necessary": true,
+      "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:tests/readme-contract.test.ts",
+      "path": "tests/readme-contract.test.ts",
+      "category_id": "wizards_corporate_reference",
+      "matched_terms": [
+        "wizards_of_the_coast"
+      ],
+      "expected_hit_count": 1,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Narrow publisher, attribution, source, or legal-boundary reference; it is not project branding.",
+      "required_notice_or_locator": "NOTICE.md; exact SRD attribution or separate official bibliography",
+      "mechanically_necessary": false,
+      "counsel_review": false
+    }
+  ]
+}

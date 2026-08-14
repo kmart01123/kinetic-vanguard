@@ -8,6 +8,7 @@
 
 ### Changed
 
+- Refreshed the current-tree Wizards/SRD reference audit and field-complete comparator provenance without changing rules, comparator values or policies, benchmarks, or analytical evidence.
 - Narrowed the maintained benchmark architecture to an explicit damage authority, projection, configuration, comparator, report, README generator, and command boundary.
 - Replaced the generated two-matrix README snapshot with one damage heat table and a static control-capability status that points v14.1 reproduction to frozen release evidence and records the current-development runtime retirement and capability gap.
 - Completed Control Authority v2.1 with 35 modeled rows, 14 maintained profile exclusions, zero unsupported rows, typed event/save/choice/movement/area/persistent-state semantics, and shared TypeScript/Python parity coverage; it remains a static input separate from damage, does not constitute a current evaluator, and publishes no result.
