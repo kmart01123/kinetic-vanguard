@@ -12,9 +12,9 @@ from unittest.mock import patch
 
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
-from harness.control_harness import _comparator_scenario,_effect_available,_kv_scenario,run as run_control
+from harness.control_harness import _comparator_scenario,_effect_available,_kv_scenario,_repeat_rider_probability,run as run_control
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,run as run_damage
-from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,load_comparators,load_config,load_targets
+from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,load_comparators,load_config,load_targets,save_success_probability
 
 
 def _leaf_paths(value:object,prefix:tuple[object,...]=())->list[tuple[object,...]]:
@@ -46,7 +46,7 @@ class AuthorityProjectionTests(unittest.TestCase):
 
     def test_real_root_authority_and_complete_stable_id_inventory(self)->None:
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
-        self.assertEqual(self.model.rules_version,"14.1.0")
+        self.assertEqual(self.model.rules_version,"14.2.0")
         self.assertEqual(self.model.projection["schema_version"],"2.1.0")
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":1,"action_surge_allows_additional_standalone_psionic_action":False})
         feature_ids=list(self.model.features)
@@ -351,12 +351,12 @@ class DamagePlannerTests(unittest.TestCase):
 
     def test_combat_prowess_hit_instead_does_not_establish_studied(self)->None:
         planner=self.planner(1);package_index=1
-        result=planner._resolve_attack_roll(0,0,0,planner.package_bits[package_index],0,package_index,0,"miss",True,0,0,0,0,2,False,0)
+        result=planner._resolve_attack_roll(0,0,0,0,package_index,0,"miss",True,0,0,0,0,2,False,0)
         self.assertEqual(result.choice[:4],("prowess",False,False,0))
 
     def test_combat_prowess_can_be_retained_for_a_more_valuable_later_attack(self)->None:
         planner=self.planner(2)
-        result=planner._resolve_attack_roll(0,0,1,0,0,0,0,"miss",True,0,0,0,0,2,False,0)
+        result=planner._resolve_attack_roll(0,0,1,0,0,0,"miss",True,0,0,0,0,2,False,0)
         self.assertEqual(result.choice[:4],("miss",True,True,0))
         self.assertAlmostEqual(result.score.aggregate,101.0975,places=12)
 
@@ -388,17 +388,45 @@ class DamagePlannerTests(unittest.TestCase):
         self.assertEqual(planner._payment_options(12,0,1),((6,0,1,False),))
         self.assertEqual(planner._payment_options(12,1,2),((12,1,2,False),))
 
-    def test_repeatability_and_tier_two_allowance_reset_for_a_new_attack_action(self)->None:
+    def test_tier_two_allowance_resets_for_a_new_attack_action(self)->None:
         target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",2,0,0);packages=(plain,rider)
         planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,1,(2,),False,False,0,0,self.mastery,0,1);self.addCleanup(planner.clear)
         self.assertAlmostEqual(planner.solve().aggregate,190.0,places=12)
         self.assertEqual(planner.selection().count("branching_bolt:T2"),2)
 
+    def test_same_paid_rider_can_be_selected_on_all_three_manifested_strikes(self)->None:
+        target=replace(next(item for item in load_targets(levels={11}) if item.name=="Aboleth"),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",0,2,0);packages=(plain,rider)
+        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,3,(1,),False,False,6,0,self.mastery,0,1);self.addCleanup(planner.clear)
+        self.assertAlmostEqual(planner.solve().aggregate,285.0,places=12)
+        self.assertEqual(planner.selection().count("branching_bolt:T0"),3)
+
+    def test_miss_spends_cost_and_same_rider_remains_legal_on_next_strike(self)->None:
+        target=replace(self.base,ac=30,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",0,1,0);packages=(plain,rider)
+        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,2,0,self.mastery,0,1);self.addCleanup(planner.clear)
+        self.assertAlmostEqual(planner.solve().aggregate,10.0,places=12)
+
+    def test_repeated_overload_pays_blood_tax_for_each_declaration(self)->None:
+        target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",1,0,4);packages=(plain,rider)
+        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,0,8,self.mastery,0,1);self.addCleanup(planner.clear)
+        self.assertAlmostEqual(planner.solve().aggregate,190.0,places=12)
+        self.assertEqual(planner.selection().count("branching_bolt:T1"),2)
+
+    def test_tier_two_remains_one_declaration_per_attack_action(self)->None:
+        target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",2,0,0);packages=(plain,rider)
+        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,3,(1,),False,False,0,0,self.mastery,0,1);self.addCleanup(planner.clear)
+        self.assertAlmostEqual(planner.solve().aggregate,95.0,places=12)
+        self.assertEqual(planner.selection().count("branching_bolt:T2"),1)
+
+    def test_repeated_thermal_fracture_uses_max_or_refresh_not_addition(self)->None:
+        target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());thermal=Package("thermal_fracture",0,0,0)
+        planner=_KVDamagePlanner(self.model,target,(thermal,),{thermal:(0.0,0.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,0,0,self.mastery,0,1);self.addCleanup(planner.clear)
+        self.assertEqual(planner._roll_options(0,0,"hit",False,1)[0][3],1)
+
     def test_observed_state_policy_matches_reviewed_l20_sentinel(self)->None:
         target=next(item for item in load_targets(levels={20}) if item.name=="Ancient Black Dragon")
         primary,aggregate,selection=_kv_dpr(self.model,self.config,target,"electrokinesis",3)
-        self.assertAlmostEqual(primary,105.43451437911521,places=10)
-        self.assertAlmostEqual(aggregate,164.8852829551137,places=10)
+        self.assertAlmostEqual(primary,108.31875949995589,places=10)
+        self.assertAlmostEqual(aggregate,177.0645081943466,places=10)
         self.assertIn("electron_burst:T2",selection)
         self.assertTrue(selection.endswith("|representative=locally-modal-path|policy=observed-state-adaptive"))
 
@@ -443,7 +471,23 @@ class CanonicalControlTests(unittest.TestCase):
             primary=_kv_scenario(self.model,self.config,kraken,"psychokinesis","explosion_implosion",tier,"primary")
             secondary=_kv_scenario(self.model,self.config,kraken,"psychokinesis","explosion_implosion",tier,"secondary")
             self.assertEqual(primary["whole"],0.0)
-            self.assertAlmostEqual(secondary["whole"],4.75,places=12)
+            self.assertAlmostEqual(secondary["whole"],17.688609683593764,places=12)
+
+    def test_snow_chains_can_retry_after_an_observed_miss_or_save(self)->None:
+        target=self.target();single=attack_probabilities(self.model.kv_attack_bonus(20,5)+2,target.ac);reach=single[1]+single[2];failed=1-save_success_probability(target,"constitution",self.model.kv_save_dc(20,5));one=reach*failed
+        repeated=_repeat_rider_probability(self.model,self.config,20,0,int(self.model.features["snow_chains"]["psi_cost"]),one)
+        self.assertGreater(repeated,one);self.assertLessEqual(repeated,1.0)
+
+    def test_tier_two_control_cannot_retry_in_the_same_attack_action(self)->None:
+        self.assertAlmostEqual(_repeat_rider_probability(self.model,self.config,20,2,0,0.25),0.25,places=12)
+
+    def test_control_retry_contract_contains_no_target_identity(self)->None:
+        from inspect import signature
+        self.assertNotIn("target",signature(_repeat_rider_probability).parameters)
+        same_target=_repeat_rider_probability(self.model,self.config,11,0,2,0.25)
+        different_target=_repeat_rider_probability(self.model,self.config,11,0,2,0.25)
+        retry_then_redirect=_repeat_rider_probability(self.model,self.config,11,0,2,0.25)
+        self.assertEqual(same_target,different_target);self.assertEqual(different_target,retry_then_redirect)
 
 
 class ClassificationTests(unittest.TestCase):
@@ -598,31 +642,31 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             self.assertEqual(damage["matrix_rows"],24);self.assertEqual(control["matrix_rows"],4)
             for result in (damage,control,parallel_damage,repeated_control):
                 self.assertEqual(set(result["paths"]),{"csv","markdown","html"})
-                self.assertTrue(all("14-1-0" in path.name and path.is_file() for path in result["paths"].values()))
-            audit=root/"control"/"kv-14-1-0-control-selection-audit.csv"
+                self.assertTrue(all("14-2-0" in path.name and path.is_file() for path in result["paths"].values()))
+            audit=root/"control"/"kv-14-2-0-control-selection-audit.csv"
             with audit.open(encoding="utf-8") as stream:
                 rows=list(csv.DictReader(stream))
             self.assertTrue(rows);self.assertTrue(all(row["Selected Scenario"] for row in rows))
-            self.assertTrue(all(row["Rules Version"]=="14.1.0" and row["Authority SHA-256"] and row["Roster SHA-256"] for row in rows))
+            self.assertTrue(all(row["Rules Version"]=="14.2.0" and row["Authority SHA-256"] and row["Roster SHA-256"] for row in rows))
             self.assertTrue(all(row["Comparator Config SHA-256"] for row in rows))
             self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in rows))
-            with (root/"damage"/"kv-14-1-0-damage-detail.csv").open(encoding="utf-8") as stream:
+            with (root/"damage"/"kv-14-2-0-damage-detail.csv").open(encoding="utf-8") as stream:
                 damage_row=next(csv.DictReader(stream))
             self.assertAlmostEqual(float(damage_row["Eldritch Knight DPR"]),13.900000000000018,places=12)
             self.assertAlmostEqual(float(damage_row["Battle Master DPR"]),24.57556956900116,places=12);self.assertTrue(damage_row["Comparator Config SHA-256"])
             self.assertEqual({key:damage_row[key] for key in NOTICE_COLUMNS},NOTICE_COLUMNS)
-            with (root/"control"/"kv-14-1-0-control-detail.csv").open(encoding="utf-8") as stream:
+            with (root/"control"/"kv-14-2-0-control-detail.csv").open(encoding="utf-8") as stream:
                 control_rows=list(csv.DictReader(stream))
             keyed={(row["Build"],row["Scenario"]):row for row in control_rows}
             self.assertEqual(keyed[("battle_master","menacing_attack")]["Whole-package control stick %"],"56.250000")
             self.assertEqual(keyed[("eldritch_knight","blindness_deafness")]["Whole-package control stick %"],"55.000000")
             self.assertTrue(all(row["Comparator Config SHA-256"] for row in control_rows))
             self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in control_rows))
-            self.assertEqual((root/"damage"/"kv-14-1-0-damage-detail.csv").read_bytes(),(root/"damage-parallel"/"kv-14-1-0-damage-detail.csv").read_bytes())
+            self.assertEqual((root/"damage"/"kv-14-2-0-damage-detail.csv").read_bytes(),(root/"damage-parallel"/"kv-14-2-0-damage-detail.csv").read_bytes())
             for format_name in damage["paths"]:
                 self.assertEqual(damage["paths"][format_name].read_bytes(),parallel_damage["paths"][format_name].read_bytes())
-            self.assertEqual((root/"control"/"kv-14-1-0-control-detail.csv").read_bytes(),(root/"control-repeated"/"kv-14-1-0-control-detail.csv").read_bytes())
-            self.assertEqual((root/"control"/"kv-14-1-0-control-selection-audit.csv").read_bytes(),(root/"control-repeated"/"kv-14-1-0-control-selection-audit.csv").read_bytes())
+            self.assertEqual((root/"control"/"kv-14-2-0-control-detail.csv").read_bytes(),(root/"control-repeated"/"kv-14-2-0-control-detail.csv").read_bytes())
+            self.assertEqual((root/"control"/"kv-14-2-0-control-selection-audit.csv").read_bytes(),(root/"control-repeated"/"kv-14-2-0-control-selection-audit.csv").read_bytes())
             status=load_config()["methodology"]["status"]
             for result in (damage,control,parallel_damage,repeated_control):
                 matrix_path=result["paths"]["csv"]
@@ -663,9 +707,9 @@ class SmokeAndBoundaryTests(unittest.TestCase):
         self.assertTrue(all(row["Band"] not in {"IDEAL","ORDER CHECK"} for row in rows))
         level_seven={row["Discipline"]:row for row in rows if row["Level"]=="7"}
         expected={
-            "cryokinesis":("HOT","+65.70"),
+            "cryokinesis":("HOT","+96.72"),
             "electrokinesis":("HOT","+65.70"),
-            "psychokinesis":("HOT","+44.19"),
+            "psychokinesis":("HOT","+57.43"),
             "pyrokinesis":("COLD","-100.00"),
         }
         self.assertEqual(set(level_seven),set(expected))

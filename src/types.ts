@@ -190,7 +190,6 @@ export interface HarnessFeatureRule {
   entity_id:string;
   discipline_ids:HarnessDisciplineId[];
   damage_type:HarnessDamageType;
-  repeatability:"unlimited"|"once_per_attack_action";
   ignore_resistance_tiers?:Array<0|1|2>;
   replaces_mastery?:boolean;
   requires_additional_target?:boolean;
@@ -203,7 +202,7 @@ export interface HarnessFeatureRule {
 }
 export interface HarnessMechanics {
   action_economy:{standalone_psionic_action_limit_per_turn:1;action_surge_allows_additional_standalone_psionic_action:false};
-  manifested_strike:{entity_id:"common_manifested_strike";damage_type_source:"discipline";holdout_damage_type:"force";holdout_damage_divisor:2;critical_dice_multiplier:2;attack_bonus:{base:number;components:Array<"psionic_ability_modifier"|"proficiency_bonus"|"psionic_focus">};save_dc:{base:number;components:Array<"psionic_ability_modifier"|"proficiency_bonus"|"psionic_focus">}};
+  manifested_strike:{entity_id:"common_manifested_strike";rider_repeatability:"per_manifested_strike";damage_type_source:"discipline";holdout_damage_type:"force";holdout_damage_divisor:2;critical_dice_multiplier:2;attack_bonus:{base:number;components:Array<"psionic_ability_modifier"|"proficiency_bonus"|"psionic_focus">};save_dc:{base:number;components:Array<"psionic_ability_modifier"|"proficiency_bonus"|"psionic_focus">}};
   overload:{entity_id:"common_overload";blood_tax_per_tier:{base:number;proficiency_bonus_multiplier:number};tier_two_limit_per_attack_action:1;mastery:{minimum_level:18;uses_per_rest:1;blood_tax_divisor:2;minimum_per_overload:1}};
   disciplines:HarnessDiscipline[];
   feature_rules:HarnessFeatureRule[];

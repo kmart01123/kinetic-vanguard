@@ -1,5 +1,12 @@
 # Changelog
 
+## 14.2.0 — Unreleased
+
+### Changed
+
+- Allowed the same paid on-hit rider to be declared on multiple Manifested Strikes in one Attack action, with independent Psi and Blood Tax payment for every declaration, including misses.
+- Allowed rider declarations to retry the same legal target or spread among different legal targets while retaining one rider per Manifested Strike and one Tier 2 rider per Attack action.
+
 ## 14.1.0 — 2026-08-07
 
 ### Added

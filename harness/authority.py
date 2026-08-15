@@ -103,6 +103,21 @@ class AuthorityModel:
         rule = self.projection["core"]["overload"]["blood_tax_per_tier"]
         return int(rule["base"]) + tier * self.progression("proficiency_bonus", level) * int(rule["proficiency_bonus_multiplier"])
 
+    def overload_payment_options(self, tax: int, mastery_remaining: int, mastery_mode: int) -> tuple[tuple[int, int, int, bool], ...]:
+        """Return canonical Blood Tax choices without coupling either harness to a planner."""
+        if tax < 0 or mastery_remaining < 0 or mastery_mode not in {0, 1, 2}:
+            raise AuthorityError("Unsupported Overload payment state")
+        if tax == 0:
+            return ((0, mastery_remaining, mastery_mode, False),)
+        mastery = self.projection["core"]["overload"]["mastery"]
+        reduced = max(int(mastery["minimum_per_overload"]), tax // int(mastery["blood_tax_divisor"]))
+        if mastery_mode == 1:
+            return ((reduced, mastery_remaining, 1, False),)
+        raw = (tax, mastery_remaining, 2, False)
+        if mastery_mode == 0 and mastery_remaining:
+            return (raw, (reduced, mastery_remaining - 1, 1, True))
+        return (raw,)
+
     def feature(self, entity_id: str, level: int, tier: int | None = None) -> dict[str, Any]:
         feature = self.features.get(entity_id)
         if feature is None:
