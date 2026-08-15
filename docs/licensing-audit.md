@@ -1,213 +1,145 @@
 # Repository licensing and attribution audit
 
-Audit date: 2026-08-14
-Audited base: `main` at `e5d81ab1271b305bee5b92bca22bb9acce0275e9`
-Governing work order: GitHub issue #63, owner authorization comment `5289581036`, and maintainer resolution comment `5291975732`
+Audit date: 2026-08-07
+Audited base: `main` at `0732ac9912d492f58407b29145680b635ba52757` (PR #20 merge)
+Durable work order: GitHub issue #21
 
-This is repository compliance engineering, not legal advice or a claim of legal clearance. It records source evidence, component boundaries, confirmed corrections, intentionally unchanged material, and questions that repository evidence cannot resolve. Automated scans cannot prove the absence of all protectable expression, and no audit or notice guarantees that a demand letter will not be made.
+This is a repository compliance record, not legal advice. It records source evidence, component boundaries, corrections, intentionally unchanged notices, and questions that repository evidence cannot resolve.
 
-## Current authoritative sources
+## Authoritative sources checked
 
-The following official sources were retrieved and checked on 2026-08-14 UTC:
-
-- D&D Creator FAQ, published 2025-04-22: https://www.dndbeyond.com/creator-faq
-- Current SRD page, last updated 2026-03-02: https://www.dndbeyond.com/srd
-- Pinned English SRD 5.2.1 PDF, published 2025-05-01: https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
-- CC BY 4.0 legal code (primary human-readable URL): https://creativecommons.org/licenses/by/4.0/legalcode
-- Official CC BY 4.0 plain-text legal-code representation used for byte identity: https://creativecommons.org/licenses/by/4.0/legalcode.txt
+- CC BY-NC-SA 4.0 legal code: https://creativecommons.org/licenses/by-nc-sa/4.0/legalcode
 - Creative Commons marking guidance: https://creativecommons.org/cc-license-your-work/
-- Wizards Fan Content Policy, last updated 2017-11-15: https://company.wizards.com/en/legal/fancontentpolicy
+- CC BY 4.0 legal code: https://creativecommons.org/licenses/by/4.0/legalcode
+- OSI BSD 3-Clause text: https://opensource.org/license/bsd-3-clause
+- D&D SRD 5.2.1 page: https://www.dndbeyond.com/srd
+- D&D SRD 5.2.1 PDF legal page: https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf
 
-The pinned PDF was fetched twice and remained 6,031,375 bytes with SHA-256 `8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87`, matching `harness/provenance/srd-creatures.json`. The current SRD page identifies SRD 5.2.1 as the latest English SRD. The PDF contains the Champion Fighter subclass and does not contain `Battle Master` or `Eldritch Knight`.
+The audit applied these source-level conclusions:
 
-The official-source review supports these bounded conclusions:
+- a licensor can license only rights it controls, and material outside a CC license should be marked clearly;
+- supplied creator, copyright, license, disclaimer, source, and modification information must be retained when the applicable CC material is shared;
+- CC BY-NC-SA does not add restrictions to independently licensed CC BY material, and the project summary must not add terms to either canonical license;
+- BSD source and binary redistributions must retain or reproduce the copyright notice, conditions, and disclaimer;
+- attribution does not imply endorsement; and
+- the SRD's prescribed attribution is retained verbatim as a distinct statement.
 
-- SRD 5.2.1, not the D&D Beyond Basic Rules, is the CC-licensed publication source. The Basic Rules are not accepted as repository provenance.
-- CC BY 4.0 requires retention of supplied attribution, license and disclaimer information, a source link where practicable, and an indication of modifications. It grants no trademark rights and no permission to imply sponsorship, endorsement, connection, or official status.
-- The exact supplied SRD attribution remains separate from non-SRD bibliography, project copyright, modification/disclaimer language, and no-affiliation/no-endorsement wording.
-- The Creator FAQ recommends title, year, publisher, and an exact page where available for non-SRD official references. That citation practice is not a license to reproduce non-SRD expression.
-- The Fan Content Policy describes a distinct, generally free and unofficial non-TRPG fan-content boundary. It is not the publishing authority for this SRD-based rules project or its comparator mechanics.
-- Creative Commons marking guidance supports clear component scope. A notice cannot manufacture rights in non-SRD Wizards material.
+## Maintained component inventory
 
-Mutable official HTML pages are identified by URL, displayed publication/update date, and retrieval date rather than a brittle raw-HTML hash. The CC byte identity applies specifically to the official `https://creativecommons.org/licenses/by/4.0/legalcode.txt` representation, not the HTML response at the primary `/legalcode` URL: the fetched text was 18,657 bytes with SHA-256 `9ba9550ad48438d0836ddab3da480b3b69ffa0aac7b7878b5a0039e7ab429411`.
+The pre-change tree contained 74 tracked files. This table covers every maintained path category, including this added audit record.
 
-## Complete current-tree inventory
-
-The exact audited baseline has 100 tracked paths. This focused change adds two maintained machine-readable records, producing a 102-path candidate tree. `review/wizards-ip-reference-register.json` records every path/reference-category pair derived from that candidate tree and every file recursively discovered in freshly generated prototype and authorized-release output directories. Exact set and hit-count equality make a missing entry or stale extra entry fail, but only for the declared scanner lexicon described below.
-
-Three identities serve different purposes. The audited base commit identifies the authorized starting point. A deterministic path-set digest identifies candidate path names. A separate candidate-tree content digest, recorded as `tracked_content_sha256`, binds every scanned path and its bytes through unambiguous path/length/content framing; for the register itself, only that digest field is blanked before framing. The eventual commit that contains the register cannot be embedded in that same register without circularity, so the final commit identity must be recorded externally in the pull request or governing issue after it exists.
-
-The register covers these current categories:
-
-- D&D, Dungeons & Dragons, and D&D Beyond brand references;
-- Wizards of the Coast corporate references and scoped rights statements;
-- Battle Master and Eldritch Knight non-SRD comparator identifiers;
-- Player’s Handbook, Dungeon Master’s Guide, and Monster Manual references;
-- SRD and System Reference Document references;
-- an expanded, bounded set of omitted or non-SRD examples identified for review: Deck of Many Things, Orb of Dragonkind, Artificer, Aasimar, Beholder, Strahd, Orcus, Tiamat, and Forgotten Realms;
-- the corresponding reviewed SRD replacement-name examples Mysterious Deck and Dragon Orb;
-- current comparator feat/feature terms, including Great Weapon Master, Heavy Weapon Mastery, Hew, Dueling, Relentless, Combat/Superiority Die wording, War Magic, and Precision Attack;
-- Basic Rules, OGL, and Fan Content Policy references; and
-- scoped affiliation, endorsement, sponsorship, official-status, ownership, and blanket-license claims.
-
-Each entry records one required classification, matched term identities, public/private/generated surface, notice or locator, mechanical necessity, compact rationale, and whether counsel review remains. Classifications are limited to `srd_5_2_1_licensed_use`, `original_project_content`, `narrow_nominative_reference`, `independently_expressed_factual_mechanic`, `historical_reference_in_current_documentation`, `uncertain_counsel_review`, and `remove_or_rename`.
-
-Within that lexicon, the scan found no current `remove_or_rename` disposition and no tracked private source capture, authenticated HTML, PDF, image, logo, map, screenshot, font, audio, video, or other binary Wizards brand asset. All 102 candidate paths are regular UTF-8 text with no NUL bytes or prohibited file signatures. Historical release workflows remain classified as historical current documentation; frozen branches, tags, Releases, and published assets were not rewritten.
-
-This scanner provides complete current-tree coverage for its hardcoded official-example and current-comparator lexicon, including the expanded omitted/replacement examples above. No finite lexicon proves that all protected names, other subject matter, or protectable expression has been found, and the result does not claim broad recapture or universal IP detection. This bounded scope is accepted audit methodology, not an unresolved implementation defect.
-
-## Maintained component boundaries
-
-| Component category | Maintained paths | Current boundary and disposition |
+| Component category | Maintained paths | Intended boundary and disposition |
 | --- | --- | --- |
-| Legal texts and notices | `LICENSE-CODE`, `LICENSE-CONTENT`, `LICENSE.md`, `NOTICE.md` | Existing component licenses, exact SRD attribution, project notices, and third-party boundary remain unchanged. |
-| Canonical mixed authority | `KineticVanguard.yaml` | Project-authored technical structure is BSD-3-Clause; original rules/editorial expression is CC BY-NC-SA 4.0; SRD-derived components remain CC BY 4.0. No single SPDX identifier is accurate. |
-| Original documentation | Root Markdown, `.github/pull_request_template.md`, `docs/*`, `policy/*`, `harness/*.md` | Original expression is CC BY-NC-SA 4.0. Embedded SRD and third-party references retain their separate source boundary. |
-| Application, harness, schemas, and tests | `src/*`, Python under `harness/`, schemas, configuration, and tests | Project-authored software and technical structures are BSD-3-Clause. Embedded facts and fixtures retain their source status. |
-| Comparator configuration | `harness/comparators/fighter-subclasses.json` | Frozen damage input: project-authored structure and benchmark policy plus compact independently phrased facts. No project license covers the non-SRD names or mechanics. |
-| Comparator provenance | `harness/provenance/fighter-subclass-comparators.json` | Value-bound legal/source metadata covering every scalar comparator leaf. Three formerly open source/methodology records are resolved through owner-source records; the residual `unresolved_counsel` flags on the two non-SRD official facts are legal-use cautions, not missing-source evidence. It is a build input but never a damage evaluator or comparator-hash input. |
-| SRD creature catalog, rosters, and provenance | `harness/data/srd_creatures.json`, `harness/data/srd_creature_rosters.json`, `harness/provenance/srd-creatures.json` | Selected normalized SRD facts remain CC BY 4.0 with attribution and modification marking; full stat-block and trait prose is not reproduced. |
-| Reference register | `review/wizards-ip-reference-register.json` | Project-authored, content-bound audit metadata for the declared scanner lexicon. It records classifications and does not itself grant third-party rights or prove universal discovery. |
-| Generated publications and bundles | Prototype/release HTML and release legal assets | Mixed publication with scoped notices; current release/deployable paths retain the four legal assets. |
-| Historical release workflows | `.github/workflows/publish-v13.*.yml`, `publish-v14.0.0.yml` | Frozen snapshots remain historical records and were not modernized in place. |
+| Legal texts and notices | `LICENSE-CODE`, `LICENSE-CONTENT`, `LICENSE.md`, `NOTICE.md` | `LICENSE-CODE` retains the BSD notice and terms. The other files are project-authored scope/attribution notices pointing to canonical legal code. |
+| Canonical mixed authority | `KineticVanguard.yaml` | Project-authored technical structure is BSD-3-Clause; original rules, examples, and editorial expression are CC BY-NC-SA 4.0; SRD-derived components remain CC BY 4.0. No single SPDX identifier is accurate. |
+| Original documentation | root Markdown, `.github/pull_request_template.md`, `docs/*`, `policy/*`, `harness/*.md` | Original expression is CC BY-NC-SA 4.0. Embedded SRD and third-party components retain their source boundary. |
+| Application and harness source | `src/*.ts`, Python under `harness/`, Python/TypeScript tests | Project-authored software is BSD-3-Clause. Embedded fixtures retain the license or third-party status of their source expression/data. |
+| Schemas, technical policy, UI/build/review configuration | `schema/*`, `release/*`, `review/*`, `ui/*`, `build/*`, `.devcontainer/*`, `.github/workflows/*`, `tsconfig.json`, `.gitignore` | Project-authored technical structures are BSD-3-Clause. Original approved UI prose is CC BY-NC-SA; embedded source facts retain their source boundary. |
+| Benchmark methodology configuration | `harness/config/benchmark.json` | Project-authored benchmark structure, selection, aggregation, and methodology are BSD-3-Clause. SRD-derived Fighter progression/mechanics remain CC BY 4.0. |
+| Comparator configuration | `harness/comparators/fighter-subclasses.json` | Project-authored structure, benchmark selection, and independently authored analytical/policy expression are BSD-3-Clause. Individual parameters retain SRD or third-party status as applicable; Battle Master/Eldritch Knight identifiers and underlying non-SRD material are not licensed by the project. |
+| SRD roster and provenance | `harness/data/srd_targets.csv`, SRD components in `harness/provenance/*` | SRD-derived data remain CC BY 4.0 with exact attribution and modification marking. Project-authored selection/technical structure is BSD-3-Clause where copyright applies. |
+| Generated publications | `KineticVanguard.html` / prototype output | Mixed: BSD presentation/runtime, CC BY-NC-SA original expression, and CC BY SRD components. The HTML embeds scoped notices; current release/deployable paths retain all four legal files. |
+| Generated benchmark reports | damage/control CSV, Markdown, and HTML | Mixed technical/report structure, original explanation, SRD target data, and third-party comparator identifiers. Every format now carries structured legal notices. |
+| Manifests and ledgers | build manifest, integrity/coverage ledgers, harness provenance | Project-authored technical structure is BSD-3-Clause; embedded source data and text retain their component boundary. Legal assets are declared and hashed build inputs. |
+| Package/tool metadata | `package.json`, `package-lock.json` | The private root package points to `LICENSE.md`. All 85 locked packages retain their own metadata: 73 MIT, 4 Apache-2.0, 2 BSD-2-Clause, 2 BSD-3-Clause, 3 ISC, and 1 MIT-0. No dependency source is vendored or bundled into the browser runtime. |
+| Historical release workflows | `.github/workflows/publish-v13.*.yml`, `publish-v14.0.0.yml` | Frozen snapshots remain historical records. v13.2.0 and later bundles carry the four legal assets; earlier frozen releases are documented but not silently rewritten. |
 
-Package metadata continues to use `SEE LICENSE IN LICENSE.md`; dependency licenses remain their own. A blanket SPDX identifier would be inaccurate for mixed YAML, configuration, reports, and generated HTML.
+## Copyright and attribution review
 
-## Maintainer identity, authority, and product policy
+The scoped project notices remain:
 
-The maintainer resolution in issue #63 comment `5291975732` states that Kyle Martin, NixNinja, and `kmart01123` are the same natural person; NixNinja is Kyle Martin’s public creator pseudonym, and `kmart01123` is his repository account. Kyle Martin states that he authored or has authority to license the project-authored contributions attributed to NixNinja. Existing public attribution remains NixNinja. No email address is published, and this resolution introduces no holder-text change, DCO, CLA, or contributor agreement.
+- `Copyright © 2026 NixNinja` for original Kinetic Vanguard content; and
+- `Copyright (c) 2026, NixNinja` for project-authored software and technical implementation.
 
-The declared permanent product policy is noncommercial for the original Kinetic Vanguard homebrew rules and content, which remain CC BY-NC-SA 4.0. The maintainer does not intend to sell, crowdfund, commercially license, or commercially promote that homebrew content. This is not a blanket whole-repository relicense: project software remains BSD-3-Clause, SRD material remains CC BY 4.0, and third-party material remains outside the project’s licenses. The existing license files already express these component boundaries and are intentionally unchanged.
+They were retained because CC licensing does not disclaim authorship or ownership and BSD redistribution depends on retaining its notice. Wording was narrowed wherever a mixed file could otherwise suggest ownership of SRD or third-party material.
 
-CC BY-NC-SA 4.0 does not license Wizards names or mechanics, apply to the whole repository, override BSD-3-Clause or CC BY 4.0 rights, guarantee that no legal objection will arise, or supply rights the maintainer does not own.
+`NixNinja` is used consistently as the supplied pseudonymous creator/holder. CC BY-NC-SA expressly permits a designated pseudonym in attribution. The independent ownership question is recorded under unresolved review rather than inferred from repository labels.
 
-## Comparator field provenance result
+## License-file comparison
 
-`harness/provenance/fighter-subclass-comparators.json` covers all 65 scalar leaves of `harness/comparators/fighter-subclasses.json` one-to-one. Stable dotted paths and array indexes identify leaves, and each row binds the current scalar through SHA-256 of its canonical JSON value. No comparator value or policy, evaluator input, or accepted damage evidence changed; this amendment changes provenance and audit records only.
+### BSD 3-Clause
 
-The source model separates:
+`LICENSE-CODE` retains the holder/year substitution, redistribution clauses, no-endorsement clause, and warranty/liability disclaimer. `All rights reserved.` occurs only inside this scoped BSD notice and is not a repository-wide reservation. The existing typographic quotation marks do not change the operative words.
 
-- official SRD 5.2.1 and its pinned PDF identity;
-- `Wizards of the Coast LLC, Player’s Handbook, 2024`;
-- accepted compact Battle Master records, including owner-source issue #52 comment `5291985967`;
-- accepted compact Eldritch Knight records, including owner-source issue #50 comment `5291987976`; and
-- project-authored benchmark methodology, loadout/profile assumptions, and tactical-policy decisions.
+No software license was changed.
 
-A source-supported non-SRD official fact uses an exact print page only when personally verified; otherwise it uses a stable current-digital section or record plus owner-source attestation. No page was guessed, and no source bytes are retained. This metadata establishes a repository source chain, not legal clearance. Project-authored methodology is not mislabeled as a Player’s Handbook fact, and records contain compact facts and locators rather than copied source prose.
+### CC BY-NC-SA 4.0
 
-The three formerly open source/methodology records are resolved:
+`LICENSE-CONTENT` is now explicitly an application notice rather than a local rewrite of the legal code. It identifies the licensed original components, points to canonical legal code, refers to the Section 5 disclaimer, and says the summary neither adds restrictions nor limits exceptions, limitations, or independently available rights. The prior categorical claim that commercial use always requires a separate license was removed because the public license summary should not purport to decide exceptions or rights available from another source.
 
-- Great Weapon Master’s Proficiency Bonus relation is owner-source verified through issue #52 comment `5291985967` and `https://www.dndbeyond.com/feats/1789149-great-weapon-master`.
-- Dueling’s one-hand/no-other-weapon condition and `+2` value are owner-source verified through issue #50 comment `5291987976` and `https://www.dndbeyond.com/feats/1789131-dueling`.
-- Hew’s complete official fact is owner-source verified through issue #52 comment `5291985967` and `https://www.dndbeyond.com/feats/1789149-great-weapon-master`: immediately after a Critical Hit or after reducing a target to 0 Hit Points, the character can make a Bonus Action attack with the same weapon.
+No content license was changed.
 
-Great Weapon Master and Dueling retain `unresolved_counsel=true` only as conservative residual-use/legal cautions, not as missing-source evidence. Hew has `unresolved_counsel=false`. No comparator value or policy, evaluator input, or accepted damage evidence changed.
+## SRD 5.2.1 verification
 
-The maintained Hew comparator scalar remains `true` and the accepted damage evidence remains unchanged. The current critical-only, once-per-round representation is retained as deliberate conservative project methodology; it does not claim to represent every official Hew trigger. The evaluator currently credits only the Critical Hit route because the accepted damage methodology is explicitly no-target-death and carries no remaining-HP, kill, overkill, replacement-target, or target-availability state. This is a documented damage-methodology capability gap that must be resolved when the replacement damage model is independently confirmed.
+The official PDF's prescribed SRD attribution remains verbatim in `NOTICE.md`, canonical YAML metadata, generated publication footers, and harness reports. The separate supplied Section 5 disclaimer reference and a specific modification marker are now retained with it.
 
-Correct support in the replacement damage model requires one explicit future ruling:
+The recorded official PDF SHA-256 is `8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87`, matching `harness/provenance/legacy-import.json`. The maintained 28-row roster identifies SRD 5.2.1, source page, and official PDF URL for every row. Its preserved historical roster SHA-256 is `dfbda8f8e51d85b898d406a1b7dff63a40899bdf460fe5bc25d73c61d1d1ca5a`.
 
-- retain no-target-death sustained DPR as the nominal result and add a named finite-HP/kill-cleave sensitivity; or
-- replace the nominal model with fair target-death and retargeting semantics applied consistently to Kinetic Vanguard, Battle Master, and Eldritch Knight.
+The project CC BY-NC-SA notice expressly does not restrict or relicense SRD-derived components.
 
-Any implementation of the zero-HP trigger is outside issue #63 and requires fresh comparator/evaluator review and fresh affected analytical evidence.
+## Battle Master / Eldritch Knight boundary
 
-The source classifications are `srd_5_2_1_fact`, `non_srd_official_fact`, `project_authored_benchmark_assumption`, `project_authored_tactical_policy`, and `narrow_nominative_identifier`. Expression classifications distinguish bare numeric facts, compact independently phrased relational facts, project policy, and identifiers. These labels record a conservative engineering boundary; they do not decide whether an individual mechanic is copyrightable.
+The comparator audit found no reason to remove or replace the comparators:
 
-## Public naming and trademark disposition
+- comparator mechanics remain absent from `KineticVanguard.yaml`;
+- configuration retains only the numerical parameters, narrow scenario identifiers, and independently authored analytical-policy fields used by the benchmark; it contains no copied descriptive subclass, maneuver, spell, sourcebook, flavor, or character-building prose;
+- project-authored code and structure are separated from underlying game material;
+- the names are described only as unofficial reference identifiers; and
+- repository and generated-report notices deny affiliation, endorsement, and any project grant of rights in non-SRD Wizards-owned material.
 
-`Battle Master` and `Eldritch Knight` are retained under an accepted maintainer risk disposition only as narrow unofficial identifiers needed for benchmark intelligibility and reproducibility. The homebrew product is permanently noncommercial. These names are not branding, product titles, logos, badges, or promotional hooks; existing unofficial, no-affiliation, no-endorsement, and no-project-license boundaries remain. This is not legal clearance. Reopen the review if the distribution context changes materially; permissibility remains context- and jurisdiction-dependent.
+The official SRD contains some shared base elements used by the models but does not contain the named Battle Master or Eldritch Knight subclasses. No project notice characterizes their non-SRD material as project-owned or CC-licensed.
 
-The other explicit dispositions are:
+## Generated and mixed artifacts
 
-- `D&D` and `Dungeons & Dragons`: retain only where needed to identify official sources or describe the audited boundary; no logo, trade dress, or official-status presentation.
-- `D&D Beyond`: retain in official source URLs and narrow bibliographic/source references. Its Basic Rules are not an accepted publishing source.
-- `Wizards of the Coast`: retain in the exact SRD attribution, separate official bibliography, legal-boundary statements, and historical records. Do not embellish the supplied attribution.
-- `Player’s Handbook`: retain only as a non-SRD bibliographic title with a personally verified exact print page, or a stable current-digital section/record plus owner-source attestation; do not characterize it as CC-licensed by this project.
-- `Dungeon Master’s Guide` and `Monster Manual`: current mentions are audit/search terms or boundary explanations, not project source claims.
+Confirmed corrections:
 
-No disposition asserts ownership of a Wizards mark, that names or mechanics are CC-licensed, or that nominative/reference treatment is guaranteed in every jurisdiction.
+- canonical footer metadata now includes scoped project copyright, exact SRD attribution, the supplied disclaimer reference, a modification notice, canonical license URLs, and repository notice URLs;
+- the current release build manifest hashes all four legal assets;
+- current promotion verifies those hashes and produces a five-file deployable bundle instead of silently dropping the legal files;
+- CI/GitHub release bundles continue to ship the same legal assets;
+- every harness detail, audit, and matrix CSV embeds structured notice columns; and
+- matrix Markdown and HTML include a visible licensing-and-notices section.
 
-## SRD, Basic Rules, and non-SRD bibliography boundary
+Historical release assets and frozen branches were intentionally not rewritten. Future outputs receive the corrected boundary.
 
-The exact Wizards-supplied SRD attribution is retained byte-for-byte in `NOTICE.md`, canonical metadata, generated publications, and harness reports. Its standalone UTF-8 identity is 319 bytes and SHA-256 `f2e3568c8377f47c48dab84d64d1fc08aed723f0efabcb8a26e91c761cb59171`. The separate supplied Section 5 sentence is 120 bytes and SHA-256 `f439d59ec753e22ce22321f3a126ebc5641bb713799c74199feecc86f927a282`. Modification marking remains present.
+## SPDX and machine-readable disposition
 
-The D&D Beyond Basic Rules are expressly rejected as comparator, creature, or publication provenance. Current creature data remains bound to the pinned SRD PDF, source pages/order/anchors, and the existing normalized-fact modification statement. Non-SRD bibliography is metadata only and remains separate from exact SRD attribution, project copyright, and no-affiliation language. Notices do not manufacture rights in non-SRD material.
+A blanket SPDX identifier would be false for the mixed repository, canonical YAML, configuration, CSV, and generated HTML. `package.json` and the root lockfile entry therefore use `SEE LICENSE IN LICENSE.md`. No boilerplate header was added to every file.
 
-## Generated, publication, and release findings
+The audit prefers:
 
-Fresh prototype and authorized release builds were generated into temporary directories and audited without committing HTML. The relationship boundary is a combined treatment: each HTML surface carries inline no-endorsement wording, while the linked `NOTICE.md` supplies the complete no-affiliation/no-endorsement and non-SRD boundary. Neither component is described as containing the other’s full wording. Each HTML surface retained:
+- repository-level component mapping;
+- declared legal-asset hashes in the build manifest;
+- embedded notices for copied artifacts; and
+- targeted semantic tests for required boundaries and prohibited stale wording.
 
-- project copyright and component-license boundaries;
-- exact SRD attribution plus modification and disclaimer language;
-- an inline statement that SRD use does not imply endorsement; and
-- links to `LICENSE.md` and `NOTICE.md`, with `NOTICE.md` carrying the full no-affiliation/no-endorsement and non-SRD boundary.
+## Repository search report
 
-The release manifest changed only because the two new maintained records were added to `build/inputs.json`. Existing promotion and publication guards still require all four legal assets: `LICENSE.md`, `LICENSE-CODE`, `LICENSE-CONTENT`, and `NOTICE.md`. No generated HTML, source PDF, private capture, or new publication asset is committed.
+The maintained tree was searched case-insensitively for copyright, license/licence, Creative Commons, BSD, SRD, OGL, Wizards, comparator identifiers, endorsement/affiliation, commercial-use language, holder names, and `all rights reserved`.
 
-## Private-source boundary
+Disposition:
 
-The issue #63 implementation used the accepted compact GitHub records from issues #50 and #52 and did not perform a broad or narrow Player’s Handbook recapture. The candidate repository tree contains no authenticated HTML, screenshot, PDF, browser storage, cookie, session or entitlement metadata, copied feature/spell description, or other private source material. The audit makes no broader claim about material outside that candidate tree and the submitted issue #63 evidence.
-
-The accepted locator policy uses an exact print page only when personally verified; otherwise it uses a stable current-digital section or record plus owner-source attestation. Never guess a page, and retain no source bytes. This amendment required no private recapture.
-
-## Automated guards and limits
-
-`tests/license-contract.test.ts` now checks:
-
-- byte-exact SRD attribution plus modification/disclaimer notices;
-- absence of a project license claim over non-SRD Wizards material;
-- exact one-to-one scalar comparator/provenance coverage and canonical value identities;
-- required owner-source audit records and stable digital locators for Great Weapon Master, Hew, and Dueling, no `evidence_gap` on those records, and Hew’s current Critical-Hit-only credit as a no-target-death damage-methodology capability gap;
-- separation of project methodology from official rules;
-- deterministic keys/enums, compact single-line prose, and rejection of Basic Rules provenance;
-- resolved identity and authority without a published email, retained NixNinja attribution, component-scoped noncommercial policy, narrow unofficial comparator names, bounded scanner scope, and no legal-clearance claim;
-- exact tracked-tree/reference-register set and hit-count equality for the declared hardcoded lexicon, including recursively discovered generated prototype/release surfaces;
-- no tracked private/authenticated capture path and no prohibited binary extension or signature;
-- the combined generated boundary: inline no-endorsement plus linked `NOTICE.md` no-affiliation/no-endorsement wording; and
-- continued four-asset release bundles and rejection of OGL, stale commercial permission, or blanket licensing wording.
-
-In-memory mutations remove/add provenance rows, change a comparator scalar, remove either owner-source record, reintroduce `evidence_gap`, relabel the maintained Hew comparator scalar as fully representing the complete official rule, falsely claim the zero-HP trigger is modeled, revert identity to unknown, assert a blanket repository-wide CC BY-NC-SA license, invent a print page, substitute Basic Rules, add multiline source-like prose, add an unregistered reference, and inject synthetic PDF/logo/private-HTML signatures. The tests must reject each mutation without embedding actual Wizards text or assets.
-
-These checks are compact-fact, provenance, asset, and regression guards; they do not establish legal clearance. A length limit or hardcoded lexicon cannot prove non-infringement, discover every protected name or protectable paraphrase, or decide trademark/copyright law. The scanner’s complete coverage of its declared lexicon and audited surfaces is accepted methodology, not an unresolved implementation defect.
-
-Adding the comparator-provenance and reference-register records to `build/inputs.json` necessarily increased its maintained input count from 82 to 84. The corresponding `tests/architecture.test.ts` 82→84 expectation update is the documented exception to the issue’s expected-path list; it updates only manifest cardinality and does not alter a product, comparator, evaluator, damage input, or analytical boundary.
-
-## Confirmed corrections in issue #63
-
-- Added one-to-one, value-bound scalar-leaf provenance; owner-source records now resolve Great Weapon Master, Dueling, and the complete Hew official fact while the current Hew modeling limit is recorded as a replacement-model capability gap, without changing a comparator scalar or value identity.
-- Added a deterministic, content-bound reference register that is complete for the declared hardcoded official-example/current-comparator lexicon rather than a hand-selected path list; it does not claim universal protected-name or expression discovery. This bounded scope is accepted methodology, not an unresolved implementation defect.
-- Added the two maintained records to the positive build-input manifest with precise non-analytical roles.
-- Added focused metadata-shape, compactness, private-capture, binary-asset, generated-surface, and mutation guards, plus the necessary 82→84 architecture-count update.
-- Recorded the resolved maintainer identity and authority, component-scoped permanent noncommercial product policy, and accepted narrow comparator-name risk disposition without changing holder or license text.
-- Updated this audit against the exact current base and current official creator guidance.
-
-No defect was found in the existing exact SRD attribution, component licenses, holder text, README notice boundary, harness notice boundary, or release legal-asset inventory. Those files were not rewritten for style.
-
-## Prior audit history preserved
-
-The 2026-08-07 audit established the component-based license index; corrected `LICENSE-CONTENT` so it did not purport to eliminate exceptions or independently available rights; corrected heading structure in `LICENSE.md`; added canonical footer metadata, disclaimer and modification notices; made build/promotion paths hash and ship all four legal assets; and embedded structured notices in benchmark reports. It also recorded the prior tree inventory, package-license mix, and the reason no blanket SPDX identifier applies.
-
-Those accepted corrections remain in force. Historical release assets and frozen workflows were intentionally not rewritten. `All rights reserved.` still occurs only within the scoped BSD notice in `LICENSE-CODE`. No active OGL, obsolete SRD version, blanket whole-repository license, or stale custom commercial-permission wording was introduced.
+- `All rights reserved.` remains only in `LICENSE-CODE` as part of the scoped BSD notice.
+- No active OGL, obsolete SRD version, blanket whole-repository license, conflicting holder notice, or endorsement claim was found.
+- The old custom “commercial use requires prior written permission” sentence existed only in a historical-normalization test fixture; it was replaced by a neutral sentinel without changing the fixture's purpose.
+- The overbroad commercial sentence in `LICENSE-CONTENT` was corrected as described above.
+- The malformed `LICENSE.md` heading order was corrected.
+- README and harness documentation now distinguish project-authored methodology/structure from SRD-derived and third-party components.
 
 ## Intentionally unchanged
 
-- `KineticVanguard.yaml`, schemas, lockfile, comparator configuration, evaluator modules, target/roster data, accepted damage provenance, and the complete generated README damage region.
-- The exact Wizards-prescribed SRD attribution and existing license assignments.
-- `NixNinja` creator/copyright-holder wording.
-- Battle Master and Eldritch Knight labels, comparator values, project tactical policies, and damage methodology.
-- README, harness documentation, release checklist, and existing license/notice files because the audit found no concrete defect requiring edits.
-- Frozen branches, tags, Releases, historical workflows, and published evidence assets.
-- Analytical results and evidence; no damage, control, planner, sensitivity, or Control Value benchmark was run.
+- Valid NixNinja copyright and creator notices remain.
+- `LICENSE-CODE` retains the BSD terms, including its copyright and `All rights reserved.` lines.
+- BSD-3-Clause, CC BY-NC-SA 4.0, and CC BY 4.0 assignments were not changed.
+- The exact Wizards-prescribed SRD attribution was not rewritten or embellished.
+- Battle Master and Eldritch Knight remain narrow unofficial comparators.
+- Frozen historical branches, tags, releases, and publication workflows were not retroactively altered.
+- No single SPDX identifier was assigned to a genuinely mixed artifact.
 
-## Residual risk and independent review
+## Unresolved maintainer or legal review
 
-The following remain legal-review questions rather than engineering conclusions:
+1. Repository licensing consistently designates `NixNinja`, while Git history uses `Kyle Martin` and `kmart01123`. Repository evidence does not establish their relationship or independently prove ownership/authorization for every original contribution. The supplied pseudonymous notice was retained; the maintainer should confirm that it is the intended creator/rights-holder identity and that contributor licensing is authorized.
+2. The comparator use is deliberately narrow, independently expressed, referential, and disclaimed. This audit cannot determine whether every use of non-SRD identifiers or underlying mechanics in every jurisdiction is permitted; that remains a maintainer/legal question. Notice wording cannot manufacture third-party rights.
+3. This audit does not determine the copyrightability of individual game facts, numeric parameters, schemas, or database fields. It applies the conservative component boundary without claiming ownership where the answer is uncertain.
 
-1. Whether each non-SRD comparator fact and exact subclass-name use is permissible in its full public context, including jurisdiction-specific copyright and trademark treatment.
-2. Owner-source verification resolves repository provenance and the Hew source-versus-methodology classification, not the documented zero-HP modeling capability gap; it is not legal clearance or attorney approval. The Great Weapon Master and Dueling counsel flags remain only residual legal-use cautions.
-3. Whether another retained or future locator satisfies the accepted locator policy, whether field classifications are complete, and whether compact independent wording could be protectable expression; the locator policy itself is settled.
-4. Whether material outside the declared lexicon and audited tracked/generated surfaces raises a legal issue. The scanner is complete for those declared bounds; non-universal detection is accepted methodology, not an implementation defect.
-5. Whether the existing disclaimer and citation presentation is sufficient in every intended distribution context. No notice or project license supplies third-party rights.
-
-Exact comparator permissibility can depend on jurisdiction and context. This audit deliberately leaves those legal interpretations unresolved and makes no demand-letter guarantee.
+No unresolved item was treated as permission to relicense, delete attribution, or publish non-SRD material under a project license.

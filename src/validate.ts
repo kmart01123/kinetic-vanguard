@@ -1,6 +1,5 @@
 import type { Authority, Diagnostic } from "./types.js";
 import { codepointCompare } from "./canonical.js";
-import { validateControlAuthorityV2 } from "./control-authority-v2.js";
 
 function duplicateDiagnostics(values:string[],code:string,label:string):Diagnostic[]{const seen=new Set<string>();const diagnostics:Diagnostic[]=[];for(const value of values){if(seen.has(value))diagnostics.push({severity:"error",code,message:`Duplicate ${label}: ${value}`});seen.add(value);}return diagnostics;}
 function vocabulary(authority:Authority,name:string):Set<string>{return new Set((authority.vocabularies[name]??[]).map(value=>value.id));}
@@ -61,43 +60,53 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
   const expectedTierMinimums=[[0,3],[1,3],[2,10]] as const;
   if(JSON.stringify(calculator.tier_minimum_levels.map(item=>[item.tier,item.minimum_level]))!==JSON.stringify(expectedTierMinimums))diagnostics.push({severity:"error",code:"calculator.tier_minimum_levels",message:"Calculator tier minimum levels must be Tier 0 at level 3, Tier 1 at level 3, and Tier 2 at level 10",path:"/calculator/tier_minimum_levels"});
   const harness=calculator.harness_mechanics;
-  diagnostics.push(...validateControlAuthorityV2(authority));
-  if(JSON.stringify(harness.action_economy)!==JSON.stringify({standalone_psionic_action_limit_per_turn:1,action_surge_allows_additional_standalone_psionic_action:false}))diagnostics.push({severity:"error",code:"damage_authority.action_economy",message:"Damage authority action economy must allow at most one standalone psionic Action per turn and no additional standalone activation from Action Surge",path:"/calculator/harness_mechanics/action_economy"});
-  if(JSON.stringify(harness.manifested_strike.attack_bonus)!==JSON.stringify({base:0,components:["psionic_ability_modifier","proficiency_bonus","psionic_focus"]}))diagnostics.push({severity:"error",code:"damage_authority.attack_formula",message:"Damage authority Manifested Strike attack bonus must use its canonical base and ordered components",path:"/calculator/harness_mechanics/manifested_strike/attack_bonus"});
-  if(JSON.stringify(harness.manifested_strike.save_dc)!==JSON.stringify({base:8,components:["proficiency_bonus","psionic_ability_modifier"]}))diagnostics.push({severity:"error",code:"damage_authority.save_dc_formula",message:"Damage authority save DC must use its canonical base and ordered components",path:"/calculator/harness_mechanics/manifested_strike/save_dc"});
-  if(JSON.stringify(harness.overload.blood_tax_per_tier)!==JSON.stringify({base:0,proficiency_bonus_multiplier:1}))diagnostics.push({severity:"error",code:"damage_authority.blood_tax_formula",message:"Damage authority Blood Tax per tier must use its canonical base and Proficiency Bonus multiplier",path:"/calculator/harness_mechanics/overload/blood_tax_per_tier"});
-  if(JSON.stringify(harness.overload.mastery)!==JSON.stringify({minimum_level:18,uses_per_rest:1,blood_tax_divisor:2,minimum_per_overload:1}))diagnostics.push({severity:"error",code:"damage_authority.overload_mastery",message:"Damage authority Overload Mastery must retain its canonical level, use, divisor, and minimum",path:"/calculator/harness_mechanics/overload/mastery"});
+  if(JSON.stringify(harness.action_economy)!==JSON.stringify({standalone_psionic_action_limit_per_turn:1,action_surge_allows_additional_standalone_psionic_action:false}))diagnostics.push({severity:"error",code:"harness.action_economy",message:"Harness action economy must allow at most one standalone psionic Action per turn and no additional standalone activation from Action Surge",path:"/calculator/harness_mechanics/action_economy"});
+  if(JSON.stringify(harness.manifested_strike.attack_bonus)!==JSON.stringify({base:0,components:["psionic_ability_modifier","proficiency_bonus","psionic_focus"]}))diagnostics.push({severity:"error",code:"harness.attack_formula",message:"Manifested Strike attack bonus must use its canonical base and ordered components",path:"/calculator/harness_mechanics/manifested_strike/attack_bonus"});
+  if(JSON.stringify(harness.manifested_strike.save_dc)!==JSON.stringify({base:8,components:["proficiency_bonus","psionic_ability_modifier"]}))diagnostics.push({severity:"error",code:"harness.save_dc_formula",message:"Kinetic Vanguard save DC must use its canonical base and ordered components",path:"/calculator/harness_mechanics/manifested_strike/save_dc"});
+  if(JSON.stringify(harness.overload.blood_tax_per_tier)!==JSON.stringify({base:0,proficiency_bonus_multiplier:1}))diagnostics.push({severity:"error",code:"harness.blood_tax_formula",message:"Blood Tax per tier must use its canonical base and Proficiency Bonus multiplier",path:"/calculator/harness_mechanics/overload/blood_tax_per_tier"});
+  if(JSON.stringify(harness.overload.mastery)!==JSON.stringify({minimum_level:18,uses_per_rest:1,blood_tax_divisor:2,minimum_per_overload:1}))diagnostics.push({severity:"error",code:"harness.overload_mastery",message:"Overload Mastery must retain its canonical level, use, divisor, and minimum",path:"/calculator/harness_mechanics/overload/mastery"});
   const disciplineIds=harness.disciplines.map(item=>item.id);
-  diagnostics.push(...duplicateDiagnostics(disciplineIds,"damage_authority.discipline_duplicate","damage authority discipline ID"));
+  diagnostics.push(...duplicateDiagnostics(disciplineIds,"harness.discipline_duplicate","harness discipline ID"));
   const expectedDisciplines=["cryokinesis","electrokinesis","psychokinesis","pyrokinesis"];
-  if(JSON.stringify([...disciplineIds].sort(codepointCompare))!==JSON.stringify(expectedDisciplines))diagnostics.push({severity:"error",code:"damage_authority.discipline_coverage",message:"Damage authority must define exactly the four Kinetic Disciplines",path:"/calculator/harness_mechanics/disciplines"});
-  for(const [disciplineIndex,discipline] of harness.disciplines.entries()){
-    const expectedGraze=discipline.id==="pyrokinesis"?"psionic_ability_modifier":undefined;
-    if(discipline.graze_damage!==expectedGraze)diagnostics.push({severity:"error",code:"damage_authority.graze_damage",message:expectedGraze?"Pyrokinesis damage authority must define graze_damage as psionic_ability_modifier":`${discipline.id} damage authority cannot define graze_damage`,path:`/calculator/harness_mechanics/disciplines/${disciplineIndex}/graze_damage`});
-  }
+  if(JSON.stringify([...disciplineIds].sort(codepointCompare))!==JSON.stringify(expectedDisciplines))diagnostics.push({severity:"error",code:"harness.discipline_coverage",message:"Harness mechanics must define exactly the four Kinetic Disciplines",path:"/calculator/harness_mechanics/disciplines"});
   const featureRules=harness.feature_rules,featureRuleIds=featureRules.map(item=>item.entity_id);
-  diagnostics.push(...duplicateDiagnostics(featureRuleIds,"damage_authority.feature_duplicate","damage authority feature entity ID"));
+  diagnostics.push(...duplicateDiagnostics(featureRuleIds,"harness.feature_duplicate","harness feature entity ID"));
   const missingShared=calculatorFeatureIds.filter(id=>!featureRuleIds.includes(id));
-  if(missingShared.length)diagnostics.push({severity:"error",code:"damage_authority.feature_coverage",message:`Damage authority is missing Calculator features: ${missingShared.join(", ")}`,path:"/calculator/harness_mechanics/feature_rules"});
+  if(missingShared.length)diagnostics.push({severity:"error",code:"harness.feature_coverage",message:`Harness mechanics are missing Calculator features: ${missingShared.join(", ")}`,path:"/calculator/harness_mechanics/feature_rules"});
   for(const [ruleIndex,rule] of featureRules.entries()){
     const rulePath=`/calculator/harness_mechanics/feature_rules/${ruleIndex}`,entity=entities.get(rule.entity_id);
-    if(!entity)diagnostics.push({severity:"error",code:"damage_authority.feature_unknown",message:`Damage authority references unknown entity ${rule.entity_id}`,path:`${rulePath}/entity_id`});
+    if(!entity)diagnostics.push({severity:"error",code:"harness.feature_unknown",message:`Harness mechanics reference unknown entity ${rule.entity_id}`,path:`${rulePath}/entity_id`});
     else{
-      if(entity.level===undefined)diagnostics.push({severity:"error",code:"damage_authority.feature_level",message:`Damage authority feature ${rule.entity_id} lacks canonical level availability`,path:`/entities/${authority.entities.indexOf(entity)}/level`});
-      if(entity.psi_cost===undefined)diagnostics.push({severity:"error",code:"damage_authority.feature_psi",message:`Damage authority feature ${rule.entity_id} lacks canonical Psi cost`,path:`/entities/${authority.entities.indexOf(entity)}/psi_cost`});
+      if(entity.level===undefined)diagnostics.push({severity:"error",code:"harness.feature_level",message:`Harness feature ${rule.entity_id} lacks canonical level availability`,path:`/entities/${authority.entities.indexOf(entity)}/level`});
+      if(entity.psi_cost===undefined)diagnostics.push({severity:"error",code:"harness.feature_psi",message:`Harness feature ${rule.entity_id} lacks canonical Psi cost`,path:`/entities/${authority.entities.indexOf(entity)}/psi_cost`});
       const authoredDisciplines=entity.classifications.rules_area.filter(area=>expectedDisciplines.includes(area));
-      if(authoredDisciplines.length&&rule.discipline_ids.some(id=>!authoredDisciplines.includes(id)))diagnostics.push({severity:"error",code:"damage_authority.feature_discipline",message:`Damage authority feature ${rule.entity_id} uses a discipline inconsistent with its canonical classification`,path:`${rulePath}/discipline_ids`});
+      if(authoredDisciplines.length&&rule.discipline_ids.some(id=>!authoredDisciplines.includes(id)))diagnostics.push({severity:"error",code:"harness.feature_discipline",message:`Harness feature ${rule.entity_id} uses a discipline inconsistent with its canonical classification`,path:`${rulePath}/discipline_ids`});
     }
-    const targetingTiers=(rule.targeting_by_tier??[]).map(item=>item.tier);diagnostics.push(...duplicateDiagnostics(targetingTiers.map(String),"damage_authority.targeting_tier_duplicate",`${rule.entity_id} damage-authority targeting tier`));
+    const targetingTiers=(rule.targeting_by_tier??[]).map(item=>item.tier);diagnostics.push(...duplicateDiagnostics(targetingTiers.map(String),"harness.targeting_tier_duplicate",`${rule.entity_id} targeting tier`));
     for(const [targetIndex,targeting] of (rule.targeting_by_tier??[]).entries()){
       const targetingPath=`${rulePath}/targeting_by_tier/${targetIndex}`;
-      if(targeting.kind==="fixed_additional"&&targeting.additional_targets===undefined)diagnostics.push({severity:"error",code:"damage_authority.targeting_count",message:`${rule.entity_id} damage-authority fixed targeting requires additional_targets`,path:targetingPath});
-      if(targeting.kind!=="fixed_additional"&&targeting.additional_targets!==undefined)diagnostics.push({severity:"error",code:"damage_authority.targeting_count_forbidden",message:`${rule.entity_id} damage-authority ${targeting.kind} targeting cannot define additional_targets`,path:targetingPath});
+      if(targeting.kind==="fixed_additional"&&targeting.additional_targets===undefined)diagnostics.push({severity:"error",code:"harness.targeting_count",message:`${rule.entity_id} fixed targeting requires additional_targets`,path:targetingPath});
+      if(targeting.kind!=="fixed_additional"&&targeting.additional_targets!==undefined)diagnostics.push({severity:"error",code:"harness.targeting_count_forbidden",message:`${rule.entity_id} ${targeting.kind} targeting cannot define additional_targets`,path:targetingPath});
     }
-    const reductionTiers=(rule.armor_class_reduction_by_tier??[]).map(item=>item.tier);diagnostics.push(...duplicateDiagnostics(reductionTiers.map(String),"damage_authority.armor_reduction_tier_duplicate",`${rule.entity_id} damage-authority Armor Class reduction tier`));
-    if(rule.damage_repetition&&rule.entity_id!=="ball_lightning")diagnostics.push({severity:"error",code:"damage_authority.damage_repetition_feature",message:"Damage authority permits only ball_lightning to repeat damage at remaining round starts",path:`${rulePath}/damage_repetition`});
-    if(rule.starts_persistent_zone&&rule.entity_id!=="ball_lightning")diagnostics.push({severity:"error",code:"damage_authority.persistent_zone_feature",message:"Damage authority permits only ball_lightning to start the modeled persistent zone",path:`${rulePath}/starts_persistent_zone`});
-    if(rule.damage_timing&&rule.entity_id!=="mass_levitation")diagnostics.push({severity:"error",code:"damage_authority.damage_timing_feature",message:"Damage authority permits only mass_levitation to use start-of-turn post-repeat-save damage timing",path:`${rulePath}/damage_timing`});
+    const reductionTiers=(rule.armor_class_reduction_by_tier??[]).map(item=>item.tier);diagnostics.push(...duplicateDiagnostics(reductionTiers.map(String),"harness.armor_reduction_tier_duplicate",`${rule.entity_id} Armor Class reduction tier`));
+    if(rule.damage_repetition&&rule.entity_id!=="ball_lightning")diagnostics.push({severity:"error",code:"harness.damage_repetition_feature",message:"Only ball_lightning may repeat damage at remaining round starts",path:`${rulePath}/damage_repetition`});
+    if(rule.starts_persistent_zone&&rule.entity_id!=="ball_lightning")diagnostics.push({severity:"error",code:"harness.persistent_zone_feature",message:"Only ball_lightning may start the modeled persistent zone",path:`${rulePath}/starts_persistent_zone`});
+    if(rule.damage_timing&&rule.entity_id!=="mass_levitation")diagnostics.push({severity:"error",code:"harness.damage_timing_feature",message:"Only mass_levitation uses start-of-turn post-repeat-save damage timing",path:`${rulePath}/damage_timing`});
+    const controlTiers=(rule.control_tiers??[]).map(item=>item.tier);diagnostics.push(...duplicateDiagnostics(controlTiers.map(String),"harness.control_tier_duplicate",`${rule.entity_id} control tier`));
+    for(const [controlIndex,control] of (rule.control_tiers??[]).entries()){
+      const controlPath=`${rulePath}/control_tiers/${controlIndex}`;
+      if(control.application==="failed_save"&&!control.save)diagnostics.push({severity:"error",code:"harness.control_save_required",message:`${rule.entity_id} Tier ${control.tier} control requires a save`,path:controlPath});
+      if(control.application==="no_save"&&control.save)diagnostics.push({severity:"error",code:"harness.control_save_forbidden",message:`${rule.entity_id} Tier ${control.tier} no-save control cannot define a save`,path:controlPath});
+      const tierConditions=new Set(control.effects.flatMap(effect=>effect.conditions??[]));
+      for(const [effectIndex,effect] of control.effects.entries()){
+        const effectPath=`${controlPath}/effects/${effectIndex}`;
+        if(!(effect.conditions?.length||effect.outcomes?.length))diagnostics.push({severity:"error",code:"harness.control_outcome",message:`${rule.entity_id} Tier ${control.tier} effect must define a condition or non-condition outcome`,path:effectPath});
+        if(effect.gate==="on_failed_save"&&control.application!=="failed_save")diagnostics.push({severity:"error",code:"harness.control_gate",message:`${rule.entity_id} Tier ${control.tier} failed-save effect requires failed-save application`,path:effectPath});
+        if(effect.requires_condition&&!tierConditions.has(effect.requires_condition))diagnostics.push({severity:"error",code:"harness.control_dependency",message:`${rule.entity_id} Tier ${control.tier} effect depends on an unmodeled ${effect.requires_condition} condition`,path:effectPath});
+      }
+      if(control.repeat_save_trigger&&control.application!=="failed_save")diagnostics.push({severity:"error",code:"harness.repeat_save",message:`${rule.entity_id} Tier ${control.tier} repeat saves require failed-save application`,path:controlPath});
+      if(control.repeat_save_disadvantage&&!control.repeat_save_trigger)diagnostics.push({severity:"error",code:"harness.repeat_save_disadvantage",message:`${rule.entity_id} Tier ${control.tier} repeat-save Disadvantage requires a repeat-save trigger`,path:controlPath});
+    }
   }
   for(const [featureIndex,feature] of calculator.features.entries()){
     const featurePath=`/calculator/features/${featureIndex}`,entity=entities.get(feature.entity_id);

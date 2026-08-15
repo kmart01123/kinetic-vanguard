@@ -21,8 +21,8 @@ const onboardingStrings=(value:any,result:string[]=[]):string[]=>{if(typeof valu
 test("YAML authority is schema-valid, semantically valid, and complete",async()=>{
   const loaded=await loadAuthority();const diagnostics=[...loaded.diagnostics,...validateSemantics(loaded.authority)];
   assert.deepEqual(diagnostics,[]);
-  assert.equal(loaded.authority.schema_version,"3.1.0");
-  assert.equal(loaded.authority.rules_version,"14.2.0");
+  assert.equal(loaded.authority.schema_version,"2.1.0");
+  assert.equal(loaded.authority.rules_version,"14.1.0");
   const audit=loaded.authority.audits?.find(item=>item.id==="yaml_rules_authority")!;
   assert.deepEqual([...audit.subject_ids].sort(),loaded.authority.entities.map(entity=>entity.id).sort());
 });
@@ -93,86 +93,6 @@ test("retired migration sources are absent from the active architecture",async()
   assert.match(await readFile("CHANGELOG.md","utf8"),/migration/i);
 });
 
-test("retired control runtime is absent while static target and damage boundaries remain",async()=>{
-  const retiredPaths=[
-    "harness/control_catalog.py",
-    "harness/control_graph.py",
-    "harness/control_state.py",
-    "harness/control_timeline.py",
-    "harness/control_engine.py",
-    "harness/config/control-engine.json",
-    "harness/data/srd_control_consequences.json",
-    "harness/provenance/srd-control-consequences.json",
-    "harness/tests/fixtures/control_engine_v2.json",
-    "harness/tests/test_control_catalog.py",
-    "harness/tests/test_control_graph.py",
-    "harness/tests/test_control_state.py",
-    "harness/tests/test_control_timeline.py",
-    "harness/tests/test_control_engine.py",
-    "harness/tests/test_control_engine_fixtures.py"
-  ] as const;
-  const compatibilityPaths=[
-    "harness/control_harness.py","harness/control_kernel.py","harness/control_ledgers.py","harness/control_package.py","harness/control_targets.py",
-    "harness/tests/test_control_kernel.py","harness/tests/test_control_ledgers.py","harness/tests/test_control_package.py","harness/tests/test_control_package_lifecycle.py","harness/tests/test_control_targets.py",
-    "harness/legacy","harness/archive","harness/compat","harness/deprecated"
-  ] as const;
-  await Promise.all([...retiredPaths,...compatibilityPaths].map(assertAbsent));
-
-  const inputs=JSON.parse(await readFile("build/inputs.json","utf8")).inputs as Array<{path:string;role:string}>,inputRoles=new Map(inputs.map(input=>[input.path,input.role]));
-  assert.equal(inputs.length,84,"retirement removes exactly 15 inputs and legal hygiene adds two maintained records");
-  for(const path of retiredPaths)assert.equal(inputRoles.has(path),false,`${path} is absent from build inputs`);
-  const retainedInputs:ReadonlyArray<readonly [string,string]>=[
-    ["src/control-authority-v2.ts","rule_source"],
-    ["tests/control-authority-v2-population.test.ts","test_source"],
-    ["tests/control-authority-v2-parity.test.ts","test_source"],
-    ["tests/fixtures/control-authority-v2-parity.json","reviewed_correctness_corpus"],
-    ["harness/tests/test_authority_v2.py","test_source"],
-    ["harness/tests/test_authority_v2_parity.py","test_source"],
-    ["harness/authority.py","harness_source"],
-    ["harness/creature_catalog.py","harness_source"],
-    ["harness/creature_control_projection.py","harness_source"],
-    ["src/harness-authority.ts","harness_projection_source"],
-    ["src/creature-catalog.ts","harness_projection_source"],
-    ["src/types.ts","application_source"],
-    ["src/validate.ts","application_source"],
-    ["harness/config/creature-consumers.json","harness_consumer_contract"],
-    ["harness/data/srd_creatures.json","pinned_srd_creature_catalog"],
-    ["harness/data/srd_creature_rosters.json","pinned_srd_creature_rosters"]
-  ];
-  await Promise.all(retainedInputs.map(([path])=>access(path)));
-  for(const [path,role] of retainedInputs)assert.equal(inputRoles.get(path),role,path);
-  const consumers=JSON.parse(await readFile("harness/config/creature-consumers.json","utf8")).consumers;
-  assert.equal(consumers.control_target.implemented,true,"ControlTarget remains a static implemented projection");
-  assert.equal(consumers.planner_static_target.implemented,false,"the future static planner projection remains unimplemented");
-
-  const typeScriptTwins=(await filesUnder("src")).filter(path=>/\/control[-_](?:catalog|graph|state|timeline|engine|evaluator|runner)\.tsx?$/.test(path));
-  assert.deepEqual(typeScriptTwins,[],"no TypeScript semantic twin replaces the retired Python runtime");
-  await Promise.all(["tests/fixtures/control-engine-parity.json","tests/fixtures/control_engine_parity.json","tests/control-engine-parity.test.ts","tests/control_engine_parity.test.ts"].map(assertAbsent));
-
-  const retiredModule="control_(?:catalog|graph|state|timeline|engine)";
-  const retiredImport=new RegExp(`\\b(?:from\\s+(?:(?:harness\\.)?${retiredModule}|\\.${retiredModule})\\s+import|from\\s+(?:harness|\\.)\\s+import\\s+${retiredModule}|import\\s+(?:harness\\.)?${retiredModule})\\b`);
-  const maintainedPython=(await filesUnder("harness")).filter(path=>path.endsWith(".py")&&!path.includes("/tests/"));
-  for(const path of maintainedPython)assert.doesNotMatch(await readFile(path,"utf8"),retiredImport,`${path} does not import the retired runtime`);
-
-  const projectionModules=["harness/creature_damage_projection.py","harness/creature_control_projection.py"] as const;
-  const damagePaths=["harness/model.py","harness/creature_damage_projection.py","harness/damage_harness.py","harness/damage_report.py","harness/readme_damage.py"] as const;
-  const damageSources=await Promise.all(damagePaths.map(path=>readFile(path,"utf8")));
-  for(const [index,source] of damageSources.entries())assert.doesNotMatch(source,/\bControlTarget\b|creature_control_projection|control_(?:catalog|graph|state|timeline|engine)\b/,`${damagePaths[index]} remains isolated from ControlTarget and control-only code`);
-  const projectionSources=await Promise.all(["harness/creature_catalog.py",...projectionModules].map(path=>readFile(path,"utf8"))),creatureSource=projectionSources[0]!,damageProjection=projectionSources[1]!,controlProjection=projectionSources[2]!,damageHarness=damageSources[2]!;
-  assert.match(damageHarness,/(?:from\s+\.creature_catalog|from\s+harness\.creature_catalog\s+import)/);
-  assert.match(damageHarness,/(?:from\s+\.creature_damage_projection|from\s+harness\.creature_damage_projection\s+import)/);
-  assert.match(damageProjection,/(?:from\s+\.creature_catalog|from\s+harness\.creature_catalog\s+import)/);
-  assert.match(controlProjection,/(?:from\s+\.creature_catalog|from\s+harness\.creature_catalog\s+import)/);
-  assert.doesNotMatch(creatureSource,/(?:from|import)\s+(?:harness\.)?\.?(?:creature_damage_projection|creature_control_projection|damage_harness|damage_report|control_catalog|control_graph|control_state|control_timeline|control_engine)\b/);
-  assert.doesNotMatch(damageProjection,/(?:from|import)\s+(?:harness\.)?\.?(?:creature_control_projection|damage_harness|control_catalog|control_graph|control_state|control_timeline|control_engine)\b/);
-  assert.doesNotMatch(controlProjection,/(?:from|import)\s+(?:harness\.)?\.?(?:creature_damage_projection|damage_harness|control_catalog|control_graph|control_state|control_timeline|control_engine)\b/);
-  assert.doesNotMatch(damageHarness,/(?:from|import)\s+(?:harness\.)?\.?(?:creature_control_projection|control_catalog|control_graph|control_state|control_timeline|control_engine)\b/);
-
-  const scripts=JSON.parse(await readFile("package.json","utf8")).scripts as Record<string,string>;
-  for(const name of ["control:engine:validate","control:engine:fixtures"])assert.equal(Object.hasOwn(scripts,name),false,`${name} remains absent`);
-  assert.deepEqual(Object.keys(scripts).filter(name=>name.startsWith("control:engine:")),[]);
-});
-
 test("active CI publication names derive from the canonical rules version",async()=>{
   const [{authority},workflow]=await Promise.all([loadAuthority(),readFile(".github/workflows/ci.yml","utf8")]);
   assert.doesNotMatch(workflow,/\b14\.\d+(?:\.\d+)?\b/);
@@ -182,7 +102,7 @@ test("active CI publication names derive from the canonical rules version",async
   assert.match(workflow,/\"rules_version\":\"\$\{\{ needs\.metadata\.outputs\.rules_version \}\}\"/);
   assert.match(workflow,/! grep -q '"application_version"' artifacts\/build-manifest\.json/);
   const artifactTemplate=workflow.match(/name: (kinetic-vanguard-v\$\{\{ needs\.metadata\.outputs\.rules_version \}\})/)?.[1];
-  assert.equal(artifactTemplate?.replace("${{ needs.metadata.outputs.rules_version }}",authority.rules_version),"kinetic-vanguard-v14.2.0");
+  assert.equal(artifactTemplate?.replace("${{ needs.metadata.outputs.rules_version }}",authority.rules_version),"kinetic-vanguard-v14.1.0");
 });
 
 test("prototype and release builds reflect direct YAML edits",async()=>{
@@ -192,7 +112,7 @@ test("prototype and release builds reflect direct YAML edits",async()=>{
     const prototypeRoot=join(temporary,"prototype"),releaseRoot=join(temporary,"release");
     const prototype=await executeBuild("prototype",prototypeRoot,authorityPath);process.env.KV_RELEASE_APPROVED="1";const release=await executeBuild("release",releaseRoot,authorityPath);
     for(const result of [prototype,release]){const html=await readFile(result.htmlPath,"utf8");assert.match(html,/Kinetic Vanguard YAML Edit Probe/);assert.doesNotMatch(html,/Kinetic_Vanguard\.md|npm run migrate|edit (?:the )?Markdown/i);assert.equal(result.manifest.build_identity.canonical_rules_authority,authorityPath);assert.deepEqual(result.manifest.declared_inputs.filter((input:any)=>input.role==="rules_authority").map((input:any)=>input.path),[authorityPath]);}
-    for(const result of [prototype,release]){assert.equal(result.manifest.build_identity.rules_version,"14.2.0");assert.equal("application_version" in result.manifest.build_identity,false);}
+    for(const result of [prototype,release]){assert.equal(result.manifest.build_identity.rules_version,"14.1.0");assert.equal("application_version" in result.manifest.build_identity,false);}
     const coverage=JSON.parse(await readFile(join(prototypeRoot,"coverage-ledger.json"),"utf8"));const {authority}=await loadAuthority(authorityPath);assert.equal(coverage.version,3);assert.equal(coverage.entity_count,44);assert.equal(coverage.entity_count,authority.entities.length);assert.deepEqual(coverage.entities.map((entity:any)=>entity.entity_id),authority.entities.map(entity=>entity.id));assert.ok(coverage.entities.every((entity:any)=>entity.content_block_count>0&&entity.destinations.length>0));assert.equal(coverage.entities.some((entity:any)=>entity.entity_id===authority.onboarding.id),false);assert.deepEqual(coverage.onboarding,{authority_path:authorityPath+"#/onboarding",onboarding_id:"start_here",section_ids:["choose_your_discipline","basic_turn","build_checklist","terms_to_know","where_to_go_next"],destination_ids:[...authority.onboarding.primary_paths,...authority.onboarding.disciplines.cards,...authority.onboarding.basic_turn.destinations,...authority.onboarding.build_checklist.items,...authority.onboarding.glossary.entries,...authority.onboarding.next_destinations.items].map(item=>item.id)});
   }finally{if(previousApproval===undefined)delete process.env.KV_RELEASE_APPROVED;else process.env.KV_RELEASE_APPROVED=previousApproval;await rm(temporary,{recursive:true,force:true});}
 });
