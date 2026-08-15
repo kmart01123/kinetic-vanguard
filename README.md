@@ -46,14 +46,16 @@ This single-target benchmark evaluates each configured control package against o
 
 Configured headline metric: **roster-adjusted whole-package control stick %**.
 
+This v14.2 snapshot evaluates legal repeated attack-delivered opportunities within one ordinary Attack action when the configured package permits them. Kinetic Vanguard Signature Riders were already 0-Psi and repeatable before issue #58; issue #58 newly extends that repeatability to paid on-hit riders. Battle Master maneuvers receive legal hit-gated retries, while Eldritch Knight keeps one Blindness/Deafness cast and uses all ordinary primer attacks for Eldritch Strike. Published v14.1 used simpler one-shot approximations, so control deltas can combine the paid-rider rule with historical KV, Battle Master, and Eldritch Knight evaluator corrections. Those effects interact and are not assumed to be additively separable.
+
 Control Reliability measures how often the configured control package takes effect. It does not measure the relative severity, duration, area, or strategic value of different control effects. A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
-| 7 | HOT (+96.72%) | COLD (-100.00%) | HOT (+57.43%) | HOT (+65.70%) |
-| 11 | HOT (+102.17%) | COLD (-100.00%) | HOT (+95.13%) | HOT (+70.93%) |
-| 15 | HOT (+71.21%) | HOT (+71.21%) | HOT (+72.25%) | HOT (+56.46%) |
-| 20 | HOT (+117.66%) | HOT (+116.74%) | HOT (+117.66%) | HOT (+76.85%) |
+| 7 | HOT (+32.13%) | COLD (-100.00%) | HOT (+5.74%) | HOT (+11.29%) |
+| 11 | HOT (+17.89%) | COLD (-100.00%) | HOT (+13.79%) | IDEAL |
+| 15 | HOT (+21.16%) | HOT (+21.16%) | HOT (+21.89%) | HOT (+10.72%) |
+| 20 | HOT (+22.60%) | HOT (+22.08%) | HOT (+22.60%) | IDEAL |
 
 This snapshot is a summary, not the full evidence set. Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the [maintained harness guide](harness/README.md), [methodology configuration](harness/config/benchmark.json), [SRD target roster](harness/data/srd_targets.csv), and [comparator assumptions](harness/comparators/fighter-subclasses.json) for the complete methodology, provenance, regeneration commands, and report paths.
 

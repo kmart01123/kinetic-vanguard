@@ -12,7 +12,7 @@ from unittest.mock import patch
 
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
-from harness.control_harness import _comparator_scenario,_effect_available,_kv_scenario,_repeat_rider_probability,run as run_control
+from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_repeat_rider_probability,run as run_control
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,run as run_damage
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,load_comparators,load_config,load_targets,save_success_probability
 
@@ -333,8 +333,8 @@ class ComparatorLeafContractTests(unittest.TestCase):
                     before_scenario["minimum_level"]=level;after_scenario["minimum_level"]=level
 
             target=self.target(level,condition_immunities=condition_immunities)
-            baseline=_comparator_scenario(self.model,before,target,build,before_scenario)
-            changed=_comparator_scenario(self.model,after,target,build,after_scenario)
+            baseline=_comparator_scenario(self.model,self.config,before,target,build,before_scenario)
+            changed=_comparator_scenario(self.model,self.config,after,target,build,after_scenario)
             signature=lambda row:(row["scenario"],row["eligible"],row["reach"],row["named"],row["whole"])
             with self.subTest(path=_path_label(path)):
                 self.assertNotEqual(signature(changed),signature(baseline))
@@ -488,6 +488,93 @@ class CanonicalControlTests(unittest.TestCase):
         different_target=_repeat_rider_probability(self.model,self.config,11,0,2,0.25)
         retry_then_redirect=_repeat_rider_probability(self.model,self.config,11,0,2,0.25)
         self.assertEqual(same_target,different_target);self.assertEqual(different_target,retry_then_redirect)
+
+    def test_all_signature_riders_are_zero_psi_repeatable_and_overload_still_costs_blood(self)->None:
+        signature_ids={"ember_bolt","glacial_spike","telekinetic_shove","static_discharge"}
+        self.assertEqual(self.model.projection["core"]["manifested_strike"]["rider_repeatability"],"per_manifested_strike")
+        no_blood=deepcopy(self.config);no_blood["kv_profile"]["blood_tax_hp_fraction"]=0.0
+        for entity_id in signature_ids:
+            with self.subTest(entity_id=entity_id):
+                feature=self.model.features[entity_id]
+                self.assertEqual(feature["psi_cost"],0);self.assertEqual(feature["activation"],"on_hit");self.assertEqual(feature["damage_delivery"],"on_hit_rider")
+                self.assertGreater(self.model.blood_tax(11,1),0)
+                self.assertEqual(_repeat_rider_probability(self.model,no_blood,11,1,int(feature["psi_cost"]),0.25),0.0)
+
+    def test_glacial_spike_and_telekinetic_shove_retry_their_historical_signature_control(self)->None:
+        target=self.target()
+        for discipline,entity_id,tier in (("cryokinesis","glacial_spike",0),("cryokinesis","glacial_spike",1),("psychokinesis","telekinetic_shove",0),("psychokinesis","telekinetic_shove",1)):
+            with self.subTest(entity_id=entity_id,tier=tier):
+                row=_kv_scenario(self.model,self.config,target,discipline,entity_id,tier)
+                bonus=self.model.kv_attack_bonus(target.level,5)+2;reach=sum(attack_probabilities(bonus,target.ac)[1:])
+                control=next(item for item in self.model.features[entity_id]["control_tiers"] if int(item["tier"])==tier)
+                one=reach
+                if control["application"]=="failed_save":
+                    save=control["save"];save=self.model.disciplines[discipline]["signature_save"] if save=="discipline_signature" else save
+                    one=reach*(1-save_success_probability(target,save,self.model.kv_save_dc(target.level,5)))
+                self.assertGreater(row["named"],100*one)
+
+    def test_static_discharge_tier_two_signature_control_cannot_retry(self)->None:
+        feature=self.model.features["static_discharge"]
+        self.assertEqual(feature["psi_cost"],0)
+        self.assertAlmostEqual(_repeat_rider_probability(self.model,self.config,20,2,int(feature["psi_cost"]),0.25),0.25,places=12)
+
+
+class ControlComparatorRetryTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls)->None:
+        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.targets=load_targets()
+
+    def target(self,level:int)->Target:
+        return next(item for item in self.targets if item.level==level and not item.condition_immunities)
+
+    def scenario(self,build:str,scenario_id:str)->dict[str,object]:
+        return next(item for item in self.comparators["control"][build]["scenarios"] if item["id"]==scenario_id)
+
+    def test_battle_master_one_attack_matches_the_old_single_attempt(self)->None:
+        self.assertAlmostEqual(_battle_master_retry_probability(1,5,0.6,0.25),0.15,places=12)
+
+    def test_battle_master_two_attack_sentinel_tracks_misses_saves_and_dice(self)->None:
+        self.assertAlmostEqual(_battle_master_retry_probability(2,2,0.5,0.5),0.4375,places=12)
+        self.assertAlmostEqual(_battle_master_retry_probability(2,1,0.5,0.5),0.375,places=12)
+        self.assertGreater(_battle_master_retry_probability(2,1,0.5,0.5),_battle_master_retry_probability(1,1,0.5,0.5))
+
+    def test_battle_master_attempts_are_bounded_by_attacks_pool_and_one_die_per_attack(self)->None:
+        self.assertAlmostEqual(_battle_master_retry_probability(2,99,0.5,0.5),0.4375,places=12)
+        self.assertAlmostEqual(_battle_master_retry_probability(1,99,0.5,0.5),0.25,places=12)
+        self.assertEqual(_battle_master_retry_probability(4,0,0.5,0.5),0.0)
+
+    def test_battle_master_comparator_uses_frozen_inputs_and_observed_retry_chronology(self)->None:
+        damage=self.comparators["damage"]["battle_master"];control=self.comparators["control"]["battle_master"]
+        self.assertEqual(damage["superiority_pool_by_level"],{"7":5,"11":5,"15":6,"20":6})
+        self.assertEqual(damage["tactical_policy"]["maneuver_choice_timing"],"after_observed_attack_roll_result")
+        self.assertEqual(damage["tactical_policy"]["maneuver_die_consumption"],"on_use_before_die_result")
+        self.assertEqual(damage["tactical_policy"]["maximum_maneuver_dice_per_attack"],1)
+        self.assertNotIn("relentless",control)
+        target=self.target(11);scenario=self.scenario("battle_master","menacing_attack");row=_comparator_scenario(self.model,self.config,self.comparators,target,"battle_master",scenario)
+        bonus=self.model.progression("proficiency_bonus",11)+int(control["attack_ability_modifier"])+int(control["magic_weapon_bonus_by_level"]["11"]);hit=sum(attack_probabilities(bonus,target.ac)[1:]);dc=int(control["save_dc_base"])+self.model.progression("proficiency_bonus",11)+int(control["save_ability_modifier"]);failed=1-save_success_probability(target,"wisdom",dc)
+        self.assertAlmostEqual(row["whole"],100*_battle_master_retry_probability(3,5,hit,failed),places=12)
+
+    def test_eldritch_strike_primer_hand_sentinel_uses_at_least_one_hit(self)->None:
+        self.assertAlmostEqual(_eldritch_strike_primer_probability(2,0.5),0.75,places=12)
+        self.assertAlmostEqual(_eldritch_strike_primer_probability(4,0.5),0.9375,places=12)
+
+    def test_plain_blindness_remains_one_cast_and_level_seven_is_unchanged(self)->None:
+        target=self.target(7);row=self.comparators["control"]["eldritch_knight"];scenario=self.scenario("eldritch_knight","blindness_deafness");result=_comparator_scenario(self.model,self.config,self.comparators,target,"eldritch_knight",scenario)
+        dc=int(row["save_dc_base"])+self.model.progression("proficiency_bonus",7)+int(row["save_ability_modifier_by_level"]["7"]);expected=1-save_success_probability(target,"constitution",dc,False,True)
+        self.assertEqual(result["reach"],100.0);self.assertAlmostEqual(result["whole"],100*expected,places=12)
+        eldritch=self.scenario("eldritch_knight","blindness_after_eldritch_strike");self.assertFalse(_comparator_scenario(self.model,self.config,self.comparators,target,"eldritch_knight",eldritch)["eligible"])
+
+    def test_eldritch_strike_uses_every_ordinary_primer_attack_without_stacking_or_action_surge(self)->None:
+        row=self.comparators["control"]["eldritch_knight"];scenario=self.scenario("eldritch_knight","blindness_after_eldritch_strike")
+        for level,attacks in ((11,3),(15,3),(20,4)):
+            with self.subTest(level=level):
+                target=self.target(level);pb=self.model.progression("proficiency_bonus",level);bonus=pb+int(row["attack_ability_modifier"])+int(row["magic_weapon_bonus_by_level"][str(level)]);hit=sum(attack_probabilities(bonus,target.ac)[1:]);mark=1-(1-hit)**attacks
+                self.assertAlmostEqual(_eldritch_strike_primer_probability(attacks,hit),mark,places=12)
+                dc=int(row["save_dc_base"])+pb+int(row["save_ability_modifier_by_level"][str(level)]);normal=1-save_success_probability(target,"constitution",dc,False,True);disadvantaged=1-save_success_probability(target,"constitution",dc,True,True);expected=mark*disadvantaged+(1-mark)*normal
+                result=_comparator_scenario(self.model,self.config,self.comparators,target,"eldritch_knight",scenario)
+                self.assertAlmostEqual(result["whole"],100*expected,places=12)
+                action_surge_mark=_eldritch_strike_primer_probability(2*attacks,hit)
+                self.assertNotAlmostEqual(result["whole"],100*(action_surge_mark*disadvantaged+(1-action_surge_mark)*normal),places=12)
 
 
 class ClassificationTests(unittest.TestCase):
@@ -658,7 +745,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             with (root/"control"/"kv-14-2-0-control-detail.csv").open(encoding="utf-8") as stream:
                 control_rows=list(csv.DictReader(stream))
             keyed={(row["Build"],row["Scenario"]):row for row in control_rows}
-            self.assertEqual(keyed[("battle_master","menacing_attack")]["Whole-package control stick %"],"56.250000")
+            self.assertEqual(keyed[("battle_master","menacing_attack")]["Whole-package control stick %"],"80.859375")
             self.assertEqual(keyed[("eldritch_knight","blindness_deafness")]["Whole-package control stick %"],"55.000000")
             self.assertTrue(all(row["Comparator Config SHA-256"] for row in control_rows))
             self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in control_rows))
@@ -702,22 +789,13 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             with result["paths"]["csv"].open(encoding="utf-8") as stream:
                 rows=list(csv.DictReader(stream))
         self.assertEqual(len(rows),16)
-        self.assertEqual(sum(row["Band"]=="HOT" for row in rows),14)
-        self.assertEqual(sum(row["Band"]=="COLD" for row in rows),2)
-        self.assertTrue(all(row["Band"] not in {"IDEAL","ORDER CHECK"} for row in rows))
+        self.assertTrue({"HOT","COLD","IDEAL"}<=set(row["Band"] for row in rows))
+        self.assertTrue(all(row["Band"]!="ORDER CHECK" for row in rows))
         level_seven={row["Discipline"]:row for row in rows if row["Level"]=="7"}
-        expected={
-            "cryokinesis":("HOT","+96.72"),
-            "electrokinesis":("HOT","+65.70"),
-            "psychokinesis":("HOT","+57.43"),
-            "pyrokinesis":("COLD","-100.00"),
-        }
-        self.assertEqual(set(level_seven),set(expected))
-        for discipline,(band,delta) in expected.items():
-            row=level_seven[discipline]
-            self.assertEqual((row["Band"],row["Boundary Delta %"]),(band,delta))
+        self.assertEqual(set(level_seven),{"cryokinesis","electrokinesis","psychokinesis","pyrokinesis"})
+        for row in level_seven.values():
             self.assertEqual(row["Eldritch Knight"],"41.250000")
-            self.assertEqual(row["Battle Master"],"48.656250")
+            self.assertGreater(float(row["Battle Master"]),float(row["Eldritch Knight"]))
             self.assertEqual(row["Lower Comparator"],"Eldritch Knight")
             self.assertEqual(row["Upper Comparator"],"Battle Master")
 

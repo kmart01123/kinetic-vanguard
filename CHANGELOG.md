@@ -6,6 +6,8 @@
 
 - Allowed the same paid on-hit rider to be declared on multiple Manifested Strikes in one Attack action, with independent Psi and Blood Tax payment for every declaration, including misses.
 - Allowed rider declarations to retry the same legal target or spread among different legal targets while retaining one rider per Manifested Strike and one Tier 2 rider per Attack action.
+- Corrected Control Reliability to distinguish the new paid-rider rule from the pre-existing 0-Psi repeatability of all four Signature Riders, which published v14.1 had approximated as one-shot control scenarios.
+- Corrected comparator fairness by allowing configured Battle Master maneuvers to retry after later legal hits while attacks and superiority dice remain, and by using all attacks in one ordinary Eldritch Strike primer Attack action before the single configured Blindness/Deafness cast.
 
 ## 14.1.0 — 2026-08-07
 

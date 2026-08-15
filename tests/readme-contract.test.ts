@@ -179,6 +179,11 @@ test("README exposes one synchronized headline balance snapshot", async () => {
   assert.match(region, /COLD.*below both.*HOT.*above both/s);
   assert.match(region, /signed distance outside the nearest envelope boundary/);
   assert.match(region, /N\/A.*reserved for a comparison that cannot be evaluated/);
+  assert.match(region, /Signature Riders were already 0-Psi and repeatable before issue #58/);
+  assert.match(region, /Battle Master maneuvers receive legal hit-gated retries/);
+  assert.match(region, /Eldritch Knight keeps one Blindness\/Deafness cast and uses all ordinary primer attacks for Eldritch Strike/);
+  assert.match(region, /Published v14\.1 used simpler one-shot approximations/);
+  assert.match(region, /not assumed to be additively separable/);
   assert.match(
     region,
     /Control Reliability measures how often the configured control package takes effect\. It does not measure the relative severity, duration, area, or strategic value of different control effects\. A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered\./

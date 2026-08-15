@@ -50,6 +50,26 @@ def _repeat_rider_probability(model:AuthorityModel,config:dict[str,Any],level:in
     return choose(attacks,0,0,0,mastery_remaining,0 if mastery_remaining else 2)
 
 
+def _battle_master_retry_probability(attacks:int,superiority_dice:int,hit_probability:float,save_fail_probability:float)->float:
+    """Resolve one fixed on-hit maneuver across one ordinary Attack action."""
+    if attacks<0 or superiority_dice<0:raise ValueError("Battle Master retry resources cannot be negative")
+    if not 0.0<=hit_probability<=1.0 or not 0.0<=save_fail_probability<=1.0:raise ValueError("Battle Master retry probabilities must be between zero and one")
+    @lru_cache(maxsize=None)
+    def resolve(attacks_remaining:int,dice_remaining:int)->float:
+        if attacks_remaining==0 or dice_remaining==0:return 0.0
+        later_after_miss=resolve(attacks_remaining-1,dice_remaining)
+        later_after_saved_hit=resolve(attacks_remaining-1,dice_remaining-1)
+        return (1-hit_probability)*later_after_miss+hit_probability*(save_fail_probability+(1-save_fail_probability)*later_after_saved_hit)
+    return resolve(attacks,superiority_dice)
+
+
+def _eldritch_strike_primer_probability(attacks:int,hit_probability:float)->float:
+    """Return the chance that one ordinary primer Attack action establishes a mark."""
+    if attacks<0:raise ValueError("Eldritch Strike primer attacks cannot be negative")
+    if not 0.0<=hit_probability<=1.0:raise ValueError("Eldritch Strike primer probability must be between zero and one")
+    return 1-(1-hit_probability)**attacks
+
+
 def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int,target_role:str="primary")->dict[str,Any]:
     feature=model.feature(entity_id,target.level,tier);control=next((item for item in feature.get("control_tiers",[]) if int(item["tier"])==tier),None)
     if control is None:raise ValueError(f"Configured control scenario {entity_id} Tier {tier} lacks canonical control mechanics")
@@ -84,7 +104,7 @@ def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,di
     return {"build":discipline_id,"scenario":f"mastery:{mastery['kind']}","eligible":eligible,"reach":100*reach,"named":0.0,"mastery":100*whole,"whole":100*whole,"after_repeats":100*whole}
 
 
-def _comparator_scenario(model:AuthorityModel,comparators:dict[str,Any],target:Target,build_id:str,scenario:dict[str,Any])->dict[str,Any]:
+def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,build_id:str,scenario:dict[str,Any])->dict[str,Any]:
     row=comparators["control"][build_id];minimum=int(scenario.get("minimum_level",row["minimum_level"]));eligible=target.level>=minimum and target_is_eligible(target,scenario.get("maximum_size"))
     available=_comparator_effect_available(target,scenario)
     pb=model.progression("proficiency_bonus",target.level);weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(target.level)]);bonus=pb+int(row["attack_ability_modifier"])+weapon_bonus;reach=1.0
@@ -93,8 +113,11 @@ def _comparator_scenario(model:AuthorityModel,comparators:dict[str,Any],target:T
     if not eligible or not available:value=0.0
     else:
         save_modifier=int(row["save_ability_modifier_by_level"][str(target.level)]) if "save_ability_modifier_by_level" in row else int(row["save_ability_modifier"]);dc=int(row["save_dc_base"])+pb+save_modifier;normal_fail=1-save_success_probability(target,scenario["save"],dc,False,bool(row["magic_resistance_applies"]))
-        if scenario.get("primer_hit_disadvantage"):
-            primer=attack_probabilities(bonus,target.ac);primer_hit=primer[1]+primer[2];disadvantaged_fail=1-save_success_probability(target,scenario["save"],dc,True,bool(row["magic_resistance_applies"]));value=reach*(primer_hit*disadvantaged_fail+(1-primer_hit)*normal_fail)
+        if build_id=="battle_master" and scenario.get("hit_gated"):
+            attacks=int(level_config(config,target.level)["attacks_per_action"]);superiority_dice=int(comparators["damage"]["battle_master"]["superiority_pool_by_level"][str(target.level)])
+            value=_battle_master_retry_probability(attacks,superiority_dice,reach,normal_fail)
+        elif scenario.get("primer_hit_disadvantage"):
+            attacks=int(level_config(config,target.level)["attacks_per_action"]);primer=attack_probabilities(bonus,target.ac);primer_mark=_eldritch_strike_primer_probability(attacks,primer[1]+primer[2]);disadvantaged_fail=1-save_success_probability(target,scenario["save"],dc,True,bool(row["magic_resistance_applies"]));value=primer_mark*disadvantaged_fail+(1-primer_mark)*normal_fail
         else:value=reach*normal_fail
     return {"build":build_id,"scenario":scenario["id"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*value}
 
@@ -110,7 +133,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,tri
     for target in targets:
         comparator_best={}
         for build in ("battle_master","eldritch_knight"):
-            values=[_comparator_scenario(model,comparators,target,build,scenario) for scenario in comparators["control"][build]["scenarios"]]
+            values=[_comparator_scenario(model,config,comparators,target,build,scenario) for scenario in comparators["control"][build]["scenarios"]]
             detail.extend({"Level":target.level,"Target":target.name,**value} for value in values);comparator_best[build]=_best(values)
             audit.append({"Level":target.level,"Target":target.name,"Discipline":"all","Build":build,"Selected Scenario":comparator_best[build]["scenario"],"Whole-package control stick %":f"{comparator_best[build]['whole']:.6f}","Eligible":comparator_best[build]["eligible"]})
         for discipline,configured in scenario_sets.items():
