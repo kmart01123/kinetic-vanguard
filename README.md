@@ -9,7 +9,7 @@ Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighte
 - Current published release: **v14.1.0**
 - Current development line: **v14.2.0**
 - Development branch: `14.2.0`
-- Implementation pull request: pending under issue #58
+- Implementation pull request: [draft PR #73](https://github.com/kmart01123/kinetic-vanguard/pull/73)
 - Canonical rules authority: `KineticVanguard.yaml`
 
 Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v14.1.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.1.0).
