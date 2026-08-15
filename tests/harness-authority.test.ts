@@ -110,12 +110,12 @@ test("official harness sources and shared parity inputs are declared positive in
   for(const required of [
     "src/harness-authority.ts","src/creature-catalog.ts","harness/authority.py","harness/creature_catalog.py",
     "harness/creature_damage_projection.py","harness/creature_control_projection.py",
-    "harness/damage_harness.py","harness/damage_report.py","harness/readme_damage.py",
+    "harness/damage_contract.py","harness/damage_harness.py","harness/damage_report.py","harness/readme_damage.py",
     "harness/config/benchmark.json","harness/config/creature-consumers.json","harness/comparators/fighter-subclasses.json",
-    "harness/data/srd_creatures.json","harness/data/srd_creature_rosters.json",
-    "harness/provenance/damage-review.json","harness/provenance/damage-delta-v14.1-to-v14.2.json","harness/provenance/srd-creatures.json",
+    "harness/data/srd_creatures.json","harness/data/srd_creature_rosters.json","harness/data/damage-sentinels-v1.json",
+    "harness/provenance/damage-model-contract.json","harness/provenance/damage-review.json","harness/provenance/damage-delta-v14.1-to-v14.2.json","harness/provenance/srd-creatures.json",
     "harness/tests/test_authority_v2.py","harness/tests/test_authority_v2_parity.py",
-    "harness/tests/test_creature_catalog.py","harness/tests/test_creature_rosters.py","harness/tests/test_target_projections.py","harness/tests/test_harness.py","harness/tests/test_readme_damage.py",
+    "harness/tests/damage_sentinel_oracles.py","harness/tests/test_damage_sentinels.py","harness/tests/test_damage_contract_integration.py","harness/tests/test_creature_catalog.py","harness/tests/test_creature_rosters.py","harness/tests/test_target_projections.py","harness/tests/test_harness.py","harness/tests/test_readme_damage.py",
     "tests/harness-authority.test.ts","tests/control-authority-v2-parity.test.ts",
     "tests/creature-catalog.test.ts","tests/fixtures/control-authority-v2-parity.json",
   ])assert.ok(paths.includes(required),required);
@@ -126,6 +126,7 @@ test("official harness sources and shared parity inputs are declared positive in
 
 test("minimal comparator parameters remain isolated from canonical KV mechanics",async()=>{
   const [{authority},yamlSource,configSource,comparatorSource]=await Promise.all([loadAuthority(),readFile("KineticVanguard.yaml","utf8"),readFile("harness/config/benchmark.json","utf8"),readFile("harness/comparators/fighter-subclasses.json","utf8")]);
-  const pattern=/battle.?master|eldritch.?knight|hunter.?ranger|open.?hand.?monk/i;assert.doesNotMatch(JSON.stringify(authority),pattern);assert.doesNotMatch(yamlSource,pattern);assert.doesNotMatch(configSource,pattern);assert.match(comparatorSource,/battle_master/);assert.match(comparatorSource,/eldritch_knight/);
+  const pattern=/battle.?master|eldritch.?knight|hunter.?ranger|open.?hand.?monk/i;assert.doesNotMatch(JSON.stringify(authority),pattern);assert.doesNotMatch(yamlSource,pattern);assert.match(comparatorSource,/battle_master/);assert.match(comparatorSource,/eldritch_knight/);
+  const config=JSON.parse(configSource);assert.equal(Object.hasOwn(config,"damage"),false);assert.deepEqual(config.damage_model.provider_ids,["kinetic_vanguard","battle_master","eldritch_knight"]);
   const comparators=JSON.parse(comparatorSource);assert.deepEqual(comparators.primary_comparator_ids,["battle_master","eldritch_knight"]);assert.equal(Object.hasOwn(comparators,"control"),false);
 });

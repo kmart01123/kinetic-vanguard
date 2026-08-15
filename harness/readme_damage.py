@@ -11,6 +11,7 @@ import shlex
 import stat
 import tempfile
 from dataclasses import asdict, dataclass
+from fractions import Fraction
 from pathlib import Path
 from typing import Sequence
 
@@ -45,8 +46,13 @@ README_DISCIPLINES = (
 RESULT_FIELDS = tuple(VALUE_COLUMNS)
 PROVENANCE_FIELDS = (
     "Provenance Damage Result Contract Version",
+    "Provenance Damage Model Mode Id",
+    "Provenance Target Knowledge Contract Id",
+    "Provenance Numeric Representation Id",
+    "Provenance Provider Ids",
     "Provenance Rules Version",
     "Provenance Authority Sha256",
+    "Provenance Authority Projection Sha256",
     "Provenance Catalog Contract Version",
     "Provenance Catalog Sha256",
     "Provenance Roster Contract Version",
@@ -61,8 +67,17 @@ PROVENANCE_FIELDS = (
     "Provenance Damage Consumer Requirements Sha256",
     "Provenance Config Sha256",
     "Provenance Comparator Config Sha256",
+    "Provenance Damage Model Contract Sha256",
+    "Provenance Sentinel Corpus Sha256",
+    "Provenance Sentinel Corpus File Sha256",
+    "Provenance Observation Policy Sha256",
+    "Provenance Resource Policy Sha256",
+    "Provenance Optimization Policy Sha256",
     "Provenance Evaluator",
     "Provenance Evaluator Implementation Sha256",
+    "Provenance Semantic Implementation Sha256",
+    "Provenance Orchestration Implementation Sha256",
+    "Provenance Reporter Implementation Sha256",
     "Provenance Trials",
     "Provenance Seed",
     "Provenance Trial Seed Role",
@@ -874,7 +889,7 @@ def load_verified_damage_run(path: Path) -> VerifiedDamageRun:
             f"missing={sorted(required - manifest.keys())}, "
             f"unknown={sorted(manifest.keys() - required)}"
         )
-    if manifest["format_version"] != 1 or manifest[
+    if manifest["format_version"] != 2 or manifest[
         "damage_result_contract_version"
     ] != DAMAGE_RESULT_CONTRACT_VERSION:
         raise MatrixSyncError("Unsupported damage run-manifest contract")
@@ -1257,9 +1272,9 @@ def validate_authoritative_rows(
                 raise MatrixSyncError(f"Damage row {index} changed notice field {field}")
         recomputed = damage_matrix_row(
             {},
-            float(row["KV"]),
-            float(row["Eldritch Knight"]),
-            float(row["Battle Master"]),
+            Fraction(row["KV Exact"]),
+            Fraction(row["Eldritch Knight Exact"]),
+            Fraction(row["Battle Master Exact"]),
         )
         for field in RESULT_FIELDS:
             if row[field] != recomputed[field]:

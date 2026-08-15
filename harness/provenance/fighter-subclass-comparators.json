@@ -1,10 +1,10 @@
 {
   "format_version": 1,
-  "audit_date": "2026-08-14",
-  "audited_commit": "e5d81ab1271b305bee5b92bca22bb9acce0275e9",
+  "contract_date": "2026-08-15",
+  "implementation_base_commit": "5fcee4b94dd97d0b8b88df3449358c74bd717c7c",
   "subject_file": "harness/comparators/fighter-subclasses.json",
-  "subject_sha256": "d3f953192e29c9b098715e3c5a426b62f680dd097bec3d41a7a0831b7c47046c",
-  "scalar_leaf_count": 65,
+  "subject_sha256": "97c2a7a01d01ea508ff7acf6213b57a245ef28f9bd0894d751fd3e02979b63b0",
+  "scalar_leaf_count": 69,
   "value_identity": {
     "algorithm": "sha256",
     "canonicalization": "RFC 8785 canonical JSON scalar encoded as UTF-8; all subject scalars are integers, booleans, or ASCII strings."
@@ -54,13 +54,19 @@
     },
     "project_comparator_methodology": {
       "kind": "project_authored_methodology",
-      "issue_url": "https://github.com/kmart01123/kinetic-vanguard/issues/19",
-      "implementation_commit": "0732ac9912d492f58407b29145680b635ba52757",
+      "governing_issue_url": "https://github.com/kmart01123/kinetic-vanguard/issues/65",
+      "frozen_contract_records": [
+        "https://github.com/kmart01123/kinetic-vanguard/issues/65#issuecomment-5300138781",
+        "https://github.com/kmart01123/kinetic-vanguard/issues/65#issuecomment-5300161056"
+      ],
+      "implementation_base_commit": "5fcee4b94dd97d0b8b88df3449358c74bd717c7c",
+      "prior_issue_url": "https://github.com/kmart01123/kinetic-vanguard/issues/19",
+      "prior_implementation_commit": "0732ac9912d492f58407b29145680b635ba52757",
       "repository_locators": [
         "harness/comparators/fighter-subclasses.json",
         "harness/README.md > Damage comparators"
       ],
-      "scope": "Frozen comparator build assumptions, analytical objective, observed-state policy, and compact configuration structure."
+      "scope": "Issue #65 nominal sustained-DPR objective, declared static target knowledge, optional True Strike, generic Battle Master damage package, and Hew profile; preserves prior methodology lineage."
     },
     "project_naming_disposition": {
       "kind": "project_maintainer_decision",
@@ -122,15 +128,40 @@
       "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
     },
     {
-      "field_path": "damage.battle_master.hew_critical_bonus_attack_once_per_round",
+      "field_path": "damage.battle_master.hew_bonus_action_reserved",
       "value_sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
       "source_classification": "project_authored_benchmark_assumption",
       "expression_classification": "project_authored_policy",
       "source_id": "project_comparator_methodology",
-      "locator": "damage.battle_master.hew_critical_bonus_attack_once_per_round; #52:5291985967; https://www.dndbeyond.com/feats/1789149-great-weapon-master; immediately after Critical Hit or reducing target to 0 Hit Points -> same-weapon Bonus Action attack",
+      "locator": "Issue #65 comment 5300138781 > nominal sustained DPR > configured Battle Master profile reserves an available Bonus Action",
       "public_name_required": false,
-      "rationale": "Official feat has Critical Hit and reduce-to-0-HP triggers; conservative project methodology credits only Critical Hit, omits reduce-to-0-HP, and retains once-per-round. This scalar does not represent every official Hew trigger.",
+      "rationale": "Project-authored nominal profile reserves the Bonus Action needed for Hew; target death is disabled, so only the critical trigger is reachable. Availability is not an official guarantee.",
       "unresolved_counsel": false,
+      "comparator_id": "battle_master"
+    },
+    {
+      "field_path": "damage.battle_master.hew_critical_bonus_attack_once_per_fighter_turn",
+      "value_sha256": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+      "source_classification": "non_srd_official_fact",
+      "expression_classification": "compact_independently_phrased_relational_fact",
+      "source_id": "phb_2024",
+      "locator": "2024 PHB digital > https://www.dndbeyond.com/feats/1789149-great-weapon-master > Hew; owner-source issue #52 comment 5291985967",
+      "public_name_required": false,
+      "rationale": "Owner-source verifies the Hew benefit is limited to once per turn; the comparator names the modeled turn as the Fighter turn, in compact independently phrased form.",
+      "unresolved_counsel": true,
+      "comparator_id": "battle_master",
+      "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
+    },
+    {
+      "field_path": "damage.battle_master.hew_follow_up_weapon",
+      "value_sha256": "3ad668d80722e2fd5be5740df7b7f16aa0f2780fa6aabe6289ab64672b73006d",
+      "source_classification": "non_srd_official_fact",
+      "expression_classification": "compact_independently_phrased_relational_fact",
+      "source_id": "phb_2024",
+      "locator": "2024 PHB digital > https://www.dndbeyond.com/feats/1789149-great-weapon-master > Hew; owner-source issue #52 comment 5291985967",
+      "public_name_required": false,
+      "rationale": "Owner-source verifies the Bonus Action follow-up uses the triggering attack's weapon; the relation is compact and does not copy feat prose.",
+      "unresolved_counsel": true,
       "comparator_id": "battle_master",
       "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
     },
@@ -370,25 +401,25 @@
     },
     {
       "field_path": "damage.battle_master.tactical_policy.objective",
-      "value_sha256": "78e1047cd529748314fba71565e486c64c6b21f6bd231aaf201977d39a989949",
+      "value_sha256": "3e51a975877df707ba9f32f44055ed2fa19c1d8de44378416ca0bd7976af8ee7",
       "source_classification": "project_authored_tactical_policy",
       "expression_classification": "project_authored_policy",
       "source_id": "project_comparator_methodology",
       "locator": "harness/comparators/fighter-subclasses.json > damage.battle_master.tactical_policy.objective; harness/README.md > Damage comparators",
       "public_name_required": false,
-      "rationale": "Project optimization objective for the three-round comparator horizon; not an official rule.",
+      "rationale": "Issue #65 project objective maximizing exact nominal sustained damage over the configured three-round horizon; not an official rule.",
       "unresolved_counsel": false,
       "comparator_id": "battle_master"
     },
     {
       "field_path": "damage.battle_master.tactical_policy.on_hit_die_effect",
-      "value_sha256": "12c2e70b5966107dd64d10b0dacb65c6f51407fa16cbaa1b439e1ed95ebcaa60",
+      "value_sha256": "85a23d63d7322085d7070f3892c11d2051499e8280ad4777ed1959ff32db7c3b",
       "source_classification": "project_authored_tactical_policy",
       "expression_classification": "project_authored_policy",
       "source_id": "project_comparator_methodology",
       "locator": "harness/comparators/fighter-subclasses.json > damage.battle_master.tactical_policy.on_hit_die_effect; harness/README.md > Damage comparators",
       "public_name_required": false,
-      "rationale": "Project hit-trigger damage abstraction supported by the accepted compact maneuver decomposition.",
+      "rationale": "Issue #65 bounded damage-only package: one generic on-hit superiority die or available Relentless d8, mutually exclusive with Precision; not a named maneuver.",
       "unresolved_counsel": false,
       "comparator_id": "battle_master",
       "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5246520863"
@@ -587,25 +618,25 @@
     },
     {
       "field_path": "damage.eldritch_knight.tactical_policy.decision_information",
-      "value_sha256": "bf1e5718f282290547921a9c6a1b760d766c06086a330f3c608e007808202f21",
+      "value_sha256": "90918c05cd48f82a42be04aaf467ab9333ea9c84b40b09e8a46563a46d2e1648",
       "source_classification": "project_authored_tactical_policy",
       "expression_classification": "project_authored_policy",
       "source_id": "project_comparator_methodology",
       "locator": "harness/comparators/fighter-subclasses.json > damage.eldritch_knight.tactical_policy.decision_information; harness/README.md > Damage comparators",
       "public_name_required": false,
-      "rationale": "Project fail-closed information policy limiting choices to observed state.",
+      "rationale": "Issue #65 project policy permits declared static target knowledge and current observed state while excluding future random outcomes.",
       "unresolved_counsel": false,
       "comparator_id": "eldritch_knight"
     },
     {
       "field_path": "damage.eldritch_knight.tactical_policy.objective",
-      "value_sha256": "78e1047cd529748314fba71565e486c64c6b21f6bd231aaf201977d39a989949",
+      "value_sha256": "3e51a975877df707ba9f32f44055ed2fa19c1d8de44378416ca0bd7976af8ee7",
       "source_classification": "project_authored_tactical_policy",
       "expression_classification": "project_authored_policy",
       "source_id": "project_comparator_methodology",
       "locator": "harness/comparators/fighter-subclasses.json > damage.eldritch_knight.tactical_policy.objective; harness/README.md > Damage comparators",
       "public_name_required": false,
-      "rationale": "Project optimization objective for the three-round comparator horizon; not an official rule.",
+      "rationale": "Issue #65 project objective maximizing exact nominal sustained damage over the configured three-round horizon; not an official rule.",
       "unresolved_counsel": false,
       "comparator_id": "eldritch_knight"
     },
@@ -624,13 +655,13 @@
     },
     {
       "field_path": "damage.eldritch_knight.tactical_policy.true_strike_use_count",
-      "value_sha256": "b4f8369e0d11d745585fd6cf2362b87ee4c37b61a74ad7fa1488c8a731883cb0",
+      "value_sha256": "e9cc64bb649dae505ed2a253c09ac7680405f89958c7566f6e48a977940e4ec9",
       "source_classification": "project_authored_tactical_policy",
       "expression_classification": "project_authored_policy",
       "source_id": "project_comparator_methodology",
       "locator": "harness/comparators/fighter-subclasses.json > damage.eldritch_knight.tactical_policy.true_strike_use_count; harness/README.md > Damage comparators",
       "public_name_required": false,
-      "rationale": "Project enforcement label binding evaluation to the configured War Magic substitution count.",
+      "rationale": "Issue #65 optionality policy permits zero or one True Strike replacement per Attack action, bounded by the configured maximum and War Magic substitution record.",
       "unresolved_counsel": false,
       "comparator_id": "eldritch_knight",
       "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5239280314"
@@ -686,6 +717,30 @@
       "unresolved_counsel": false,
       "comparator_id": "eldritch_knight",
       "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5246155660"
+    },
+    {
+      "field_path": "damage.eldritch_knight.true_strike_base_damage_modes[0]",
+      "value_sha256": "599d66d09e347b8553b396cd6f8cb9329a01b1a7a7f3b657c0d6d4f566129197",
+      "source_classification": "srd_5_2_1_fact",
+      "expression_classification": "compact_independently_phrased_relational_fact",
+      "source_id": "srd_5_2_1",
+      "locator": "SRD 5.2.1 PDF p. 171 > True Strike",
+      "public_name_required": false,
+      "rationale": "Compact radiant-base identifier for the SRD option that changes the attack's damage to Radiant.",
+      "unresolved_counsel": false,
+      "comparator_id": "eldritch_knight"
+    },
+    {
+      "field_path": "damage.eldritch_knight.true_strike_base_damage_modes[1]",
+      "value_sha256": "e0a2904a0ca07abf64405ac868ce7b624f7d7593c5cfdc6c4119fb5109edd6a7",
+      "source_classification": "srd_5_2_1_fact",
+      "expression_classification": "compact_independently_phrased_relational_fact",
+      "source_id": "srd_5_2_1",
+      "locator": "SRD 5.2.1 PDF p. 171 > True Strike",
+      "public_name_required": false,
+      "rationale": "Compact weapon-normal-base identifier for the SRD option that leaves the attack's base damage type unchanged.",
+      "unresolved_counsel": false,
+      "comparator_id": "eldritch_knight"
     },
     {
       "field_path": "damage.eldritch_knight.true_strike_damage_by_level.11.count",
@@ -791,19 +846,19 @@
       "source_id": "srd_5_2_1",
       "locator": "SRD 5.2.1 PDF p. 171 > True Strike",
       "public_name_required": false,
-      "rationale": "SRD permits Radiant True Strike damage; the comparator fixes that listed option.",
+      "rationale": "SRD True Strike upgrade dice are Radiant in either configured base-damage mode.",
       "unresolved_counsel": false,
       "comparator_id": "eldritch_knight"
     },
     {
-      "field_path": "damage.eldritch_knight.true_strike_uses_per_attack_action",
+      "field_path": "damage.eldritch_knight.true_strike_maximum_uses_per_attack_action",
       "value_sha256": "6b86b273ff34fce19d6b804eff5a3f5747ada4eaa22f1d49c01e52ddb7875b4b",
       "source_classification": "non_srd_official_fact",
       "expression_classification": "bare_numeric_fact",
       "source_id": "phb_2024",
       "locator": "2024 PHB digital > Eldritch Knight > #Level7WarMagic; Spells > #TrueStrike",
       "public_name_required": false,
-      "rationale": "Compact one-cantrip substitution bound from War Magic combined with True Strike's single weapon attack.",
+      "rationale": "Maximum one-cantrip substitution bound from War Magic combined with True Strike's single weapon attack; project policy separately permits zero uses.",
       "unresolved_counsel": true,
       "comparator_id": "eldritch_knight",
       "accepted_github_audit_record": "https://github.com/kmart01123/kinetic-vanguard/issues/50#issuecomment-5239280314"

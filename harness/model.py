@@ -1,4 +1,4 @@
-"""Frozen damage-benchmark configuration and shared arithmetic helpers."""
+"""Frozen damage-benchmark and comparator configuration loaders."""
 
 from __future__ import annotations
 
@@ -8,8 +8,6 @@ from pathlib import Path
 from typing import Any
 
 from .creature_catalog import HEADLINE_PROFILE_ID
-from .creature_damage_projection import DamageTarget
-
 HARNESS_ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = HARNESS_ROOT / "config" / "benchmark.json"
 DEFAULT_COMPARATORS = HARNESS_ROOT / "comparators" / "fighter-subclasses.json"
@@ -44,13 +42,17 @@ def _level_map(value:Any,label:str,validator:Any=_integer)->dict[str,Any]:
 
 def load_config(path:Path=DEFAULT_CONFIG)->dict[str,Any]:
     with path.open(encoding="utf-8") as stream:data=json.load(stream)
-    data=_object(data,"benchmark config");_exact_keys(data,{"format_version","methodology","fighter_progression","fighter_mechanics","kv_profile","damage_matrix"},"benchmark config")
-    if data["format_version"]!=2:raise ValueError("Unsupported benchmark config format version")
+    data=_object(data,"benchmark config");_exact_keys(data,{"format_version","damage_model","methodology","fighter_progression","fighter_mechanics","kv_profile","damage_matrix"},"benchmark config")
+    if data["format_version"]!=3:raise ValueError("Unsupported benchmark config format version")
+    damage_model=_object(data["damage_model"],"damage_model");_exact_keys(damage_model,{"mode_id","target_knowledge_contract_id","numeric_representation","finite_hp_mode","provider_ids"},"damage_model")
+    expected_damage_model={"mode_id":"nominal_sustained_dpr_v1","target_knowledge_contract_id":"declared_static_target_knowledge_v1","numeric_representation":"exact_fraction","finite_hp_mode":"unsupported_in_pr1","provider_ids":["kinetic_vanguard","battle_master","eldritch_knight"]}
+    if damage_model!=expected_damage_model:raise ValueError("Unsupported nominal damage-model contract")
     methodology=_object(data["methodology"],"methodology");_exact_keys(methodology,{"status","historical_source","levels","rounds","cluster_sizes","target_profile_id","target_weighting","target_death","ally_turns","legal_positioning_assumed","legendary_resistance","damage_default_trials","damage_seed"},"methodology")
     if methodology["status"] not in {"PORTED_UNDER_REVIEW","REVIEWED_WITH_DOCUMENTED_DIFFERENCES"}:raise ValueError("Unsupported numerical review status")
     if methodology["levels"]!=[7,11,15,20] or methodology["cluster_sizes"]!=[1,3,6] or methodology["rounds"]!=3:raise ValueError("Benchmark levels, clusters, and three-round horizon are frozen")
     if methodology["target_profile_id"]!=HEADLINE_PROFILE_ID or methodology["target_weighting"]!="explicit_rational_profile_weights" or methodology["legendary_resistance"]!="metadata_only":raise ValueError("Unsupported benchmark target profile, aggregation, or Legendary Resistance policy")
     for key in ("target_death","ally_turns","legal_positioning_assumed"):_boolean(methodology[key],f"methodology.{key}")
+    if methodology["target_death"] is not False or methodology["ally_turns"] is not False or methodology["legal_positioning_assumed"] is not True:raise ValueError("Unsupported nominal target-death, ally-turn, or positioning contract")
     for key in ("damage_default_trials","damage_seed"):_integer(methodology[key],f"methodology.{key}",1)
     progression=_object(data["fighter_progression"],"fighter_progression");_exact_keys(progression,{"7","11","15","20"},"fighter_progression")
     for level,row_value in progression.items():
@@ -84,12 +86,16 @@ def load_config(path:Path=DEFAULT_CONFIG)->dict[str,Any]:
     boundary=_object(damage["non_damage_effect_boundary"],"damage_matrix.non_damage_effect_boundary");_exact_keys(boundary,{"rider_conditions_and_save_outcomes","ally_turn_accuracy_and_damage","modeled_self_attack_exception"},"damage_matrix.non_damage_effect_boundary")
     expected_boundary={"rider_conditions_and_save_outcomes":"excluded_from_damage","ally_turn_accuracy_and_damage":"excluded","modeled_self_attack_exception":"thermal_fracture_ac_reduction"}
     if boundary!=expected_boundary:raise ValueError("Unsupported non-damage effect boundary")
-    optimization=_object(damage["optimization"],"damage_matrix.optimization");_exact_keys(optimization,{"scope","objective","decision_timing"},"damage_matrix.optimization")
+    optimization=_object(damage["optimization"],"damage_matrix.optimization");_exact_keys(optimization,{"scope","objective","resource_cost_classes","decision_timing"},"damage_matrix.optimization")
     if optimization["scope"]!="per_target_discipline_cluster":raise ValueError("Unsupported damage optimization scope")
-    if optimization["objective"]!=["aggregate_damage","primary_damage"]:raise ValueError("Unsupported damage optimization objective")
+    expected_objective=["aggregate_damage","primary_damage","least_self_damage","least_horizon_limited_use","least_persistent_pool_use","least_refreshable_use","smallest_canonical_action_id"]
+    if optimization["objective"]!=expected_objective:raise ValueError("Unsupported damage optimization objective")
+    costs=_object(optimization["resource_cost_classes"],"damage_matrix.optimization.resource_cost_classes");_exact_keys(costs,{"order","kinetic_vanguard","battle_master","eldritch_knight"},"damage_matrix.optimization.resource_cost_classes")
+    expected_costs={"order":["self_damage","horizon_limited","persistent_pool","refreshable"],"kinetic_vanguard":{"self_damage":["blood_tax"],"horizon_limited":["overload_mastery"],"persistent_pool":["psi"],"refreshable":["combat_prowess"]},"battle_master":{"self_damage":[],"horizon_limited":[],"persistent_pool":["superiority_die"],"refreshable":["relentless","combat_prowess","hew","bonus_action"]},"eldritch_knight":{"self_damage":[],"horizon_limited":[],"persistent_pool":[],"refreshable":["true_strike_replacement","combat_prowess"]}}
+    if costs!=expected_costs:raise ValueError("Unsupported nominal resource-cost contract")
     timing=_object(optimization["decision_timing"],"damage_matrix.optimization.decision_timing");_exact_keys(timing,{"pre_roll_declarations","unobserved_outcome_lookahead","post_roll_decisions"},"damage_matrix.optimization.decision_timing")
     _boolean(timing["unobserved_outcome_lookahead"],"damage_matrix.optimization.decision_timing.unobserved_outcome_lookahead")
-    expected_timing={"pre_roll_declarations":"optimize_from_legally_observed_state","unobserved_outcome_lookahead":False,"post_roll_decisions":["combat_prowess"]}
+    expected_timing={"pre_roll_declarations":"optimize_from_legally_observed_state","unobserved_outcome_lookahead":False,"post_roll_decisions":["battle_master_precision","combat_prowess","battle_master_on_hit_die","hew_bonus_attack"]}
     if timing!=expected_timing:raise ValueError("Unsupported damage optimization decision timing")
     exclusions=damage["excluded_stateful_features"]
     if not isinstance(exclusions,list) or not exclusions:raise ValueError("damage_matrix.excluded_stateful_features must be a non-empty list")
@@ -115,22 +121,25 @@ def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
     if not isinstance(primary,list) or len(primary)!=len(expected) or any(not isinstance(item,str) for item in primary) or set(primary)!=expected:raise ValueError("Primary comparators must be Battle Master and Eldritch Knight")
     damage=_object(data["damage"],"damage comparators")
     if set(damage)!=expected:raise ValueError("Damage comparator set is incomplete or unsupported")
-    bm=_object(damage["battle_master"],"damage.battle_master");_exact_keys(bm,{"ability_modifier","weapon","magic_weapon_bonus_by_level","great_weapon_master_attack_action_bonus","graze_damage","hew_critical_bonus_attack_once_per_round","superiority_die_by_level","superiority_pool_by_level","relentless_minimum_level","relentless_die","tactical_policy"},"damage.battle_master")
+    bm=_object(damage["battle_master"],"damage.battle_master");_exact_keys(bm,{"ability_modifier","weapon","magic_weapon_bonus_by_level","great_weapon_master_attack_action_bonus","graze_damage","hew_critical_bonus_attack_once_per_fighter_turn","hew_bonus_action_reserved","hew_follow_up_weapon","superiority_die_by_level","superiority_pool_by_level","relentless_minimum_level","relentless_die","tactical_policy"},"damage.battle_master")
     for key in ("ability_modifier","graze_damage","relentless_minimum_level","relentless_die"):_integer(bm[key],f"damage.battle_master.{key}",0)
     _weapon(bm["weapon"],"damage.battle_master.weapon");_level_map(bm["magic_weapon_bonus_by_level"],"damage.battle_master.magic_weapon_bonus_by_level");_level_map(bm["superiority_die_by_level"],"damage.battle_master.superiority_die_by_level");_level_map(bm["superiority_pool_by_level"],"damage.battle_master.superiority_pool_by_level")
     if bm["great_weapon_master_attack_action_bonus"]!="proficiency_bonus":raise ValueError("Battle Master GWM bonus must be proficiency_bonus")
-    _boolean(bm["hew_critical_bonus_attack_once_per_round"],"damage.battle_master.hew_critical_bonus_attack_once_per_round")
+    _boolean(bm["hew_critical_bonus_attack_once_per_fighter_turn"],"damage.battle_master.hew_critical_bonus_attack_once_per_fighter_turn");_boolean(bm["hew_bonus_action_reserved"],"damage.battle_master.hew_bonus_action_reserved")
+    if bm["hew_follow_up_weapon"]!="same_weapon":raise ValueError("Battle Master Hew follow-up must use the same weapon")
     bm_policy=_object(bm["tactical_policy"],"damage.battle_master.tactical_policy");_exact_keys(bm_policy,{"objective","maneuver_choice_timing","on_hit_die_effect","on_miss_die_effect","maneuver_die_consumption","maximum_maneuver_dice_per_attack","relentless_die_options","relentless_uses_per_turn","relentless_superiority_pool_cost","relentless_refresh","hew_choice_timing"},"damage.battle_master.tactical_policy")
     _integer(bm_policy["maximum_maneuver_dice_per_attack"],"damage.battle_master.tactical_policy.maximum_maneuver_dice_per_attack",1);_integer(bm_policy["relentless_uses_per_turn"],"damage.battle_master.tactical_policy.relentless_uses_per_turn",1);_integer(bm_policy["relentless_superiority_pool_cost"],"damage.battle_master.tactical_policy.relentless_superiority_pool_cost",0)
-    expected_bm_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","maneuver_choice_timing":"after_observed_attack_roll_result","on_hit_die_effect":"damage","on_miss_die_effect":"attack_roll_bonus","maneuver_die_consumption":"on_use_before_die_result","maximum_maneuver_dice_per_attack":1,"relentless_die_options":"same_as_superiority_die","relentless_uses_per_turn":1,"relentless_superiority_pool_cost":0,"relentless_refresh":"start_of_next_turn","hew_choice_timing":"after_observed_critical"}
+    expected_bm_policy={"objective":"nominal_sustained_dpr_v1","maneuver_choice_timing":"after_observed_attack_roll_result","on_hit_die_effect":"generic_on_hit_superiority_damage_v1","on_miss_die_effect":"attack_roll_bonus","maneuver_die_consumption":"on_use_before_die_result","maximum_maneuver_dice_per_attack":1,"relentless_die_options":"same_as_superiority_die","relentless_uses_per_turn":1,"relentless_superiority_pool_cost":0,"relentless_refresh":"start_of_next_turn","hew_choice_timing":"after_observed_critical"}
     if bm_policy!=expected_bm_policy:raise ValueError("Unsupported Battle Master tactical policy")
-    ek=_object(damage["eldritch_knight"],"damage.eldritch_knight");_exact_keys(ek,{"regular_attack_ability_modifier","true_strike_ability_modifier_by_level","weapon","magic_weapon_bonus_by_level","dueling_damage_bonus","true_strike_damage_by_level","true_strike_uses_per_attack_action","true_strike_damage_type","tactical_policy"},"damage.eldritch_knight")
-    _integer(ek["regular_attack_ability_modifier"],"damage.eldritch_knight.regular_attack_ability_modifier",0);_integer(ek["dueling_damage_bonus"],"damage.eldritch_knight.dueling_damage_bonus",0);_integer(ek["true_strike_uses_per_attack_action"],"damage.eldritch_knight.true_strike_uses_per_attack_action",0);_weapon(ek["weapon"],"damage.eldritch_knight.weapon");_level_map(ek["true_strike_ability_modifier_by_level"],"damage.eldritch_knight.true_strike_ability_modifier_by_level");_level_map(ek["magic_weapon_bonus_by_level"],"damage.eldritch_knight.magic_weapon_bonus_by_level")
+    ek=_object(damage["eldritch_knight"],"damage.eldritch_knight");_exact_keys(ek,{"regular_attack_ability_modifier","true_strike_ability_modifier_by_level","weapon","magic_weapon_bonus_by_level","dueling_damage_bonus","true_strike_damage_by_level","true_strike_maximum_uses_per_attack_action","true_strike_damage_type","true_strike_base_damage_modes","tactical_policy"},"damage.eldritch_knight")
+    _integer(ek["regular_attack_ability_modifier"],"damage.eldritch_knight.regular_attack_ability_modifier",0);_integer(ek["dueling_damage_bonus"],"damage.eldritch_knight.dueling_damage_bonus",0);_integer(ek["true_strike_maximum_uses_per_attack_action"],"damage.eldritch_knight.true_strike_maximum_uses_per_attack_action",0);_weapon(ek["weapon"],"damage.eldritch_knight.weapon");_level_map(ek["true_strike_ability_modifier_by_level"],"damage.eldritch_knight.true_strike_ability_modifier_by_level");_level_map(ek["magic_weapon_bonus_by_level"],"damage.eldritch_knight.magic_weapon_bonus_by_level")
+    if ek["true_strike_maximum_uses_per_attack_action"]!=1:raise ValueError("True Strike replacement maximum must be exactly one per Attack action")
     true_damage=_object(ek["true_strike_damage_by_level"],"damage.eldritch_knight.true_strike_damage_by_level");_exact_keys(true_damage,{"7","11","15","20"},"damage.eldritch_knight.true_strike_damage_by_level")
     for level,packet_value in true_damage.items():packet=_object(packet_value,f"true strike damage {level}");_exact_keys(packet,{"count","sides"},f"true strike damage {level}");_integer(packet["count"],f"true strike damage {level}.count",0);_integer(packet["sides"],f"true strike damage {level}.sides",2)
     if ek["true_strike_damage_type"]!="radiant":raise ValueError("Unsupported True Strike damage type")
+    if ek["true_strike_base_damage_modes"]!=["radiant_base","weapon_normal_base"]:raise ValueError("Unsupported True Strike base-damage modes")
     ek_policy=_object(ek["tactical_policy"],"damage.eldritch_knight.tactical_policy");_exact_keys(ek_policy,{"objective","true_strike_choice_timing","decision_information","true_strike_use_count"},"damage.eldritch_knight.tactical_policy")
-    expected_ek_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","true_strike_choice_timing":"before_attack_roll","decision_information":"observed_state_only","true_strike_use_count":"exactly_configured_per_attack_action"}
+    expected_ek_policy={"objective":"nominal_sustained_dpr_v1","true_strike_choice_timing":"before_attack_roll","decision_information":"declared_static_target_knowledge_v1_and_observed_state","true_strike_use_count":"zero_to_configured_maximum_per_attack_action"}
     if ek_policy!=expected_ek_policy:raise ValueError("Unsupported Eldritch Knight tactical policy")
     return data
 
@@ -140,19 +149,6 @@ def file_sha256(path:Path)->str:
     with path.open("rb") as stream:
         for chunk in iter(lambda:stream.read(65536),b""):digest.update(chunk)
     return digest.hexdigest()
-
-
-def save_success_probability(target:DamageTarget,ability:str,dc:int)->float:
-    """Return the maintained damage model's save success probability."""
-
-    successes=total=0
-    for first in range(1,21):
-        seconds=range(1,21) if target.magic_resistance else (first,)
-        for second in seconds:
-            natural=max(first,second) if target.magic_resistance else first
-            successes+=natural+target.saves[ability]>=dc
-            total+=1
-    return successes/total
 
 
 def level_config(config:dict[str,Any],level:int)->dict[str,Any]:

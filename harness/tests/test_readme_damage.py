@@ -58,8 +58,13 @@ from harness.readme_damage import (
 
 EXPECTED_PROVENANCE_FIELDS = (
     "Provenance Damage Result Contract Version",
+    "Provenance Damage Model Mode Id",
+    "Provenance Target Knowledge Contract Id",
+    "Provenance Numeric Representation Id",
+    "Provenance Provider Ids",
     "Provenance Rules Version",
     "Provenance Authority Sha256",
+    "Provenance Authority Projection Sha256",
     "Provenance Catalog Contract Version",
     "Provenance Catalog Sha256",
     "Provenance Roster Contract Version",
@@ -74,8 +79,17 @@ EXPECTED_PROVENANCE_FIELDS = (
     "Provenance Damage Consumer Requirements Sha256",
     "Provenance Config Sha256",
     "Provenance Comparator Config Sha256",
+    "Provenance Damage Model Contract Sha256",
+    "Provenance Sentinel Corpus Sha256",
+    "Provenance Sentinel Corpus File Sha256",
+    "Provenance Observation Policy Sha256",
+    "Provenance Resource Policy Sha256",
+    "Provenance Optimization Policy Sha256",
     "Provenance Evaluator",
     "Provenance Evaluator Implementation Sha256",
+    "Provenance Semantic Implementation Sha256",
+    "Provenance Orchestration Implementation Sha256",
+    "Provenance Reporter Implementation Sha256",
     "Provenance Trials",
     "Provenance Seed",
     "Provenance Trial Seed Role",
@@ -251,7 +265,7 @@ def _write_verified_run_fixture(
 
     config = load_config()
     manifest = {
-        "format_version": 1,
+        "format_version": 2,
         "damage_result_contract_version": identity[
             "damage_result_contract_version"
         ],
@@ -925,9 +939,39 @@ class VerifiedDamageRunTests(unittest.TestCase):
 
     def test_manifest_input_identity_and_output_digests_fail_closed(self) -> None:
         for field in (
+            "damage_model_mode_id",
+            "target_knowledge_contract_id",
+            "numeric_representation_id",
+            "provider_ids",
+        ):
+            with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
+                root = Path(directory)
+                manifest_path, _, manifest = _write_verified_run_fixture(root)
+                manifest["inputs"][field] = "stale_identity"
+                manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+                with patch.object(
+                    readme_damage,
+                    "load_damage_input_bundle",
+                    return_value=_current_damage_bundle(),
+                ):
+                    with self.assertRaisesRegex(
+                        MatrixSyncError, f"stale or foreign: {field}"
+                    ):
+                        load_verified_damage_run(manifest_path)
+
+        for field in (
             "catalog_sha256",
             "damage_consumer_requirements_sha256",
+            "damage_model_contract_sha256",
+            "sentinel_corpus_sha256",
+            "sentinel_corpus_file_sha256",
+            "observation_policy_sha256",
+            "resource_policy_sha256",
+            "optimization_policy_sha256",
             "evaluator_implementation_sha256",
+            "semantic_implementation_sha256",
+            "orchestration_implementation_sha256",
+            "reporter_implementation_sha256",
         ):
             with self.subTest(field=field), tempfile.TemporaryDirectory() as directory:
                 root = Path(directory)
@@ -981,6 +1025,11 @@ class VerifiedDamageRunTests(unittest.TestCase):
     def test_manifest_contract_inventory_and_row_counts_fail_closed(self) -> None:
         cases = (
             ("unknown key", lambda data: data.update({"unexpected": True}), "keys"),
+            (
+                "legacy manifest version",
+                lambda data: data.update({"format_version": 1}),
+                "run-manifest contract",
+            ),
             (
                 "missing output",
                 lambda data: data["outputs"].pop("matrix_html"),
@@ -1285,7 +1334,16 @@ class AuthoritativeDamageRowValidationTests(unittest.TestCase):
     def test_full_current_shape_synthetic_rows_pass(self) -> None:
         model = DamageAuthorityModel.load(DEFAULT_AUTHORITY)
         config = load_config()
+        damage_model_contract = json.loads(
+            (Path(__file__).resolve().parents[1] / "provenance" / "damage-model-contract.json").read_text(
+                encoding="utf-8"
+            )
+        )
         self.assertEqual(PROVENANCE_FIELDS, EXPECTED_PROVENANCE_FIELDS)
+        self.assertEqual(
+            damage_model_contract["result_and_provenance"]["required_input_identity_fields"],
+            list(self.identity),
+        )
         self.assertEqual(len(_current_damage_bundle().entries), 47)
         self.assertEqual(
             self.identity["target_profile_id"],

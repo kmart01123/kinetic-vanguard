@@ -119,7 +119,7 @@ test("retired control runtime is absent while static target and damage boundarie
   await Promise.all([...retiredPaths,...compatibilityPaths].map(assertAbsent));
 
   const inputs=JSON.parse(await readFile("build/inputs.json","utf8")).inputs as Array<{path:string;role:string}>,inputRoles=new Map(inputs.map(input=>[input.path,input.role]));
-  assert.equal(inputs.length,84,"retirement removes exactly 15 inputs and legal hygiene adds two maintained records");
+  assert.equal(inputs.length,90,"retirement boundary plus the nominal damage successor inputs");
   for(const path of retiredPaths)assert.equal(inputRoles.has(path),false,`${path} is absent from build inputs`);
   const retainedInputs:ReadonlyArray<readonly [string,string]>=[
     ["src/control-authority-v2.ts","rule_source"],
@@ -155,10 +155,10 @@ test("retired control runtime is absent while static target and damage boundarie
   for(const path of maintainedPython)assert.doesNotMatch(await readFile(path,"utf8"),retiredImport,`${path} does not import the retired runtime`);
 
   const projectionModules=["harness/creature_damage_projection.py","harness/creature_control_projection.py"] as const;
-  const damagePaths=["harness/model.py","harness/creature_damage_projection.py","harness/damage_harness.py","harness/damage_report.py","harness/readme_damage.py"] as const;
+  const damagePaths=["harness/model.py","harness/creature_damage_projection.py","harness/damage_contract.py","harness/damage_harness.py","harness/damage_report.py","harness/readme_damage.py"] as const;
   const damageSources=await Promise.all(damagePaths.map(path=>readFile(path,"utf8")));
   for(const [index,source] of damageSources.entries())assert.doesNotMatch(source,/\bControlTarget\b|creature_control_projection|control_(?:catalog|graph|state|timeline|engine)\b/,`${damagePaths[index]} remains isolated from ControlTarget and control-only code`);
-  const projectionSources=await Promise.all(["harness/creature_catalog.py",...projectionModules].map(path=>readFile(path,"utf8"))),creatureSource=projectionSources[0]!,damageProjection=projectionSources[1]!,controlProjection=projectionSources[2]!,damageHarness=damageSources[2]!;
+  const projectionSources=await Promise.all(["harness/creature_catalog.py",...projectionModules].map(path=>readFile(path,"utf8"))),creatureSource=projectionSources[0]!,damageProjection=projectionSources[1]!,controlProjection=projectionSources[2]!,damageHarness=damageSources[3]!;
   assert.match(damageHarness,/(?:from\s+\.creature_catalog|from\s+harness\.creature_catalog\s+import)/);
   assert.match(damageHarness,/(?:from\s+\.creature_damage_projection|from\s+harness\.creature_damage_projection\s+import)/);
   assert.match(damageProjection,/(?:from\s+\.creature_catalog|from\s+harness\.creature_catalog\s+import)/);

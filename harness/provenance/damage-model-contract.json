@@ -1,0 +1,276 @@
+{
+  "format_version": 1,
+  "contract_id": "issue_65_phase_2_pr1_nominal_replacement_v1",
+  "repository": "kmart01123/kinetic-vanguard",
+  "issue_number": 65,
+  "issue_url": "https://github.com/kmart01123/kinetic-vanguard/issues/65",
+  "implementation_base_commit": "5fcee4b94dd97d0b8b88df3449358c74bd717c7c",
+  "frozen_contract_records": [
+    {
+      "comment_id": 5300138781,
+      "url": "https://github.com/kmart01123/kinetic-vanguard/issues/65#issuecomment-5300138781",
+      "role": "corrected_and_frozen_phase_1_contract"
+    },
+    {
+      "comment_id": 5300161056,
+      "url": "https://github.com/kmart01123/kinetic-vanguard/issues/65#issuecomment-5300161056",
+      "role": "independent_phase_1_contract_review"
+    }
+  ],
+  "phase_2_authorization": {
+    "authorized_on": "2026-08-15",
+    "scope": "pr1_nominal_replacement_only",
+    "publication_target": "draft_pull_request",
+    "independent_validation_scope": "sentinels_and_non_analytical_checks",
+    "finite_hp_implementation_authorized": false,
+    "complete_47_target_matrix_authorized": false
+  },
+  "pr1_scope": {
+    "phase": "phase_2_pr1",
+    "mode_id": "nominal_sustained_dpr_v1",
+    "evaluator_id": "exact_analytical_enumeration",
+    "numeric_representation_id": "exact_fraction",
+    "target_knowledge_contract_id": "declared_static_target_knowledge_v1",
+    "objective_policy_id": "nominal_sustained_dpr_v1",
+    "provider_ids": [
+      "kinetic_vanguard",
+      "battle_master",
+      "eldritch_knight"
+    ],
+    "battle_master_damage_package_id": "generic_on_hit_superiority_damage_v1",
+    "target_death": false
+  },
+  "nominal_target_knowledge": {
+    "contract_id": "declared_static_target_knowledge_v1",
+    "provider_surface": "identical_for_all_providers",
+    "visible_static_fields": [
+      "armor_class",
+      "saving_throw_bonuses",
+      "magic_resistance",
+      "legendary_resistance_metadata_policy",
+      "damage_resistances",
+      "damage_immunities",
+      "damage_vulnerabilities",
+      "size_when_legally_relevant",
+      "creature_type_when_legally_relevant"
+    ],
+    "deferred_finite_visible_fields": [
+      "current_hit_points",
+      "alive_or_dead_state"
+    ],
+    "hidden_future_fields": [
+      "future_attack_rolls",
+      "future_save_rolls",
+      "future_damage_rolls",
+      "future_deaths",
+      "unselected_future_policy_branches"
+    ],
+    "active_observation_stages": [
+      "before_choosing_action",
+      "before_declaring_attack",
+      "before_declaring_rider",
+      "after_natural_attack_roll_observed",
+      "after_provisional_miss",
+      "after_miss_correction_resolved",
+      "after_final_hit_or_critical_identity",
+      "before_legal_follow_up_decision"
+    ],
+    "deferred_finite_observation_stages": [
+      "after_damage_roll_observed",
+      "after_target_death_known",
+      "before_retargeting_decision"
+    ]
+  },
+  "closed_action_vocabulary": {
+    "additional_action_kinds_allowed": false,
+    "active_pr1_actions": [
+      "attack_action",
+      "ordinary_attack",
+      "manifested_strike",
+      "rider_declaration",
+      "standalone_feature",
+      "battle_master_on_hit_die",
+      "battle_master_miss_correction",
+      "relentless",
+      "combat_prowess",
+      "true_strike_replacement",
+      "kinetic_mastery",
+      "hew_bonus_attack",
+      "attack_resolution",
+      "end_action",
+      "end_turn",
+      "end_round",
+      "end_horizon",
+      "canonical_tie_probe"
+    ],
+    "deferred_finite_only_actions": [
+      "retargeting"
+    ],
+    "deferred_finite_only_transitions": [
+      "target_death",
+      "hew_bonus_attack_from_reduce_to_zero_trigger"
+    ]
+  },
+  "nominal_objective_and_resources": {
+    "objective_policy_id": "nominal_sustained_dpr_v1",
+    "lexicographic_order": [
+      "aggregate_damage",
+      "primary_damage",
+      "least_self_damage",
+      "least_horizon_limited_use",
+      "least_persistent_pool_use",
+      "least_refreshable_use",
+      "smallest_canonical_action_id"
+    ],
+    "objective_semantics": {
+      "aggregate_damage": "maximum_exact_aggregate_three_round_damage",
+      "primary_damage": "maximum_exact_fixed_primary_three_round_damage"
+    },
+    "resource_efficiency_never_outranks_damage": true,
+    "resource_class_order": [
+      "self_damage",
+      "horizon_limited",
+      "persistent_pool",
+      "refreshable"
+    ],
+    "resource_class_mapping": {
+      "kinetic_vanguard": {
+        "self_damage": [
+          "blood_tax"
+        ],
+        "horizon_limited": [
+          "overload_mastery"
+        ],
+        "persistent_pool": [
+          "psi"
+        ],
+        "refreshable": [
+          "combat_prowess"
+        ]
+      },
+      "battle_master": {
+        "self_damage": [],
+        "horizon_limited": [],
+        "persistent_pool": [
+          "superiority_die"
+        ],
+        "refreshable": [
+          "relentless",
+          "combat_prowess",
+          "hew",
+          "bonus_action"
+        ]
+      },
+      "eldritch_knight": {
+        "self_damage": [],
+        "horizon_limited": [],
+        "persistent_pool": [],
+        "refreshable": [
+          "true_strike_replacement",
+          "combat_prowess"
+        ]
+      }
+    }
+  },
+  "result_and_provenance": {
+    "run_manifest_format_version": 2,
+    "damage_result_contract_version": "3.0.0",
+    "required_input_identity_fields": [
+      "damage_result_contract_version",
+      "damage_model_mode_id",
+      "target_knowledge_contract_id",
+      "numeric_representation_id",
+      "provider_ids",
+      "rules_version",
+      "authority_sha256",
+      "authority_projection_sha256",
+      "catalog_contract_version",
+      "catalog_sha256",
+      "roster_contract_version",
+      "roster_sha256",
+      "target_profile_id",
+      "target_profile_version",
+      "target_profile_sha256",
+      "damage_target_projection_id",
+      "damage_target_projection_version",
+      "damage_target_projection_sha256",
+      "consumer_requirements_version",
+      "damage_consumer_requirements_sha256",
+      "config_sha256",
+      "comparator_config_sha256",
+      "damage_model_contract_sha256",
+      "sentinel_corpus_sha256",
+      "sentinel_corpus_file_sha256",
+      "observation_policy_sha256",
+      "resource_policy_sha256",
+      "optimization_policy_sha256",
+      "evaluator",
+      "evaluator_implementation_sha256",
+      "semantic_implementation_sha256",
+      "orchestration_implementation_sha256",
+      "reporter_implementation_sha256",
+      "trials",
+      "seed",
+      "trial_seed_role",
+      "aggregation",
+      "status"
+    ],
+    "required_output_identity_fields": [
+      "detail_csv",
+      "matrix_csv",
+      "matrix_markdown",
+      "matrix_html"
+    ],
+    "required_row_count_fields": [
+      "detail",
+      "matrix"
+    ],
+    "fresh_pr1_matrix_evidence_claimed": false
+  },
+  "sentinel_corpus": {
+    "contract_version": 1,
+    "case_count": 50,
+    "first_case_id": "S01",
+    "last_case_id": "S50",
+    "identity_path": "harness/data/damage-sentinels-v1.json",
+    "canonical_sha256": "9b355c99574e346fa0a7ee64146b78a0b1d912c524e0aea272759a0d707f7fd0",
+    "canonicalization": "UTF-8 JSON with object keys sorted, ensure_ascii=false, compact separators, and array order preserved.",
+    "independent_oracle_path": "harness/tests/damage_sentinel_oracles.py",
+    "test_path": "harness/tests/test_damage_sentinels.py",
+    "finite_cases_are_contract_only_in_pr1": true
+  },
+  "accepted_baseline": {
+    "run_manifest_sha256": "3986173ebb182c809e0d977ae4f24124b5fa9ffba37b2332492e496b54cf1b98",
+    "detail_rows": 564,
+    "matrix_rows": 96,
+    "headline_targets": 47,
+    "difference_classes": [
+      "current_evaluator_defect",
+      "successor_defect",
+      "approved_methodology_correction",
+      "representation_or_rounding_only",
+      "unresolved_blocker"
+    ],
+    "complete_matrix_run_performed_for_pr1": false,
+    "complete_joined_diff_performed_for_pr1": false,
+    "separate_consumable_run_authorization_required": true,
+    "automatic_retry_authorized": false
+  },
+  "finite_hp_boundary": {
+    "implementation_authorized_in_pr1": false,
+    "implementation_status": "fail_closed",
+    "deferred_mode_ids": [
+      "finite_hp_removed_v1",
+      "finite_hp_kill_cleave_v1"
+    ],
+    "ball_lightning_future_damage_roll_correlation": "independent_per_creature_trigger",
+    "ball_lightning_future_ruling_status": "maintainer_approved",
+    "ball_lightning_future_ruling_affects_nominal_pr1": false,
+    "separate_pr2_authorization_required": true
+  },
+  "evidence_boundary": {
+    "fresh_analytical_evidence_generated": false,
+    "generated_readme_matrix_updated": false,
+    "accepted_baseline_preserved": true
+  }
+}

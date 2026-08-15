@@ -61,11 +61,12 @@ const officialSourceContract={
 
 const originalSrdReferencePaths=new Set([
   "CHANGELOG.md","RELEASE_CHECKLIST.md","build/inputs.json","docs/licensing-audit.md","harness/MIGRATION.md","harness/README.md",
-  "harness/config/benchmark.json","harness/config/creature-consumers.json","harness/provenance/fighter-subclass-comparators.json","review/wizards-ip-reference-register.json"
+  "harness/config/benchmark.json","harness/config/creature-consumers.json","harness/provenance/damage-model-contract.json","harness/provenance/fighter-subclass-comparators.json","review/wizards-ip-reference-register.json"
 ]);
 const mechanicallyNecessaryReferencePaths=new Set([
   "KineticVanguard.yaml","harness/comparators/fighter-subclasses.json","harness/creature_catalog.py","harness/creature_control_projection.py",
-  "harness/creature_damage_projection.py","harness/damage_harness.py","harness/damage_report.py","harness/data/srd_creature_rosters.json",
+  "harness/creature_damage_projection.py","harness/damage_contract.py","harness/damage_harness.py","harness/damage_report.py","harness/data/damage-sentinels-v1.json","harness/data/srd_creature_rosters.json",
+  "harness/tests/test_damage_contract_integration.py",
   "harness/data/srd_creatures.json","harness/model.py","harness/provenance/damage-delta-v14.1-to-v14.2.json","harness/provenance/damage-review.json",
   "harness/provenance/fighter-subclass-comparators.json","harness/provenance/srd-creatures.json","harness/readme_damage.py","src/creature-catalog.ts",
   "tests/harness-authority.test.ts","tests/readme-contract.test.ts"
@@ -155,14 +156,19 @@ function validateResolvedAuditPolicy(audit:string):void{
   assert.match(audit,/This is not legal clearance/);
   assert.doesNotMatch(audit,/attorney (?:has )?approved/i);
   assert.match(audit,/Hew’s complete official fact is owner-source verified[\s\S]{0,260}immediately after a Critical Hit or after reducing a target to 0 Hit Points[\s\S]{0,100}Bonus Action attack with the same weapon/);
-  assert.match(audit,/current critical-only, once-per-round representation is retained as deliberate conservative project methodology/);
-  assert.match(audit,/accepted damage methodology is explicitly no-target-death and carries no remaining-HP, kill, overkill, replacement-target, or target-availability state/);
-  assert.match(audit,/documented damage-methodology capability gap that must be resolved when the replacement damage model is independently confirmed/);
-  assert.match(audit,/retain no-target-death sustained DPR as the nominal result and add a named finite-HP\/kill-cleave sensitivity/);
-  assert.match(audit,/replace the nominal model with fair target-death and retargeting semantics applied consistently to Kinetic Vanguard, Battle Master, and Eldritch Knight/);
-  assert.match(audit,/implementation of the zero-HP trigger is outside issue #63 and requires fresh comparator\/evaluator review and fresh affected analytical evidence/);
+  assert.match(audit,/now covers all 69 scalar leaves/);
+  assert.match(audit,/legacy once-per-round Hew comparator scalar is retired/);
+  assert.match(audit,/once-per-Fighter-turn cadence, a reserved Bonus Action, and a same-weapon follow-up/);
+  assert.match(audit,/Target death is disabled in `nominal_sustained_dpr_v1`, so only the Critical Hit route is reachable/);
+  assert.match(audit,/finite modes fail closed in PR1/);
+  assert.match(audit,/zero-HP trigger[\s\S]{0,180}separately authorized PR2 scope[\s\S]{0,140}fresh affected comparator\/evaluator review and analytical evidence/);
+  assert.match(audit,/complete 47-target matrix[\s\S]{0,120}separately authorized consumable run and was not performed for this PR1 implementation/);
   for(const forbidden of ["waived","irrelevant","permanently excluded","fully represented"])assert.equal(audit.toLowerCase().includes(forbidden),false,`Hew zero-HP route must not be described as ${forbidden}`);
 }
+
+test("licensing audit records the Issue 65 nominal Hew successor boundary",async()=>{
+  validateResolvedAuditPolicy(await readFile("docs/licensing-audit.md","utf8"));
+});
 
 const comparatorSourceClassifications = new Set([
   "srd_5_2_1_fact",
@@ -204,7 +210,11 @@ const comparatorSourceKeys = new Set([
   "year",
   "locator_policy",
   "access_boundary",
-  "implementation_commit",
+  "governing_issue_url",
+  "frozen_contract_records",
+  "implementation_base_commit",
+  "prior_issue_url",
+  "prior_implementation_commit",
   "repository_locators",
   "decision_url",
   "ruleset",
@@ -239,6 +249,8 @@ interface ComparatorLeaf extends Record<string,unknown> {
 
 const officialNonSrdLeafPaths=new Set([
   "damage.battle_master.great_weapon_master_attack_action_bonus",
+  "damage.battle_master.hew_critical_bonus_attack_once_per_fighter_turn",
+  "damage.battle_master.hew_follow_up_weapon",
   "damage.battle_master.relentless_die",
   "damage.battle_master.relentless_minimum_level",
   "damage.battle_master.superiority_die_by_level.11",
@@ -250,12 +262,14 @@ const officialNonSrdLeafPaths=new Set([
   "damage.battle_master.superiority_pool_by_level.20",
   "damage.battle_master.superiority_pool_by_level.7",
   "damage.eldritch_knight.dueling_damage_bonus",
-  "damage.eldritch_knight.true_strike_uses_per_attack_action"
+  "damage.eldritch_knight.true_strike_maximum_uses_per_attack_action"
 ]);
 const srdLeafPaths=new Set([
   "damage.battle_master.weapon.count",
   "damage.battle_master.weapon.damage_type",
   "damage.battle_master.weapon.sides",
+  "damage.eldritch_knight.true_strike_base_damage_modes[0]",
+  "damage.eldritch_knight.true_strike_base_damage_modes[1]",
   "damage.eldritch_knight.true_strike_damage_by_level.11.count",
   "damage.eldritch_knight.true_strike_damage_by_level.11.sides",
   "damage.eldritch_knight.true_strike_damage_by_level.15.count",
@@ -271,7 +285,11 @@ const srdLeafPaths=new Set([
 ]);
 const relationalFactLeafPaths=new Set([
   "damage.battle_master.great_weapon_master_attack_action_bonus",
+  "damage.battle_master.hew_critical_bonus_attack_once_per_fighter_turn",
+  "damage.battle_master.hew_follow_up_weapon",
   "damage.battle_master.weapon.damage_type",
+  "damage.eldritch_knight.true_strike_base_damage_modes[0]",
+  "damage.eldritch_knight.true_strike_base_damage_modes[1]",
   "damage.eldritch_knight.true_strike_damage_type",
   "damage.eldritch_knight.weapon.damage_type"
 ]);
@@ -283,12 +301,26 @@ const resolvedComparatorLeafContract={
     rationale:"Owner-source verifies that qualifying use with a weapon that has the Heavy property adds the attacker’s Proficiency Bonus to target damage; the relation is compact and not copied feat prose.",
     unresolved_counsel:true,comparator_id:"battle_master",accepted_github_audit_record:"https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
   },
-  "damage.battle_master.hew_critical_bonus_attack_once_per_round":{
+  "damage.battle_master.hew_bonus_action_reserved":{
     value_sha256:"b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
     source_classification:"project_authored_benchmark_assumption",expression_classification:"project_authored_policy",source_id:"project_comparator_methodology",
-    locator:"damage.battle_master.hew_critical_bonus_attack_once_per_round; #52:5291985967; https://www.dndbeyond.com/feats/1789149-great-weapon-master; immediately after Critical Hit or reducing target to 0 Hit Points -> same-weapon Bonus Action attack",
-    rationale:"Official feat has Critical Hit and reduce-to-0-HP triggers; conservative project methodology credits only Critical Hit, omits reduce-to-0-HP, and retains once-per-round. This scalar does not represent every official Hew trigger.",
-    unresolved_counsel:false,comparator_id:"battle_master",accepted_github_audit_record:"https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
+    locator:"Issue #65 comment 5300138781 > nominal sustained DPR > configured Battle Master profile reserves an available Bonus Action",
+    rationale:"Project-authored nominal profile reserves the Bonus Action needed for Hew; target death is disabled, so only the critical trigger is reachable. Availability is not an official guarantee.",
+    unresolved_counsel:false,comparator_id:"battle_master",accepted_github_audit_record:undefined
+  },
+  "damage.battle_master.hew_critical_bonus_attack_once_per_fighter_turn":{
+    value_sha256:"b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+    source_classification:"non_srd_official_fact",expression_classification:"compact_independently_phrased_relational_fact",source_id:"phb_2024",
+    locator:"2024 PHB digital > https://www.dndbeyond.com/feats/1789149-great-weapon-master > Hew; owner-source issue #52 comment 5291985967",
+    rationale:"Owner-source verifies the Hew benefit is limited to once per turn; the comparator names the modeled turn as the Fighter turn, in compact independently phrased form.",
+    unresolved_counsel:true,comparator_id:"battle_master",accepted_github_audit_record:"https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
+  },
+  "damage.battle_master.hew_follow_up_weapon":{
+    value_sha256:"3ad668d80722e2fd5be5740df7b7f16aa0f2780fa6aabe6289ab64672b73006d",
+    source_classification:"non_srd_official_fact",expression_classification:"compact_independently_phrased_relational_fact",source_id:"phb_2024",
+    locator:"2024 PHB digital > https://www.dndbeyond.com/feats/1789149-great-weapon-master > Hew; owner-source issue #52 comment 5291985967",
+    rationale:"Owner-source verifies the Bonus Action follow-up uses the triggering attack's weapon; the relation is compact and does not copy feat prose.",
+    unresolved_counsel:true,comparator_id:"battle_master",accepted_github_audit_record:"https://github.com/kmart01123/kinetic-vanguard/issues/52#issuecomment-5291985967"
   },
   "damage.eldritch_knight.dueling_damage_bonus":{
     value_sha256:"d4735e3a265e16eee03f59718b9b5d03019c07d8b6c51f90da3a666eec13ab35",
@@ -302,7 +334,7 @@ const comparatorSourceKeyContract=new Map<string,string[]>([
   ["github_issue_50_accepted_audit",["kind","official_source_id","repository","issue_number","issue_url","accepted_records","continuation_precedence","scope"]],
   ["github_issue_52_accepted_audit",["kind","official_source_id","repository","issue_number","issue_url","accepted_records","scope"]],
   ["phb_2024",["kind","title","publisher","year","locator_policy","access_boundary"]],
-  ["project_comparator_methodology",["kind","issue_url","implementation_commit","repository_locators","scope"]],
+  ["project_comparator_methodology",["kind","governing_issue_url","frozen_contract_records","implementation_base_commit","prior_issue_url","prior_implementation_commit","repository_locators","scope"]],
   ["project_naming_disposition",["kind","decision_url","repository_locators","scope"]],
   ["srd_5_2_1",["kind","ruleset","publisher","official_page_url","pinned_pdf_url","pinned_pdf_sha256","retrieved_on"]]
 ]);
@@ -336,7 +368,7 @@ const comparatorSourceContract={
     scope:"Battle Master progression, resources, triggers, compact decompositions, and frozen comparator profile."
   },
   phb_2024:{kind:"official_non_srd_source",title:"Player’s Handbook",publisher:"Wizards of the Coast LLC",year:2024,locator_policy:"Use an accepted exact page when recorded; otherwise use a stable digital section or anchor plus its accepted GitHub audit record.",access_boundary:"Bibliographic identity only; no private source bytes or sourcebook prose are retained here."},
-  project_comparator_methodology:{kind:"project_authored_methodology",issue_url:"https://github.com/kmart01123/kinetic-vanguard/issues/19",implementation_commit:"0732ac9912d492f58407b29145680b635ba52757",repository_locators:["harness/comparators/fighter-subclasses.json","harness/README.md > Damage comparators"],scope:"Frozen comparator build assumptions, analytical objective, observed-state policy, and compact configuration structure."},
+  project_comparator_methodology:{kind:"project_authored_methodology",governing_issue_url:"https://github.com/kmart01123/kinetic-vanguard/issues/65",frozen_contract_records:["https://github.com/kmart01123/kinetic-vanguard/issues/65#issuecomment-5300138781","https://github.com/kmart01123/kinetic-vanguard/issues/65#issuecomment-5300161056"],implementation_base_commit:"5fcee4b94dd97d0b8b88df3449358c74bd717c7c",prior_issue_url:"https://github.com/kmart01123/kinetic-vanguard/issues/19",prior_implementation_commit:"0732ac9912d492f58407b29145680b635ba52757",repository_locators:["harness/comparators/fighter-subclasses.json","harness/README.md > Damage comparators"],scope:"Issue #65 nominal sustained-DPR objective, declared static target knowledge, optional True Strike, generic Battle Master damage package, and Hew profile; preserves prior methodology lineage."},
   project_naming_disposition:{kind:"project_maintainer_decision",decision_url:"https://github.com/kmart01123/kinetic-vanguard/issues/63#issuecomment-5289581036",repository_locators:["NOTICE.md > unofficial comparator notice","docs/licensing-audit.md > Public naming and trademark disposition"],scope:"Retain the two names only as narrow unofficial benchmark identifiers with no affiliation or endorsement; counsel question remains."},
   srd_5_2_1:{kind:"official_srd_source",ruleset:"D&D SRD 5.2.1",publisher:"Wizards of the Coast LLC",official_page_url:"https://www.dndbeyond.com/srd",pinned_pdf_url:"https://media.dndbeyond.com/compendium-images/srd/5.2/SRD_CC_v5.2.1.pdf",pinned_pdf_sha256:"8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",retrieved_on:"2026-08-14"}
 } as const;
@@ -361,11 +393,11 @@ function assertCompactStrings(value:unknown,path:string):void{
 
 function validateComparatorProvenance(comparator:unknown,provenance:any,comparatorBytes:string):void{
   assert.deepEqual(Object.keys(provenance),[
-    "format_version","audit_date","audited_commit","subject_file","subject_sha256","scalar_leaf_count","value_identity","sources","leaves"
+    "format_version","contract_date","implementation_base_commit","subject_file","subject_sha256","scalar_leaf_count","value_identity","sources","leaves"
   ]);
   assert.equal(provenance.format_version,1);
-  assert.equal(provenance.audit_date,"2026-08-14");
-  assert.equal(provenance.audited_commit,"e5d81ab1271b305bee5b92bca22bb9acce0275e9");
+  assert.equal(provenance.contract_date,"2026-08-15");
+  assert.equal(provenance.implementation_base_commit,"5fcee4b94dd97d0b8b88df3449358c74bd717c7c");
   assert.equal(provenance.subject_file,"harness/comparators/fighter-subclasses.json");
   assert.equal(provenance.subject_sha256,sha256(comparatorBytes));
   assert.deepEqual(Object.keys(provenance.value_identity),["algorithm","canonicalization"]);
@@ -934,13 +966,13 @@ test("comparator provenance covers every scalar with compact independently class
     classification,(provenance.leaves as ComparatorLeaf[]).filter(leaf=>leaf.source_classification===classification).length
   ]));
   assert.deepEqual(classCounts,{
-    srd_5_2_1_fact:15,
-    non_srd_official_fact:13,
+    srd_5_2_1_fact:17,
+    non_srd_official_fact:15,
     project_authored_benchmark_assumption:20,
     project_authored_tactical_policy:15,
     narrow_nominative_identifier:2
   });
-  assert.equal((provenance.leaves as ComparatorLeaf[]).filter(leaf=>leaf.unresolved_counsel).length,15);
+  assert.equal((provenance.leaves as ComparatorLeaf[]).filter(leaf=>leaf.unresolved_counsel).length,17);
 
   const inputRoles=new Map((JSON.parse(inputsBytes).inputs as Array<{path:string;role:string}>).map(input=>[input.path,input.role]));
   assert.equal(inputRoles.get("harness/provenance/fighter-subclass-comparators.json"),"comparator_provenance");
@@ -989,10 +1021,10 @@ test("comparator provenance covers every scalar with compact independently class
     inventedGap.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path===fieldPath).evidence_gap="Synthetic unsupported gap";
     assert.throws(()=>validateComparatorProvenance(comparator,inventedGap,comparatorBytes));
   }
-  const mislabeledHew=structuredClone(provenance),mislabeledHewLeaf=mislabeledHew.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path==="damage.battle_master.hew_critical_bonus_attack_once_per_round");
-  mislabeledHewLeaf.source_classification="non_srd_official_fact";mislabeledHewLeaf.expression_classification="bare_numeric_fact";mislabeledHewLeaf.source_id="phb_2024";mislabeledHewLeaf.unresolved_counsel=true;
-  assert.throws(()=>validateComparatorProvenance(comparator,mislabeledHew,comparatorBytes));
-  const falselyModeledZeroHp=structuredClone(provenance);falselyModeledZeroHp.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path==="damage.battle_master.hew_critical_bonus_attack_once_per_round").rationale="Synthetic policy claims the reduce-to-0-HP trigger is modeled.";
+  const mislabeledHewProfile=structuredClone(provenance),mislabeledHewProfileLeaf=mislabeledHewProfile.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path==="damage.battle_master.hew_bonus_action_reserved");
+  mislabeledHewProfileLeaf.source_classification="non_srd_official_fact";mislabeledHewProfileLeaf.expression_classification="bare_numeric_fact";mislabeledHewProfileLeaf.source_id="phb_2024";mislabeledHewProfileLeaf.unresolved_counsel=true;
+  assert.throws(()=>validateComparatorProvenance(comparator,mislabeledHewProfile,comparatorBytes));
+  const falselyModeledZeroHp=structuredClone(provenance);falselyModeledZeroHp.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path==="damage.battle_master.hew_bonus_action_reserved").rationale="Synthetic nominal policy claims the reduce-to-0-HP trigger is reachable.";
   assert.throws(()=>validateComparatorProvenance(comparator,falselyModeledZeroHp,comparatorBytes));
   const inventedPrintPage=structuredClone(provenance);inventedPrintPage.leaves.find((leaf:ComparatorLeaf)=>leaf.field_path==="damage.battle_master.great_weapon_master_attack_action_bonus").locator="2024 PHB p. 999 > Synthetic Great Weapon Master";
   assert.throws(()=>validateComparatorProvenance(comparator,inventedPrintPage,comparatorBytes));
@@ -1035,11 +1067,11 @@ test("tracked and generated Wizards/SRD references exactly match the classified 
   assert.ok(registerBytes.endsWith("\n"));
 
   const trackedPaths=trackedStageZeroPaths();
-  assert.equal(trackedPaths.length,102);
+  assert.equal(trackedPaths.length,108);
   const trackedPathBytes=`${trackedPaths.join("\n")}\n`;
-  assert.equal(sha256(trackedPathBytes),"003cdfef582840a3341e3da7c99689f3cd0c197b3bcc7906600747765c6994da");
-  assert.equal(register.audit.audit_date,"2026-08-14");
-  assert.equal(register.audit.audited_base_commit,"e5d81ab1271b305bee5b92bca22bb9acce0275e9");
+  assert.equal(sha256(trackedPathBytes),"8884448e4cbe2a5d3786b1806eae2adf3006afcd670e17e1d2fb58c740f776aa");
+  assert.equal(register.audit.audit_date,"2026-08-15");
+  assert.equal(register.audit.audited_base_commit,"5fcee4b94dd97d0b8b88df3449358c74bd717c7c");
   assert.equal(register.audit.tracked_path_count,trackedPaths.length);
   assert.equal(register.audit.tracked_path_sha256,sha256(trackedPathBytes));
   assert.match(register.audit.tracked_content_sha256,/^[0-9a-f]{64}$/);

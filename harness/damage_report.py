@@ -4,7 +4,8 @@ from __future__ import annotations
 
 import csv
 import html
-import math
+from decimal import Decimal, ROUND_HALF_EVEN, localcontext
+from fractions import Fraction
 from pathlib import Path
 from typing import Any, Iterable
 
@@ -14,6 +15,9 @@ VALUE_COLUMNS = [
     "KV",
     "Eldritch Knight",
     "Battle Master",
+    "KV Exact",
+    "Eldritch Knight Exact",
+    "Battle Master Exact",
     "KV as % of EK",
     "KV as % of BM",
     "Lower Comparator",
@@ -49,17 +53,47 @@ def provenance_columns(provenance: dict[str, Any]) -> dict[str, str]:
     }
 
 
-def _display_value(value: float) -> float:
-    return round(float(value), 6)
+def _as_fraction(value: Fraction | int | float) -> Fraction:
+    if isinstance(value, Fraction):
+        return value
+    if isinstance(value, int):
+        return Fraction(value)
+    if not isinstance(value, float) or not (-float("inf") < value < float("inf")):
+        raise ValueError("Comparison matrix values must be finite exact numbers")
+    return Fraction(str(value))
 
 
-def _percentage(numerator: float, denominator: float) -> str:
-    return "N/A" if denominator == 0 else f"{100.0 * numerator / denominator:.2f}"
+def _fraction_text(value: Fraction) -> str:
+    return str(value.numerator) if value.denominator == 1 else f"{value.numerator}/{value.denominator}"
+
+
+def _decimal_text(value: Fraction, places: int) -> str:
+    quantum = Decimal(1).scaleb(-places)
+    with localcontext() as context:
+        context.prec = max(50, len(str(abs(value.numerator))) + len(str(value.denominator)) + places + 8)
+        decimal = Decimal(value.numerator) / Decimal(value.denominator)
+        return format(decimal.quantize(quantum, rounding=ROUND_HALF_EVEN), f".{places}f")
+
+
+def fraction_text(value: Fraction | int | float) -> str:
+    """Serialize an exact result for durable CSV/manifest evidence."""
+
+    return _fraction_text(_as_fraction(value))
+
+
+def display_decimal(value: Fraction | int | float, places: int = 6) -> str:
+    """Render the sole deterministic decimal boundary for exact results."""
+
+    return _decimal_text(_as_fraction(value), places)
+
+
+def _percentage(numerator: Fraction, denominator: Fraction) -> str:
+    return "N/A" if denominator == 0 else _decimal_text(100 * numerator / denominator, 2)
 
 
 def _comparator_envelope(
-    eldritch_knight: float, battle_master: float
-) -> tuple[float, float, str, str]:
+    eldritch_knight: Fraction, battle_master: Fraction
+) -> tuple[Fraction, Fraction, str, str]:
     if eldritch_knight < battle_master:
         return eldritch_knight, battle_master, "Eldritch Knight", "Battle Master"
     if battle_master < eldritch_knight:
@@ -69,11 +103,15 @@ def _comparator_envelope(
 
 
 def classify_envelope(
-    kv: float, eldritch_knight: float, battle_master: float
+    kv: Fraction | int | float,
+    eldritch_knight: Fraction | int | float,
+    battle_master: Fraction | int | float,
 ) -> str:
-    values = (kv, eldritch_knight, battle_master)
-    if not all(math.isfinite(value) for value in values):
+    try:
+        values = tuple(_as_fraction(value) for value in (kv, eldritch_knight, battle_master))
+    except ValueError:
         return "N/A"
+    kv, eldritch_knight, battle_master = values
     if eldritch_knight == 0 or battle_master == 0:
         return "N/A"
     lower, upper, _, _ = _comparator_envelope(eldritch_knight, battle_master)
@@ -85,7 +123,7 @@ def classify_envelope(
 
 
 def _boundary_delta(
-    kv: float, eldritch_knight: float, battle_master: float, band: str
+    kv: Fraction, eldritch_knight: Fraction, battle_master: Fraction, band: str
 ) -> str:
     if band == "IDEAL":
         return "0.00"
@@ -93,31 +131,32 @@ def _boundary_delta(
         return "N/A"
     lower, upper, _, _ = _comparator_envelope(eldritch_knight, battle_master)
     boundary = upper if band == "HOT" else lower
-    return "N/A" if boundary == 0 else f"{100.0 * (kv - boundary) / boundary:+.2f}"
+    if boundary == 0:
+        return "N/A"
+    rendered = _decimal_text(100 * (kv - boundary) / boundary, 2)
+    return rendered if rendered.startswith("-") else f"+{rendered}"
 
 
 def damage_matrix_row(
     metadata: dict[str, Any],
-    kv: float,
-    eldritch_knight: float,
-    battle_master: float,
+    kv: Fraction | int | float,
+    eldritch_knight: Fraction | int | float,
+    battle_master: Fraction | int | float,
 ) -> dict[str, str]:
-    raw = [float(value) for value in (kv, eldritch_knight, battle_master)]
-    if not all(math.isfinite(value) for value in raw):
-        raise ValueError("Comparison matrix values must be finite")
-    displayed = [_display_value(value) for value in raw]
+    raw = [_as_fraction(value) for value in (kv, eldritch_knight, battle_master)]
     lower, upper, lower_name, upper_name = _comparator_envelope(
-        displayed[1], displayed[2]
+        raw[1], raw[2]
     )
-    band = classify_envelope(*displayed)
+    band = classify_envelope(*raw)
     row = {key: str(value) for key, value in metadata.items()}
     row.update({
         "Benchmark Type": "Damage",
-        "KV": f"{displayed[0]:.6f}", "Eldritch Knight": f"{displayed[1]:.6f}", "Battle Master": f"{displayed[2]:.6f}",
-        "KV as % of EK": _percentage(displayed[0], displayed[1]), "KV as % of BM": _percentage(displayed[0], displayed[2]),
+        "KV": _decimal_text(raw[0], 6), "Eldritch Knight": _decimal_text(raw[1], 6), "Battle Master": _decimal_text(raw[2], 6),
+        "KV Exact": _fraction_text(raw[0]), "Eldritch Knight Exact": _fraction_text(raw[1]), "Battle Master Exact": _fraction_text(raw[2]),
+        "KV as % of EK": _percentage(raw[0], raw[1]), "KV as % of BM": _percentage(raw[0], raw[2]),
         "Lower Comparator": lower_name, "Upper Comparator": upper_name,
-        "Lower Boundary": f"{lower:.6f}", "Upper Boundary": f"{upper:.6f}",
-        "Band": band, "Boundary Delta %": _boundary_delta(*displayed, band)
+        "Lower Boundary": _decimal_text(lower, 6), "Upper Boundary": _decimal_text(upper, 6),
+        "Band": band, "Boundary Delta %": _boundary_delta(*raw, band)
     })
     return row
 
@@ -137,9 +176,9 @@ def _validate_release_rows(rows: list[dict[str, str]]) -> None:
         try:
             expected = damage_matrix_row(
                 {},
-                float(row["KV"]),
-                float(row["Eldritch Knight"]),
-                float(row["Battle Master"]),
+                Fraction(row["KV Exact"]),
+                Fraction(row["Eldritch Knight Exact"]),
+                Fraction(row["Battle Master Exact"]),
             )
         except (TypeError, ValueError) as error:
             raise ValueError(
@@ -181,7 +220,7 @@ def write_damage_matrix(
         writer = csv.DictWriter(stream, fieldnames=csv_columns);writer.writeheader();writer.writerows(csv_rows)
     provenance_lines = [f"- {key}: `{value}`" for key, value in provenance.items()]
     notice_lines = [f"- **{label}:** {value}" for label, value in LEGAL_NOTICES]
-    limitation = "Damage percentages are computed from the displayed aggregate raw values, never from averaged target-level percentages."
+    limitation = "Damage percentages and bands are computed from exact aggregate rational values, never from rounded display values or averaged target-level percentages."
     distance_note = "Battle Master and Eldritch Knight define a dynamic comparison envelope for every result. Boundary Delta % is negative below the lower comparator, positive above the upper comparator, and 0.00 inside the inclusive envelope."
     md = f"# Kinetic Vanguard {rules_version} {report_title} Comparison Matrix\n\n{limitation}\n\n{distance_note}\n\n## Licensing and notices\n\n" + "\n".join(notice_lines) + "\n\n## Provenance\n\n" + "\n".join(provenance_lines) + "\n\n" + _markdown_table(columns, rows) + "\n"
     md_path.write_text(md, encoding="utf-8")

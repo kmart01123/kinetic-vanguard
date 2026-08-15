@@ -1,6 +1,6 @@
 # Kinetic Vanguard maintained computational harnesses
 
-Status: current canonical rules **v14.2.0**; one completed corrected-contract replacement exact analytical run now binds the consumer-scoped damage provenance. Its 564 detail rows and 96 matrix rows are numerically and classificationally identical to the permanently preserved `invalidated_premerge_provenance_boundary_correction` comparison run. No fresh independent numerical or Monte Carlo certification is claimed. The durable numerical-review basis **v14.1.0** (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`) remains the independently reviewed basis. The maintained damage evaluator remains damage-only, and its accepted 47-target evidence remains intact.
+Status: current canonical rules **v14.2.0**. The accepted corrected-contract replacement exact analytical run remains the comparison baseline: its 564 detail rows and 96 matrix rows are numerically and classificationally identical to the permanently preserved `invalidated_premerge_provenance_boundary_correction` comparison run. Issue #65 Phase 2 PR1 introduces the separately specified nominal successor, but no complete successor matrix has been authorized or run and no successor output is promoted by this change. The durable numerical-review basis **v14.1.0** (`REVIEWED_WITH_DOCUMENTED_DIFFERENCES`) and accepted 47-target evidence remain intact.
 
 The superseded current-development control execution runtime and the earlier Control Reliability report pipeline are retired from current `main`. No maintained v14.2 control evaluator or current v14.2 control result exists. Historical implementations remain available through Git history and frozen release evidence; no compatibility or fallback runtime is maintained.
 
@@ -15,7 +15,15 @@ The damage benchmark keeps four distinct input layers:
 3. **SRD creature inputs:** the authoritative 330-record source catalog in `data/srd_creatures.json`, separate source-only headline/census profiles and complete accounting in `data/srd_creature_rosters.json`, consumer requirements in `config/creature-consumers.json`, and extraction provenance in `provenance/srd-creatures.json`.
 4. **Third-party damage comparator assumptions:** minimal independently expressed Battle Master and Eldritch Knight numerical packages in `comparators/fighter-subclasses.json`.
 
-The damage evaluator hashes canonical authority, methodology, comparator assumptions, the whole catalog and roster contract, the active profile, the precise consumer-scoped requirements, and the active thin projection separately. The whole requirements-registry digest is repository-integrity metadata only; damage evidence binds `damage_consumer_requirements_sha256`, so control-only requirement changes cannot invalidate damage evidence. Neither configuration file is Kinetic Vanguard rules authority. Catalog facts, roster level/weight, and live scenario state remain distinct.
+The damage evaluator hashes canonical authority bytes, the path-independent damage-authority projection, the Python authority adapter plus nominal semantic kernel, methodology, comparator assumptions, the whole catalog and roster contract, the active profile, the precise consumer-scoped requirements, and the active thin target projection separately. The whole requirements-registry digest is repository-integrity metadata only; damage evidence binds `damage_consumer_requirements_sha256`, so control-only requirement changes cannot invalidate damage evidence. Neither configuration file is Kinetic Vanguard rules authority. Catalog facts, roster level/weight, and live scenario state remain distinct.
+
+### Issue #65 nominal successor boundary
+
+Phase 2 PR1 implements only `nominal_sustained_dpr_v1`: one immutable exact transition/value kernel with closed Kinetic Vanguard, Battle Master, and Eldritch Knight providers. Semantic probabilities, rewards, resource costs, and comparisons use exact fractions. All three providers receive the same `declared_static_target_knowledge_v1` snapshot, while unresolved attack, save, and damage outcomes remain hidden until their resolution stages. The nominal objective maximizes exact aggregate damage, then fixed-primary damage, then minimizes the shared self-damage, horizon-limited, persistent-pool, and refreshable cost classes before the stable canonical action ID.
+
+The independently derived 50-case contract corpus is `data/damage-sentinels-v1.json`; its standard-library-only oracles and integrity checks are in `tests/damage_sentinel_oracles.py` and `tests/test_damage_sentinels.py`, while `tests/test_damage_contract_integration.py` binds applicable nominal facets to the production contract API. Finite cases remain frozen contract records only in PR1 and cannot activate a finite solver.
+
+Finite HP, target death, retargeting, kill-trigger Hew, and the `finite_hp_removed_v1` and `finite_hp_kill_cleave_v1` policies remain unimplemented and fail closed pending separately authorized PR2. The maintainer has approved independent Ball Lightning damage rolls per creature trigger for that future finite model; the ruling does not alter nominal PR1 results. `provenance/damage-model-contract.json` records the frozen contract, exact base commit, implementation boundary, accepted delta classes, and unconsumed evidence gates.
 
 ### Control Authority v2 is separate
 
@@ -39,15 +47,17 @@ npm run test:harness
 
 `harness:validate` checks the creature catalog, maintained damage inputs, and static Control Authority v2. `test:harness` runs the maintained damage, catalog, projection, and authority contracts. Neither command evaluates control or publishes a control result.
 
-Full configured roster run:
+Separately authorized full configured roster run:
 
 ```text
 npm run harness:damage -- --output-dir harness/results/damage
 ```
 
+Do not run this complete 47-target command during ordinary PR1 development. It is a separate consumable final gate after the nominal implementation, comparator behavior, target semantics, and sentinels are frozen; there is no automatic retry authorization.
+
 Use `--matrix-only` to omit the detailed CSV or `--no-matrix` to omit the compact damage matrix. The CLI defaults to the repository-root authority, accepts `--authority` for mutation tests, writes only below the explicit `--output-dir`, and performs no network access.
 
-A full run writes `run-manifest.json` beside its detail and matrix outputs. That manifest binds rules, authority, catalog, whole roster contract, active profile, DamageTarget projection, damage-consumer requirements, benchmark configuration, comparator configuration, evaluator implementation, and every output digest. Headline output has no file-order `--target-limit` mode.
+A full run writes a format-2 `run-manifest.json` beside its detail and matrix outputs. That manifest binds the result contract, mode, target-knowledge, numeric-representation, and provider IDs; rules, authority, catalog, whole roster contract, active profile, DamageTarget projection, damage-consumer requirements, benchmark and comparator configuration; the damage-model contract; canonical and byte-level sentinel identities; observation, resource, and optimization policies; semantic, orchestration, evaluator, and reporter implementations; and every output digest. Headline output has no file-order `--target-limit` mode.
 
 Synchronize the generated damage snapshot near the top of the repository README:
 
@@ -58,7 +68,7 @@ npm run readme:damage:check -- --report-input /path/to/corrected-contract-run/ru
 
 Both commands only validate and read the exact candidate replacement run; neither invokes the evaluator. A stale, foreign, incomplete, rewritten, or digest-mismatched report fails closed. In particular, the invalidated pre-correction manifest is not accepted. The writer atomically replaces only the `BEGIN/END GENERATED DAMAGE MATRIX` region and refuses to overwrite a concurrent README edit. Both modes fingerprint all maintained build inputs before reading and abort if any input changes. The check derives the same region from the same manifest and fails if the committed README differs.
 
-Run the evaluator once when benchmark inputs, evaluator or planner logic, methodology, comparator or roster data changed, or a specific release gate explicitly requires fresh evidence. Reuse that one manifest for the writer, numerical review, and check. A release metadata or status edit alone does not trigger an analytical run.
+Run the evaluator only when a specific gate explicitly authorizes the exact analytical scope. Reuse that one manifest for the writer, numerical review, and check. A release metadata/status edit or ordinary PR1 development does not authorize an analytical run.
 
 ### Invalidated pre-merge v14.2 comparison run
 
@@ -84,9 +94,9 @@ The generated damage evidence line is status-neutral and identifies the canonica
 
 The Kinetic Vanguard profile is `official_default_25_percent_hp`: 25% of fixed-HP budget for voluntary Blood Tax, Advanced Training disabled, and every configured attack replaced by Manifested Strike. Because the profile supplies no Kinetic Vanguard weapon packet, this is not a global optimization of every legal Fighter weapon/Manifested Strike mix. The target profile is `srd521_headline_source_diversity_v1`. It covers levels 7, 11, 15, and 20; three rounds; explicit exact rational weights that sum to one within each level; cluster sizes 1, 3, and 6; no target death; legal configured positioning; and SRD defense handling.
 
-Every comparator action slot is an Attack action. Kinetic Vanguard may instead spend one slot on its canonically capped standalone psionic Action. The planner optimizes each target, discipline, and cluster independently from legally observable state, then averages target results across the roster. Its lexicographic objective is aggregate damage followed by primary-target damage. It cannot look ahead into unresolved outcomes. Thermal Fracture's Armor Class reduction is the one explicit non-damage effect allowed to feed back into self-attack damage; the configured boundary rejects other condition, control, outcome, and ally-turn feedback.
+Every comparator action slot is an Attack action. Kinetic Vanguard may instead spend one slot on its canonically capped standalone psionic Action. The successor optimizes each target, discipline, and cluster independently from the shared declared static target snapshot and currently observed state, then aggregates targets with exact rational profile weights. It cannot look ahead into unresolved outcomes. Thermal Fracture's Armor Class reduction is the one explicit non-damage effect allowed to feed back into self-attack damage; the configured boundary rejects other condition, control, outcome, and ally-turn feedback.
 
-The evaluator analytically enumerates d20, saving-throw, and damage-die outcomes. Seeds and trial counts remain historical compatibility metadata; generated provenance identifies `exact_analytical_enumeration` as the evaluator. The durable v14.1 review-basis status is `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`; the invalidated v14.2 comparison run is not current publication evidence, while the exact-equal corrected-contract replacement is fresh full-roster evidence without independent numerical certification.
+The successor analytically enumerates d20, saving-throw, and damage-die outcomes with exact fractions; seeds and trial counts remain historical compatibility metadata. The accepted predecessor bundle is the comparison baseline, not an unquestionable golden: every future joined difference must be classified as `current_evaluator_defect`, `successor_defect`, `approved_methodology_correction`, `representation_or_rounding_only`, or `unresolved_blocker`. That complete joined comparison has not run in PR1 development.
 
 Damage produces separate primary-target and aggregate-cluster DPR rows. Headline percentages use the displayed exact-profile-weight aggregates:
 
@@ -106,8 +116,8 @@ The following numerical findings belong to the retained v14.1 review basis. PR #
 
 ## Damage comparators
 
-- Battle Master consumes only the declared damage parameters and tactical-policy inputs. Within the frozen three-round horizon it maximizes expected damage from legally observed state.
-- Eldritch Knight consumes only the declared damage parameters and tactical policy, including the configured True Strike positions and observed-state follow-up choices.
+- Battle Master consumes only the declared damage parameters and `generic_on_hit_superiority_damage_v1` package. Nominal Hew is an optional once-per-Fighter-turn reserved-Bonus-Action same-weapon follow-up after a critical; target death is absent.
+- Eldritch Knight consumes only the declared damage parameters and tactical policy. True Strike is an optional zero-or-one pre-roll replacement per Attack action, with explicit `radiant_base` and `weapon_normal_base` choices made from declared static target facts and observed state.
 
 The comparator model identifies the 2024 fifth-edition ruleset. It is not a comprehensive maneuver, spell, or subclass inventory. No subclass descriptions, feature prose, spell descriptions, sourcebook tables, flavor, or copied character-building instructions are retained.
 
@@ -117,7 +127,7 @@ The comparator model identifies the 2024 fifth-edition ruleset. It is not a comp
 
 Filenames derive from YAML `rules_version`, for example `kv-14-2-0-damage-comparison-matrix.csv`. The damage matrix is emitted as CSV, Markdown, and self-contained HTML from one numerical row model. Every format retains raw Kinetic Vanguard, Battle Master, and Eldritch Knight aggregates; ordinary ratios; lower and upper comparator identities and values; classification; signed boundary delta; and provenance.
 
-Generated-run provenance includes the damage result contract; rules version; authority digest; catalog and roster contract versions and digests; active target-profile ID, version, and digest; DamageTarget projection ID, version, and digest; consumer-requirement version and precise damage-consumer digest; methodology and comparator digests; evaluator implementation digest; compatibility-only seed/trial settings; aggregation; and review-basis status. The maintained `provenance/damage-review.json` separately records the current authority version, durable review-basis version, permanent typed invalidated comparison-run evidence, corrected-contract fresh-run evidence, and whether a fresh full-roster run, independent numerical certification, or Monte Carlo certification was performed. CSV rows carry structured component, SRD, and comparator notices; Markdown and HTML display the same notices in a visible licensing section.
+Generated-run provenance includes the damage result contract; mode and policy identities; rules version; authority digest; catalog and roster contract versions and digests; active target-profile ID, version, and digest; DamageTarget projection ID, version, and digest; consumer-requirement version and precise damage-consumer digest; methodology, comparator, semantic implementation, sentinel, and reporter identities; compatibility-only seed/trial settings; aggregation; and review-basis status. The maintained `provenance/damage-model-contract.json` records the Issue #65 PR1 freeze and pending gates; `provenance/damage-review.json` separately preserves the durable accepted run history. CSV rows carry structured component, SRD, and comparator notices; Markdown and HTML display the same notices in a visible licensing section.
 
 The README generator validates the run manifest, every bound input/output digest, the complete authoritative damage matrix, all raw and derived result fields, all provenance and notice fields, comparator scope, and canonical rules evidence identity before selecting primary-target cluster-size-1 rows for its single public heat table. Generated outputs, caches, virtual environments, and `.codex-import/` are ignored and are not official source.
 

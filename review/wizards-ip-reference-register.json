@@ -1,11 +1,11 @@
 {
   "format_version": 1,
   "audit": {
-    "audit_date": "2026-08-14",
-    "audited_base_commit": "e5d81ab1271b305bee5b92bca22bb9acce0275e9",
-    "tracked_path_count": 102,
-    "tracked_path_sha256": "003cdfef582840a3341e3da7c99689f3cd0c197b3bcc7906600747765c6994da",
-    "tracked_content_sha256": "d4ac9d9e56319acfb8ea5f7911ec026dfd3145685d45d5163b9279e2c82afe90",
+    "audit_date": "2026-08-15",
+    "audited_base_commit": "5fcee4b94dd97d0b8b88df3449358c74bd717c7c",
+    "tracked_path_count": 108,
+    "tracked_path_sha256": "8884448e4cbe2a5d3786b1806eae2adf3006afcd670e17e1d2fb58c740f776aa",
+    "tracked_content_sha256": "17fa5295e88a43fa7a605c0f9bf4574dc7142f6275ed497d6df26bed193727ed",
     "tracked_content_self_canonicalization": "SHA-256 frames every tracked candidate path and bytes after blanking only audit.tracked_content_sha256 in this register.",
     "scope": "Sorted stage-zero path names and strict UTF-8 contents, framed candidate-tree SHA-256 with one blanked self field, plus every recursively discovered prototype and authorized release artifact.",
     "generated_artifact_inventory": [
@@ -1192,7 +1192,7 @@
         "battle_master",
         "eldritch_knight"
       ],
-      "expected_hit_count": 12,
+      "expected_hit_count": 10,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
@@ -1214,7 +1214,7 @@
         "war_magic",
         "precision_attack"
       ],
-      "expected_hit_count": 31,
+      "expected_hit_count": 33,
       "surface": "public",
       "classification": "original_project_content",
       "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
@@ -1417,11 +1417,26 @@
         "battle_master",
         "eldritch_knight"
       ],
-      "expected_hit_count": 10,
+      "expected_hit_count": 12,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
       "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/README.md",
+      "path": "harness/README.md",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "hew"
+      ],
+      "expected_hit_count": 2,
+      "surface": "public",
+      "classification": "independently_expressed_factual_mechanic",
+      "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
       "mechanically_necessary": false,
       "counsel_review": true
     },
@@ -1499,12 +1514,45 @@
         "relentless",
         "superiority_die"
       ],
-      "expected_hit_count": 12,
+      "expected_hit_count": 14,
       "surface": "public",
       "classification": "independently_expressed_factual_mechanic",
       "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
       "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
       "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/config/benchmark.json",
+      "path": "harness/config/benchmark.json",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/config/benchmark.json",
+      "path": "harness/config/benchmark.json",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "hew",
+        "relentless",
+        "superiority_die"
+      ],
+      "expected_hit_count": 4,
+      "surface": "public",
+      "classification": "independently_expressed_factual_mechanic",
+      "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
       "counsel_review": true
     },
     {
@@ -1599,6 +1647,43 @@
       "counsel_review": false
     },
     {
+      "surface_id": "tracked:harness/damage_contract.py",
+      "path": "harness/damage_contract.py",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight",
+        "battle_master_initialism",
+        "eldritch_knight_initialism"
+      ],
+      "expected_hit_count": 67,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/damage_contract.py",
+      "path": "harness/damage_contract.py",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "great_weapon_master",
+        "hew",
+        "dueling",
+        "relentless",
+        "superiority_die"
+      ],
+      "expected_hit_count": 181,
+      "surface": "public",
+      "classification": "independently_expressed_factual_mechanic",
+      "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
       "surface_id": "tracked:harness/damage_harness.py",
       "path": "harness/damage_harness.py",
       "category_id": "non_srd_comparator_identifier",
@@ -1608,31 +1693,11 @@
         "battle_master_initialism",
         "eldritch_knight_initialism"
       ],
-      "expected_hit_count": 29,
+      "expected_hit_count": 30,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
       "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
-      "mechanically_necessary": true,
-      "counsel_review": true
-    },
-    {
-      "surface_id": "tracked:harness/damage_harness.py",
-      "path": "harness/damage_harness.py",
-      "category_id": "non_srd_feat_feature_reference",
-      "matched_terms": [
-        "great_weapon_master",
-        "hew",
-        "dueling",
-        "relentless",
-        "superiority_die",
-        "great_weapon_master_initialism"
-      ],
-      "expected_hit_count": 75,
-      "surface": "public",
-      "classification": "independently_expressed_factual_mechanic",
-      "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
-      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
       "mechanically_necessary": true,
       "counsel_review": true
     },
@@ -1676,7 +1741,7 @@
         "battle_master_initialism",
         "eldritch_knight_initialism"
       ],
-      "expected_hit_count": 48,
+      "expected_hit_count": 54,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
@@ -1730,6 +1795,42 @@
       "required_notice_or_locator": "LICENSE.md; NOTICE.md",
       "mechanically_necessary": false,
       "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/data/damage-sentinels-v1.json",
+      "path": "harness/data/damage-sentinels-v1.json",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight",
+        "battle_master_initialism",
+        "eldritch_knight_initialism"
+      ],
+      "expected_hit_count": 33,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/data/damage-sentinels-v1.json",
+      "path": "harness/data/damage-sentinels-v1.json",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "hew",
+        "relentless",
+        "superiority_die",
+        "great_weapon_master_initialism"
+      ],
+      "expected_hit_count": 60,
+      "surface": "public",
+      "classification": "independently_expressed_factual_mechanic",
+      "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": true,
+      "counsel_review": true
     },
     {
       "surface_id": "tracked:harness/data/srd_creature_rosters.json",
@@ -1786,7 +1887,7 @@
         "battle_master_initialism",
         "eldritch_knight_initialism"
       ],
-      "expected_hit_count": 68,
+      "expected_hit_count": 82,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
@@ -1806,7 +1907,7 @@
         "superiority_die",
         "great_weapon_master_initialism"
       ],
-      "expected_hit_count": 31,
+      "expected_hit_count": 41,
       "surface": "public",
       "classification": "independently_expressed_factual_mechanic",
       "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
@@ -1844,6 +1945,39 @@
       "required_notice_or_locator": "NOTICE.md; pinned official SRD 5.2.1 PDF",
       "mechanically_necessary": true,
       "counsel_review": false
+    },
+    {
+      "surface_id": "tracked:harness/provenance/damage-model-contract.json",
+      "path": "harness/provenance/damage-model-contract.json",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 7,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/provenance/damage-model-contract.json",
+      "path": "harness/provenance/damage-model-contract.json",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "hew",
+        "relentless",
+        "superiority_die"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "independently_expressed_factual_mechanic",
+      "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
+      "counsel_review": true
     },
     {
       "surface_id": "tracked:harness/provenance/damage-review.json",
@@ -1914,7 +2048,7 @@
         "dnd_abbreviation",
         "dnd_beyond_domain"
       ],
-      "expected_hit_count": 6,
+      "expected_hit_count": 7,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
@@ -1930,7 +2064,7 @@
         "battle_master",
         "eldritch_knight"
       ],
-      "expected_hit_count": 154,
+      "expected_hit_count": 163,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
@@ -1952,7 +2086,7 @@
         "war_magic",
         "precision_attack"
       ],
-      "expected_hit_count": 44,
+      "expected_hit_count": 52,
       "surface": "public",
       "classification": "independently_expressed_factual_mechanic",
       "rationale": "Compact independently expressed comparator fact or locator; no source descriptive prose is reproduced.",
@@ -1967,7 +2101,7 @@
       "matched_terms": [
         "players_handbook"
       ],
-      "expected_hit_count": 30,
+      "expected_hit_count": 34,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Narrow non-SRD bibliography, source locator, or audit-boundary reference; no project license is asserted.",
@@ -1982,7 +2116,7 @@
       "matched_terms": [
         "srd"
       ],
-      "expected_hit_count": 83,
+      "expected_hit_count": 93,
       "surface": "public",
       "classification": "original_project_content",
       "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
@@ -2068,6 +2202,24 @@
       "counsel_review": false
     },
     {
+      "surface_id": "tracked:harness/tests/damage_sentinel_oracles.py",
+      "path": "harness/tests/damage_sentinel_oracles.py",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "hew",
+        "relentless",
+        "superiority_die",
+        "great_weapon_master_initialism"
+      ],
+      "expected_hit_count": 14,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
       "surface_id": "tracked:harness/tests/test_creature_catalog.py",
       "path": "harness/tests/test_creature_catalog.py",
       "category_id": "srd_reference",
@@ -2098,6 +2250,75 @@
       "counsel_review": false
     },
     {
+      "surface_id": "tracked:harness/tests/test_damage_contract_integration.py",
+      "path": "harness/tests/test_damage_contract_integration.py",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 78,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/tests/test_damage_contract_integration.py",
+      "path": "harness/tests/test_damage_contract_integration.py",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "great_weapon_master",
+        "hew",
+        "dueling",
+        "relentless",
+        "superiority_die",
+        "great_weapon_master_initialism"
+      ],
+      "expected_hit_count": 62,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": true,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/tests/test_damage_sentinels.py",
+      "path": "harness/tests/test_damage_sentinels.py",
+      "category_id": "non_srd_comparator_identifier",
+      "matched_terms": [
+        "battle_master",
+        "eldritch_knight"
+      ],
+      "expected_hit_count": 4,
+      "surface": "public",
+      "classification": "narrow_nominative_reference",
+      "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
+      "required_notice_or_locator": "NOTICE.md; harness/provenance/fighter-subclass-comparators.json",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
+      "surface_id": "tracked:harness/tests/test_damage_sentinels.py",
+      "path": "harness/tests/test_damage_sentinels.py",
+      "category_id": "non_srd_feat_feature_reference",
+      "matched_terms": [
+        "hew",
+        "relentless",
+        "superiority_die"
+      ],
+      "expected_hit_count": 6,
+      "surface": "public",
+      "classification": "original_project_content",
+      "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
+      "required_notice_or_locator": "harness/provenance/fighter-subclass-comparators.json; accepted issue #50/#52 records",
+      "mechanically_necessary": false,
+      "counsel_review": true
+    },
+    {
       "surface_id": "tracked:harness/tests/test_harness.py",
       "path": "harness/tests/test_harness.py",
       "category_id": "non_srd_comparator_identifier",
@@ -2107,7 +2328,7 @@
         "battle_master_initialism",
         "eldritch_knight_initialism"
       ],
-      "expected_hit_count": 122,
+      "expected_hit_count": 92,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
@@ -2121,12 +2342,9 @@
       "category_id": "non_srd_feat_feature_reference",
       "matched_terms": [
         "great_weapon_master",
-        "hew",
-        "relentless",
-        "precision_attack",
         "great_weapon_master_initialism"
       ],
-      "expected_hit_count": 35,
+      "expected_hit_count": 2,
       "surface": "public",
       "classification": "original_project_content",
       "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
@@ -2304,7 +2522,7 @@
         "battle_master",
         "eldritch_knight"
       ],
-      "expected_hit_count": 68,
+      "expected_hit_count": 84,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
@@ -2327,7 +2545,7 @@
         "war_magic",
         "precision_attack"
       ],
-      "expected_hit_count": 66,
+      "expected_hit_count": 86,
       "surface": "public",
       "classification": "original_project_content",
       "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
@@ -2376,7 +2594,7 @@
         "srd",
         "system_reference_document"
       ],
-      "expected_hit_count": 272,
+      "expected_hit_count": 285,
       "surface": "public",
       "classification": "original_project_content",
       "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",
@@ -2500,7 +2718,7 @@
         "battle_master",
         "eldritch_knight"
       ],
-      "expected_hit_count": 4,
+      "expected_hit_count": 6,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
@@ -2599,7 +2817,7 @@
         "dnd_beyond_name",
         "dnd_beyond_domain"
       ],
-      "expected_hit_count": 43,
+      "expected_hit_count": 44,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Narrow source or brand identification only; no logo, branding, affiliation, endorsement, or official status is asserted.",
@@ -2630,7 +2848,7 @@
         "battle_master",
         "eldritch_knight"
       ],
-      "expected_hit_count": 73,
+      "expected_hit_count": 84,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Retained unofficial comparator identification preserves benchmark intelligibility; the no-affiliation boundary and counsel question remain.",
@@ -2653,7 +2871,7 @@
         "war_magic",
         "precision_attack"
       ],
-      "expected_hit_count": 42,
+      "expected_hit_count": 54,
       "surface": "public",
       "classification": "original_project_content",
       "rationale": "Project-authored audit or guard text names the bounded term without treating it as licensed source material.",
@@ -2670,7 +2888,7 @@
         "dungeon_masters_guide",
         "monster_manual"
       ],
-      "expected_hit_count": 28,
+      "expected_hit_count": 32,
       "surface": "public",
       "classification": "narrow_nominative_reference",
       "rationale": "Narrow non-SRD bibliography, source locator, or audit-boundary reference; no project license is asserted.",
@@ -2702,7 +2920,7 @@
         "srd",
         "system_reference_document"
       ],
-      "expected_hit_count": 123,
+      "expected_hit_count": 125,
       "surface": "public",
       "classification": "original_project_content",
       "rationale": "Project-authored code, test, audit, manifest, or compact identifier reference; not SRD source material or required attribution.",

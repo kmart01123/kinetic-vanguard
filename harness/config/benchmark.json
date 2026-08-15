@@ -1,5 +1,16 @@
 {
-  "format_version": 2,
+  "format_version": 3,
+  "damage_model": {
+    "mode_id": "nominal_sustained_dpr_v1",
+    "target_knowledge_contract_id": "declared_static_target_knowledge_v1",
+    "numeric_representation": "exact_fraction",
+    "finite_hp_mode": "unsupported_in_pr1",
+    "provider_ids": [
+      "kinetic_vanguard",
+      "battle_master",
+      "eldritch_knight"
+    ]
+  },
   "methodology": {
     "status": "REVIEWED_WITH_DOCUMENTED_DIFFERENCES",
     "historical_source": "Kinetic Vanguard v12.1.0 carry-forward of certified v12.0.0 methodology",
@@ -104,13 +115,47 @@
       "scope": "per_target_discipline_cluster",
       "objective": [
         "aggregate_damage",
-        "primary_damage"
+        "primary_damage",
+        "least_self_damage",
+        "least_horizon_limited_use",
+        "least_persistent_pool_use",
+        "least_refreshable_use",
+        "smallest_canonical_action_id"
       ],
+      "resource_cost_classes": {
+        "order": [
+          "self_damage",
+          "horizon_limited",
+          "persistent_pool",
+          "refreshable"
+        ],
+        "kinetic_vanguard": {
+          "self_damage": ["blood_tax"],
+          "horizon_limited": ["overload_mastery"],
+          "persistent_pool": ["psi"],
+          "refreshable": ["combat_prowess"]
+        },
+        "battle_master": {
+          "self_damage": [],
+          "horizon_limited": [],
+          "persistent_pool": ["superiority_die"],
+          "refreshable": ["relentless", "combat_prowess", "hew", "bonus_action"]
+        },
+        "eldritch_knight": {
+          "self_damage": [],
+          "horizon_limited": [],
+          "persistent_pool": [],
+          "refreshable": ["true_strike_replacement", "combat_prowess"]
+        }
+      },
       "decision_timing": {
         "pre_roll_declarations": "optimize_from_legally_observed_state",
         "unobserved_outcome_lookahead": false,
         "post_roll_decisions": [
-          "combat_prowess"
+          "battle_master_precision",
+          "combat_prowess",
+          "battle_master_on_hit_die",
+          "hew_bonus_attack"
         ]
       }
     },

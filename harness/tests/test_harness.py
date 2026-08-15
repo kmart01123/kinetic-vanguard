@@ -19,8 +19,9 @@ import harness.authority as authority_module
 from harness.authority import AuthorityError,DamageAuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.creature_catalog import HEADLINE_PROFILE_ID,RosterEntry,load_catalog,load_consumer_requirements,load_profile
 from harness.creature_damage_projection import DAMAGE_PROJECTION_ID,DAMAGE_PROJECTION_VERSION,DamageTarget,project_damage_target,project_profile_damage_targets
+from harness.damage_contract import ACTION_KINDS,PROVIDER_IDS,ActionKind,DamageSolution,DamageValue,ExactTransition,NOMINAL_MODE_ID,NominalKernel,Proposal,ProviderId,ResourceCost,TargetKnowledge,UnsupportedDamageMode,apply_defense,attack_outcome_distribution,die_distribution,manifested_strike_packet_options,reject_unsupported_mode,save_success_probability,solve_comparator,solve_kinetic_vanguard
 from harness.damage_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,damage_matrix_row,write_damage_matrix
-from harness.damage_harness import DAMAGE_EVALUATOR_ID,DAMAGE_EVALUATOR_IMPLEMENTATION_PATHS,DAMAGE_RESULT_CONTRACT_VERSION,RUN_MANIFEST_FILENAME,Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,_strike_packet_options,evaluator_implementation_sha256,run as run_damage
+from harness.damage_harness import DAMAGE_EVALUATOR_ID,DAMAGE_ORCHESTRATION_IMPLEMENTATION_PATHS,DAMAGE_REPORTER_IMPLEMENTATION_PATHS,DAMAGE_RESULT_CONTRACT_VERSION,DAMAGE_SEMANTIC_IMPLEMENTATION_PATHS,RUN_MANIFEST_FILENAME,implementation_sha256,run as run_damage
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,load_comparators,load_config
 
 
@@ -83,26 +84,19 @@ def _mechanics_target(level:int,*,ac:int=18,damage_immunity:str|None=None)->Dama
     )
 
 
-def _leaf_paths(value:object,prefix:tuple[object,...]=())->list[tuple[object,...]]:
-    if isinstance(value,dict):
-        return [path for key,item in value.items() for path in _leaf_paths(item,(*prefix,key))]
-    if isinstance(value,list):
-        return [path for index,item in enumerate(value) for path in _leaf_paths(item,(*prefix,index))]
-    return [prefix]
-
-
-def _path_value(value:object,path:tuple[object,...])->object:
-    current=value
-    for part in path:current=current[part]  # type: ignore[index]
-    return current
-
-
-def _set_path(value:object,path:tuple[object,...],replacement:object)->None:
-    parent=_path_value(value,path[:-1]);parent[path[-1]]=replacement  # type: ignore[index]
-
-
-def _path_label(path:tuple[object,...])->str:
-    return '.'.join(f'[{part}]' if isinstance(part,int) else str(part) for part in path)
+def _mechanics_knowledge(level:int,*,ac:int=18)->TargetKnowledge:
+    return replace(
+        TargetKnowledge.from_damage_target(_headline_target(level)),
+        ac=ac,
+        saves=(("charisma",0),("constitution",0),("dexterity",0),("intelligence",0),("strength",0),("wisdom",0)),
+        magic_resistance=False,
+        legendary_resistance=0,
+        legendary_resistance_lair=None,
+        legendary_resistance_policy="metadata_only",
+        damage_resistances=frozenset(),
+        damage_immunities=frozenset(),
+        damage_vulnerabilities=frozenset(),
+    )
 
 
 class AuthorityProjectionTests(unittest.TestCase):
@@ -158,11 +152,11 @@ class AuthorityProjectionTests(unittest.TestCase):
             for level in range(3,21):self.assertIsInstance(self.model.progression(name,level),int)
 
     def test_optional_graze_damage_is_the_only_discipline_damage_mastery_input(self)->None:
-        target=_mechanics_target(7)
-        pyro=_strike_packet_options(self.model,target,"pyrokinesis",7,5,8)
-        cryo=_strike_packet_options(self.model,target,"cryokinesis",7,5,8)
-        self.assertTrue(all(packet[1][0]==5.0 for packet in pyro))
-        self.assertTrue(all(packet[1][0]==0.0 for packet in cryo))
+        knowledge=_mechanics_knowledge(7)
+        pyro=manifested_strike_packet_options(self.model,knowledge,"pyrokinesis",5,8)
+        cryo=manifested_strike_packet_options(self.model,knowledge,"cryokinesis",5,8)
+        self.assertTrue(all(packet[1][0]==5 for packet in pyro))
+        self.assertTrue(all(packet[1][0]==0 for packet in cryo))
 
     def test_comparator_inputs_are_isolated_minimal_and_fail_closed(self)->None:
         comparators=load_comparators()
@@ -198,6 +192,9 @@ class FrozenInputValidationTests(unittest.TestCase):
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["methodology"].__setitem__("status","CERTIFIED_BY_ASSERTION"),"review status")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["methodology"].__setitem__("target_profile_id","legacy_target_rows"),"target profile")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["methodology"].__setitem__("target_weighting","equal_weight_within_level"),"aggregation")
+        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["methodology"].__setitem__("target_death",True),"target-death")
+        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["methodology"].__setitem__("ally_turns",True),"ally-turn")
+        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["methodology"].__setitem__("legal_positioning_assumed",False),"positioning")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["kv_profile"].__setitem__("weapon_damage",{}),"kv_profile keys")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["kv_profile"].__setitem__("attack_replacement_policy","mixed_weapon_and_manifested_strike"),"all-Manifested-Strike")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["fighter_progression"]["7"]["action_slots_by_round"].pop(),"cover every round")
@@ -215,12 +212,14 @@ class FrozenInputValidationTests(unittest.TestCase):
 
     def test_comparator_config_rejects_unknown_missing_and_incomplete_parameters(self)->None:
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"].__setitem__("unused_bonus",1),"damage.battle_master keys")
-        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"].pop("true_strike_uses_per_attack_action"),"damage.eldritch_knight keys")
+        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"].pop("true_strike_maximum_uses_per_attack_action"),"damage.eldritch_knight keys")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["magic_weapon_bonus_by_level"].pop("20"),"magic_weapon_bonus_by_level keys")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"].__setitem__("great_weapon_master_attack_action_bonus","fixed"),"GWM bonus")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["tactical_policy"].__setitem__("maximum_maneuver_dice_per_attack",2),"Battle Master tactical policy")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["tactical_policy"].__setitem__("maneuver_choice_timing","before_attack_roll"),"Battle Master tactical policy")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"]["tactical_policy"].__setitem__("true_strike_choice_timing","after_attack_roll"),"Eldritch Knight tactical policy")
+        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"].__setitem__("true_strike_maximum_uses_per_attack_action",0),"maximum must be exactly one")
+        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"].__setitem__("true_strike_maximum_uses_per_attack_action",2),"maximum must be exactly one")
 
     def test_damage_target_shape_is_an_isolated_static_projection(self)->None:
         self.assertEqual(set(DamageTarget.__dataclass_fields__),{
@@ -265,190 +264,96 @@ class FrozenInputValidationTests(unittest.TestCase):
         )
 
 
-class FighterNumericalTests(unittest.TestCase):
+class ExactNominalContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls)->None:
         cls.model=DamageAuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators()
 
-    def test_declared_comparator_switches_are_numerically_live(self)->None:
-        level=20;target=_mechanics_target(level)
-        baseline={build:_comparator_dpr(self.model,self.config,self.comparators,target,level,build) for build in ("battle_master","eldritch_knight")}
-        mutations=[
-            ("battle_master",lambda row:row.__setitem__("hew_critical_bonus_attack_once_per_round",False)),
-            ("battle_master",lambda row:row.__setitem__("great_weapon_master_attack_action_bonus","disabled")),
-            ("battle_master",lambda row:row["weapon"].__setitem__("great_weapon_fighting",False)),
-            ("eldritch_knight",lambda row:row.__setitem__("true_strike_uses_per_attack_action",0)),
-            ("eldritch_knight",lambda row:row["weapon"].__setitem__("great_weapon_fighting",True)),
+    def test_target_knowledge_is_identical_static_surface_without_hp(self)->None:
+        target=_headline_target(7)
+        views=[TargetKnowledge.from_damage_target(target) for _ in range(3)]
+        self.assertEqual(views[0],views[1]);self.assertEqual(views[1],views[2])
+        self.assertNotIn("hp",TargetKnowledge.__dataclass_fields__)
+        self.assertEqual(views[0].contract_id,"declared_static_target_knowledge_v1")
+        self.assertRegex(views[0].digest,r"^[0-9a-f]{64}$")
+
+    def test_exact_attack_save_and_defense_primitives_match_frozen_arithmetic(self)->None:
+        target=_mechanics_knowledge(7,ac=15)
+        self.assertEqual(dict(attack_outcome_distribution(target,5)),{"miss":Fraction(9,20),"hit":Fraction(1,2),"critical":Fraction(1,20)})
+        self.assertEqual(sum(probability for _,probability in die_distribution(2,6)),1)
+        mr=replace(target,magic_resistance=True,saves=tuple((key,4 if key=="charisma" else value) for key,value in target.saves))
+        self.assertEqual(save_success_probability(mr,"charisma",15),Fraction(3,4))
+        knowledge=replace(target,damage_resistances=frozenset({"fire"}))
+        self.assertEqual([apply_defense(knowledge,"fire",value) for value in range(2,8)],[1,1,2,2,3,3])
+
+    def test_nominal_kernel_uses_full_cost_order_then_canonical_id(self)->None:
+        damage=DamageValue(Fraction(5),Fraction(10))
+        self.assertEqual(NominalKernel.choose((Proposal("tie_probe.b",damage),Proposal("tie_probe.a",damage))).action_id,"tie_probe.a")
+        expensive=DamageValue(Fraction(5),Fraction(10),ResourceCost(refreshable=Fraction(1)))
+        self.assertEqual(NominalKernel.choose((Proposal("tie_probe.a",expensive),Proposal("tie_probe.z",damage))).action_id,"tie_probe.z")
+        with self.assertRaisesRegex(ValueError,"duplicate canonical action IDs"):
+            NominalKernel.choose((Proposal("tie_probe.same",damage),Proposal("tie_probe.same",damage)))
+        with self.assertRaisesRegex(ValueError,"outside the closed damage vocabulary"):
+            Proposal("unsupported.action",damage)
+
+    def test_closed_provider_action_and_immutable_value_contracts(self)->None:
+        self.assertEqual(PROVIDER_IDS,tuple(item.value for item in ProviderId))
+        self.assertEqual(ACTION_KINDS,tuple(item.value for item in ActionKind))
+        target=_mechanics_knowledge(7)
+        values=(target,ResourceCost(),DamageValue(),ExactTransition(Fraction(1),DamageValue()),Proposal("tie_probe.probe",DamageValue()))
+        self.assertTrue(all(not hasattr(value,"__dict__") for value in values))
+        with self.assertRaisesRegex(TypeError,"exact Fraction"):
+            DamageValue(1.0,Fraction(1))  # type: ignore[arg-type]
+        with self.assertRaisesRegex(TypeError,"canonical immutable exact values"):
+            NominalKernel(ProviderId.BATTLE_MASTER).memoized_value("probe",(["mutable"],),lambda:DamageValue())  # type: ignore[list-item]
+
+        kernel=NominalKernel(ProviderId.ELDRITCH_KNIGHT)
+        calls=0
+        expected=DamageValue(Fraction(1),Fraction(2))
+        def compute()->DamageValue:
+            nonlocal calls;calls+=1;return expected
+        self.assertEqual(kernel.memoized_value("probe",("state",),compute),expected)
+        self.assertEqual(kernel.memoized_value("probe",("state",),compute),expected)
+        self.assertEqual(calls,1)
+        self.assertEqual(kernel.cache_info.hits,1);self.assertEqual(kernel.cache_info.misses,1)
+
+    def test_exact_transition_kernel_coalesces_immutable_successors(self)->None:
+        transitions=(
+            ExactTransition(Fraction(1,4),DamageValue(Fraction(2),Fraction(3)),("next",)),
+            ExactTransition(Fraction(1,4),DamageValue(Fraction(2),Fraction(3)),("next",)),
+            ExactTransition(Fraction(1,2),DamageValue(Fraction(4),Fraction(5)),None),
+        )
+        continuations={None:DamageValue(),("next",):DamageValue(Fraction(1),Fraction(2))}
+        self.assertEqual(
+            NominalKernel.transition_value(transitions,continuations.__getitem__),
+            DamageValue(Fraction(7,2),Fraction(5)),
+        )
+        with self.assertRaisesRegex(TypeError,"immutable tuple"):
+            NominalKernel.transition_value(
+                (ExactTransition(Fraction(1),DamageValue(),["mutable"]),),  # type: ignore[arg-type]
+                continuations.__getitem__,
+            )
+
+    def test_finite_modes_fail_closed_before_provider_evaluation(self)->None:
+        for mode in ("finite_hp_removed_v1","finite_hp_kill_cleave_v1","finite_hp"):
+            with self.subTest(mode=mode):
+                with self.assertRaisesRegex(UnsupportedDamageMode,"separately authorized PR2"):reject_unsupported_mode(mode)
+        reject_unsupported_mode(NOMINAL_MODE_ID)
+
+    def test_three_public_providers_return_exact_bound_solutions_on_one_target(self)->None:
+        target=_headline_target(7)
+        solutions=[
+            solve_kinetic_vanguard(self.model,self.config,target,7,"pyrokinesis",1),
+            solve_comparator(self.model,self.config,self.comparators,target,7,"battle_master"),
+            solve_comparator(self.model,self.config,self.comparators,target,7,"eldritch_knight"),
         ]
-        for build,mutate in mutations:
-            with self.subTest(build=build,mutation=mutate):
-                changed=deepcopy(self.comparators);mutate(changed["damage"][build])
-                self.assertNotAlmostEqual(_comparator_dpr(self.model,self.config,changed,target,level,build),baseline[build],places=9)
-
-    def test_true_strike_choice_uses_current_studied_state_before_the_roll(self)->None:
-        target=_mechanics_target(15)
-        config=deepcopy(self.config);progression=config["fighter_progression"]["15"];progression["attacks_per_action"]=2;progression["action_slots_by_round"]=[1,1,1]
-        probabilities=lambda advantage:{20:1.0} if advantage else {1:1.0}
-        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):
-            result=_comparator_dpr(self.model,config,self.comparators,target,15,"eldritch_knight")
-        self.assertEqual(result,32.0)
-
-    def test_precision_attack_keeps_both_fifty_percent_outcomes_in_the_optimum(self)->None:
-        target=_mechanics_target(7,ac=24)
-        config=deepcopy(self.config);progression=config["fighter_progression"]["7"];progression["attacks_per_action"]=1;progression["action_slots_by_round"]=[1,1,1]
-        with patch("harness.damage_harness._natural_probabilities",return_value={10:1.0}):
-            result=_comparator_dpr(self.model,config,self.comparators,target,7,"battle_master")
-        self.assertEqual(result,11.0)
-
-    def test_combat_prowess_can_be_retained_after_an_observed_miss(self)->None:
-        target=_mechanics_target(20)
-        config=deepcopy(self.config);progression=config["fighter_progression"]["20"];progression["attacks_per_action"]=2;progression["action_slots_by_round"]=[1,1,1]
-        comparators=deepcopy(self.comparators);battle_master=comparators["damage"]["battle_master"];battle_master["superiority_pool_by_level"]["20"]=0;battle_master["relentless_minimum_level"]=21;battle_master["hew_critical_bonus_attack_once_per_round"]=False
-        probabilities=lambda advantage:{20:1.0} if advantage else {1:1.0}
-        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):
-            self.assertEqual(_comparator_dpr(self.model,config,comparators,target,20,"eldritch_knight"),40.0)
-            self.assertEqual(_comparator_dpr(self.model,config,comparators,target,20,"battle_master"),38.0)
-
-    def test_gwm_applies_to_each_attack_action_hit_but_not_the_single_hew_attack(self)->None:
-        target=_mechanics_target(7,ac=1)
-        config=deepcopy(self.config);progression=config["fighter_progression"]["7"];progression.update(attacks_per_action=2,action_slots_by_round=[1,1,1],studied_attacks=False,combat_prowess=False)
-        enabled=deepcopy(self.comparators);battle_master=enabled["damage"]["battle_master"];battle_master["superiority_pool_by_level"]["7"]=0;battle_master["relentless_minimum_level"]=21;battle_master["hew_critical_bonus_attack_once_per_round"]=False
-        disabled=deepcopy(enabled);disabled["damage"]["battle_master"]["great_weapon_master_attack_action_bonus"]="disabled"
-        with patch("harness.damage_harness._natural_probabilities",return_value={10:1.0}):
-            main_delta=_comparator_dpr(self.model,config,enabled,target,7,"battle_master")-_comparator_dpr(self.model,config,disabled,target,7,"battle_master")
-        self.assertAlmostEqual(main_delta,6.0,places=12)
-
-        progression["attacks_per_action"]=1;battle_master["hew_critical_bonus_attack_once_per_round"]=True
-        disabled=deepcopy(enabled);disabled["damage"]["battle_master"]["great_weapon_master_attack_action_bonus"]="disabled"
-        without_hew=deepcopy(enabled);without_hew["damage"]["battle_master"]["hew_critical_bonus_attack_once_per_round"]=False
-        with patch("harness.damage_harness._natural_probabilities",return_value={20:1.0}):
-            hew_gwm_delta=_comparator_dpr(self.model,config,enabled,target,7,"battle_master")-_comparator_dpr(self.model,config,disabled,target,7,"battle_master")
-            single_hew_delta=_comparator_dpr(self.model,config,enabled,target,7,"battle_master")-_comparator_dpr(self.model,config,without_hew,target,7,"battle_master")
-        self.assertAlmostEqual(hew_gwm_delta,3.0,places=12)
-        self.assertAlmostEqual(single_hew_delta,22.0,places=12)
-
-    def test_relentless_supplies_only_one_free_die_per_turn(self)->None:
-        target=_mechanics_target(15,ac=1)
-        config=deepcopy(self.config);config["fighter_progression"]["15"].update(attacks_per_action=2,action_slots_by_round=[1,1,1],studied_attacks=False,combat_prowess=False)
-        enabled=deepcopy(self.comparators);battle_master=enabled["damage"]["battle_master"];battle_master["superiority_pool_by_level"]["15"]=0;battle_master["relentless_minimum_level"]=15;battle_master["hew_critical_bonus_attack_once_per_round"]=False
-        disabled=deepcopy(enabled);disabled["damage"]["battle_master"]["relentless_minimum_level"]=21
-        with patch("harness.damage_harness._natural_probabilities",return_value={10:1.0}):
-            delta=_comparator_dpr(self.model,config,enabled,target,15,"battle_master")-_comparator_dpr(self.model,config,disabled,target,15,"battle_master")
-        self.assertAlmostEqual(delta,4.5,places=12)
-
-    def test_one_maneuver_die_per_attack_prevents_superiority_relentless_stacking(self)->None:
-        target=_mechanics_target(20,ac=1)
-        config=deepcopy(self.config);config["fighter_progression"]["20"].update(attacks_per_action=1,action_slots_by_round=[1,1,1],studied_attacks=False,combat_prowess=False)
-        enabled=deepcopy(self.comparators);battle_master=enabled["damage"]["battle_master"];battle_master["superiority_pool_by_level"]["20"]=3;battle_master["relentless_minimum_level"]=20;battle_master["hew_critical_bonus_attack_once_per_round"]=False
-        disabled=deepcopy(enabled);battle_master=disabled["damage"]["battle_master"];battle_master["superiority_pool_by_level"]["20"]=0;battle_master["relentless_minimum_level"]=21
-        with patch("harness.damage_harness._natural_probabilities",return_value={10:1.0}):
-            delta=_comparator_dpr(self.model,config,enabled,target,20,"battle_master")-_comparator_dpr(self.model,config,disabled,target,20,"battle_master")
-        self.assertAlmostEqual(delta,6.5,places=12)
-
-    def test_failed_attack_bonus_exposes_a_new_observed_prowess_decision(self)->None:
-        target=_mechanics_target(20)
-        unavailable=deepcopy(self.config);unavailable["fighter_mechanics"]["combat_prowess"]["eligible_after_failed_attack_roll_bonus"]=False
-        reviewed=_comparator_dpr(self.model,self.config,self.comparators,target,20,"battle_master")
-        without_post_failure_choice=_comparator_dpr(self.model,unavailable,self.comparators,target,20,"battle_master")
-        self.assertGreater(reviewed,without_post_failure_choice)
-
-
-class ComparatorLeafContractTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls)->None:
-        cls.model=DamageAuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators()
-
-    def target(self,level:int,*,damage_immunity:str|None=None)->DamageTarget:
-        return replace(_mechanics_target(level,damage_immunity=damage_immunity),saves={"strength":12,"dexterity":-2,"constitution":1,"intelligence":2,"wisdom":-1,"charisma":0},magic_resistance=True,size="medium")
-
-    def test_every_damage_comparator_leaf_is_numerically_live(self)->None:
-        baselines:dict[tuple[str,int,str|None],float]={}
-        for path in _leaf_paths(self.comparators["damage"],("damage",)):
-            build=str(path[1]);field=str(path[-1]);current=_path_value(self.comparators,path)
-            level=next((int(part) for part in path if isinstance(part,str) and part in {"7","11","15","20"}),20)
-            damage_immunity=None
-            if "tactical_policy" in path:
-                replacement=current+1 if isinstance(current,int) else f"{current}_unsupported"
-                changed=deepcopy(self.comparators);_set_path(changed,path,replacement)
-                with self.subTest(path=_path_label(path)):
-                    with self.assertRaisesRegex(ValueError,"tactical policy"):_comparator_dpr(self.model,self.config,changed,self.target(level),level,build)
-                continue
-            if field in {"damage_type","true_strike_damage_type"}:
-                replacement="fire" if current!="fire" else "cold";damage_immunity=replacement
-            elif field=="great_weapon_master_attack_action_bonus":replacement="disabled" if current!="disabled" else "proficiency_bonus"
-            elif field=="relentless_minimum_level":replacement=level+1
-            elif field=="true_strike_uses_per_attack_action":replacement=0 if current else 1
-            elif isinstance(current,bool):replacement=not current
-            elif isinstance(current,int):replacement=current+(2 if field in {"sides","relentless_die"} else 1)
-            else:raise AssertionError(f"No numerical liveness mutation for {_path_label(path)}")
-            target=self.target(level,damage_immunity=damage_immunity);key=(build,level,damage_immunity)
-            if key not in baselines:baselines[key]=_comparator_dpr(self.model,self.config,self.comparators,target,level,build)
-            changed=deepcopy(self.comparators);_set_path(changed,path,replacement)
-            with self.subTest(path=_path_label(path)):
-                self.assertNotEqual(_comparator_dpr(self.model,self.config,changed,target,level,build),baselines[key])
-
-
-class DamagePlannerTests(unittest.TestCase):
-    @classmethod
-    def setUpClass(cls)->None:
-        cls.model=DamageAuthorityModel.load();cls.config=load_config();cls.base=_mechanics_target(20);cls.mastery=cls.model.projection["core"]["overload"]["mastery"]
-
-    def planner(self,attacks_per_action:int)->_KVDamagePlanner:
-        target=replace(self.base,ac=30,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());packages=(Package(None,0,0,0),Package("branching_bolt",0,0,0));riders={packages[0]:(0.0,0.0),packages[1]:(100.0,100.0)}
-        planner=_KVDamagePlanner(self.model,target,packages,riders,(("normal",(0.0,1.0,2.0)),),((),),0,attacks_per_action,(1,),True,True,0,0,self.mastery,0,1);self.addCleanup(planner.clear);return planner
-
-    def test_combat_prowess_hit_instead_does_not_establish_studied(self)->None:
-        planner=self.planner(1);package_index=1
-        result=planner._resolve_attack_roll(0,0,0,planner.package_bits[package_index],0,package_index,0,"miss",True,0,0,0,0,2,False,0)
-        self.assertEqual(result.choice[:4],("prowess",False,False,0))
-
-    def test_combat_prowess_can_be_retained_for_a_more_valuable_later_attack(self)->None:
-        planner=self.planner(2)
-        result=planner._resolve_attack_roll(0,0,1,0,0,0,0,"miss",True,0,0,0,0,2,False,0)
-        self.assertEqual(result.choice[:4],("miss",True,True,0))
-        self.assertAlmostEqual(result.score.aggregate,101.0975,places=12)
-
-    def test_studied_expires_after_a_zero_attack_turn(self)->None:
-        planner=self.planner(1)
-        result=planner._actions(0,0,True,True,0,0,0,0,2,False,0,False)
-        self.assertEqual(result.choice,("end_turn",False))
-
-    def test_tier_zero_does_not_spend_the_first_overload_mastery_trigger(self)->None:
-        planner=self.planner(1)
-        self.assertEqual(planner._payment_options(0,1,0),((0,1,0,False),))
-        self.assertIn((3,0,1,True),planner._payment_options(6,1,0))
-
-    def test_standalone_consumes_one_slot_and_remains_capped_during_action_surge(self)->None:
-        target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());package=Package(None,0,0,0);standalone=Standalone("forked_lightning",0,0,0,100.0,100.0,False)
-        planner=_KVDamagePlanner(self.model,target,(package,),{package:(0.0,0.0)},(("normal",(0.0,0.0,0.0)),),((standalone,),),0,1,(2,),False,False,0,0,self.mastery,0,1);self.addCleanup(planner.clear)
-        self.assertAlmostEqual(planner.solve().aggregate,100.0,places=12)
-        self.assertEqual(planner.selection().count("forked_lightning:T0"),1)
-
-    def test_pre_roll_rider_cost_is_spent_on_a_miss_without_outcome_lookahead(self)->None:
-        target=replace(self.base,ac=30,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",0,1,0);packages=(plain,rider)
-        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,1,0,self.mastery,0,1);self.addCleanup(planner.clear)
-        self.assertAlmostEqual(planner.solve().aggregate,5.0,places=12)
-
-    def test_mastery_activates_only_on_first_overload_and_then_covers_the_turn(self)->None:
-        planner=self.planner(1)
-        self.assertEqual(planner._payment_options(0,1,0),((0,1,0,False),))
-        self.assertIn((3,0,1,True),planner._payment_options(6,1,0))
-        self.assertEqual(planner._payment_options(12,0,1),((6,0,1,False),))
-        self.assertEqual(planner._payment_options(12,1,2),((12,1,2,False),))
-
-    def test_repeatability_and_tier_two_allowance_reset_for_a_new_attack_action(self)->None:
-        target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",2,0,0);packages=(plain,rider)
-        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,1,(2,),False,False,0,0,self.mastery,0,1);self.addCleanup(planner.clear)
-        self.assertAlmostEqual(planner.solve().aggregate,190.0,places=12)
-        self.assertEqual(planner.selection().count("branching_bolt:T2"),2)
-
-    def test_observed_state_policy_exposes_aggregate_damage_and_selection_trace(self)->None:
-        target=_mechanics_target(20)
-        primary,aggregate,selection=_kv_dpr(self.model,self.config,target,20,"electrokinesis",3)
-        self.assertGreater(primary,0)
-        self.assertGreater(aggregate,primary)
-        self.assertIn("electron_burst:T2",selection)
-        self.assertTrue(selection.endswith("|representative=locally-modal-path|policy=observed-state-adaptive"))
+        self.assertEqual([solution.provider_id for solution in solutions],["kinetic_vanguard","battle_master","eldritch_knight"])
+        for solution in solutions:
+            self.assertIsInstance(solution.primary_dpr,Fraction);self.assertIsInstance(solution.aggregate_dpr,Fraction)
+            self.assertEqual(solution.mode_id,NOMINAL_MODE_ID);self.assertRegex(solution.policy_digest,r"^[0-9a-f]{64}$")
+            self.assertTrue(solution.trace);self.assertTrue(solution.stats)
+        self.assertIn("representative=locally-modal-path",solutions[0].trace)
+        self.assertFalse(any(item.startswith("cluster=") for item in solutions[0].trace))
 
 
 class ClassificationTests(unittest.TestCase):
@@ -612,27 +517,32 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             self.assertEqual(executor.submit(_inspect_damage_worker_argument,arguments).result(timeout=60),expected)
 
     def test_one_level_diagnostic_uses_profile_weights_and_writes_bound_manifest(self)->None:
-        def comparator(_model:object,_config:object,_comparators:object,_target:DamageTarget,_level:int,comparator_id:str)->float:
-            return 20.0 if comparator_id=="eldritch_knight" else 30.0
+        def comparator(_model:object,_config:object,_comparators:object,target:DamageTarget,_level:int,comparator_id:str)->DamageSolution:
+            value=Fraction(20 if comparator_id=="eldritch_knight" else 30)
+            return DamageSolution(NOMINAL_MODE_ID,comparator_id,TargetKnowledge.from_damage_target(target).digest,value,value,"0"*64,("diagnostic",),(("states",0),))
 
         def diagnostic_rows(arguments:tuple[object,...])->list[dict[str,object]]:
             _model,_config,entry,target,discipline,clusters,ek,bm=arguments
             assert isinstance(entry,RosterEntry) and isinstance(target,DamageTarget)
-            value=float(entry.profile_order)
+            value=Fraction(entry.profile_order)
             return [{
                 "Level":entry.benchmark_level,"Creature ID":target.creature_id,"Target":target.name,
                 "Target Profile ID":entry.profile_id,"Target Profile SHA-256":entry.profile_sha256,
                 "Target Weight Numerator":entry.weight.numerator,"Target Weight Denominator":entry.weight.denominator,
-                "Discipline":discipline,"Cluster Size":cluster,"KV Primary DPR":value,
-                "KV Aggregate DPR":value+100.0,"Eldritch Knight DPR":ek,"Battle Master DPR":bm,
-                "Selection":"diagnostic-no-evaluator",
+                "Discipline":discipline,"Cluster Size":cluster,"KV Primary DPR":f"{float(value):.6f}","KV Primary DPR Exact":str(value),
+                "KV Aggregate DPR":f"{float(value+100):.6f}","KV Aggregate DPR Exact":str(value+100),
+                "Eldritch Knight DPR":f"{float(ek.primary_dpr):.6f}","Eldritch Knight DPR Exact":str(ek.primary_dpr),
+                "Battle Master DPR":f"{float(bm.primary_dpr):.6f}","Battle Master DPR Exact":str(bm.primary_dpr),
+                "KV Policy Digest":"1"*64,"Eldritch Knight Policy Digest":ek.policy_digest,"Battle Master Policy Digest":bm.policy_digest,
+                "Selection":"diagnostic-no-evaluator","Eldritch Knight Trace":ek.selection,"Battle Master Trace":bm.selection,
             } for cluster in clusters]
 
         with tempfile.TemporaryDirectory() as directory:
             output=Path(directory)/"damage"
-            with patch("harness.damage_harness._comparator_dpr",side_effect=comparator),patch("harness.damage_harness._discipline_damage_rows",side_effect=diagnostic_rows):
+            with patch("harness.damage_harness.solve_comparator",side_effect=comparator),patch("harness.damage_harness._discipline_damage_rows",side_effect=diagnostic_rows):
                 damage=run_damage(DEFAULT_AUTHORITY,output,{15},trials=2,seed=16,workers=1)
-            self.assertEqual(set(damage),{"rules_version","detail_rows","matrix_rows","paths","inputs"})
+            self.assertEqual(set(damage),{"rules_version","mode_id","detail_rows","matrix_rows","paths","inputs"})
+            self.assertEqual(damage["mode_id"],NOMINAL_MODE_ID)
             self.assertEqual(damage["detail_rows"],132)
             self.assertEqual(damage["matrix_rows"],24)
             self.assertEqual(set(damage["paths"]),{"detail_csv","matrix_csv","matrix_markdown","matrix_html","manifest"})
@@ -668,8 +578,11 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             for row in matrix_rows:
                 expected=weighted_order+(100 if row["Damage Scope"]=="aggregate cluster DPR" else 0)
                 self.assertEqual(row["KV"],f"{float(expected):.6f}")
+                self.assertEqual(row["KV Exact"],str(expected))
                 self.assertEqual(row["Eldritch Knight"],"20.000000")
+                self.assertEqual(row["Eldritch Knight Exact"],"20")
                 self.assertEqual(row["Battle Master"],"30.000000")
+                self.assertEqual(row["Battle Master Exact"],"30")
                 comparators={"Eldritch Knight":float(row["Eldritch Knight"]),"Battle Master":float(row["Battle Master"])}
                 lower=min(comparators.values());upper=max(comparators.values())
                 self.assertEqual(row["Lower Boundary"],f"{lower:.6f}")
@@ -686,12 +599,13 @@ class SmokeAndBoundaryTests(unittest.TestCase):
 
             inputs=damage["inputs"]
             self.assertEqual(set(inputs),{
-                "damage_result_contract_version","rules_version","authority_sha256",
+                "damage_result_contract_version","damage_model_mode_id","target_knowledge_contract_id","numeric_representation_id","provider_ids","rules_version","authority_sha256","authority_projection_sha256",
                 "catalog_contract_version","catalog_sha256","roster_contract_version","roster_sha256",
                 "target_profile_id","target_profile_version","target_profile_sha256",
                 "damage_target_projection_id","damage_target_projection_version","damage_target_projection_sha256",
                 "consumer_requirements_version","damage_consumer_requirements_sha256","config_sha256",
-                "comparator_config_sha256","evaluator","evaluator_implementation_sha256","trials","seed",
+                "comparator_config_sha256","damage_model_contract_sha256","sentinel_corpus_sha256","sentinel_corpus_file_sha256","observation_policy_sha256","resource_policy_sha256","optimization_policy_sha256",
+                "evaluator","evaluator_implementation_sha256","semantic_implementation_sha256","orchestration_implementation_sha256","reporter_implementation_sha256","trials","seed",
                 "trial_seed_role","aggregation","status",
             })
             self.assertEqual(inputs["damage_result_contract_version"],DAMAGE_RESULT_CONTRACT_VERSION)
@@ -699,8 +613,9 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             self.assertEqual(inputs["damage_target_projection_id"],DAMAGE_PROJECTION_ID)
             self.assertEqual(inputs["damage_target_projection_version"],DAMAGE_PROJECTION_VERSION)
             self.assertEqual(inputs["evaluator"],DAMAGE_EVALUATOR_ID)
+            self.assertEqual(inputs["damage_model_mode_id"],NOMINAL_MODE_ID)
             self.assertEqual((inputs["trials"],inputs["seed"]),(2,16))
-            self.assertEqual(inputs["aggregation"],"exact rational target-profile weights; percentages from displayed aggregates")
+            self.assertEqual(inputs["aggregation"],"exact rational target-profile weights; deterministic half-even display boundary")
             self.assertTrue(all(inputs[key] for key in ("catalog_sha256","roster_sha256","target_profile_sha256","damage_target_projection_sha256","damage_consumer_requirements_sha256")))
             self.assertEqual(
                 {key:damage_row[key] for key in (
@@ -711,6 +626,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
 
             manifest=json.loads(damage["paths"]["manifest"].read_text(encoding="utf-8"))
             self.assertEqual(set(manifest),{"format_version","damage_result_contract_version","inputs","outputs","row_counts"})
+            self.assertEqual(manifest["format_version"],2)
             self.assertEqual(manifest["damage_result_contract_version"],DAMAGE_RESULT_CONTRACT_VERSION)
             self.assertEqual(manifest["inputs"],inputs)
             self.assertEqual(manifest["row_counts"],{"detail":132,"matrix":24})
@@ -719,28 +635,20 @@ class SmokeAndBoundaryTests(unittest.TestCase):
                 self.assertEqual(set(output_identity),{"file","sha256"})
                 self.assertRegex(output_identity["sha256"],r"^[0-9a-f]{64}$")
 
-    def test_evaluator_implementation_digest_binds_every_result_module(self)->None:
-        self.assertEqual(
-            [label for label,_ in DAMAGE_EVALUATOR_IMPLEMENTATION_PATHS],
-            [
-                "harness/authority.py",
-                "harness/creature_catalog.py",
-                "harness/creature_damage_projection.py",
-                "harness/damage_harness.py",
-                "harness/damage_report.py",
-                "harness/model.py",
-            ],
-        )
+    def test_split_implementation_digests_bind_semantics_orchestration_and_reporter(self)->None:
+        self.assertEqual([label for label,_ in DAMAGE_SEMANTIC_IMPLEMENTATION_PATHS],["harness/authority.py","harness/damage_contract.py"])
+        self.assertEqual([label for label,_ in DAMAGE_ORCHESTRATION_IMPLEMENTATION_PATHS],["harness/damage_harness.py","harness/model.py"])
+        self.assertEqual([label for label,_ in DAMAGE_REPORTER_IMPLEMENTATION_PATHS],["harness/damage_report.py"])
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);model=root/"model.py";report=root/"damage_report.py"
             model.write_text("model-v1\n",encoding="utf-8");report.write_text("report-v1\n",encoding="utf-8")
             paths=(("harness/damage_report.py",report),("harness/model.py",model))
-            original=evaluator_implementation_sha256(paths)
+            original=implementation_sha256(paths)
             model.write_text("model-v2\n",encoding="utf-8")
-            self.assertNotEqual(evaluator_implementation_sha256(paths),original)
-            changed=evaluator_implementation_sha256(paths)
+            self.assertNotEqual(implementation_sha256(paths),original)
+            changed=implementation_sha256(paths)
             report.write_text("report-v2\n",encoding="utf-8")
-            self.assertNotEqual(evaluator_implementation_sha256(paths),changed)
+            self.assertNotEqual(implementation_sha256(paths),changed)
 
     def test_imports_outputs_and_archive_are_not_positive_inputs_or_tracked(self)->None:
         inputs=json.loads((PROJECT_ROOT/"build"/"inputs.json").read_text(encoding="utf-8"))["inputs"]
