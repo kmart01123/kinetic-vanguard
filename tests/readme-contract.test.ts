@@ -56,33 +56,37 @@ test("README and release process stay synchronized with canonical development st
   assert.match(readme, /Name selector/);
   assert.match(readme, /global classification filters/);
   assert.match(readme, /Subclass Feature Reference/);
-  assert.match(readme, /kinetic-vanguard-v<rules_version>/);
-  assert.doesNotMatch(readme, /kinetic-vanguard-v\d+\.\d+\.\d+/);
   assert.doesNotMatch(readme, /Forked Lightning needs explicit failed-save wording/);
   assert.doesNotMatch(readme, /Kinetic Vanguard \*\*v13\.0\.1\*\* is the current/);
 
-  for (const heading of ["Start of a development line", "Before marking a release pull request ready", "Publication", "Required release assets"]) {
+  for (const heading of ["Before release", "Publication", "Required release assets"]) {
     assert.match(checklist, new RegExp(`^## ${heading}$`, "m"));
   }
   assert.match(checklist, /README\.md/);
-  assert.match(checklist, /KineticVanguard\.yaml/);
+  assert.match(checklist, /rules_version/);
   assert.match(checklist, /CHANGELOG\.md/);
-  assert.match(checklist, /Main branch gate/);
-  assert.match(checklist, /Protect main/);
+  assert.match(checklist, /npm run typecheck/);
+  assert.match(checklist, /damage and control benchmarks once when rules, comparator behavior, roster, methodology, or benchmark code changed/);
+  assert.match(checklist, /generated release identity/);
+  assert.match(checklist, /GitHub CI passes/);
+  assert.match(checklist, /Squash-merge/);
+  assert.match(checklist, /exact merged release commit/);
+  assert.match(checklist, /release\/X\.Y\.Z/);
+  assert.match(checklist, /vX\.Y\.Z/);
+  assert.match(checklist, /GitHub Release/);
+  assert.match(checklist, /README published status/);
   assert.match(checklist, /LICENSE\.md/);
   assert.match(checklist, /NOTICE\.md/);
 
   assert.match(pullRequestTemplate, /RELEASE_CHECKLIST\.md/);
-  assert.match(pullRequestTemplate, /README\.md/);
-  assert.match(pullRequestTemplate, /Main branch gate/);
+  assert.match(pullRequestTemplate, /actual release and publication work/);
 });
 
 test("README exposes one synchronized headline balance snapshot", async () => {
-  const [{ authority }, readme, packageJsonSource, workflow, benchmarkConfigSource] = await Promise.all([
+  const [{ authority }, readme, packageJsonSource, benchmarkConfigSource] = await Promise.all([
     loadAuthority(),
     readFile("README.md", "utf8"),
     readFile("package.json", "utf8"),
-    readFile(".github/workflows/ci.yml", "utf8"),
     readFile("harness/config/benchmark.json", "utf8")
   ]);
   const packageJson = JSON.parse(packageJsonSource) as {
@@ -215,6 +219,4 @@ test("README exposes one synchronized headline balance snapshot", async () => {
     packageJson.scripts?.["readme:benchmarks:check"] ?? "",
     /^python3 -m harness\.readme_matrices --check(?:\s|$)/
   );
-  assert.match(workflow, /^\s+- name: Verify README benchmark matrices$/m);
-  assert.match(workflow, /^\s+run: npm run readme:benchmarks:check$/m);
 });
