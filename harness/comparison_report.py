@@ -1,4 +1,4 @@
-"""Damage comparison-matrix aggregation, classification, and rendering."""
+"""Shared comparison-matrix aggregation, classification, and rendering."""
 
 from __future__ import annotations
 
@@ -39,14 +39,6 @@ LEGAL_NOTICES = (
     ("Unofficial Comparative Benchmarks", COMPARATOR_NOTICE),
 )
 NOTICE_COLUMNS = {f"Notice {label}": value for label, value in LEGAL_NOTICES}
-
-
-def provenance_columns(provenance: dict[str, Any]) -> dict[str, str]:
-    """Render one stable set of provenance columns for every damage artifact."""
-    return {
-        f"Provenance {str(key).replace('_', ' ').title()}": str(value)
-        for key, value in provenance.items()
-    }
 
 
 def _display_value(value: float) -> float:
@@ -96,12 +88,9 @@ def _boundary_delta(
     return "N/A" if boundary == 0 else f"{100.0 * (kv - boundary) / boundary:+.2f}"
 
 
-def damage_matrix_row(
-    metadata: dict[str, Any],
-    kv: float,
-    eldritch_knight: float,
-    battle_master: float,
-) -> dict[str, str]:
+def matrix_row(metadata: dict[str, Any], kv: float, eldritch_knight: float, battle_master: float, kind: str) -> dict[str, str]:
+    if kind not in {"damage", "control"}:
+        raise ValueError(f"Unsupported benchmark type: {kind}")
     raw = [float(value) for value in (kv, eldritch_knight, battle_master)]
     if not all(math.isfinite(value) for value in raw):
         raise ValueError("Comparison matrix values must be finite")
@@ -112,7 +101,7 @@ def damage_matrix_row(
     band = classify_envelope(*displayed)
     row = {key: str(value) for key, value in metadata.items()}
     row.update({
-        "Benchmark Type": "Damage",
+        "Benchmark Type": "Damage" if kind == "damage" else "Control Reliability",
         "KV": f"{displayed[0]:.6f}", "Eldritch Knight": f"{displayed[1]:.6f}", "Battle Master": f"{displayed[2]:.6f}",
         "KV as % of EK": _percentage(displayed[0], displayed[1]), "KV as % of BM": _percentage(displayed[0], displayed[2]),
         "Lower Comparator": lower_name, "Upper Comparator": upper_name,
@@ -129,17 +118,20 @@ def _markdown_table(columns: list[str], rows: list[dict[str, str]]) -> str:
     return "\n".join(lines)
 
 
-def _validate_release_rows(rows: list[dict[str, str]]) -> None:
+def _validate_release_rows(rows: list[dict[str, str]], kind: str) -> None:
+    if kind not in {"damage", "control"}:
+        raise ValueError(f"Unsupported comparison matrix kind: {kind}")
     for index, row in enumerate(rows):
         missing = [field for field in VALUE_COLUMNS if field not in row]
         if missing:
             raise ValueError(f"Comparison matrix row {index} is missing evidence: {missing}")
         try:
-            expected = damage_matrix_row(
+            expected = matrix_row(
                 {},
                 float(row["KV"]),
                 float(row["Eldritch Knight"]),
                 float(row["Battle Master"]),
+                kind,
             )
         except (TypeError, ValueError) as error:
             raise ValueError(
@@ -153,35 +145,30 @@ def _validate_release_rows(rows: list[dict[str, str]]) -> None:
                 )
 
 
-def write_damage_matrix(
-    output_dir: Path,
-    rules_version: str,
-    rows: Iterable[dict[str, str]],
-    provenance: dict[str, Any],
-) -> dict[str, Path]:
+def write_matrix(output_dir: Path, rules_version: str, kind: str, rows: Iterable[dict[str, str]], provenance: dict[str, Any]) -> dict[str, Path]:
     output_dir.mkdir(parents=True, exist_ok=True)
     rows = list(rows)
     if not rows:
-        raise ValueError("Damage comparison matrix cannot be empty")
+        raise ValueError("Comparison matrix cannot be empty")
     if any(row.get("Band") not in BANDS for row in rows):
-        raise ValueError("Damage comparison matrix contains an unsupported band")
-    _validate_release_rows(rows)
-    rendered_provenance=provenance_columns(provenance)
-    rows=[{**row,**rendered_provenance} for row in rows]
+        raise ValueError("Comparison matrix contains an unsupported band")
+    _validate_release_rows(rows,kind)
+    provenance_columns={f"Provenance {str(key).replace('_',' ').title()}":str(value) for key,value in provenance.items()}
+    rows=[{**row,**provenance_columns} for row in rows]
     columns = list(rows[0])
     if any(list(row) != columns for row in rows):
-        raise ValueError("Damage comparison matrix rows do not share one column order")
+        raise ValueError("Comparison matrix rows do not share one column order")
     csv_rows=[{**row,**NOTICE_COLUMNS} for row in rows]
     csv_columns=list(csv_rows[0])
     slug = rules_version.replace(".", "-")
-    report_title = "Damage"
-    base = output_dir / f"kv-{slug}-damage-comparison-matrix"
+    report_title = "Control Reliability" if kind == "control" else "Damage"
+    base = output_dir / f"kv-{slug}-{kind}-comparison-matrix"
     csv_path, md_path, html_path = base.with_suffix(".csv"), base.with_suffix(".md"), base.with_suffix(".html")
     with csv_path.open("w", newline="", encoding="utf-8") as stream:
         writer = csv.DictWriter(stream, fieldnames=csv_columns);writer.writeheader();writer.writerows(csv_rows)
     provenance_lines = [f"- {key}: `{value}`" for key, value in provenance.items()]
     notice_lines = [f"- **{label}:** {value}" for label, value in LEGAL_NOTICES]
-    limitation = "Damage percentages are computed from the displayed aggregate raw values, never from averaged target-level percentages."
+    limitation = "Control Reliability measures how often the configured control package takes effect. It does not measure the relative severity, duration, area, or strategic value of different control effects. A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered." if kind == "control" else "Damage percentages are computed from the displayed aggregate raw values, never from averaged target-level percentages."
     distance_note = "Battle Master and Eldritch Knight define a dynamic comparison envelope for every result. Boundary Delta % is negative below the lower comparator, positive above the upper comparator, and 0.00 inside the inclusive envelope."
     md = f"# Kinetic Vanguard {rules_version} {report_title} Comparison Matrix\n\n{limitation}\n\n{distance_note}\n\n## Licensing and notices\n\n" + "\n".join(notice_lines) + "\n\n## Provenance\n\n" + "\n".join(provenance_lines) + "\n\n" + _markdown_table(columns, rows) + "\n"
     md_path.write_text(md, encoding="utf-8")

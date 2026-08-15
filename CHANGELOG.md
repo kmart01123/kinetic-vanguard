@@ -1,28 +1,5 @@
 # Changelog
 
-## Unreleased
-
-### Added
-
-- Added one provenance-bound 330-record SRD 5.2.1 creature catalog, complete source/candidate accounting, deterministic source-mechanical-diversity headline and eligible-census profiles, a closed passive-trait registry, consumer requirements, and independent thin `DamageTarget`/`ControlTarget` projections. `ControlTarget` retains passive Perception and canonically sorted source-explicit skill facts; unlisted checks use the associated raw ability modifier while live roll mode and circumstances remain scenario/event state.
-
-### Changed
-
-- Refreshed the current-tree Wizards/SRD reference audit and field-complete comparator provenance without changing rules, comparator values or policies, benchmarks, or analytical evidence.
-- Narrowed the maintained benchmark architecture to an explicit damage authority, projection, configuration, comparator, report, README generator, and command boundary.
-- Replaced the generated two-matrix README snapshot with one damage heat table and a static control-capability status that points v14.1 reproduction to frozen release evidence and records the current-development runtime retirement and capability gap.
-- Completed Control Authority v2.1 with 35 modeled rows, 14 maintained profile exclusions, zero unsupported rows, typed event/save/choice/movement/area/persistent-state semantics, and shared TypeScript/Python parity coverage; it remains a static input separate from damage, does not constitute a current evaluator, and publishes no result.
-- Replaced the historical 28-row damage roster and control supplement with the shared catalog/profile/projection architecture. The old 28 reproduced every previously consumed field in a private machine-checked 812-field migration proof before the parallel CSV/supplement runtime was removed.
-- Advanced the damage input/result provenance contract to `2.0.0` for explicit catalog, whole-roster, active-profile, `DamageTarget`-projection, and damage-consumer-requirement identities. The whole requirements-registry digest remains repository-integrity metadata, while damage results bind only their precise consumer digest.
-- Made README damage synchronization consume and fail-closed validate one final run manifest instead of rerunning the full analytical evaluator for write and check operations.
-- Marked the pre-correction 47-target v14.2 exact damage run `invalidated_premerge_provenance_boundary_correction` after correcting the consumer-scoped requirements and sibling-projection implementation identities, preserving its manifest and outputs as comparison evidence. After one pre-output failed attempt, a completed corrected-contract replacement bound the new damage-scoped provenance and matched all 564 detail rows and 96 matrix rows exactly across every numerical, classification, identity, and notice field; the replacement was required by the pre-merge provenance correction, not changed damage mechanics, and claims no independent numerical or Monte Carlo certification.
-- Codified the standing policy for retiring superseded implementations from current development while preserving released history through frozen branches, tags, Releases, evidence assets, and Git history.
-
-### Removed
-
-- Retired the superseded current-development control runtime, consequence catalog, configuration, fixtures, tests, package commands, and result/version surface without a compatibility or fallback path or replacement implementation. Control Authority v2 and `ControlTarget` remain static inputs; no maintained v14.2 control evaluator or current v14.2 control result exists, and the minimum execution contract and named-condition runner remain separate future work.
-- Retired the legacy Control Reliability evaluator, scenario/configuration data, report and selection-audit pipeline, README regeneration path, package commands, current-version publication workflow, and output-parity/golden-result burden from maintained `main`.
-
 ## 14.1.0 — 2026-08-07
 
 ### Added
