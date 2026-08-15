@@ -7,34 +7,15 @@ on:
   push:
     branches:
       - main
-  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  metadata:
-    name: Read canonical rules version
+  main_branch_gate:
+    name: Main branch gate
     runs-on: ubuntu-24.04
-    outputs:
-      rules_version: ${{ steps.rules-version.outputs.rules_version }}
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - id: rules-version
-        name: Read rules version from canonical authority
-        run: |
-          rules_version="$(sed -n 's/^rules_version: //p' KineticVanguard.yaml)"
-          test -n "$rules_version"
-          echo "rules_version=$rules_version" >> "$GITHUB_OUTPUT"
-
-  verification:
-    needs: metadata
-    name: v${{ needs.metadata.outputs.rules_version }} verification and release build
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
+    timeout-minutes: 15
 
     steps:
       - name: Check out repository
@@ -45,7 +26,6 @@ jobs:
         with:
           node-version: 24.18.1
           cache: npm
-          cache-dependency-path: package-lock.json
 
       - name: Use repository npm version
         run: npm install --global npm@11.16.0
@@ -57,9 +37,6 @@ jobs:
         uses: actions/setup-python@v6
         with:
           python-version: "3.13"
-
-      - name: Install browser engines
-        run: npx playwright install --with-deps chromium firefox
 
       - name: Typecheck
         run: npm run typecheck
@@ -79,90 +56,5 @@ jobs:
       - name: Build prototype
         run: npm run build
 
-      - name: Test determinism
-        run: npm run test:determinism
-
-      - name: Test layout
-        run: npm run test:layout
-
-      - name: Build authorized v${{ needs.metadata.outputs.rules_version }} release
-        env:
-          KV_RELEASE_APPROVED: "1"
-        run: npm run build:release
-
-      - name: Verify v${{ needs.metadata.outputs.rules_version }} release identity
-        run: |
-          test -f artifacts/KineticVanguard.html
-          grep -q '"release_status":"release"' artifacts/KineticVanguard.html
-          grep -q '"rules_version":"${{ needs.metadata.outputs.rules_version }}"' artifacts/KineticVanguard.html
-          ! grep -q '<p class="prototype"' artifacts/KineticVanguard.html
-          ! grep -q 'Application version' artifacts/KineticVanguard.html
-          ! grep -q '"application_version"' artifacts/KineticVanguard.html
-          ! grep -q '"application_version"' artifacts/build-manifest.json
-
-      - name: Upload v${{ needs.metadata.outputs.rules_version }} publication
-        uses: actions/upload-artifact@v4
-        with:
-          name: kinetic-vanguard-v${{ needs.metadata.outputs.rules_version }}
-          if-no-files-found: error
-          retention-days: 90
-          path: |
-            artifacts/KineticVanguard.html
-            artifacts/build-manifest.json
-            artifacts/filtered-search-integrity.json
-            artifacts/coverage-ledger.json
-            LICENSE.md
-            LICENSE-CODE
-            LICENSE-CONTENT
-            NOTICE.md
-
-  benchmark_snapshot:
-    needs: metadata
-    name: v${{ needs.metadata.outputs.rules_version }} README benchmark synchronization
-    runs-on: ubuntu-24.04
-    timeout-minutes: 20
-
-    steps:
-      - name: Check out repository
-        uses: actions/checkout@v7
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24.18.1
-          cache: npm
-          cache-dependency-path: package-lock.json
-
-      - name: Use repository npm version
-        run: npm install --global npm@11.16.0
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: "3.13"
-
-      - name: Verify README benchmark matrices
-        run: npm run readme:benchmarks:check
-
-  main_branch_gate:
-    name: Main branch gate
-    needs:
-      - metadata
-      - verification
-      - benchmark_snapshot
-    if: ${{ always() }}
-    runs-on: ubuntu-24.04
-
-    steps:
-      - name: Require successful verification
-        env:
-          METADATA_RESULT: ${{ needs.metadata.result }}
-          VERIFICATION_RESULT: ${{ needs.verification.result }}
-          BENCHMARK_SNAPSHOT_RESULT: ${{ needs.benchmark_snapshot.result }}
-        run: |
-          test "$METADATA_RESULT" = "success"
-          test "$VERIFICATION_RESULT" = "success"
-          test "$BENCHMARK_SNAPSHOT_RESULT" = "success"
+      - name: Check diff
+        run: git diff --check

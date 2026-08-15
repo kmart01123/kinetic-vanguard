@@ -96,13 +96,13 @@ Optional full-roster commands are `npm run harness:damage -- --output-dir harnes
 `npm run build` writes the development publication to `artifacts/KineticVanguard.prototype.html`. It always carries a visible and accessibility-exposed `NON-RELEASE PROTOTYPE` identity.
 
 
-An authorized release build uses:
+A release-profile build is run when preparing a release, not on every pull request:
 
 ```text
 KV_RELEASE_APPROVED=1 npm run build:release
 ```
 
-It writes `artifacts/KineticVanguard.html` with `release_status: release` and no prototype banner. CI derives workflow labels and the `kinetic-vanguard-v<rules_version>` artifact name from the canonical `rules_version`; the generated publication exposes that canonical rules version as its sole product version.
+It writes `artifacts/KineticVanguard.html` with `release_status: release` and no prototype banner. The generated publication exposes the canonical rules version as its sole product version.
 
 ## Architecture
 
@@ -133,8 +133,6 @@ Battle Master and Eldritch Knight are unofficial third-party comparative benchma
 
 ## Development and release discipline
 
-Changes reach `main` through pull requests. The active `Protect main` ruleset requires an up-to-date branch, resolved review conversations, and the stable `Main branch gate`; it blocks force pushes and deletion. Squash merge is the normal merge method.
+Changes reach `main` through pull requests. GitHub requires the single `Main branch gate` check. Full benchmarks and release checks are run when relevant, following `RELEASE_CHECKLIST.md` for actual release and publication work.
 
-At the start of every development line, before a release PR leaves draft, and during publication, complete `RELEASE_CHECKLIST.md`. The checklist requires an explicit README review against canonical authority, the changelog, open issues, CI, build outputs, release assets, and current branch-protection settings.
-
-Frozen release branches and annotated release tags are immutable historical references. Publication workflows verify the exact frozen commit before creating or updating a GitHub Release.
+Frozen release branches and annotated release tags remain historical records.

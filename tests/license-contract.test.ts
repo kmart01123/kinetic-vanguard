@@ -26,14 +26,13 @@ const bsdReservation = "All rights " + "reserved.";
 
 test("repository and generated publication expose the approved component license boundaries", async () => {
   await Promise.all([...requiredLicenseFiles, "docs/licensing-audit.md"].map(path => access(path)));
-  const [{ authority }, licenseIndex, codeLicense, contentLicense, notice, yaml, workflow, promote, inputsText, audit, packageJsonText, packageLockText] = await Promise.all([
+  const [{ authority }, licenseIndex, codeLicense, contentLicense, notice, yaml, promote, inputsText, audit, packageJsonText, packageLockText] = await Promise.all([
     loadAuthority(),
     readFile("LICENSE.md", "utf8"),
     readFile("LICENSE-CODE", "utf8"),
     readFile("LICENSE-CONTENT", "utf8"),
     readFile("NOTICE.md", "utf8"),
     readFile("KineticVanguard.yaml", "utf8"),
-    readFile(".github/workflows/ci.yml", "utf8"),
     readFile("src/promote.ts", "utf8"),
     readFile("build/inputs.json", "utf8"),
     readFile("docs/licensing-audit.md", "utf8"),
@@ -91,7 +90,6 @@ test("repository and generated publication expose the approved component license
 
   for (const [path, role] of requiredInputRoles) {
     assert.equal(inputRoles.get(path), role);
-    assert.match(workflow, new RegExp(escaped(path)));
     assert.match(promote, new RegExp(escaped(path)));
   }
   assert.equal(inputRoles.get("tests/license-contract.test.ts"), "test_source");
