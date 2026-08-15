@@ -24,10 +24,131 @@ const stepRuns = (workflow: any): readonly string[] =>
   workflowSteps(workflow)
     .map((step) => step.run)
     .filter((run): run is string => typeof run === "string");
+const gha = (expression: string): string => "$" + "{{ " + expression + " }}";
+
+const prHeadRepository = gha(
+  "github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository"
+);
+const prHeadSha = gha(
+  "github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha"
+);
+
+const assertExactSourceContract = (workflow: any): void => {
+  assert.deepEqual(
+    Object.keys(workflow.jobs ?? {}),
+    ["metadata", "verification", "main_branch_gate"],
+    "ordinary CI retains exactly three jobs"
+  );
+  assert.equal(workflow.on?.workflow_dispatch, null, "workflow_dispatch has no special SHA input");
+  assert.equal(workflow.concurrency, undefined, "workflow concurrency remains unchanged");
+
+  const metadata = workflow.jobs?.metadata;
+  const verification = workflow.jobs?.verification;
+  const gate = workflow.jobs?.main_branch_gate;
+  assert.ok(metadata, "metadata job exists");
+  assert.ok(verification, "verification job exists");
+  assert.ok(gate, "main_branch_gate job exists");
+
+  assert.deepEqual(metadata.outputs, {
+    rules_version: gha("steps.rules-version.outputs.rules_version"),
+    source_repository: gha("steps.source.outputs.source_repository"),
+    source_sha: gha("steps.source.outputs.source_sha")
+  });
+  const metadataCheckout = metadata.steps?.[0];
+  const metadataSourceCheck = metadata.steps?.[1];
+  assert.match(metadataCheckout?.uses ?? "", /^actions\/checkout@/);
+  assert.equal(metadataCheckout?.with?.repository, prHeadRepository);
+  assert.equal(metadataCheckout?.with?.ref, prHeadSha);
+  assert.equal(metadataSourceCheck?.id, "source");
+  assert.equal(metadataSourceCheck?.env?.EXPECTED_SOURCE_REPOSITORY, prHeadRepository);
+  assert.equal(metadataSourceCheck?.env?.EXPECTED_SOURCE_SHA, prHeadSha);
+  assert.match(metadataSourceCheck?.run ?? "", /checked_out_sha="\$\(git rev-parse HEAD\)"/);
+  assert.match(
+    metadataSourceCheck?.run ?? "",
+    /test "\$checked_out_sha" = "\$EXPECTED_SOURCE_SHA"/
+  );
+  assert.match(
+    metadataSourceCheck?.run ?? "",
+    /source_repository=\$EXPECTED_SOURCE_REPOSITORY/
+  );
+  assert.match(metadataSourceCheck?.run ?? "", /source_sha=\$EXPECTED_SOURCE_SHA/);
+  assert.equal(metadata.steps?.[2]?.id, "rules-version", "HEAD is asserted immediately after checkout");
+
+  assert.equal(verification.needs, "metadata");
+  const verificationCheckout = verification.steps?.[0];
+  const verificationSourceCheck = verification.steps?.[1];
+  assert.match(verificationCheckout?.uses ?? "", /^actions\/checkout@/);
+  assert.equal(
+    verificationCheckout?.with?.repository,
+    gha("needs.metadata.outputs.source_repository")
+  );
+  assert.equal(verificationCheckout?.with?.ref, gha("needs.metadata.outputs.source_sha"));
+  assert.equal(
+    verificationSourceCheck?.env?.EXPECTED_SOURCE_SHA,
+    gha("needs.metadata.outputs.source_sha")
+  );
+  assert.match(verificationSourceCheck?.run ?? "", /checked_out_sha="\$\(git rev-parse HEAD\)"/);
+  assert.match(
+    verificationSourceCheck?.run ?? "",
+    /test "\$checked_out_sha" = "\$EXPECTED_SOURCE_SHA"/
+  );
+  assert.match(
+    verification.steps?.[2]?.uses ?? "",
+    /^actions\/setup-node@/,
+    "verification asserts HEAD immediately after checkout"
+  );
+
+  for (const command of [
+    "npm install --global npm@11.16.0",
+    "npm ci",
+    "npx playwright install --with-deps chromium firefox",
+    "npm run typecheck",
+    "npm run validate",
+    "npm test",
+    "npm run harness:validate",
+    "npm run test:harness",
+    "npm run build",
+    "npm run test:determinism",
+    "npm run test:layout",
+    "npm run build:release"
+  ]) {
+    assert.equal(
+      stepRuns(workflow).filter((run) => run === command).length,
+      1,
+      command + " appears exactly once in ordinary CI"
+    );
+    assert.ok(stepRuns({ jobs: { verification } }).includes(command));
+  }
+
+  assert.equal(gate.name, "Main branch gate");
+  assert.deepEqual(gate.needs, ["metadata", "verification"]);
+  assert.equal(gate.if, gha("always()"));
+  assert.equal(gate.steps?.length, 1, "Main branch gate remains structurally simple");
+
+  const uploads = workflowSteps(workflow).filter(
+    (step: any) => typeof step.uses === "string" && step.uses.startsWith("actions/upload-artifact@")
+  );
+  assert.equal(uploads.length, 1);
+  assert.deepEqual(
+    uploads[0]?.with?.path.split(/\r?\n/).map((path: string) => path.trim()).filter(Boolean),
+    [
+      "artifacts/KineticVanguard.html",
+      "artifacts/build-manifest.json",
+      "artifacts/filtered-search-integrity.json",
+      "artifacts/coverage-ledger.json",
+      "LICENSE.md",
+      "LICENSE-CODE",
+      "LICENSE-CONTENT",
+      "NOTICE.md"
+    ],
+    "publication artifact inventory remains exact"
+  );
+};
 
 test("CI exposes a stable main branch gate backed by complete verification", async () => {
   const workflow = (await loadWorkflows()).find(({ name }) => name === "ci.yml")?.workflow;
   assert.ok(workflow, "ci.yml exists");
+  assertExactSourceContract(workflow);
   assert.deepEqual(Object.keys(workflow.jobs ?? {}), ["metadata", "verification", "main_branch_gate"], "ordinary CI retains exactly three jobs");
   const verification = workflow.jobs?.verification;
   const gate = workflow.jobs?.main_branch_gate;
@@ -83,6 +204,23 @@ test("CI exposes a stable main branch gate backed by complete verification", asy
     "test \"$METADATA_RESULT\" = \"success\"\n" +
       "test \"$VERIFICATION_RESULT\" = \"success\"\n"
   );
+});
+
+test("CI exact-source assertions reject the two root regressions", async (t) => {
+  const workflow = (await loadWorkflows()).find(({ name }) => name === "ci.yml")?.workflow;
+  assert.ok(workflow, "ci.yml exists");
+
+  await t.test("missing authored PR-head checkout", () => {
+    const mutated = structuredClone(workflow);
+    mutated.jobs.metadata.steps[0].with.repository = gha("github.repository");
+    assert.throws(() => assertExactSourceContract(mutated));
+  });
+
+  await t.test("missing checked-out SHA assertion", () => {
+    const mutated = structuredClone(workflow);
+    mutated.jobs.verification.steps[1].run = "checked_out_sha=\"$(git rev-parse HEAD)\"\n";
+    assert.throws(() => assertExactSourceContract(mutated));
+  });
 });
 
 test("retired control-engine entrypoints are absent and maintained harness validation is exact", async () => {

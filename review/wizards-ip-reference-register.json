@@ -5,7 +5,7 @@
     "audited_base_commit": "e5d81ab1271b305bee5b92bca22bb9acce0275e9",
     "tracked_path_count": 102,
     "tracked_path_sha256": "003cdfef582840a3341e3da7c99689f3cd0c197b3bcc7906600747765c6994da",
-    "tracked_content_sha256": "d4ac9d9e56319acfb8ea5f7911ec026dfd3145685d45d5163b9279e2c82afe90",
+    "tracked_content_sha256": "a0030530a5b5218f66036df98eff8aa076ee80430ecd3229f9f075ff445e4db8",
     "tracked_content_self_canonicalization": "SHA-256 frames every tracked candidate path and bytes after blanking only audit.tracked_content_sha256 in this register.",
     "scope": "Sorted stage-zero path names and strict UTF-8 contents, framed candidate-tree SHA-256 with one blanked self field, plus every recursively discovered prototype and authorized release artifact.",
     "generated_artifact_inventory": [

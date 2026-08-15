@@ -18,10 +18,26 @@ jobs:
     runs-on: ubuntu-24.04
     outputs:
       rules_version: ${{ steps.rules-version.outputs.rules_version }}
+      source_repository: ${{ steps.source.outputs.source_repository }}
+      source_sha: ${{ steps.source.outputs.source_sha }}
 
     steps:
-      - name: Check out repository
+      - name: Check out exact source
         uses: actions/checkout@v7
+        with:
+          repository: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+          ref: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+
+      - id: source
+        name: Verify exact source checkout
+        env:
+          EXPECTED_SOURCE_REPOSITORY: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name || github.repository }}
+          EXPECTED_SOURCE_SHA: ${{ github.event_name == 'pull_request' && github.event.pull_request.head.sha || github.sha }}
+        run: |
+          checked_out_sha="$(git rev-parse HEAD)"
+          test "$checked_out_sha" = "$EXPECTED_SOURCE_SHA"
+          echo "source_repository=$EXPECTED_SOURCE_REPOSITORY" >> "$GITHUB_OUTPUT"
+          echo "source_sha=$EXPECTED_SOURCE_SHA" >> "$GITHUB_OUTPUT"
 
       - id: rules-version
         name: Read rules version from canonical authority
@@ -37,8 +53,18 @@ jobs:
     timeout-minutes: 20
 
     steps:
-      - name: Check out repository
+      - name: Check out exact source
         uses: actions/checkout@v7
+        with:
+          repository: ${{ needs.metadata.outputs.source_repository }}
+          ref: ${{ needs.metadata.outputs.source_sha }}
+
+      - name: Verify exact source checkout
+        env:
+          EXPECTED_SOURCE_SHA: ${{ needs.metadata.outputs.source_sha }}
+        run: |
+          checked_out_sha="$(git rev-parse HEAD)"
+          test "$checked_out_sha" = "$EXPECTED_SOURCE_SHA"
 
       - name: Set up Node.js
         uses: actions/setup-node@v7
