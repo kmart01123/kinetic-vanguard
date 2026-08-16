@@ -314,33 +314,6 @@ test("paragraph text beginning with Example is not classified heuristically",asy
 
 test("release build fails closed before emitting deployable output",async()=>{await assert.rejects(()=>executeBuild("release"),/Build blocked/);});
 
-/* Retired reference-only Name routing contract; deck routing is covered below.
-test("committed Name selection opens exactly once, preserves history state, and remains synchronized",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  let pushCount=0;
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html"+defaultReferenceFragment,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value.replace(/[^a-zA-Z0-9_-]/g,"_")};const push=window.history.pushState.bind(window.history);window.history.pushState=(...args:any[])=>{pushCount++;return push(...args);};}});
-  const document=dom.window.document;assert.equal(document.querySelectorAll("#category-select option").length,6);assert.ok(document.querySelector("#rules-content article"));
-  const name=document.querySelector("#name-select") as HTMLSelectElement;assert.equal(document.querySelector("#name-open"),null);assert.equal(name.value,"");
-  const area=document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement;const kind=document.querySelector("#facet-entity_kind") as HTMLSelectElement;const role=document.querySelector("#facet-feature_role") as HTMLSelectElement;const acquisition=document.querySelector("#facet-acquisition_mode") as HTMLSelectElement;const initialArticle=document.querySelector("#rules-content article");
-  area.checked=true;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));kind.value="feature";kind.dispatchEvent(new dom.window.Event("change",{bubbles:true}));role.value="standalone";role.dispatchEvent(new dom.window.Event("change",{bubbles:true}));acquisition.value="granted";acquisition.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  assert.equal(pushCount,4);assert.equal(name.value,"");assert.equal(document.querySelector("#rules-content article"),initialArticle);assert.match(dom.window.location.hash,/filters=rules_area%3Aadvanced_training%3Bentity_kind%3Afeature%3Bfeature_role%3Astandalone%3Bacquisition_mode%3Agranted/);
-  const content=document.querySelector("#rules-content")!;const observer=new dom.window.MutationObserver(()=>{});observer.observe(content,{childList:true});
-  name.focus();
-  name.value="advanced_deflection_screen";name.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  const openedArticle=document.querySelector("#entity-advanced_deflection_screen");
-  assert.equal(pushCount,5);assert.ok(openedArticle);assert.equal(document.querySelector("#rules-content article h2")?.textContent,"Deflection Screen");assert.equal(name.value,"advanced_deflection_screen");assert.equal(document.activeElement,name);
-  const route=new URLSearchParams(dom.window.location.hash.slice(1));assert.equal(route.get("category"),"advanced_training");assert.equal(route.get("topic"),"advanced_training_advanced_deflection_screen_topic");assert.equal(route.get("entity"),"advanced_deflection_screen");assert.equal(route.get("filters"),null);
-  assert.equal((document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement).checked,false);assert.equal((document.querySelector("#facet-entity_kind") as HTMLSelectElement).value,"");assert.equal((document.querySelector("#facet-feature_role") as HTMLSelectElement).value,"");assert.equal((document.querySelector("#facet-acquisition_mode") as HTMLSelectElement).value,"");
-  const addedArticles=observer.takeRecords().flatMap(record=>[...record.addedNodes]).filter(node=>node.nodeType===1&&(node as Element).matches("article"));assert.equal(addedArticles.length,1);
-  name.dispatchEvent(new dom.window.Event("change",{bubbles:true}));assert.equal(pushCount,5);assert.equal(document.querySelector("#rules-content article"),openedArticle);assert.equal(observer.takeRecords().length,0);
-  name.value="";name.dispatchEvent(new dom.window.Event("change",{bubbles:true}));assert.equal(pushCount,5);assert.equal(document.querySelector("#rules-content article"),openedArticle);
-  const restored=new Promise<void>(resolve=>dom.window.addEventListener("popstate",()=>resolve(),{once:true}));dom.window.history.back();await restored;
-  assert.equal((document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement).checked,true);assert.equal((document.querySelector("#facet-entity_kind") as HTMLSelectElement).value,"feature");assert.equal((document.querySelector("#facet-feature_role") as HTMLSelectElement).value,"standalone");assert.equal((document.querySelector("#facet-acquisition_mode") as HTMLSelectElement).value,"granted");assert.equal(name.value,"");assert.match(dom.window.location.hash,/filters=rules_area%3Aadvanced_training%3Bentity_kind%3Afeature%3Bfeature_role%3Astandalone%3Bacquisition_mode%3Agranted/);
-  const forwarded=new Promise<void>(resolve=>dom.window.addEventListener("popstate",()=>resolve(),{once:true}));dom.window.history.forward();await forwarded;
-  assert.equal(name.value,"advanced_deflection_screen");assert.ok(document.querySelector("#entity-advanced_deflection_screen"));assert.equal(pushCount,5);
-  await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
-});
-*/
 
 test("Any classifications expose the complete canonical result set in a compact disclosure",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();const index=buildFilterIndex(authority);
@@ -476,73 +449,7 @@ function installOnboardingBrowserShims(window:any):void {
 
 const settleOnboarding=()=>new Promise<void>(resolve=>setImmediate(resolve));
 
-/* Superseded mixed-view deep-link contract; exhaustive onboarding routing follows.
-test("Start Here owns empty and home fragments while existing deep links keep the reference contract",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const makeDom=(fragment:string,counters?:{pushes:number;replaces:number})=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html${fragment}`,beforeParse(window:any){
-    installOnboardingBrowserShims(window);
-    if(counters){const push=window.history.pushState.bind(window.history),replace=window.history.replaceState.bind(window.history);window.history.pushState=(...args:any[])=>{counters.pushes++;return push(...args);};window.history.replaceState=(...args:any[])=>{counters.replaces++;return replace(...args);};}
-  }});
-  const assertHome=(dom:JSDOM)=>{
-    const document=dom.window.document,layout=document.querySelector<HTMLElement>("main.layout")!,controls=document.querySelector<HTMLElement>(".controls")!;
-    assert.equal(layout.dataset.view,"home");assert.equal(layout.classList.contains("layout--home"),true);assert.equal(controls.hidden,true);
-    assert.equal(document.querySelector("#start_here_heading")?.textContent,"Start Here");assert.equal(document.querySelector("#rules-content article"),null);
-    assert.equal(document.querySelector("#view-start-here")?.getAttribute("aria-current"),"page");assert.equal(document.querySelector("#view-rules-reference")?.hasAttribute("aria-current"),false);
-    assert.equal(document.activeElement,document.body);assert.equal(new URLSearchParams(dom.window.location.hash.slice(1)).has("category"),false);assert.equal(new URLSearchParams(dom.window.location.hash.slice(1)).has("topic"),false);
-  };
 
-  const counters={pushes:0,replaces:0},empty=makeDom("",counters);assertHome(empty);assert.equal(empty.window.location.hash,"#home");assert.deepEqual(counters,{pushes:0,replaces:1});assert.equal(empty.window.history.length,1);
-  (empty.window.document.querySelector(".skip") as HTMLElement).click();assert.equal(empty.window.document.activeElement?.id,"rules-content");assert.equal(empty.window.location.hash,"#home");assert.deepEqual(counters,{pushes:0,replaces:1});assert.equal(empty.window.history.length,1);
-  const explicitHome=makeDom("#home");assertHome(explicitHome);assert.equal(explicitHome.window.location.hash,"#home");
-
-  const category=makeDom("#category=cryokinesis&topic=cryokinesis_frozen_ground_topic");
-  assert.equal(category.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"reference");assert.equal(category.window.document.querySelector("#entity-frozen_ground h2")?.textContent,"Frozen Ground");assert.equal(category.window.document.querySelector<HTMLElement>(".controls")?.hidden,false);assert.equal(category.window.document.activeElement,category.window.document.body);
-  assert.equal(category.window.location.hash,"#category=cryokinesis&topic=cryokinesis_frozen_ground_topic");
-  const categoryHash=category.window.location.hash;(category.window.document.querySelector(".skip") as HTMLElement).click();assert.equal(category.window.document.activeElement?.id,"rules-content");assert.equal(category.window.location.hash,categoryHash);assert.equal(category.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"reference");assert.equal(category.window.document.querySelector("#entity-frozen_ground h2")?.textContent,"Frozen Ground");
-
-  const entity=makeDom("#entity=ball_lightning"),entityRoute=new URLSearchParams(entity.window.location.hash.slice(1));
-  assert.equal(entity.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"reference");assert.equal(entityRoute.get("category"),"electrokinesis");assert.equal(entityRoute.get("topic"),"electrokinesis_ball_lightning_topic");assert.equal(entityRoute.get("entity"),"ball_lightning");
-  assert.equal(entity.window.location.hash,"#category=electrokinesis&topic=electrokinesis_ball_lightning_topic&entity=ball_lightning");
-  assert.equal((entity.window.document.querySelector("#name-select") as HTMLSelectElement).value,"ball_lightning");assert.equal(entity.window.document.querySelector("#entity-ball_lightning h2")?.textContent,"Ball Lightning");assert.equal(entity.window.document.activeElement,entity.window.document.body);
-
-  const filtered=makeDom("#category=psychokinesis&topic=psychokinesis_telekinetic_shove_topic&filters=rules_area:psychokinesis;feature_role:rider");
-  assert.equal(filtered.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"reference");assert.equal((filtered.window.document.querySelector('input[data-facet="rules_area"][value="psychokinesis"]') as HTMLInputElement).checked,true);assert.equal((filtered.window.document.querySelector("#facet-feature_role") as HTMLSelectElement).value,"rider");
-
-  assert.equal(filtered.window.location.hash,"#category=psychokinesis&topic=psychokinesis_telekinetic_shove_topic&filters=rules_area%3Apsychokinesis%3Bfeature_role%3Arider");
-  const deduplicated=makeDom("#category=pyrokinesis&topic=pyrokinesis_ember_bolt_topic&filters=rules_area:pyrokinesis,pyrokinesis");
-  assert.equal(deduplicated.window.location.hash,"#category=pyrokinesis&topic=pyrokinesis_ember_bolt_topic&filters=rules_area%3Apyrokinesis");assert.deepEqual(deduplicated.window.history.state.classifications,{rules_area:["pyrokinesis"]});
-  const invalid=makeDom("#not-a-canonical-route"),invalidRoute=new URLSearchParams(invalid.window.location.hash.slice(1));
-  assert.equal(invalid.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"reference");assert.equal(invalidRoute.get("category"),"common_features");assert.equal(invalidRoute.get("topic"),"common_features_how_to_play_topic");assert.equal(invalid.window.document.querySelector("#entity-how_to_play h2")?.textContent,"How to Play This Subclass");
-
-  assert.equal(invalid.window.location.hash,"#category=common_features&topic=common_features_how_to_play_topic");
-  for(const dom of [empty,explicitHome,category,entity,filtered,deduplicated,invalid]){await settleOnboarding();dom.window.close();}
-});
-*/
-
-/* Superseded reference-only history snapshot.
-test("view navigation is idempotent and browser history restores the complete reference snapshot",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const counters={pushes:0,replaces:0};
-  const fragment="#category=advanced_training&topic=advanced_training_advanced_deflection_screen_topic&filters=rules_area:advanced_training;entity_kind:feature;feature_role:standalone;acquisition_mode:granted&entity=advanced_deflection_screen";
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html${fragment}`,beforeParse(window:any){installOnboardingBrowserShims(window);const push=window.history.pushState.bind(window.history),replace=window.history.replaceState.bind(window.history);window.history.pushState=(...args:any[])=>{counters.pushes++;return push(...args);};window.history.replaceState=(...args:any[])=>{counters.replaces++;return replace(...args);};}});
-  const document=dom.window.document,layout=document.querySelector<HTMLElement>("main.layout")!;
-  assert.deepEqual(counters,{pushes:0,replaces:1});assert.equal(layout.dataset.view,"reference");assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,"advanced_deflection_screen");
-  (document.querySelector("#view-start-here") as HTMLElement).click();assert.equal(layout.dataset.view,"home");assert.equal(dom.window.location.hash,"#home");assert.equal(counters.pushes,1);assert.equal(document.activeElement?.id,"start_here_heading");
-  (document.querySelector("#view-start-here") as HTMLElement).click();assert.equal(counters.pushes,1);assert.equal(dom.window.location.hash,"#home");
-
-  const back=new Promise<void>(resolve=>dom.window.addEventListener("popstate",()=>resolve(),{once:true}));dom.window.history.back();await back;
-  assert.equal(layout.dataset.view,"reference");assert.equal((document.querySelector("#category-select") as HTMLSelectElement).value,"advanced_training");assert.equal((document.querySelector("#topic-select") as HTMLSelectElement).value,"advanced_training_advanced_deflection_screen_topic");
-  assert.equal((document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement).checked,true);assert.equal((document.querySelector("#facet-entity_kind") as HTMLSelectElement).value,"feature");assert.equal((document.querySelector("#facet-feature_role") as HTMLSelectElement).value,"standalone");assert.equal((document.querySelector("#facet-acquisition_mode") as HTMLSelectElement).value,"granted");
-  assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,"advanced_deflection_screen");assert.ok(document.querySelector("#entity-advanced_deflection_screen"));assert.equal(counters.pushes,1);
-  assert.equal(dom.window.location.hash,"#category=advanced_training&topic=advanced_training_advanced_deflection_screen_topic&filters=rules_area%3Aadvanced_training%3Bentity_kind%3Afeature%3Bfeature_role%3Astandalone%3Bacquisition_mode%3Agranted&entity=advanced_deflection_screen");assert.equal(dom.window.history.state.resultRoute,"advanced_training_advanced_deflection_screen_topic");assert.equal(dom.window.history.state.focusOrigin,"fragment");
-
-  const forward=new Promise<void>(resolve=>dom.window.addEventListener("popstate",()=>resolve(),{once:true}));dom.window.history.forward();await forward;
-  assert.equal(layout.dataset.view,"home");assert.equal(dom.window.location.hash,"#home");assert.equal(counters.pushes,1);assert.notEqual(document.activeElement?.id,"start_here_heading");
-  (document.querySelector("#view-rules-reference") as HTMLElement).click();assert.equal(layout.dataset.view,"reference");assert.equal(counters.pushes,2);assert.equal((document.querySelector("#category-select") as HTMLSelectElement).value,"advanced_training");assert.equal((document.querySelector("#topic-select") as HTMLSelectElement).value,"advanced_training_advanced_deflection_screen_topic");assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,"advanced_deflection_screen");assert.equal((document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement).checked,true);assert.equal(document.activeElement,document.querySelector("#entity-advanced_deflection_screen > h2"));
-  assert.equal(dom.window.history.state.resultRoute,"advanced_training_advanced_deflection_screen_topic");assert.equal(dom.window.history.state.focusOrigin,"view");
-  (document.querySelector("#view-rules-reference") as HTMLElement).click();assert.equal(counters.pushes,2);
-  await settleOnboarding();dom.window.close();
-});
-*/
 
 test("history restoration rejects invalid classifications and canonicalizes repaired routes",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const fragment="#category=common_features&topic=common_features_how_to_play_topic";
@@ -573,112 +480,29 @@ test("Start Here renders semantic canonical sections and every destination expos
   assert.equal(home.querySelector(":scope > h2")?.id,"start_here_heading");assert.equal(home.querySelector(":scope > h2")?.textContent,onboarding.title);
   for(const text of Object.values(onboarding.introduction))assert.ok(home.textContent?.includes(text));
   for(const section of [onboarding.disciplines,onboarding.basic_turn,onboarding.build_checklist,onboarding.glossary,onboarding.next_destinations]){const element=home.querySelector<HTMLElement>(`#${section.id}`)!;assert.ok(element);assert.equal(element.classList.contains("home-section"),true);assert.equal(element.querySelector(":scope > h3")?.textContent,section.title);}
-  assert.equal(home.querySelectorAll(".home-card-list .home-card").length,4);assert.equal(home.querySelectorAll(".home-card__title").length,4);assert.equal(home.querySelectorAll(".home-checklist > li").length,6);assert.equal(home.querySelectorAll(".home-glossary > dt").length,5);assert.equal(home.querySelectorAll(".home-glossary > dd").length,5);
+  assert.equal(home.querySelectorAll(".home-card-list .home-card").length,4);assert.equal(home.querySelectorAll(".home-card__title").length,5);assert.equal(home.querySelectorAll(".home-checklist > li").length,6);assert.equal(home.querySelectorAll(".home-glossary > dt").length,5);assert.equal(home.querySelectorAll(".home-glossary > dd").length,5);
+  const bloodTaxCard=home.querySelector<HTMLElement>('.home-blood-tax[data-onboarding-id="start_blood_tax"]')!;assert.ok(bloodTaxCard);assert.equal(bloodTaxCard.querySelector("h3")?.textContent,"Blood Tax");assert.equal(bloodTaxCard.querySelector("p")?.textContent,onboarding.blood_tax.description);
   const headingLevels=[...document.querySelectorAll<HTMLElement>("h1,h2,h3,h4,h5,h6")].map(heading=>Number(heading.tagName.slice(1)));assert.equal(home.querySelectorAll("h1").length,0);assert.equal(home.querySelectorAll("h2").length,1);for(let position=1;position<headingLevels.length;position++)assert.ok(headingLevels[position]!<=headingLevels[position-1]!+1,`heading level skipped at position ${position}`);
 
   const internal=onboarding.primary_paths.filter(path=>path.destination.kind==="onboarding_section");
   for(const path of internal){const control=document.querySelector<HTMLElement>(`[data-onboarding-link-id="${path.id}"]`)!;assert.equal(control.tagName,"BUTTON");assert.equal(control.getAttribute("data-destination-kind"),"onboarding_section");assert.ok(control.textContent?.includes(path.title));control.click();assert.equal(document.activeElement?.id,`${path.destination.kind==="onboarding_section"?path.destination.section_id:""}_heading`);assert.equal(layout.dataset.view,"home");}
 
-  const links=[...onboarding.primary_paths,...onboarding.disciplines.cards,...onboarding.basic_turn.destinations,...onboarding.build_checklist.items,...onboarding.glossary.entries,...onboarding.next_destinations.items].filter(link=>link.destination.kind!=="onboarding_section");
-  const categoryById=new Map(authority.navigation.categories.map(category=>[category.id,category])),entryById=new Map(index.entities.map(entry=>[entry.id,entry]));
+  const links=[onboarding.blood_tax,...onboarding.primary_paths,...onboarding.disciplines.cards,...onboarding.basic_turn.destinations,...onboarding.build_checklist.items,...onboarding.glossary.entries,...onboarding.next_destinations.items].filter(link=>link.destination.kind!=="onboarding_section");
+  const categoryById=new Map(authority.navigation.categories.map(category=>[category.id,category])),entryById=new Map(index.entities.map(entry=>[entry.id,entry])),utilityEntity=new Map<string,(typeof authority.entities)[number]>(authority.calculator.utility_cards.map(card=>[card.id,authority.entities.find(entity=>entity.id===card.source_entity_id)!])),calculatorCards:string[]=[...authority.calculator.utility_cards.map(card=>card.id),...authority.entities.filter(entity=>entity.presentation_metadata.presentation_owner==="calculator_deck"||(entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area!=="common_features")).map(entity=>entity.id)];
   const destination=(value:any)=>{
     if(value.kind==="category"){const category=categoryById.get(value.category_id)!;return{fragment:`#category=${category.id}&topic=${category.default_topic_id}`,entityId:category.topics.find(topic=>topic.id===category.default_topic_id)!.entity_ids[0]!};}
-    if(value.kind==="calculator"){const group=value.rules_area?`&group=${value.rules_area}`:"";return{fragment:`#calculator&card=manifested_strike&level=20&modifier=5${group}`,entityId:"manifested_strike",view:"calculator"};}
+    if(value.kind==="calculator"){const card=value.card_id??(value.rules_area?calculatorCards.find(id=>(utilityEntity.get(id)??authority.entities.find(entity=>entity.id===id))?.presentation_metadata.primary_rules_area===value.rules_area):undefined)??"manifested_strike",entity=utilityEntity.get(card)??authority.entities.find(candidate=>candidate.id===card),area=value.rules_area??(value.card_id?entity?.presentation_metadata.primary_rules_area:undefined),group=area?`&group=${area}`:"";return{fragment:`#calculator&card=${card}&level=20&modifier=5${group}`,entityId:card,view:"calculator"};}
     const entry=entryById.get(value.entity_id)!;const area=entry.primary_rules_area,topic=entry.routes[area]!;return{fragment:`#category=${area}&topic=${topic}&entity=${entry.id}`,entityId:entry.id};
   };
   assert.equal(new Set(links.map(link=>link.id)).size,links.length);
   for(const link of links){
     const expected=destination(link.destination),control=document.querySelector<HTMLAnchorElement>(`[data-onboarding-link-id="${link.id}"]`)!;
     assert.equal(control.tagName,"A",link.id);assert.equal(control.getAttribute("data-destination-kind"),link.destination.kind,link.id);assert.equal(control.getAttribute("href"),expected.fragment,link.id);assert.ok(control.textContent?.includes(link.title),link.id);
-    control.click();if(link.destination.kind==="calculator"){assert.equal(layout.dataset.view,"calculator",link.id);assert.ok(document.querySelector("#calculator-root"),link.id);assert.equal(document.activeElement?.id,"calculator-heading",link.id);}else{assert.equal(layout.dataset.view,"reference",link.id);assert.equal(document.querySelector<HTMLElement>(".controls")?.hidden,false,link.id);const heading=document.querySelector<HTMLElement>(`#entity-${expected.entityId} > h2`)!;assert.ok(heading,link.id);assert.equal(document.activeElement,heading,link.id);if(link.destination.kind==="entity")assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,link.destination.entity_id,link.id);}
+    control.click();if(link.destination.kind==="calculator"){assert.equal(layout.dataset.view,"calculator",link.id);assert.ok(document.querySelector("#calculator-root"),link.id);assert.equal(document.activeElement?.id,"calculator-heading",link.id);assert.equal(document.querySelector<HTMLElement>('.calculator__card[aria-pressed="true"]')?.dataset.cardId,expected.entityId,link.id);}else{assert.equal(layout.dataset.view,"reference",link.id);assert.equal(document.querySelector<HTMLElement>(".controls")?.hidden,false,link.id);const heading=document.querySelector<HTMLElement>(`#entity-${expected.entityId} > h2`)!;assert.ok(heading,link.id);assert.equal(document.activeElement,heading,link.id);if(link.destination.kind==="entity")assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,link.destination.entity_id,link.id);}
     (document.querySelector("#view-start-here") as HTMLElement).click();assert.equal(layout.dataset.view,"home",link.id);assert.equal(document.activeElement?.id,"start_here_heading",link.id);
   }
   await settleOnboarding();dom.window.close();
 });
-/* Retired select-based Calculator regression suite retained in history. The
-   Feature Deck tests below exercise the replacement interaction contract.
-const calculatorRiders=[
-  ["glacial_spike","Glacial Spike",3] as const,["snow_chains","Snow Chains",7] as const,
-  ["ember_bolt","Ember Bolt",3] as const,["thermal_fracture","Thermal Fracture",7] as const,
-  ["cinder_lance","Cinder Lance",10] as const,["flare","Flare",15] as const,["furnace_strike","Furnace Strike",20] as const,
-  ["telekinetic_shove","Telekinetic Shove",3] as const,["explosion_implosion","Explosion/Implosion",10] as const,
-  ["static_discharge","Static Discharge",3] as const,["branching_bolt","Branching Bolt",7] as const,
-  ["electron_burst","Electron Burst",10] as const,["advanced_mind_shred","Mind Shred",15] as const,["advanced_mind_lock","Mind Lock",15] as const
-] as const;
-const calculatorStandaloneFeatures=[
-  ["arctic_tempest","Arctic Tempest",15] as const,["absolute_zero","Absolute Zero",20] as const,
-  ["telekinetic_slam","Telekinetic Slam",15] as const,["mass_levitation","Mass Levitation",20] as const,
-  ["forked_lightning","Forked Lightning",15] as const,["ball_lightning","Ball Lightning",20] as const
-] as const;
-const calculatorFeatures=[...calculatorRiders,...calculatorStandaloneFeatures] as const;
-const normalizedCalculatorText=(element:Element)=>element.textContent?.replace(/\s+/g," ").trim()??"";
-const exactCalculatorTextCount=(root:Element,expected:string)=>[root,...root.querySelectorAll("*")].filter(element=>normalizedCalculatorText(element)===expected).length;
-const assertCalculatorText=(root:Element,expected:string)=>assert.ok([root,...root.querySelectorAll("*")].some(element=>normalizedCalculatorText(element).includes(expected)),`Missing calculator text: ${expected}`);
-const calculatorTierHeadings=(root:Element)=>[...root.querySelectorAll("h2,h3,h4,h5,h6")].map(normalizedCalculatorText).filter(text=>/^Tier [012]$/u.test(text));
-const calculatorEffectPaths=(root:Element,tier:number)=>[...root.querySelectorAll<HTMLElement>(`.calculator__tier[data-tier="${tier}"] .calculator__effects [data-source-path]`)].map(element=>element.dataset.sourcePath);
-const calculatorSharedEffectPaths=(root:Element)=>[...root.querySelectorAll<HTMLElement>(".calculator__shared-effects [data-source-path]")].map(element=>element.dataset.sourcePath);
-const calculatorListItemPaths=(base:string,count:number)=>Array.from({length:count},(_,index)=>`${base}.items.${index}`);
-const assertCalculatorStrikeCalculations=(root:Element,pb:number,modifier:number,focus:number,die:string)=>{const hit=`Hit calculation: 1d20 + Proficiency Bonus (${pb}) + Psionic Ability Modifier (${modifier}) + Psionic Focus (${focus}) = 1d20 + ${pb+modifier+focus}`,damageTotal=modifier===0?die:`${die} + ${modifier}`,damage=`Damage calculation: Manifested Strike die (${die}) + Psionic Ability Modifier (${modifier}) = ${damageTotal}`,calculations=[...root.querySelectorAll<HTMLElement>(".calculator__calculation.calculator__breakdown")];assert.equal(calculations.length,2);assert.equal(exactCalculatorTextCount(root,hit),1);assert.equal(exactCalculatorTextCount(root,damage),1);for(const calculation of calculations){const text=normalizedCalculatorText(calculation);assert.match(text,/ calculation: .+ = .+$/u);assert.doesNotMatch(text,/\b(?:PB|Psi Mod)\b| · /u);}};
-const calculatorProficiencyBonusAtLevel=(level:number)=>level>=17?6:level>=13?5:level>=9?4:level>=5?3:2;
-const assertCalculatorSaveCalculation=(root:Element,pb:number,modifier:number,dc:number,count=1)=>{const expected=`Saving throw calculation: 8 + Proficiency Bonus (${pb}) + Psionic Ability Modifier (${modifier}) = ${dc}`,calculations=[...root.querySelectorAll<HTMLElement>(".calculator__calculation.calculator__save-calculation")];assert.equal(calculations.length,count);assert.equal(exactCalculatorTextCount(root,expected),count);for(const calculation of calculations){const text=normalizedCalculatorText(calculation);assert.match(text,/ calculation: .+ = .+$/u);assert.doesNotMatch(text,/\b(?:PB|Psi Mod)\b| · /u);}};
-const calculatorPsiPointBands=[
-  {minimumLevel:3,maximumLevel:4,value:4},{minimumLevel:5,maximumLevel:6,value:6},{minimumLevel:7,maximumLevel:8,value:7},
-  {minimumLevel:9,maximumLevel:10,value:9},{minimumLevel:11,maximumLevel:12,value:10},{minimumLevel:13,maximumLevel:14,value:12},
-  {minimumLevel:15,maximumLevel:16,value:13},{minimumLevel:17,maximumLevel:18,value:15},{minimumLevel:19,maximumLevel:20,value:16}
-] as const;
-const calculatorPsiPointsAtLevel=(level:number)=>calculatorPsiPointBands.find(band=>level>=band.minimumLevel&&level<=band.maximumLevel)!.value;
-const assertCalculatorPsiTotal=(root:Element,total:number)=>{
-  const facts=root.querySelector<HTMLElement>(".calculator__facts")!;assert.ok(facts);
-  const metrics=[...facts.querySelectorAll<HTMLElement>(":scope > p")].map(normalizedCalculatorText),psiCostIndex=metrics.findIndex(text=>/^Psi cost: \d+$/u.test(text));
-  assert.notEqual(psiCostIndex,-1);assert.equal(metrics[psiCostIndex+1],`Total Psi Points: ${total}`);
-  const labels=[...facts.querySelectorAll("strong")].map(normalizedCalculatorText);
-  assert.equal(labels.filter(label=>label==="Psi cost:").length,1);assert.equal(labels.filter(label=>label==="Total Psi Points:").length,1);
-  assert.equal(exactCalculatorTextCount(facts,`Total Psi Points: ${total}`),1);
-};
-const assertCalculatorPsiFacts=(root:Element,cost:number,total:number)=>{assert.equal(exactCalculatorTextCount(root,`Psi cost: ${cost}`),1);assertCalculatorPsiTotal(root,total);};
-
-test("calculator exposes four native selects, twenty supported feature choices, and the required Manifested Strike landing defaults",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
-  const root=dom.window.document.querySelector<HTMLElement>("#calculator-root")!;assert.ok(root);assert.equal(dom.window.location.hash,"#calculator");
-  const featureGroup=root.querySelector<HTMLSelectElement>("#calculator-feature-group")!,feature=root.querySelector<HTMLSelectElement>("#calculator-feature")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!;
-  assert.deepEqual([...root.querySelectorAll("select")],[featureGroup,feature,level,modifier]);assert.deepEqual([featureGroup,feature,level,modifier].map(control=>control.tagName),["SELECT","SELECT","SELECT","SELECT"]);
-  const labelText=(control:HTMLSelectElement)=>{const label=root.querySelector<HTMLLabelElement>(`label[for="${control.id}"]`)!;assert.ok(label);const clone=label.cloneNode(true) as HTMLLabelElement;clone.querySelector(`#${control.id}`)?.remove();return clone.textContent?.trim();};
-  assert.deepEqual([featureGroup,feature,level,modifier].map(labelText),["Feature Group","Skill / Feature","Fighter Level","Psionic Ability Modifier"]);
-  assert.deepEqual([...featureGroup.options].map(option=>[option.value,option.textContent?.trim()]),[["","All"],["cryokinesis","Cryokinesis"],["pyrokinesis","Pyrokinesis"],["psychokinesis","Psychokinesis"],["electrokinesis","Electrokinesis"],["advanced_training","Advanced Training"]]);
-  assert.equal(featureGroup.value,"");assert.equal(feature.value,"");assert.equal(feature.selectedOptions[0]?.textContent?.trim(),"Select a skill / feature");assert.equal(level.value,"20");assert.equal(modifier.value,"5");assert.equal(modifier.selectedOptions[0]?.textContent?.trim(),"+5");
-  for(const control of [featureGroup,feature,level,modifier])assert.equal(control.getAttribute("aria-controls"),"calculator-feature-results");
-  assert.deepEqual([...modifier.options].map(option=>option.textContent?.trim()),["+0","+1","+2","+3","+4","+5"]);
-  assert.equal(root.querySelector("#target-ac,[name='target-ac'],[aria-label='Target AC']"),null);assert.doesNotMatch(root.textContent??"",/Target AC|hit chance/iu);
-  assert.equal([...root.querySelectorAll("button")].some(button=>/^(?:Apply|Calculate)$/iu.test(button.textContent?.trim()??"")),false);
-  assert.equal(feature.options.length,21);assert.deepEqual([...feature.options].map(option=>option.value).sort(),["",...calculatorFeatures.map(([id])=>id)].sort());assert.equal([...feature.options].some(option=>option.value==="common_manifested_strike"),false);
-  for(const [id,title,minimumLevel] of calculatorFeatures){
-    const option=[...feature.options].find(candidate=>candidate.value===id)!;assert.ok(option);assert.equal(option.textContent?.trim(),title);assert.equal(option.disabled,minimumLevel>20,id);
-  }
-  const results=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.equal(root.querySelector("#manifested-strike-summary"),null);assert.ok(results);
-  assert.equal(root.querySelectorAll("#calculator-feature-results.calculator__result").length,1);
-  assert.equal(results.hidden,false);assert.equal(results.querySelector(":scope > h3")?.textContent,"Manifested Strike");assert.equal(results.querySelector(".calculator__trigger,.calculator__facts,.calculator__tiers"),null);
-  assertCalculatorText(results,"Hit: 1d20 + 14");assertCalculatorText(results,"Damage: 1d12 + 5");assertCalculatorText(results,"Expected avg damage: 11.5");assertCalculatorText(results,"Psionic Save DC: 19");assertCalculatorStrikeCalculations(results,6,5,3,"1d12");assertCalculatorSaveCalculation(results,6,5,19);
-  assert.doesNotMatch(results.textContent??"",/Expected rider damage:/u);
-  feature.value="telekinetic_shove";feature.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  assertCalculatorText(results,"Telekinetic Shove");assert.deepEqual(calculatorTierHeadings(results),["Tier 0","Tier 1","Tier 2"]);
-  assert.equal(exactCalculatorTextCount(results,"Triggering Manifested Strike"),1);
-  const trigger=results.querySelector<HTMLElement>(".calculator__trigger")!;assert.ok(trigger);assertCalculatorText(trigger,"Hit: 1d20 + 14");assertCalculatorText(trigger,"Damage: 1d12 + 5");assertCalculatorText(trigger,"Expected avg damage: 11.5");assert.equal(exactCalculatorTextCount(results,"Psionic Save DC: 19"),0);
-  assertCalculatorStrikeCalculations(trigger,6,5,3,"1d12");assert.equal(trigger.querySelector(".calculator__save-calculation"),null);
-  assert.equal(exactCalculatorTextCount(results,"Rider damage: 2"),3);assert.equal(exactCalculatorTextCount(results,"Combined damage: 1d12 + 7"),3);assert.equal(exactCalculatorTextCount(results,"Expected combined damage: 13.5"),3);
-  assert.equal(exactCalculatorTextCount(results,"Strength save: DC 19"),1);assertCalculatorSaveCalculation(results,6,5,19);assertCalculatorPsiFacts(results,0,16);
-  const save=results.querySelector<HTMLElement>(".calculator__save")!;assert.ok(save);assert.equal(save.dataset.saveTiers,"0 1 2");assertCalculatorText(results,"Applies to Tiers 0–2.");
-  assert.equal(exactCalculatorTextCount(results,"Blood Tax: 0"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 6"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 12"),1);
-  assert.deepEqual(calculatorEffectPaths(results,0),calculatorListItemPaths("entities.telekinetic_shove.content.0.body.0",5));
-  assert.deepEqual(calculatorEffectPaths(results,1),["entities.telekinetic_shove.content.1.body.1"]);
-  assert.deepEqual(calculatorEffectPaths(results,2),["entities.telekinetic_shove.content.2.body.1"]);
-  assert.deepEqual(calculatorSharedEffectPaths(results),[]);
-  assert.deepEqual([...results.querySelectorAll(".calculator__effects")].map(section=>section.getAttribute("aria-label")),["Target and effect","Target and effect","Target and effect"]);
-  assert.equal(exactCalculatorTextCount(results,"Target and effect"),0);
-  assert.doesNotMatch(results.textContent??"",/\bT[012] (?:Base|Overload):|Changes from Tier/iu);
-  await settleOnboarding();dom.window.close();
-});
-*/
 
 const normalizedDeckText=(element:Element)=>element.textContent?.replace(/\s+/g," ").trim()??"";
 const deckTextCount=(root:Element,text:string)=>[root,...root.querySelectorAll("*")].filter(element=>normalizedDeckText(element)===text).length;
@@ -696,6 +520,7 @@ test("Calculator is the exhaustive 35-card player-facing Feature Deck",async()=>
   assert.equal(cards.filter(card=>card.textContent?.includes("Calculated")).length,32);assert.equal(cards.filter(card=>card.textContent?.includes("Reference only")).length,3);
   const selected=root.querySelector<HTMLButtonElement>('.calculator__card[aria-pressed="true"]')!;assert.equal(selected.dataset.cardId,"manifested_strike");assert.equal(root.querySelector("#calculator-feature-results > h3")?.textContent,"Manifested Strike");
   assert.equal(root.querySelectorAll(".calculator__canonical-rules").length,1);assert.equal(deckTextCount(root,"Complete canonical rules"),1);
+  const bloodTaxCard=root.querySelector<HTMLButtonElement>('.calculator__card[data-card-id="blood_tax"]')!;assert.ok(bloodTaxCard);assert.equal(bloodTaxCard.closest(".calculator__group")?.querySelector(":scope > h3")?.textContent,"Common Features");assert.match(normalizedDeckText(bloodTaxCard),/^Blood TaxOverload self-damage · Level 3\+ · Calculated$/u);bloodTaxCard.click();assert.equal(root.querySelector<HTMLElement>('.calculator__card[aria-pressed="true"]')?.dataset.cardId,"blood_tax");assert.equal(root.querySelector("#calculator-feature-results > h3")?.textContent,"Blood Tax");
   changeDeckSelect(dom,root.querySelector<HTMLSelectElement>("#calculator-level")!,"3");const lowLevelCards=[...root.querySelectorAll<HTMLButtonElement>(".calculator__card")];assert.equal(lowLevelCards.length,35);assert.equal(lowLevelCards.filter(card=>card.dataset.available==="false").length>0,true);assert.ok(lowLevelCards.filter(card=>card.dataset.available==="false").every(card=>card.textContent?.includes("Future level")));
   await settleOnboarding();dom.window.close();
 });
@@ -724,15 +549,35 @@ test("Feature Deck computes the newly projected values and authored save metadat
   await settleOnboarding();dom.window.close();
 });
 
-test("Blood Tax shows PB bands, Overload Mastery reduction, and conditional Overload Mastery II",async()=>{
+test("Blood Tax is a tiered quick reference with canonical context and explicit Overload Mastery",async()=>{
   const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=blood_tax&level=17&modifier=5",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!;
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=blood_tax&level=3&modifier=5",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!;
   const detail=()=>root.querySelector<HTMLElement>("#calculator-feature-results")!;
   const projectionMetrics=(text:string)=>[...detail().querySelectorAll<HTMLElement>(".calculator__projection .calculator__metrics > p")].filter(metric=>normalizedDeckText(metric)===text).length;
-  assert.match(normalizedDeckText(detail()),/Proficiency Bonus: 6/u);assert.equal(projectionMetrics("Blood Tax: 0"),1);assert.equal(projectionMetrics("Blood Tax: 6"),1);assert.equal(projectionMetrics("Blood Tax: 12"),1);assert.match(normalizedDeckText(detail()),/Available at Fighter level 18/u);assert.doesNotMatch(normalizedDeckText(detail()),/Overload Mastery Blood Tax:/u);
-  changeDeckSelect(dom,level,"18");assert.equal(projectionMetrics("With Overload Mastery: 3"),1);assert.equal(projectionMetrics("With Overload Mastery: 6"),1);assert.match(normalizedDeckText(detail()),/Baseline uses per Short or Long Rest: 1/u);assert.match(normalizedDeckText(detail()),/Overload Mastery II is a selectable feature/u);assert.equal(detail().querySelectorAll(".calculator__canonical-rules").length,1);
+  const tiers=()=>[...detail().querySelectorAll<HTMLElement>(".calculator__tier")];assert.deepEqual(tiers().map(tier=>tier.querySelector("h5")?.textContent),["T0 — No Overload","T1 — Overload","T2 — Overload"]);assert.deepEqual(tiers().map(tier=>tier.dataset.available),["true","true","false"]);assert.equal(projectionMetrics("Blood Tax: 0 HP"),1);assert.equal(projectionMetrics("Calculation: 1 × Proficiency Bonus"),1);assert.equal(projectionMetrics("Blood Tax: 2 HP"),1);assert.equal(projectionMetrics("Calculation: 2 × Proficiency Bonus"),1);assert.equal(projectionMetrics("Blood Tax: 4 HP"),1);assert.match(normalizedDeckText(tiers()[2]!),/Available at Fighter level 10\./u);
+  const context=detail().querySelector<HTMLElement>(".calculator__context")!;assert.equal(context.querySelector(":scope > h4")?.textContent,"Blood Tax rules context");for(const rule of [/Blood Tax is psychic damage/u,/Blood Tax remain spent/u,/pay Blood Tax separately/u,/Temporary Hit Points cannot absorb, reduce, or pay Blood Tax/u,/Immunity to psychic damage instead functions as Resistance/u,/reduces you to 0 hit points/u,/only one rider can be Tier 2/u,/does not restrict standalone features/u])assert.match(normalizedDeckText(context),rule);
+  changeDeckSelect(dom,level,"10");assert.deepEqual(tiers().map(tier=>tier.dataset.available),["true","true","true"]);assert.doesNotMatch(normalizedDeckText(tiers()[2]!),/Available at Fighter level/u);
+  changeDeckSelect(dom,level,"18");assert.equal(projectionMetrics("Blood Tax: 6 HP"),1);assert.equal(projectionMetrics("Blood Tax: 12 HP"),1);assert.equal(projectionMetrics("With Overload Mastery: 3 HP"),1);assert.equal(projectionMetrics("With Overload Mastery: 6 HP"),1);const mastery=detail().querySelector<HTMLElement>(".calculator__mastery")!;assert.equal(mastery.querySelector(":scope > h4")?.textContent,"Overload Mastery");assert.match(normalizedDeckText(mastery),/Blood Tax divisor: 2/u);assert.match(normalizedDeckText(mastery),/Minimum per Overload: 1 HP/u);assert.match(normalizedDeckText(mastery),/Baseline uses per Short or Long Rest: 1/u);assert.match(normalizedDeckText(mastery),/Overload Mastery II is a selectable feature with a Psionic Apex prerequisite/u);
   await settleOnboarding();dom.window.close();
 });
+
+test("Calculator repairs card/group mismatches and restores valid history while invalid state fails closed",async()=>{
+  const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8"),canonical="#calculator&card=glacial_spike&level=20&modifier=5&group=cryokinesis";
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=glacial_spike&level=20&modifier=5&group=pyrokinesis",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document;
+  assert.equal(dom.window.location.hash,canonical);assert.equal(document.querySelector<HTMLSelectElement>("#calculator-feature-group")?.value,"cryokinesis");assert.equal(document.querySelector<HTMLElement>('.calculator__card[aria-pressed="true"]')?.dataset.cardId,"glacial_spike");assert.deepEqual({view:dom.window.history.state.view,card:dom.window.history.state.calculatorSelection,group:dom.window.history.state.calculatorFeatureGroup,level:dom.window.history.state.fighterLevel,modifier:dom.window.history.state.psiModifier},{view:"calculator",card:"glacial_spike",group:"cryokinesis",level:20,modifier:5});
+  const restored={...structuredClone(dom.window.history.state),focusOrigin:"history"};dom.window.history.replaceState(restored,"",canonical);dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate",{state:restored}));assert.equal(document.querySelector<HTMLElement>("main.layout")?.dataset.view,"calculator");assert.equal(document.querySelector<HTMLElement>('.calculator__card[aria-pressed="true"]')?.dataset.cardId,"glacial_spike");assert.equal(document.querySelector<HTMLSelectElement>("#calculator-feature-group")?.value,"cryokinesis");assert.equal(document.querySelector<HTMLSelectElement>("#calculator-level")?.value,"20");assert.equal(document.querySelector<HTMLSelectElement>("#calculator-psi-modifier")?.value,"5");assert.equal(dom.window.location.hash,canonical);assert.equal(dom.window.history.state.focusOrigin,"history");
+  const invalid={...restored,calculatorSelection:"missing_card",calculatorFeatureGroup:"pyrokinesis"};dom.window.history.replaceState(invalid,"",canonical);dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate",{state:invalid}));assert.equal(dom.window.location.hash,canonical);assert.equal(dom.window.history.state.calculatorSelection,"glacial_spike");assert.equal(dom.window.history.state.calculatorFeatureGroup,"cryokinesis");assert.equal(document.querySelector<HTMLElement>('.calculator__card[aria-pressed="true"]')?.dataset.cardId,"glacial_spike");
+  await settleOnboarding();dom.window.close();
+});
+
+test("Calculator rounds displayed expected averages upward after the underlying damage calculation",async()=>{
+  const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=manifested_strike&level=5&modifier=5",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!;
+  const detail=()=>normalizedDeckText(root.querySelector<HTMLElement>("#calculator-feature-results")!);assert.match(detail(),/Damage: 1d8 \+ 5.*Expected avg damage: 10/u);changeDeckSelect(dom,level,"11");assert.match(detail(),/Damage: 1d10 \+ 5.*Expected avg damage: 11/u);changeDeckSelect(dom,level,"17");assert.match(detail(),/Damage: 1d12 \+ 5.*Expected avg damage: 12/u);
+  changeDeckSelect(dom,level,"3");let selected=clickDeckCard(document,"branching_bolt");assert.match(normalizedDeckText(selected),/Combined damage: 2d6 \+ 5.*Expected combined damage: 12/u);selected=clickDeckCard(document,"glacial_spike");assert.match(normalizedDeckText(selected),/Expected combined damage: 11/u);selected=clickDeckCard(document,"advanced_improved_phase_step");assert.match(normalizedDeckText(selected),/Expected avg damage: 22 on a failed save · 11 on a successful save/u);selected=clickDeckCard(document,"advanced_deflection_screen");assert.match(normalizedDeckText(selected),/Damage reduction: 3d8 \+ 5.*Expected avg damage: 19/u);
+  await settleOnboarding();dom.window.close();
+});
+
+test("onboarding Calculator card routing is generic rather than feature-name based",async()=>{const runtime=await readFile("src/runtime.ts","utf8");assert.doesNotMatch(runtime,/function destinationControl[^\n]*blood_tax/u);assert.doesNotMatch(runtime,/function openCalculator[^\n]*blood_tax/u);});
 
 test("Name, result, onboarding, and legacy feature links converge on canonical Calculator routes",async()=>{
   const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");
@@ -743,177 +588,3 @@ test("Name, result, onboarding, and legacy feature links converge on canonical C
   (document.querySelector("#view-rules-reference") as HTMLButtonElement).click();name.value="common_overload";name.dispatchEvent(new reference.window.Event("change",{bubbles:true}));assert.equal(document.querySelector<HTMLElement>("main.layout")?.dataset.view,"reference");assert.ok(document.querySelector("#entity-common_overload"));
   await settleOnboarding();legacy.window.close();reference.window.close();
 });
-
-/* Remaining retired select-based Calculator tests.
-test("calculator feature groups project canonical primary rules areas and preserve or clear selection state correctly",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
-  const document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!,featureGroup=root.querySelector<HTMLSelectElement>("#calculator-feature-group")!,feature=root.querySelector<HTMLSelectElement>("#calculator-feature")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!,results=root.querySelector<HTMLElement>("#calculator-feature-results")!;
-  const entityById=new Map(authority.entities.map(entity=>[entity.id,entity])),areaById=new Map(authority.vocabularies.rules_areas!.map(area=>[area.id,area]));
-  const sortedSupported=[...authority.calculator.features].sort((left,right)=>{const leftEntity=entityById.get(left.entity_id)!,rightEntity=entityById.get(right.entity_id)!,leftArea=areaById.get(leftEntity.presentation_metadata.primary_rules_area)!,rightArea=areaById.get(rightEntity.presentation_metadata.primary_rules_area)!;return leftArea.order-rightArea.order||Number(leftEntity.level)-Number(rightEntity.level)||leftEntity.title.localeCompare(rightEntity.title);});
-  const expectedByGroup=new Map<string,string[]>();for(const item of sortedSupported){const area=entityById.get(item.entity_id)!.presentation_metadata.primary_rules_area,ids=expectedByGroup.get(area)??[];ids.push(item.entity_id);expectedByGroup.set(area,ids);}
-  const change=(control:HTMLSelectElement,value:string)=>{control.value=value;assert.equal(control.value,value);control.dispatchEvent(new dom.window.Event("change",{bubbles:true}));};
-  const optionIds=()=>[...feature.options].map(option=>option.value).filter(Boolean);
-  assert.deepEqual(optionIds(),sortedSupported.map(item=>item.entity_id));assert.equal(optionIds().includes("common_manifested_strike"),false);
-  for(const group of ["cryokinesis","pyrokinesis","psychokinesis","electrokinesis","advanced_training"]){
-    change(featureGroup,group);assert.deepEqual(optionIds(),expectedByGroup.get(group),group);assert.equal(feature.value,"");assert.equal(results.querySelector(":scope > h3")?.textContent,"Manifested Strike");
-  }
-  change(featureGroup,"pyrokinesis");change(feature,"cinder_lance");assert.equal(results.querySelector(":scope > h3")?.textContent,"Cinder Lance");const riderText=normalizedCalculatorText(results);
-  change(featureGroup,"");assert.equal(feature.value,"cinder_lance");assert.equal(results.querySelector(":scope > h3")?.textContent,"Cinder Lance");assert.equal(normalizedCalculatorText(results),riderText);
-  change(featureGroup,"pyrokinesis");assert.equal(feature.value,"cinder_lance");change(level,"11");change(modifier,"4");featureGroup.focus();change(featureGroup,"cryokinesis");
-  assert.equal(document.activeElement,featureGroup);assert.equal(feature.value,"");assert.equal(level.value,"11");assert.equal(modifier.value,"4");assert.equal(results.querySelector(":scope > h3")?.textContent,"Manifested Strike");assertCalculatorText(results,"Hit: 1d20 + 10");assertCalculatorText(results,"Damage: 1d10 + 4");assertCalculatorText(results,"Psionic Save DC: 16");
-  change(level,"17");assertCalculatorText(results,"Hit: 1d20 + 13");assertCalculatorText(results,"Damage: 1d12 + 4");change(modifier,"5");assertCalculatorText(results,"Hit: 1d20 + 14");assertCalculatorText(results,"Damage: 1d12 + 5");
-  assert.deepEqual({group:dom.window.history.state.calculatorFeatureGroup,selection:dom.window.history.state.calculatorSelection,level:dom.window.history.state.fighterLevel,modifier:dom.window.history.state.psiModifier},{group:"cryokinesis",selection:"",level:17,modifier:5});
-  await settleOnboarding();dom.window.close();
-});
-*/
-
-/* Final retired select-based Calculator tests.
-test("each calculator select updates synchronously and level changes enforce every progression boundary",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
-  const root=dom.window.document.querySelector<HTMLElement>("#calculator-root")!;assert.ok(root);const results=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.equal(root.querySelector("#manifested-strike-summary"),null);
-  const feature=root.querySelector<HTMLSelectElement>("#calculator-feature")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!;
-  const change=(control:HTMLSelectElement,value:string)=>{control.value=value;assert.equal(control.value,value);control.dispatchEvent(new dom.window.Event("change",{bubbles:true}));};
-  change(level,"11");change(feature,"ember_bolt");assertCalculatorText(results,"Ember Bolt");for(const average of ["12.5","14.5","16.5"])assertCalculatorText(results,`Expected combined damage: ${average}`);
-  change(feature,"telekinetic_shove");change(modifier,"4");let trigger=results.querySelector<HTMLElement>(".calculator__trigger")!;assertCalculatorText(trigger,"Hit: 1d20 + 10");assertCalculatorText(trigger,"Damage: 1d10 + 4");assertCalculatorText(trigger,"Expected avg damage: 9.5");assertCalculatorText(results,"Strength save: DC 16");assertCalculatorSaveCalculation(results,4,4,16);
-  assertCalculatorStrikeCalculations(trigger,4,4,2,"1d10");
-  change(modifier,"5");trigger=results.querySelector<HTMLElement>(".calculator__trigger")!;assertCalculatorText(trigger,"Hit: 1d20 + 11");assertCalculatorText(trigger,"Damage: 1d10 + 5");assertCalculatorText(trigger,"Expected avg damage: 10.5");assertCalculatorText(results,"Strength save: DC 17");assertCalculatorSaveCalculation(results,4,5,17);
-  assertCalculatorStrikeCalculations(trigger,4,5,2,"1d10");
-  change(modifier,"0");trigger=results.querySelector<HTMLElement>(".calculator__trigger")!;assertCalculatorText(trigger,"Hit: 1d20 + 6");assertCalculatorText(trigger,"Damage: 1d10");assertCalculatorText(results,"Strength save: DC 12");assertCalculatorStrikeCalculations(trigger,4,0,2,"1d10");assertCalculatorSaveCalculation(results,4,0,12);change(modifier,"5");
-  const boundaries=[
-    {level:3,pb:2,psi:4,focus:1,die:"1d6",hit:8,dc:15,average:"8.5"},{level:4,pb:2,psi:4,focus:1,die:"1d6",hit:8,dc:15,average:"8.5"},
-    {level:5,pb:3,psi:6,focus:1,die:"1d8",hit:9,dc:16,average:"9.5"},{level:6,pb:3,psi:6,focus:1,die:"1d8",hit:9,dc:16,average:"9.5"},
-    {level:7,pb:3,psi:7,focus:1,die:"1d8",hit:9,dc:16,average:"9.5"},{level:8,pb:3,psi:7,focus:1,die:"1d8",hit:9,dc:16,average:"9.5"},
-    {level:9,pb:4,psi:9,focus:2,die:"1d8",hit:11,dc:17,average:"9.5"},{level:10,pb:4,psi:9,focus:2,die:"1d8",hit:11,dc:17,average:"9.5"},
-    {level:11,pb:4,psi:10,focus:2,die:"1d10",hit:11,dc:17,average:"10.5"},{level:12,pb:4,psi:10,focus:2,die:"1d10",hit:11,dc:17,average:"10.5"},
-    {level:13,pb:5,psi:12,focus:2,die:"1d10",hit:12,dc:18,average:"10.5"},{level:14,pb:5,psi:12,focus:2,die:"1d10",hit:12,dc:18,average:"10.5"},
-    {level:15,pb:5,psi:13,focus:2,die:"1d10",hit:12,dc:18,average:"10.5"},{level:16,pb:5,psi:13,focus:2,die:"1d10",hit:12,dc:18,average:"10.5"},
-    {level:17,pb:6,psi:15,focus:3,die:"1d12",hit:14,dc:19,average:"11.5"},{level:18,pb:6,psi:15,focus:3,die:"1d12",hit:14,dc:19,average:"11.5"},
-    {level:19,pb:6,psi:16,focus:3,die:"1d12",hit:14,dc:19,average:"11.5"},{level:20,pb:6,psi:16,focus:3,die:"1d12",hit:14,dc:19,average:"11.5"}
-  ];
-  for(const candidate of boundaries){
-    change(level,String(candidate.level));trigger=results.querySelector<HTMLElement>(".calculator__trigger")!;assertCalculatorText(trigger,`Hit: 1d20 + ${candidate.hit}`);
-    assertCalculatorText(trigger,`Damage: ${candidate.die} + 5`);assertCalculatorText(trigger,`Expected avg damage: ${candidate.average}`);assertCalculatorText(results,`Strength save: DC ${candidate.dc}`);assertCalculatorSaveCalculation(results,candidate.pb,5,candidate.dc);
-    assertCalculatorStrikeCalculations(trigger,candidate.pb,5,candidate.focus,candidate.die);
-    assertCalculatorPsiFacts(results,0,candidate.psi);
-    assert.equal(feature.options.length,21);for(const [id,,minimumLevel] of calculatorFeatures){const option=[...feature.options].find(value=>value.value===id)!;assert.ok(option);assert.equal(option.disabled,minimumLevel>candidate.level,`${id} availability at level ${candidate.level}`);}
-    for(const tier of [0,1,2])assert.ok(calculatorTierHeadings(results).some(heading=>heading.endsWith(`Tier ${tier}`)),`Tier ${tier} remains shown at level ${candidate.level}`);
-    if(candidate.level<10)assertCalculatorText(results,"Available at Fighter level 10.");else assert.doesNotMatch(results.textContent??"",/Available at Fighter level 10\./u);
-  }
-  for(const [id,title] of calculatorFeatures){const option=[...feature.options].find(candidate=>candidate.value===id);assert.ok(option&&!option.disabled,id);assert.equal(option.textContent?.trim(),title);}
-  await settleOnboarding();dom.window.close();
-});
-*/
-
-/* Retired tier-card Calculator test.
-test("one selected calculator feature card shows all tier damage, authored saves, Psi costs, and Blood Tax",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
-  const root=dom.window.document.querySelector<HTMLElement>("#calculator-root")!;assert.ok(root);const feature=root.querySelector<HTMLSelectElement>("#calculator-feature")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,results=root.querySelector<HTMLElement>("#calculator-feature-results")!;
-  const change=(control:HTMLSelectElement,value:string)=>{control.value=value;assert.equal(control.value,value);control.dispatchEvent(new dom.window.Event("change",{bubbles:true}));};
-  change(level,"11");
-  const typedSaveCount=()=>[results,...results.querySelectorAll("*")].filter(element=>/^(?:Strength|Constitution|Dexterity|Charisma|Intelligence) save: DC \d+$/u.test(normalizedCalculatorText(element))).length;
-  const assertSaveTiers=(expected:string)=>assert.equal(results.querySelector<HTMLElement>(".calculator__save")?.dataset.saveTiers,expected);
-  const selectRider=(id:string,title:string)=>{change(feature,id);assertCalculatorText(results,title);assert.equal(root.querySelectorAll("#calculator-feature-results.calculator__result").length,1);assert.equal(exactCalculatorTextCount(results,"Triggering Manifested Strike"),1);assert.deepEqual(calculatorTierHeadings(results),["Tier 0","Tier 1","Tier 2"],title);assert.equal(results.querySelectorAll(".calculator__facts").length,1);assertCalculatorPsiTotal(results,calculatorPsiPointsAtLevel(Number(level.value)));assert.doesNotMatch(results.textContent??"",/Psionic Save DC:/u);assert.doesNotMatch(results.textContent??"",/\bT[012] (?:Base|Overload):|Changes from Tier/iu);};
-  selectRider("telekinetic_shove","Telekinetic Shove");
-  assert.equal(exactCalculatorTextCount(results,"Strength save: DC 17"),1);assertCalculatorSaveCalculation(results,4,5,17);assertCalculatorPsiFacts(results,0,10);assertSaveTiers("0 1 2");
-  assertCalculatorText(results,"Applies to Tiers 0–2.");
-  assert.equal(exactCalculatorTextCount(results,"Rider damage: 2"),3);assert.equal(exactCalculatorTextCount(results,"Combined damage: 1d10 + 7"),3);assert.equal(exactCalculatorTextCount(results,"Expected combined damage: 12.5"),3);
-  assert.equal(exactCalculatorTextCount(results,"Blood Tax: 0"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 4"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 8"),1);
-  selectRider("cinder_lance","Cinder Lance");for(const [rider,combined,average] of [["2d10","3d10 + 5","21.5"],["3d10","4d10 + 5","27"],["4d10","5d10 + 5","32.5"]] as const){
-    assertCalculatorText(results,`Rider damage: ${rider}`);assertCalculatorText(results,`Combined damage: ${combined}`);assertCalculatorText(results,`Expected combined damage: ${average}`);
-  }
-  assert.equal(exactCalculatorTextCount(results,"Psi cost: 3"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 0"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 4"),1);assert.equal(exactCalculatorTextCount(results,"Blood Tax: 8"),1);assert.equal(typedSaveCount(),0);assertCalculatorSaveCalculation(results,4,5,17,0);
-  assertCalculatorText(results,"No feature tier requires a saving throw.");
-  selectRider("glacial_spike","Glacial Spike");assert.equal(exactCalculatorTextCount(results,"Constitution save: DC 17"),1);assertCalculatorSaveCalculation(results,4,5,17);assert.equal(typedSaveCount(),1);assertSaveTiers("1 2");
-  assertCalculatorText(results,"Applies to Tiers 1–2.");
-  selectRider("static_discharge","Static Discharge");assert.equal(exactCalculatorTextCount(results,"Charisma save: DC 17"),1);assertCalculatorSaveCalculation(results,4,5,17);assert.equal(typedSaveCount(),1);assertSaveTiers("2");
-  assert.deepEqual(calculatorEffectPaths(results,0),["entities.static_discharge.content.0.body.0"]);assert.deepEqual(calculatorEffectPaths(results,1),["entities.static_discharge.content.1.body.1"]);assert.deepEqual(calculatorEffectPaths(results,2),calculatorListItemPaths("entities.static_discharge.content.2.body.1",4));
-  assertCalculatorText(results,"Applies to Tier 2.");
-  selectRider("ember_bolt","Ember Bolt");assert.equal(typedSaveCount(),0);assert.equal(results.querySelector(".calculator__save"),null);assertCalculatorSaveCalculation(results,4,5,17,0);assert.equal(exactCalculatorTextCount(results,"No feature tier requires a saving throw."),1);
-  selectRider("explosion_implosion","Explosion/Implosion");
-  assertCalculatorText(results,"Rider damage: 5 on a failed save · 0 on a successful save");
-  assertCalculatorText(results,"Combined damage: 1d10 + 10 on a failed save · 1d10 + 5 on a successful save");
-  assertCalculatorText(results,"Expected combined damage: 15.5 on a failed save · 10.5 on a successful save");
-  assert.equal(exactCalculatorTextCount(results,"Strength save: DC 17"),1);assertCalculatorSaveCalculation(results,4,5,17);assertSaveTiers("0 1 2");
-  assert.deepEqual(calculatorEffectPaths(results,0),["entities.explosion_implosion.content.0.body.0",...calculatorListItemPaths("entities.explosion_implosion.content.0.body.1",2),...calculatorListItemPaths("entities.explosion_implosion.content.0.body.2",2)]);
-  assert.deepEqual(calculatorEffectPaths(results,1),["entities.explosion_implosion.content.2.body.0"]);
-  assert.deepEqual(calculatorEffectPaths(results,2),["entities.explosion_implosion.content.3.body.0"]);
-  assert.deepEqual([...results.querySelectorAll<HTMLElement>('.calculator__tier[data-tier="0"] .calculator__effects > ul')].map(list=>list.querySelectorAll(":scope > li").length),[2,2]);
-  assert.deepEqual([...results.querySelectorAll<HTMLElement>('.calculator__tier[data-tier="0"] .calculator__effects li > strong')].map(normalizedCalculatorText),["Explosion (outward):","Implosion (inward):","Struck target:","Successful save:"]);
-  assertCalculatorText(results,"Each creature other than the struck target that fails is also pushed 15 feet away from the target.");
-  assertCalculatorText(results,"The Sphere’s radius and push or pull distance both increase to 30 feet.");
-  assert.deepEqual(calculatorSharedEffectPaths(results),["entities.explosion_implosion.content.1","entities.explosion_implosion.content.4"]);
-  change(level,"20");selectRider("flare","Flare");assert.equal(exactCalculatorTextCount(results,"Dexterity save: DC 19"),1);assertCalculatorSaveCalculation(results,6,5,19);assert.equal(typedSaveCount(),1);assertSaveTiers("0");
-  assertCalculatorText(results,"Applies to Tier 0.");
-  selectRider("advanced_mind_lock","Mind Lock");assert.equal(exactCalculatorTextCount(results,"Intelligence save: DC 19"),1);assertCalculatorSaveCalculation(results,6,5,19);assert.equal(typedSaveCount(),1);assertSaveTiers("1 2");
-  assertCalculatorText(results,"Applies to Tiers 1–2.");
-  for(const [id,title] of calculatorRiders)selectRider(id,title);
-  await settleOnboarding();dom.window.close();
-});
-*/
-
-/* Retired standalone Calculator test.
-test("six registered standalone damage features render exact standalone calculations without a triggering strike",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
-  const root=dom.window.document.querySelector<HTMLElement>("#calculator-root")!,feature=root.querySelector<HTMLSelectElement>("#calculator-feature")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!,results=root.querySelector<HTMLElement>("#calculator-feature-results")!;
-  const change=(control:HTMLSelectElement,value:string)=>{control.value=value;assert.equal(control.value,value);control.dispatchEvent(new dom.window.Event("change",{bubbles:true}));};
-  const tier=(value:number)=>{const section=results.querySelector<HTMLElement>(`.calculator__tier[data-tier="${value}"]`)!;assert.ok(section);return section;};
-  const selectStandalone=(id:string,title:string)=>{const option=[...feature.options].find(candidate=>candidate.value===id)!;assert.ok(option&&!option.disabled,id);change(feature,id);assert.equal(results.querySelector(":scope > h3")?.textContent,title);assert.equal(root.querySelectorAll("#calculator-feature-results.calculator__result:not([hidden])").length,1);assert.equal(results.querySelector(".calculator__trigger"),null);assert.equal(exactCalculatorTextCount(results,"Triggering Manifested Strike"),0);assert.deepEqual(calculatorTierHeadings(results),["Tier 0","Tier 1","Tier 2"],title);assert.deepEqual([...results.querySelectorAll<HTMLElement>(".calculator__tier")].map(section=>section.dataset.available),["true","true","true"],title);assert.equal(results.querySelector(".calculator__availability"),null);assert.equal(results.querySelectorAll(".calculator__facts").length,1);assert.equal(results.querySelectorAll(".calculator__breakdown").length,0);assert.doesNotMatch(results.textContent??"",/Rider damage:|Combined damage:|Expected combined damage:|Psionic Save DC:|\bT[012] (?:Base|Overload):|Changes from Tier/iu,title);};
-  const assertStandaloneFacts=(saveLabel:string,dc:number,psi:number,taxes:readonly number[])=>{assertCalculatorPsiFacts(results,psi,calculatorPsiPointsAtLevel(Number(level.value)));assert.equal(exactCalculatorTextCount(results,`${saveLabel} save: DC ${dc}`),1);assertCalculatorSaveCalculation(results,calculatorProficiencyBonusAtLevel(Number(level.value)),Number(modifier.value),dc);const saves=results.querySelectorAll<HTMLElement>(".calculator__save");assert.equal(saves.length,1);assert.equal(saves[0]!.dataset.saveTiers,"0 1 2");assertCalculatorText(results,"Applies to Tiers 0–2.");for(const tax of taxes)assert.equal([...results.querySelectorAll(".calculator__metrics > p")].filter(metric=>normalizedCalculatorText(metric)===`Blood Tax: ${tax}`).length,1);};
-  const assertSingleTargetDamage=(tierIndex:number,expression:string,failed:string,success:string)=>{const section=tier(tierIndex);assert.equal(exactCalculatorTextCount(section,`Damage: ${expression} on a failed save · half on a successful save`),1);assert.equal(exactCalculatorTextCount(section,`Expected avg damage: ${failed} on a failed save · ${success} on a successful save`),1);};
-  const assertForkedDamage=(tierIndex:number,primary:string,primaryFailed:string,primarySuccess:string,secondary:string,secondaryFailed:string,secondarySuccess:string)=>{const section=tier(tierIndex);assert.equal(exactCalculatorTextCount(section,`Primary target damage: ${primary} on a failed save · half on a successful save`),1);assert.equal(exactCalculatorTextCount(section,`Expected avg primary target damage: ${primaryFailed} on a failed save · ${primarySuccess} on a successful save`),1);assert.equal(exactCalculatorTextCount(section,`Secondary target damage: ${secondary} on a failed save · half on a successful save`),1);assert.equal(exactCalculatorTextCount(section,`Expected avg secondary target damage: ${secondaryFailed} on a failed save · ${secondarySuccess} on a successful save`),1);};
-
-  change(level,"15");selectStandalone("telekinetic_slam","Telekinetic Slam");
-  assert.deepEqual(calculatorStandaloneFeatures.filter(([, ,minimum])=>minimum===15).map(([id])=>id).sort(),["arctic_tempest","forked_lightning","telekinetic_slam"]);
-  assertStandaloneFacts("Strength",18,3,[0,5,10]);
-  const slamDamage=[["8d10","44","21.75"],["10d10","55","27.25"],["12d10","66","32.75"]] as const;
-  for(const [tierIndex,[expression,failed,success]] of slamDamage.entries())assertSingleTargetDamage(tierIndex,expression,failed,success);
-  assert.deepEqual(calculatorEffectPaths(results,0),["entities.telekinetic_slam.content.1.body.0"]);
-  assert.deepEqual(calculatorEffectPaths(results,1),["entities.telekinetic_slam.content.2.body.1"]);
-  assert.deepEqual(calculatorEffectPaths(results,2),calculatorListItemPaths("entities.telekinetic_slam.content.3.body.1",3));
-  assert.deepEqual(calculatorSharedEffectPaths(results),["entities.telekinetic_slam.content.0"]);
-  change(modifier,"4");assertStandaloneFacts("Strength",17,3,[0,5,10]);
-  assertSingleTargetDamage(0,"8d10","44","21.75");
-  change(modifier,"5");
-
-  selectStandalone("forked_lightning","Forked Lightning");
-  assertStandaloneFacts("Charisma",18,3,[0,5,10]);
-  const forkedDamage=[["8d8","36","17.75","4d8","18","8.75"],["10d8","45","22.25","5d8","22.5","11"],["12d8","54","26.75","6d8","27","13.25"]] as const;
-  for(const [tierIndex,[primary,primaryFailed,primarySuccess,secondary,secondaryFailed,secondarySuccess]] of forkedDamage.entries())assertForkedDamage(tierIndex,primary,primaryFailed,primarySuccess,secondary,secondaryFailed,secondarySuccess);
-  assert.deepEqual(calculatorEffectPaths(results,0),calculatorListItemPaths("entities.forked_lightning.content.0.body.0",5));
-  assert.deepEqual(calculatorEffectPaths(results,1),calculatorListItemPaths("entities.forked_lightning.content.1.body.1",4));
-  assert.deepEqual(calculatorEffectPaths(results,2),calculatorListItemPaths("entities.forked_lightning.content.2.body.1",8));
-  assert.deepEqual(calculatorSharedEffectPaths(results),[]);
-  assert.deepEqual([...tier(2).querySelectorAll(".calculator__effects li > strong")].map(normalizedCalculatorText),["Targets:","Saving throws:","Primary damage:","Secondary damage:","Failed-save conditions:","Successful save:","Primary target only:","Secondary targets:"]);
-
-  change(level,"20");selectStandalone("mass_levitation","Mass Levitation");
-  assertStandaloneFacts("Strength",19,5,[0,6,12]);
-  for(const tierIndex of [0,1]){const labels=[...tier(tierIndex).querySelectorAll("strong")].map(normalizedCalculatorText);assert.equal(labels.includes("Damage:"),false);assert.equal(labels.includes("Expected avg damage:"),false);}
-  assert.equal(exactCalculatorTextCount(tier(2),"Damage: 10 on a failed save · 0 on a successful save"),1);assert.equal(exactCalculatorTextCount(tier(2),"Expected avg damage: 10 on a failed save · 0 on a successful save"),1);
-  change(modifier,"4");
-  assert.deepEqual(calculatorEffectPaths(results,0),["entities.mass_levitation.content.0.body.0",...calculatorListItemPaths("entities.mass_levitation.content.0.body.1",4)]);
-  assert.deepEqual(calculatorEffectPaths(results,1),["entities.mass_levitation.content.1.body.0"]);
-  assert.deepEqual(calculatorEffectPaths(results,2),["entities.mass_levitation.content.2.body.0"]);
-  assert.deepEqual(calculatorSharedEffectPaths(results),[]);
-  assert.deepEqual([...tier(0).querySelectorAll(".calculator__effects li > strong")].map(normalizedCalculatorText),["Targeting:","Initial saving throw:","Repeat saving throw:","Ongoing effect:"]);
-  assertStandaloneFacts("Strength",18,5,[0,6,12]);
-  assert.equal(exactCalculatorTextCount(tier(2),"Damage: 8 on a failed save · 0 on a successful save"),1);assert.equal(exactCalculatorTextCount(tier(2),"Expected avg damage: 8 on a failed save · 0 on a successful save"),1);
-  change(modifier,"5");
-
-  const singleTargetCases=[
-    {id:"arctic_tempest",title:"Arctic Tempest",save:"Constitution",psi:3,damage:[["8d10","44","21.75"],["10d10","55","27.25"],["12d10","66","32.75"]]},
-    {id:"absolute_zero",title:"Absolute Zero",save:"Constitution",psi:5,damage:[["10d10","55","27.25"],["12d10","66","32.75"],["14d10","77","38.25"]]},
-    {id:"ball_lightning",title:"Ball Lightning",save:"Charisma",psi:5,damage:[["4d8","18","8.75"],["4d8","18","8.75"],["4d8","18","8.75"]]}
-  ] as const;
-  for(const candidate of singleTargetCases){
-    selectStandalone(candidate.id,candidate.title);
-    assertStandaloneFacts(candidate.save,19,candidate.psi,[0,6,12]);
-    for(const [tierIndex,[expression,failed,success]] of candidate.damage.entries())assertSingleTargetDamage(tierIndex,expression,failed,success);
-    if(candidate.id==="ball_lightning"){assert.deepEqual(calculatorEffectPaths(results,0),calculatorListItemPaths("entities.ball_lightning.content.0.body.0",5));assert.deepEqual(calculatorEffectPaths(results,1),["entities.ball_lightning.content.1.body.1"]);assert.deepEqual(calculatorEffectPaths(results,2),calculatorListItemPaths("entities.ball_lightning.content.2.body.1",2));assert.deepEqual(calculatorSharedEffectPaths(results),["entities.ball_lightning.content.3"]);}
-  }
-  await settleOnboarding();dom.window.close();
-});
-*/

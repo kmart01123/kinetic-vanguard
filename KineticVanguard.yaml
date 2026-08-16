@@ -4640,6 +4640,13 @@ vocabularies:
       label: Electrokinesis
       order: 5
 onboarding:
+  blood_tax:
+    description: Overloading a rider or standalone psionic feature makes you take psychic damage called Blood Tax when you declare it. Tier 1 equals your Proficiency Bonus; Tier 2 equals twice your Proficiency Bonus. A declared rider’s Blood Tax remains spent if the attack misses. Use the Blood Tax Calculator card to see the exact damage for your Fighter level.
+    destination:
+      card_id: blood_tax
+      kind: calculator
+    id: start_blood_tax
+    title: Calculate Blood Tax
   basic_turn:
     destinations:
       - destination:

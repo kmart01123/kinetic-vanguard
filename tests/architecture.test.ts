@@ -63,13 +63,13 @@ test("top-level onboarding is canonical, complete, resolvable, and outside the 4
     {kind:"entity",entity_id:"how_to_play"},{kind:"entity",entity_id:"common_example_play"},{kind:"entity",entity_id:"subclass_feature_reference"},{kind:"entity",entity_id:"common_psionic_discipline"},{kind:"entity",entity_id:"common_overload"},{kind:"entity",entity_id:"common_psi_reservoir"},{kind:"category",category_id:"common_features"}
   ]);
 
-  const ids=ownedOnboardingIds(onboarding);assert.equal(ids.length,34);assert.equal(new Set(ids).size,ids.length);
+  const ids=ownedOnboardingIds(onboarding);assert.equal(ids.length,35);assert.equal(new Set(ids).size,ids.length);
   const entityIds=new Set(authority.entities.map(entity=>entity.id));assert.equal(authority.entities.length,44);assert.ok(ids.every(id=>!entityIds.has(id)));assert.ok(!entityIds.has(onboarding.id));
   const auditedIds=new Set(authority.audits?.flatMap(audit=>audit.subject_ids)??[]);assert.ok(ids.every(id=>!auditedIds.has(id)));
 
   const categories=new Map(authority.navigation.categories.map(category=>[category.id,category]));
   const sectionIds=new Set([onboarding.disciplines.id,onboarding.basic_turn.id,onboarding.build_checklist.id,onboarding.glossary.id,onboarding.next_destinations.id]);
-  const destinations=onboardingDestinations(onboarding);assert.equal(destinations.length,28);
+  const destinations=onboardingDestinations(onboarding);assert.equal(destinations.length,29);
   for(const destination of destinations){
     if(destination.kind==="calculator"){assert.ok(destination.rules_area===undefined||authority.vocabularies.rules_areas!.some(area=>area.id===destination.rules_area));continue;}
     if(destination.kind==="onboarding_section"){assert.ok(sectionIds.has(destination.section_id),destination.section_id);continue;}
@@ -89,6 +89,8 @@ test("onboarding semantic mutations produce focused diagnostics",async()=>{
   expectCode("onboarding.section_unknown",candidate=>{candidate.onboarding.primary_paths[0].destination.section_id="missing_section";});
   expectCode("onboarding.category_unknown",candidate=>{candidate.onboarding.next_destinations.items.at(-1).destination.category_id="missing_category";});
   expectCode("onboarding.calculator_area_unknown",candidate=>{candidate.onboarding.disciplines.cards[0].destination.rules_area="missing_area";});
+  expectCode("onboarding.calculator_card_unknown",candidate=>{candidate.onboarding.blood_tax.destination.card_id="missing_card";});
+  expectCode("onboarding.calculator_card_area_mismatch",candidate=>{candidate.onboarding.blood_tax.destination.rules_area="pyrokinesis";});
   expectCode("onboarding.category_route",candidate=>{candidate.navigation.categories.find((category:any)=>category.id==="common_features").default_topic_id="missing_topic";});
   expectCode("onboarding.entity_unknown",candidate=>{candidate.onboarding.build_checklist.items[0].destination.entity_id="missing_entity";});
   expectCode("onboarding.entity_route",candidate=>{candidate.navigation.categories.find((category:any)=>category.id==="common_features").topics.find((topic:any)=>topic.id==="common_features_common_manifested_strike_topic").entity_ids=[];});

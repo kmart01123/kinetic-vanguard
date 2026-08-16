@@ -251,7 +251,7 @@ export type OnboardingDestination =
   | { kind: "onboarding_section"; section_id: string }
   | { kind: "category"; category_id: string }
   | { kind: "entity"; entity_id: string }
-  | { kind: "calculator"; rules_area?: string };
+  | { kind: "calculator"; rules_area?: string; card_id?: string };
 
 export interface OnboardingLink {
   id: string;
@@ -269,6 +269,7 @@ export interface Onboarding {
     orientation: string;
   };
   primary_paths: OnboardingLink[];
+  blood_tax: OnboardingLink & { description: string };
   disciplines: {
     id: string;
     title: string;
