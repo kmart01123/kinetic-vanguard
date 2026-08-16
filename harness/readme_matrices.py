@@ -186,7 +186,8 @@ def validate_authoritative_rows(
         raise MatrixSyncError(
             "README discipline columns differ from the canonical discipline set"
         )
-    profile = str(config["kv_profile"]["id"])
+    kv_profile = str(config["kv_profile"]["id"])
+    target_profile = DEFAULT_PROFILE
     status = str(config["methodology"]["status"])
 
     _require_fields(
@@ -245,13 +246,13 @@ def validate_authoritative_rows(
         "Provenance Authority Sha256": model.authority_sha256,
         "Provenance Catalog Sha256": file_sha256(DEFAULT_CATALOG),
         "Provenance Roster Sha256": file_sha256(DEFAULT_ROSTERS),
-        "Provenance Target Profile": DEFAULT_PROFILE,
+        "Provenance Target Profile": target_profile,
         "Provenance Config Sha256": file_sha256(DEFAULT_CONFIG),
         "Provenance Comparator Config Sha256": file_sha256(DEFAULT_COMPARATORS),
         "Provenance Evaluator": "exact_analytical_enumeration",
         "Provenance Trial Seed Role": "historical_compatibility_metadata",
         "Provenance Status": status,
-        "Profile": profile,
+        "Profile": kv_profile,
     }
 
     for kind, rows in (("damage", damage_rows), ("control", control_rows)):
@@ -299,7 +300,7 @@ def validate_authoritative_rows(
     if re.search(r"hunter.?ranger|open.?hand.?monk", serialized, re.IGNORECASE):
         raise MatrixSyncError("A retired comparator entered the headline matrices")
 
-    return model.rules_version, status, profile, clusters, disciplines
+    return model.rules_version, status, target_profile, clusters, disciplines
 
 
 def _escape_cell(value: str) -> str:
@@ -457,7 +458,7 @@ def render_balance_region(
         release_line,
         "",
         (
-            f"Profile: `{profile}`. Numerical review status: `{status}`. "
+            f"Target profile: `{profile}`. Numerical review status: `{status}`. "
             "These are exact analytical full-roster results, not Monte Carlo estimates."
         ),
         "",

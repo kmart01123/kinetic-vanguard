@@ -451,7 +451,7 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
             (
                 model.rules_version,
                 str(config["methodology"]["status"]),
-                str(config["kv_profile"]["id"]),
+                DEFAULT_PROFILE,
                 tuple(int(value) for value in config["methodology"]["cluster_sizes"]),
                 README_DISCIPLINES,
             ),
@@ -494,7 +494,7 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
         cases = (
             ("Provenance Catalog Sha256", "wrong-catalog"),
             ("Provenance Roster Sha256", "wrong-roster"),
-            ("Provenance Target Profile", "headline"),
+            ("Provenance Target Profile", "legacy_v14_1"),
         )
         for field, value in cases:
             with self.subTest(field=field):

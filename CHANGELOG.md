@@ -1,12 +1,12 @@
 # Changelog
 
-## 14.2.0 — Unreleased
+## 14.2.0 — 2026-08-16
 
 ### Changed
 
 - Made Calculator / Feature Deck the complete individual-feature surface: calculated cards expose useful deterministic math, qualitative cards retain their full canonical rules without fake calculations, Blood Tax has a direct calculated card, and Rules Reference now focuses on shared system and chassis rules.
 - Revised Vectored Thrust so Tier 1 increases its fly Speed by `5 × Proficiency Bonus` feet instead of preventing Opportunity Attacks, while Tier 2 removes its Concentration requirement and retains the 10-minute duration and Incapacitated end condition.
-- Restored the vetted 330-creature SRD 5.2.1 catalog and shared ordered `legacy_v14_1`, `headline`, and validation-only `eligible_census` profiles while keeping the reviewed 28-target profile as the default.
+- Restored the vetted 330-creature SRD 5.2.1 catalog; made the reviewed 47-target `headline` profile the public default; retained `legacy_v14_1` for 28-target longitudinal reproduction and `eligible_census` as the 93-target validation and sensitivity inventory.
 - Allowed the same paid on-hit rider to be declared on multiple Manifested Strikes in one Attack action, with independent Psi and Blood Tax payment for every declaration, including misses.
 - Allowed rider declarations to retry the same legal target or spread among different legal targets while retaining one rider per Manifested Strike and one Tier 2 rider per Attack action.
 - Corrected Control Reliability to distinguish the new paid-rider rule from the pre-existing 0-Psi repeatability of all four Signature Riders, which published v14.1 had approximated as one-shot control scenarios.

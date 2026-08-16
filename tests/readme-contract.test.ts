@@ -44,7 +44,9 @@ test("README and release process stay synchronized with canonical development st
   if (development !== "None") {
     assert.equal(development, `v${authority.rules_version}`);
     assert.ok(readme.split("\n").includes(`- Development branch: \`${authority.rules_version}\``));
-    assert.match(readme, /^- Implementation status: Active v14\.2 development$/m);
+    assert.match(readme, /^- Release candidate branch: `release-prep\/14\.2\.0`$/m);
+    assert.match(readme, /^- Release candidate status: Feature-complete; final release verification in progress\.$/m);
+    assert.doesNotMatch(readme, /^- Implementation status:/m);
   }
 
   for (const heading of ["Release status", "Publication interface", "Commands", "Architecture", "Licensing", "Development and release discipline"]) {
@@ -130,7 +132,7 @@ test("README exposes one synchronized headline balance snapshot", async () => {
     assert.ok(region.includes("**Unreleased development snapshot**"));
     assert.ok(region.includes(`current published release **v${published}**`));
   }
-  assert.ok(region.includes(`Profile: \`${benchmarkConfig.kv_profile.id}\`.`));
+  assert.ok(region.includes("Target profile: `headline`."));
   assert.ok(region.includes(`Numerical review status: \`${benchmarkConfig.methodology.status}\`.`));
   assert.match(region, /exact analytical full-roster results, not Monte Carlo estimates/i);
 

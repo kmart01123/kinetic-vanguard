@@ -9,7 +9,8 @@ Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighte
 - Current published release: **v14.1.0**
 - Current development line: **v14.2.0**
 - Development branch: `14.2.0`
-- Implementation status: Active v14.2 development
+- Release candidate branch: `release-prep/14.2.0`
+- Release candidate status: Feature-complete; final release verification in progress.
 - Canonical rules authority: `KineticVanguard.yaml`
 
 Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v14.1.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.1.0).
@@ -23,7 +24,7 @@ Version 14.1.0 restores maintained damage and control benchmark harness source. 
 
 **Unreleased development snapshot** — canonical rules **v14.2.0**; current published release **v14.1.0**.
 
-Profile: `official_default_25_percent_hp`. Numerical review status: `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`. These are exact analytical full-roster results, not Monte Carlo estimates.
+Target profile: `headline`. Numerical review status: `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`. These are exact analytical full-roster results, not Monte Carlo estimates.
 
 Battle Master and Eldritch Knight define the comparison envelope for each benchmark result. `IDEAL` means Kinetic Vanguard falls between the two comparator results, inclusive. `COLD` is below both; `HOT` is above both. The percentage on COLD and HOT cells shows the signed distance outside the nearest envelope boundary. `N/A` is reserved for a comparison that cannot be evaluated.
 
@@ -36,9 +37,9 @@ The front-door damage view is the single-target benchmark: primary-target DPR at
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
 | 7 | IDEAL | IDEAL | IDEAL | IDEAL |
-| 11 | COLD (-9.75%) | IDEAL | IDEAL | IDEAL |
-| 15 | IDEAL | IDEAL | IDEAL | IDEAL |
-| 20 | COLD (-40.35%) | IDEAL | COLD (-9.30%) | COLD (-12.84%) |
+| 11 | COLD (-18.76%) | IDEAL | IDEAL | IDEAL |
+| 15 | COLD (-5.70%) | IDEAL | IDEAL | COLD (-5.16%) |
+| 20 | COLD (-35.69%) | IDEAL | COLD (-14.10%) | COLD (-14.08%) |
 
 ### Control Reliability
 
@@ -52,10 +53,10 @@ Control Reliability measures how often the configured control package takes effe
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
-| 7 | HOT (+32.13%) | COLD (-100.00%) | HOT (+5.74%) | HOT (+11.29%) |
-| 11 | HOT (+17.89%) | COLD (-100.00%) | HOT (+13.79%) | IDEAL |
-| 15 | HOT (+21.16%) | HOT (+21.16%) | HOT (+21.89%) | HOT (+10.72%) |
-| 20 | HOT (+22.60%) | HOT (+22.08%) | HOT (+22.60%) | IDEAL |
+| 7 | HOT (+35.64%) | COLD (-100.00%) | HOT (+13.00%) | HOT (+15.70%) |
+| 11 | HOT (+21.39%) | COLD (-100.00%) | HOT (+9.27%) | HOT (+2.17%) |
+| 15 | HOT (+30.97%) | HOT (+30.97%) | HOT (+31.62%) | HOT (+12.48%) |
+| 20 | HOT (+25.05%) | HOT (+24.84%) | HOT (+25.05%) | HOT (+2.64%) |
 
 This snapshot is a summary, not the full evidence set. Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the [maintained harness guide](harness/README.md), [methodology configuration](harness/config/benchmark.json), [SRD creature profiles](harness/data/srd_creature_rosters.json), and [comparator assumptions](harness/comparators/fighter-subclasses.json) for the complete methodology, provenance, regeneration commands, and report paths.
 
