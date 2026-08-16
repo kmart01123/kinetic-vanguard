@@ -42,6 +42,10 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
   const diagnostics:Diagnostic[]=[];
   const entities=new Map(authority.entities.map(entity=>[entity.id,entity]));
   diagnostics.push(...duplicateDiagnostics(authority.entities.map(entity=>entity.id),"entity.duplicate","entity ID"));
+  for(const [entityIndex,entity] of authority.entities.entries())if(entity.concentration_tiers!==undefined){
+    if(entity.requires_concentration!==true)diagnostics.push({severity:"error",code:"entity.concentration_tiers_requirement",message:`${entity.id} concentration tiers require requires_concentration: true`,path:`/entities/${entityIndex}/requires_concentration`});
+    if(entity.concentration_duration===undefined)diagnostics.push({severity:"error",code:"entity.concentration_tiers_duration",message:`${entity.id} concentration tiers require a concentration duration`,path:`/entities/${entityIndex}/concentration_duration`});
+  }
   const calculator=authority.calculator;
   const expectedDefaults={default_feature_id:"common_manifested_strike",default_fighter_level:20,default_psionic_ability_modifier:5} as const;
   for(const [field,expected] of Object.entries(expectedDefaults))if(calculator[field as keyof typeof expectedDefaults]!==expected)diagnostics.push({severity:"error",code:"calculator.default",message:`Calculator ${field} must be ${expected}`,path:`/calculator/${field}`});

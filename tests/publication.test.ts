@@ -136,7 +136,7 @@ test("rendered permanent Discipline choice and Ongoing Duration reference stay e
   const wrapper=table.closest(".table-scroll")!;assert.equal(wrapper.previousElementSibling?.className,"reference-filters");assert.equal(wrapper.previousElementSibling?.previousElementSibling?.textContent,definition);assert.equal(table.className,"quick-reference-table");
   const rows=[...table.querySelectorAll("tbody tr")].map(row=>[...row.querySelectorAll("td")].map(cell=>cell.textContent??""));assert.equal(rows.length,34);
   const byFeature=new Map(rows.map(row=>[row[1],row[5]]));
-  for(const [feature,duration] of [["Explosion/Implosion","Until the end of your next turn"],["Phase Step","Varies by tier"],["Electron Burst","Varies by tier"],["Vectored Thrust","Concentration, up to 10 minutes"],["Frozen Ground","Concentration, up to 1 minute"],["Mass Levitation","Concentration, up to 1 minute"],["Ball Lightning","Concentration, up to 1 minute"],["Gravitic Press","Concentration, up to 1 minute"],["Beguile","Varies by tier"],["Barrier","Varies by tier"],["Inner Reserve","Continuous"],["Overload Mastery II","Continuous"]] as const)assert.equal(byFeature.get(feature),duration);
+  for(const [feature,duration] of [["Explosion/Implosion","Until the end of your next turn"],["Phase Step","Varies by tier"],["Electron Burst","Varies by tier"],["Vectored Thrust","Up to 10 minutes"],["Frozen Ground","Concentration, up to 1 minute"],["Mass Levitation","Concentration, up to 1 minute"],["Ball Lightning","Concentration, up to 1 minute"],["Gravitic Press","Concentration, up to 1 minute"],["Beguile","Varies by tier"],["Barrier","Varies by tier"],["Inner Reserve","Continuous"],["Overload Mastery II","Continuous"]] as const)assert.equal(byFeature.get(feature),duration);
   await new Promise<void>(resolve=>setImmediate(resolve));discipline.window.close();reference.window.close();
 });
 
@@ -405,6 +405,7 @@ test("feature metadata renders concentration only from structured authority",asy
   const ball=render(html,"electrokinesis","electrokinesis_ball_lightning_topic");
   const beguile=render(html,"advanced_training","advanced_training_advanced_beguile_topic");
   const barrier=render(html,"advanced_training","advanced_training_advanced_barrier_topic");
+  assert.ok(metadata(vectored.window.document,"vectored_thrust").some(item=>item.term==="Requirement"&&item.value==="Concentration (T0–T1)"&&item.classes.includes("feature-metadata__item--concentration")));
   assert.ok(metadata(barrier.window.document,"advanced_barrier").some(item=>item.term==="Requirement"&&item.value==="Concentration"&&item.classes.includes("feature-metadata__item--concentration")));
   const barrierLists=barrier.window.document.querySelectorAll("#entity-advanced_barrier > ul");assert.equal(barrierLists.length,1);
   assert.deepEqual([...barrierLists[0]!.querySelectorAll(":scope > li")].map(item=>item.textContent),[
