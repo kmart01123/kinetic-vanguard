@@ -7,7 +7,7 @@ import { hashFile, prettyCanonicalJson, sha256 } from "./canonical.js";
 import { writeAtomic } from "./io.js";
 import { loadAuthority } from "./load.js";
 import { renderHtml } from "./render.js";
-import { buildFilterIndex, buildIntegrity, summarizeDiagnostics, validateSemantics } from "./validate.js";
+import { buildFilterIndex, buildIntegrity, isCalculatorDeckEntity, summarizeDiagnostics, validateSemantics } from "./validate.js";
 import type { Diagnostic } from "./types.js";
 
 export type BuildProfile="prototype"|"release";
@@ -42,9 +42,9 @@ export async function executeBuild(profileName:BuildProfile,outputRoot="artifact
   const integrityPath=resolve(artifactPrefix,"filtered-search-integrity.json"),coveragePath=resolve(artifactPrefix,"coverage-ledger.json");
   const htmlPath=resolve(outputRoot,profileName==="prototype"?"KineticVanguard.prototype.html":"KineticVanguard.html");
   const onboarding=loaded.authority.onboarding;
-  const onboardingLinks=[...onboarding.primary_paths,...onboarding.disciplines.cards,...onboarding.basic_turn.destinations,...onboarding.build_checklist.items,...onboarding.glossary.entries,...onboarding.next_destinations.items];
-  const onboardingCoverage={authority_path:`${authorityPath}#/onboarding`,onboarding_id:onboarding.id,section_ids:[onboarding.disciplines.id,onboarding.basic_turn.id,onboarding.build_checklist.id,onboarding.glossary.id,onboarding.next_destinations.id],destination_ids:onboardingLinks.map(item=>item.id)};
-  const coverage={version:3,authority_path:authorityPath,entity_count:loaded.authority.entities.length,entities:loaded.authority.entities.map(entity=>({entity_id:entity.id,content_block_count:entity.content.length,destinations:loaded.authority.navigation.categories.flatMap(category=>category.topics.filter(topic=>topic.entity_ids.includes(entity.id)).map(topic=>({category_id:category.id,topic_id:topic.id})))})),onboarding:onboardingCoverage,diagnostics};
+  const onboardingLinks=[onboarding.blood_tax,...onboarding.primary_paths,...onboarding.disciplines.cards,...onboarding.basic_turn.destinations,...onboarding.build_checklist.items,...onboarding.glossary.entries,...onboarding.next_destinations.items];
+  const onboardingCoverage={authority_path:`${authorityPath}#/onboarding`,onboarding_id:onboarding.id,section_ids:[onboarding.blood_tax,onboarding.disciplines,onboarding.basic_turn,onboarding.build_checklist,onboarding.glossary,onboarding.next_destinations].map(section=>section.id),destination_ids:onboardingLinks.map(item=>item.id)};
+  const coverage={version:4,authority_path:authorityPath,entity_count:loaded.authority.entities.length,entities:loaded.authority.entities.map(entity=>({entity_id:entity.id,content_block_count:entity.content.length,destinations:isCalculatorDeckEntity(entity)?[{view:"calculator",card_id:entity.id}]:loaded.authority.navigation.categories.flatMap(category=>category.topics.filter(topic=>topic.entity_ids.includes(entity.id)).map(topic=>({view:"reference",category_id:category.id,topic_id:topic.id})))})),onboarding:onboardingCoverage,diagnostics};
   const integrityBytes=prettyCanonicalJson(integrity),coverageBytes=prettyCanonicalJson(coverage);
   await Promise.all([writeAtomic(integrityPath,integrityBytes),writeAtomic(coveragePath,coverageBytes),writeAtomic(htmlPath,html)]);
   const artifactHashes={filtered_search_integrity:sha256(integrityBytes),coverage_ledger:sha256(coverageBytes),html:sha256(html)};

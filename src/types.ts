@@ -103,11 +103,12 @@ export interface Entity {
   presentation_metadata: {
     primary_rules_area: string;
     canonical_topic_by_area: Record<string, string>;
+    presentation_owner?: "calculator_deck";
   };
   related_entity_ids?: string[];
 }
 
-export type CalculatorSave = "strength" | "constitution" | "dexterity" | "intelligence" | "charisma";
+export type CalculatorSave = "strength" | "constitution" | "dexterity" | "intelligence" | "charisma" | "discipline_signature";
 export type CalculatorDamageResolution = "always" | "failed_save" | "half_on_success";
 
 export type CalculatorDamage =
@@ -124,12 +125,27 @@ export interface CalculatorTier {
   save?: CalculatorSave;
 }
 
-export type CalculatorDelivery = "on_hit_rider" | "standalone";
+export type CalculatorDelivery = "on_hit_rider" | "standalone" | "passive";
+
+export type CalculatorMetric =
+  | { kind: "fixed_plus_proficiency_bonus_multiplier"; label: "fly_speed" | "total_targets"; unit: "feet" | "creatures"; values: Array<{ tier: 0 | 1 | 2; fixed: number; multiplier: number }> }
+  | { kind: "floor_proficiency_bonus_divisor"; label: "uses_per_rest"; divisor: number }
+  | { kind: "psionic_ability_modifier_multiplier"; label: "passive_insight_bonus" | "chosen_skill_bonus"; multiplier: number }
+  | { kind: "dice_plus_psionic_ability_modifier"; label: "damage_reduction"; values: Array<{ tier: 0 | 1 | 2; count: number; sides: number; multiplier: number }> }
+  | { kind: "psi_points_plus_fixed"; label: "maximum_psi_points"; value: number };
 
 export interface CalculatorFeature {
   entity_id: string;
   delivery: CalculatorDelivery;
-  tiers: CalculatorTier[];
+  tiers?: CalculatorTier[];
+  metrics?: CalculatorMetric[];
+}
+
+export interface CalculatorUtilityCard {
+  id: "manifested_strike" | "blood_tax";
+  source_entity_id: string;
+  calculation_kind: "manifested_strike" | "blood_tax";
+  context?: Array<{ entity_id: string; content_block_indexes: number[] }>;
 }
 
 export interface CalculatorLevelBand {
@@ -210,7 +226,7 @@ export interface HarnessMechanics {
 }
 
 export interface Calculator {
-  default_feature_id: string;
+  default_card_id: string;
   default_fighter_level: number;
   default_psionic_ability_modifier: number;
   fighter_level_minimum: number;
@@ -224,6 +240,7 @@ export interface Calculator {
   tier_minimum_levels: CalculatorTierMinimumLevel[];
   harness_mechanics: HarnessMechanics;
   features: CalculatorFeature[];
+  utility_cards: CalculatorUtilityCard[];
 }
 
 export interface Topic { id: string; title: string; entity_ids: string[]; order: number }
@@ -233,7 +250,8 @@ export interface VocabularyValue { id: string; label: string; order: number }
 export type OnboardingDestination =
   | { kind: "onboarding_section"; section_id: string }
   | { kind: "category"; category_id: string }
-  | { kind: "entity"; entity_id: string };
+  | { kind: "entity"; entity_id: string }
+  | { kind: "calculator"; rules_area?: string; card_id?: string };
 
 export interface OnboardingLink {
   id: string;
@@ -251,6 +269,7 @@ export interface Onboarding {
     orientation: string;
   };
   primary_paths: OnboardingLink[];
+  blood_tax: OnboardingLink & { description: string };
   disciplines: {
     id: string;
     title: string;

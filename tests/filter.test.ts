@@ -3,7 +3,7 @@ import test from "node:test";
 import { readFile } from "node:fs/promises";
 import YAML from "yaml";
 import { loadAuthority } from "../src/load.js";
-import { buildFilterIndex, buildIntegrity, compareFilterEntries, compareNameEntries, type FilterIndexEntry } from "../src/validate.js";
+import { buildFilterIndex, buildIntegrity, compareFilterEntries, compareNameEntries, isCalculatorDeckEntity, type FilterIndexEntry } from "../src/validate.js";
 
 const select=(index:any,selections:Record<string,string[]>)=>index.entities.filter((item:any)=>Object.entries(selections).every(([facet,values])=>values.some(value=>item.classifications[facet]?.includes(value)))).map((item:any)=>item.id).sort();
 
@@ -77,8 +77,8 @@ test("canonical feature levels, cleaned names, groups, and destinations feed the
   const indexed=(id:string)=>index.entities.find(candidate=>candidate.id===id)!;
   const advancedTitles=advanced.entity_ids.map(id=>indexed(id).title);
   assert.equal(new Set(advancedTitles).size,advancedTitles.length);
-  assert.equal(indexed("advanced_deflection_screen").routes.advanced_training,"advanced_training_advanced_deflection_screen_topic");
-  assert.equal(indexed("advanced_phase_step").routes.advanced_training,"advanced_training_advanced_phase_step_topic");
+  assert.deepEqual(indexed("advanced_deflection_screen").routes,{});assert.equal(isCalculatorDeckEntity(entity("advanced_deflection_screen")),true);
+  assert.deepEqual(indexed("advanced_phase_step").routes,{});assert.equal(isCalculatorDeckEntity(entity("advanced_phase_step")),true);
 });
 test("unlevelled entities use explicit foundation and reference sections",async()=>{
   const {authority}=await loadAuthority();const index=buildFilterIndex(authority);const common=orderedSelect(index,{rules_area:["common_features"]});

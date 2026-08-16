@@ -1,5 +1,5 @@
 {
-  "version": 2,
+  "version": 3,
   "derivations": [
     {"id":"match_count","inputs":["filtered_entity_ids"],"implementation":"src/runtime.ts#renderResults","placements":["status","facet_count"],"output_type":"nonnegative_integer","format":"base10","announce":true},
     {"id":"reference_visible_count","inputs":["reference_row_ids","reference_group","reference_level"],"implementation":"src/runtime.ts#updateReferenceFilter","placements":["status"],"output_type":"nonnegative_integer","format":"base10","announce":true},
@@ -29,6 +29,10 @@
     {"id":"calculator_combined_damage_expression","inputs":["calculator_strike_damage_expression","calculator_rider_damage_expression"],"implementation":"src/runtime.ts#updateCalculator","placements":["body"],"output_type":"damage_expression","format":"canonical_damage_expression","announce":false},
     {"id":"calculator_combined_average_damage","inputs":["calculator_strike_average_damage","calculator_rider_average_damage"],"implementation":"src/runtime.ts#updateCalculator","placements":["body"],"output_type":"decimal","format":"exact_decimal","announce":false},
     {"id":"calculator_blood_tax","inputs":["calculator_proficiency_bonus","tier"],"implementation":"src/runtime.ts#updateCalculator","placements":["body"],"output_type":"nonnegative_integer","format":"base10","announce":false},
+    {"id":"calculator_deck_inventory","inputs":["entity_presentation_ownership","calculator_utility_cards"],"implementation":"src/runtime.ts#renderCalculatorIndex","placements":["button","metadata"],"output_type":"entity_set","format":"canonical_order","announce":false},
+    {"id":"calculator_card_state","inputs":["calculator_features","calculator_utility_cards"],"implementation":"src/runtime.ts#renderCalculatorIndex","placements":["status","metadata"],"output_type":"enum","format":"calculated_or_reference_only","announce":false},
+    {"id":"calculator_feature_metric","inputs":["fighter_level","psi_modifier","calculator_feature_metrics"],"implementation":"src/runtime.ts#appendProjectionMetric","placements":["body"],"output_type":"calculation_expression","format":"component_breakdown","announce":false},
+    {"id":"calculator_overload_mastery_blood_tax","inputs":["calculator_blood_tax","overload_mastery"],"implementation":"src/runtime.ts#appendBloodTaxProjection","placements":["body"],"output_type":"nonnegative_integer","format":"base10","announce":false},
     {"id":"calculator_tier_availability","inputs":["fighter_level","tier","tier_minimum_levels"],"implementation":"src/runtime.ts#updateCalculator","placements":["status"],"output_type":"nonnegative_integer","format":"base10","announce":false}
   ]
 }

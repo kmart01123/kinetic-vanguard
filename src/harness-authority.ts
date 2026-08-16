@@ -15,7 +15,7 @@ export interface HarnessProjection {
   progressions:{proficiency_bonus:CalculatorLevelBand[];psi_points:CalculatorLevelBand[];psionic_focus:CalculatorLevelBand[];manifested_strike_die:CalculatorLevelBand[];tier_minimum_levels:Authority["calculator"]["tier_minimum_levels"]};
   core:Pick<Authority["calculator"]["harness_mechanics"],"action_economy"|"manifested_strike"|"overload">;
   disciplines:Authority["calculator"]["harness_mechanics"]["disciplines"];
-  features:Array<HarnessFeatureRule&{minimum_level:number;psi_cost:number;activation:string;damage_delivery:string|null;damage_tiers:Authority["calculator"]["features"][number]["tiers"];selectable_advanced_training:boolean}>;
+  features:Array<HarnessFeatureRule&{minimum_level:number;psi_cost:number;activation:string;damage_delivery:string|null;damage_tiers:NonNullable<Authority["calculator"]["features"][number]["tiers"]>;selectable_advanced_training:boolean}>;
 }
 
 export async function createHarnessProjection(authorityPath="KineticVanguard.yaml"):Promise<HarnessProjection>{

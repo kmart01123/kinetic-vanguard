@@ -1,5 +1,5 @@
 {
-  "version": 5,
+  "version": 6,
   "application_views": ["home","reference","calculator"],
   "home_fragment": "home",
   "calculator_fragment": "calculator",
@@ -13,5 +13,5 @@
   "settled_state_hook": "data-filter-settled",
   "history_state_fields": ["view","category","topic","classifications","entity","resultRoute","calculatorFeatureGroup","calculatorSelection","fighterLevel","psiModifier","focusOrigin"],
   "focus_origins": ["category","topic","name","result","history","fragment","view","onboarding"],
-  "fragment_keys": ["category","topic","filters","entity"]
+  "fragment_keys": ["category","topic","filters","entity","card","group","level","modifier"]
 }
