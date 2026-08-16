@@ -11,8 +11,10 @@ from harness import readme_matrices
 from harness.authority import AuthorityModel, DEFAULT_AUTHORITY
 from harness.comparison_report import COMPARATOR_NOTICE, NOTICE_COLUMNS, matrix_row
 from harness.model import (
+    DEFAULT_CATALOG,
     DEFAULT_COMPARATORS,
     DEFAULT_CONFIG,
+    DEFAULT_PROFILE,
     DEFAULT_ROSTERS,
     file_sha256,
     load_config,
@@ -88,7 +90,9 @@ def _full_authoritative_rows() -> tuple[list[dict[str, str]], list[dict[str, str
     common = {
         "Provenance Rules Version": model.rules_version,
         "Provenance Authority Sha256": model.authority_sha256,
+        "Provenance Catalog Sha256": file_sha256(DEFAULT_CATALOG),
         "Provenance Roster Sha256": file_sha256(DEFAULT_ROSTERS),
+        "Provenance Target Profile": DEFAULT_PROFILE,
         "Provenance Config Sha256": file_sha256(DEFAULT_CONFIG),
         "Provenance Comparator Config Sha256": file_sha256(DEFAULT_COMPARATORS),
         "Provenance Evaluator": "exact_analytical_enumeration",
@@ -485,6 +489,19 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
         control[0][notice_field] = "changed notice"
         with self.assertRaisesRegex(MatrixSyncError, "changed notice field"):
             validate_authoritative_rows(self.damage_rows, control)
+
+    def test_catalog_roster_and_target_profile_provenance_fail_closed(self) -> None:
+        cases = (
+            ("Provenance Catalog Sha256", "wrong-catalog"),
+            ("Provenance Roster Sha256", "wrong-roster"),
+            ("Provenance Target Profile", "headline"),
+        )
+        for field, value in cases:
+            with self.subTest(field=field):
+                damage = deepcopy(self.damage_rows)
+                damage[0][field] = value
+                with self.assertRaisesRegex(MatrixSyncError, field):
+                    validate_authoritative_rows(damage, self.control_rows)
 
     def test_stale_result_and_boundary_evidence_fails_closed(self) -> None:
         cases = (

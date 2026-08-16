@@ -9,7 +9,7 @@ from collections import Counter
 from copy import deepcopy
 from pathlib import Path
 
-from harness.model import ABILITIES,DEFAULT_CATALOG,DEFAULT_PROFILE,DEFAULT_ROSTERS,MOVEMENT_MODES,PROFILE_COUNTS,PROFILE_LEVEL_COUNTS,SENSE_KINDS,load_catalog,load_profiles,load_targets
+from harness.model import ABILITIES,DEFAULT_CATALOG,DEFAULT_PROFILE,DEFAULT_ROSTERS,MOVEMENT_MODES,PROFILE_COUNTS,PROFILE_LEVEL_COUNTS,SENSE_KINDS,file_sha256,load_catalog,load_profiles,load_targets
 
 
 def _canonical(value:object)->bytes:
@@ -63,6 +63,11 @@ class CreatureCatalogTests(unittest.TestCase):
             catalog_path=Path(directory)/"catalog.json";profile_path=Path(directory)/"profiles.json";catalog_path.write_text(json.dumps(catalog),encoding="utf-8");profile_path.write_text(json.dumps(profiles),encoding="utf-8")
             with self.assertRaisesRegex(ValueError,"unique stable"):load_catalog(catalog_path)
             with self.assertRaisesRegex(ValueError,"exactly 47"):load_profiles(profile_path,self.catalog)
+
+    def test_catalog_byte_mutation_changes_evidence_identity(self)->None:
+        with tempfile.TemporaryDirectory() as directory:
+            mutated=Path(directory)/"srd_creatures.json";mutated.write_bytes(DEFAULT_CATALOG.read_bytes()+b"\n")
+            self.assertNotEqual(file_sha256(mutated),file_sha256(DEFAULT_CATALOG))
 
 
 if __name__=="__main__":unittest.main()
