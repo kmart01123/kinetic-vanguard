@@ -73,16 +73,30 @@
         "tier":{"type":"integer","minimum":0,"maximum":2},
         "damage":{"$ref":"#/$defs/calculatorDamage"},
         "secondary_damage":{"$ref":"#/$defs/calculatorDamage"},
-        "save":{"enum":["strength","constitution","dexterity","intelligence","charisma"]}
+        "save":{"enum":["strength","constitution","dexterity","intelligence","charisma","discipline_signature"]}
       }
     },
+    "calculatorMetric": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["kind","label","unit","values"],"properties":{"kind":{"const":"fixed_plus_proficiency_bonus_multiplier"},"label":{"enum":["fly_speed","total_targets"]},"unit":{"enum":["feet","creatures"]},"values":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["tier","fixed","multiplier"],"properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"fixed":{"type":"integer","minimum":0},"multiplier":{"type":"integer","minimum":0}}},"minItems":3,"maxItems":3}}},
+        {"type":"object","additionalProperties":false,"required":["kind","label","divisor"],"properties":{"kind":{"const":"floor_proficiency_bonus_divisor"},"label":{"const":"uses_per_rest"},"divisor":{"type":"integer","minimum":1}}},
+        {"type":"object","additionalProperties":false,"required":["kind","label","multiplier"],"properties":{"kind":{"const":"psionic_ability_modifier_multiplier"},"label":{"enum":["passive_insight_bonus","chosen_skill_bonus"]},"multiplier":{"type":"integer","minimum":1}}},
+        {"type":"object","additionalProperties":false,"required":["kind","label","values"],"properties":{"kind":{"const":"dice_plus_psionic_ability_modifier"},"label":{"const":"damage_reduction"},"values":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["tier","count","sides","multiplier"],"properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"count":{"type":"integer","minimum":1},"sides":{"type":"integer","minimum":2},"multiplier":{"type":"integer","minimum":1}}},"minItems":3,"maxItems":3}}},
+        {"type":"object","additionalProperties":false,"required":["kind","label","value"],"properties":{"kind":{"const":"psi_points_plus_fixed"},"label":{"const":"maximum_psi_points"},"value":{"type":"integer","minimum":1}}}
+      ]
+    },
     "calculatorFeature": {
-      "type":"object","additionalProperties":false,"required":["entity_id","delivery","tiers"],
+      "type":"object","additionalProperties":false,"required":["entity_id","delivery"],"minProperties":3,
       "properties":{
         "entity_id":{"$ref":"#/$defs/id"},
-        "delivery":{"enum":["on_hit_rider","standalone"]},
-        "tiers":{"type":"array","items":{"$ref":"#/$defs/calculatorTier"},"minItems":3,"maxItems":3}
+        "delivery":{"enum":["on_hit_rider","standalone","passive"]},
+        "tiers":{"type":"array","items":{"$ref":"#/$defs/calculatorTier"},"minItems":3,"maxItems":3},
+        "metrics":{"type":"array","items":{"$ref":"#/$defs/calculatorMetric"},"minItems":1}
       }
+    },
+    "calculatorUtilityCard": {
+      "type":"object","additionalProperties":false,"required":["id","source_entity_id","calculation_kind"],
+      "properties":{"id":{"enum":["manifested_strike","blood_tax"]},"source_entity_id":{"$ref":"#/$defs/id"},"calculation_kind":{"enum":["manifested_strike","blood_tax"]},"context":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["entity_id","content_block_indexes"],"properties":{"entity_id":{"$ref":"#/$defs/id"},"content_block_indexes":{"type":"array","items":{"type":"integer","minimum":0},"minItems":1,"uniqueItems":true}}},"minItems":1}}
     },
     "harnessMastery": {
       "type":"object","additionalProperties":false,"required":["kind","control_outcomes"],
@@ -114,9 +128,9 @@
     },
     "calculator": {
       "type":"object","additionalProperties":false,
-      "required":["default_feature_id","default_fighter_level","default_psionic_ability_modifier","fighter_level_minimum","fighter_level_maximum","psionic_ability_modifier_minimum","psionic_ability_modifier_maximum","proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels","harness_mechanics","features"],
+      "required":["default_card_id","default_fighter_level","default_psionic_ability_modifier","fighter_level_minimum","fighter_level_maximum","psionic_ability_modifier_minimum","psionic_ability_modifier_maximum","proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels","harness_mechanics","features","utility_cards"],
       "properties":{
-        "default_feature_id":{"$ref":"#/$defs/id"},
+        "default_card_id":{"$ref":"#/$defs/id"},
         "default_fighter_level":{"type":"integer","minimum":3,"maximum":20},
         "default_psionic_ability_modifier":{"type":"integer","minimum":0,"maximum":5},
         "fighter_level_minimum":{"const":3},
@@ -129,7 +143,8 @@
         "manifested_strike_die_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
         "tier_minimum_levels":{"type":"array","items":{"$ref":"#/$defs/calculatorTierMinimumLevel"},"minItems":3,"maxItems":3},
         "harness_mechanics":{"$ref":"#/$defs/harnessMechanics"},
-        "features":{"type":"array","items":{"$ref":"#/$defs/calculatorFeature"},"minItems":1}
+        "features":{"type":"array","items":{"$ref":"#/$defs/calculatorFeature"},"minItems":1},
+        "utility_cards":{"type":"array","items":{"$ref":"#/$defs/calculatorUtilityCard"},"minItems":2,"maxItems":2}
       }
     },
     "typedValue": {
@@ -183,7 +198,7 @@
         "level":{"type":"integer","minimum":1,"maximum":20},"progression_section":{"enum":["foundation","reference"]},"psi_cost":{"type":"integer","minimum":0},"activation":{"$ref":"#/$defs/id"},"requires_concentration":{"type":"boolean"},"concentration_tiers":{"type":"array","items":{"type":"integer","minimum":0,"maximum":2},"minItems":1,"uniqueItems":true},"concentration_duration":{"type":"string","minLength":1},
         "content":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1},
         "classifications":{"$ref":"#/$defs/classifications"},
-        "presentation_metadata":{"type":"object","additionalProperties":false,"required":["primary_rules_area","canonical_topic_by_area"],"properties":{"primary_rules_area":{"$ref":"#/$defs/id"},"canonical_topic_by_area":{"type":"object","additionalProperties":{"$ref":"#/$defs/id"}}}},
+        "presentation_metadata":{"type":"object","additionalProperties":false,"required":["primary_rules_area","canonical_topic_by_area"],"properties":{"primary_rules_area":{"$ref":"#/$defs/id"},"canonical_topic_by_area":{"type":"object","additionalProperties":{"$ref":"#/$defs/id"}},"presentation_owner":{"const":"calculator_deck"}}},
         "related_entity_ids":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true}
       }
     },
@@ -197,13 +212,14 @@
     },
     "navigation": {
       "type":"object","additionalProperties":false,"required":["default_category_id","categories"],
-      "properties":{"default_category_id":{"$ref":"#/$defs/id"},"categories":{"type":"array","items":{"$ref":"#/$defs/category"},"minItems":6}}
+      "properties":{"default_category_id":{"$ref":"#/$defs/id"},"categories":{"type":"array","items":{"$ref":"#/$defs/category"},"minItems":1}}
     },
     "onboardingDestination": {
       "oneOf": [
         {"type":"object","additionalProperties":false,"required":["kind","section_id"],"properties":{"kind":{"const":"onboarding_section"},"section_id":{"$ref":"#/$defs/id"}}},
         {"type":"object","additionalProperties":false,"required":["kind","category_id"],"properties":{"kind":{"const":"category"},"category_id":{"$ref":"#/$defs/id"}}},
-        {"type":"object","additionalProperties":false,"required":["kind","entity_id"],"properties":{"kind":{"const":"entity"},"entity_id":{"$ref":"#/$defs/id"}}}
+        {"type":"object","additionalProperties":false,"required":["kind","entity_id"],"properties":{"kind":{"const":"entity"},"entity_id":{"$ref":"#/$defs/id"}}},
+        {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"const":"calculator"},"rules_area":{"$ref":"#/$defs/id"}}}
       ]
     },
     "onboardingLink": {
@@ -224,7 +240,7 @@
           "type":"object","additionalProperties":false,"required":["summary","no_psi_note","orientation"],
           "properties":{"summary":{"type":"string","minLength":1},"no_psi_note":{"type":"string","minLength":1},"orientation":{"type":"string","minLength":1}}
         },
-        "primary_paths":{"type":"array","items":{"$ref":"#/$defs/onboardingLink"},"minItems":3,"maxItems":3},
+        "primary_paths":{"type":"array","items":{"$ref":"#/$defs/onboardingLink"},"minItems":4,"maxItems":4},
         "disciplines":{
           "type":"object","additionalProperties":false,"required":["id","title","cards"],
           "properties":{"id":{"$ref":"#/$defs/id"},"title":{"type":"string","minLength":1},"cards":{"type":"array","items":{"$ref":"#/$defs/onboardingLink"},"minItems":4,"maxItems":4}}

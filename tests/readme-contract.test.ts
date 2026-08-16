@@ -44,7 +44,7 @@ test("README and release process stay synchronized with canonical development st
   if (development !== "None") {
     assert.equal(development, `v${authority.rules_version}`);
     assert.ok(readme.split("\n").includes(`- Development branch: \`${authority.rules_version}\``));
-    assert.match(readme, /^- Implementation pull request: /m);
+    assert.match(readme, /^- Implementation status: Active v14\.2 development$/m);
   }
 
   for (const heading of ["Release status", "Publication interface", "Commands", "Architecture", "Licensing", "Development and release discipline"]) {
@@ -52,6 +52,8 @@ test("README and release process stay synchronized with canonical development st
   }
 
   assert.match(readme, /Start Here/);
+  assert.match(readme, /Calculator \/ Feature Deck/);
+  assert.match(readme, /reference-only cards/);
   assert.match(readme, /Category and Topic browsing/);
   assert.match(readme, /Name selector/);
   assert.match(readme, /global classification filters/);

@@ -4,6 +4,7 @@ import { codepointCompare } from "./canonical.js";
 function duplicateDiagnostics(values:string[],code:string,label:string):Diagnostic[]{const seen=new Set<string>();const diagnostics:Diagnostic[]=[];for(const value of values){if(seen.has(value))diagnostics.push({severity:"error",code,message:`Duplicate ${label}: ${value}`});seen.add(value);}return diagnostics;}
 function vocabulary(authority:Authority,name:string):Set<string>{return new Set((authority.vocabularies[name]??[]).map(value=>value.id));}
 const inlineText=(nodes:any[]|undefined):string=>nodes?.map(node=>node.text??node.label??String(node.value?.value??"")).join("")??"";
+export const isCalculatorDeckEntity=(entity:Authority["entities"][number]):boolean=>entity.presentation_metadata.presentation_owner==="calculator_deck"||(entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area!=="common_features");
 
 interface LocatedValue<T>{path:string;value:T}
 function collectOnboardingIds(value:unknown,path="/onboarding",result:LocatedValue<string>[]=[]):LocatedValue<string>[] {
@@ -20,7 +21,7 @@ function collectOnboardingDestinations(value:unknown,path="/onboarding",result:L
   if(Array.isArray(value)){value.forEach((item,index)=>collectOnboardingDestinations(item,`${path}/${index}`,result));return result;}
   if(!value||typeof value!=="object")return result;
   const object=value as Record<string,unknown>;
-  if(typeof object.kind==="string"&&(typeof object.section_id==="string"||typeof object.category_id==="string"||typeof object.entity_id==="string"))result.push({path,value:object});
+  if(typeof object.kind==="string"&&(object.kind==="calculator"||typeof object.section_id==="string"||typeof object.category_id==="string"||typeof object.entity_id==="string"))result.push({path,value:object});
   for(const [key,child] of Object.entries(object))collectOnboardingDestinations(child,`${path}/${key}`,result);
   return result;
 }
@@ -47,19 +48,27 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
     if(entity.concentration_duration===undefined)diagnostics.push({severity:"error",code:"entity.concentration_tiers_duration",message:`${entity.id} concentration tiers require a concentration duration`,path:`/entities/${entityIndex}/concentration_duration`});
   }
   const calculator=authority.calculator;
-  const expectedDefaults={default_feature_id:"common_manifested_strike",default_fighter_level:20,default_psionic_ability_modifier:5} as const;
+  const expectedDefaults={default_card_id:"manifested_strike",default_fighter_level:20,default_psionic_ability_modifier:5} as const;
   for(const [field,expected] of Object.entries(expectedDefaults))if(calculator[field as keyof typeof expectedDefaults]!==expected)diagnostics.push({severity:"error",code:"calculator.default",message:`Calculator ${field} must be ${expected}`,path:`/calculator/${field}`});
   if(calculator.default_fighter_level<calculator.fighter_level_minimum||calculator.default_fighter_level>calculator.fighter_level_maximum)diagnostics.push({severity:"error",code:"calculator.default_level",message:"Calculator default Fighter level is outside its supported range",path:"/calculator/default_fighter_level"});
   if(calculator.default_psionic_ability_modifier<calculator.psionic_ability_modifier_minimum||calculator.default_psionic_ability_modifier>calculator.psionic_ability_modifier_maximum)diagnostics.push({severity:"error",code:"calculator.default_modifier",message:"Calculator default Psionic Ability modifier is outside its supported range",path:"/calculator/default_psionic_ability_modifier"});
-  const riderEntities=authority.entities.filter(entity=>entity.activation==="on_hit"&&entity.classifications.feature_role==="rider");
-  const authoredRiderIds=riderEntities.map(entity=>entity.id).sort(codepointCompare);
-  const expectedStandaloneIds=["absolute_zero","arctic_tempest","ball_lightning","forked_lightning","mass_levitation","telekinetic_slam"].sort(codepointCompare);
   const calculatorFeatureIds=calculator.features.map(feature=>feature.entity_id);
-  const calculatorRiderIds=calculator.features.filter(feature=>feature.delivery==="on_hit_rider").map(feature=>feature.entity_id);
-  const calculatorStandaloneIds=calculator.features.filter(feature=>feature.delivery==="standalone").map(feature=>feature.entity_id);
   diagnostics.push(...duplicateDiagnostics(calculatorFeatureIds,"calculator.feature_duplicate","calculator feature entity ID"));
-  if(JSON.stringify([...new Set(calculatorRiderIds)].sort(codepointCompare))!==JSON.stringify(authoredRiderIds))diagnostics.push({severity:"error",code:"calculator.rider_coverage",message:"Calculator feature registry must contain every on-hit rider entity exactly once",path:"/calculator/features"});
-  if(JSON.stringify([...new Set(calculatorStandaloneIds)].sort(codepointCompare))!==JSON.stringify(expectedStandaloneIds))diagnostics.push({severity:"error",code:"calculator.standalone_coverage",message:"Calculator feature registry must contain exactly the six supported standalone entities",path:"/calculator/features"});
+  const projectedRiderIds=calculator.features.filter(feature=>feature.delivery==="on_hit_rider").map(feature=>feature.entity_id).sort(codepointCompare);
+  const deckRiderIds=authority.entities.filter(entity=>isCalculatorDeckEntity(entity)&&entity.activation==="on_hit"&&entity.classifications.feature_role==="rider").map(entity=>entity.id).sort(codepointCompare);
+  if(JSON.stringify(projectedRiderIds)!==JSON.stringify(deckRiderIds))diagnostics.push({severity:"error",code:"calculator.rider_coverage",message:"Every deck-owned on-hit rider must retain a Calculator projection exactly once",path:"/calculator/features"});
+  const utilityIds=calculator.utility_cards.map(card=>card.id);diagnostics.push(...duplicateDiagnostics(utilityIds,"calculator.utility_duplicate","calculator utility card ID"));
+  if(JSON.stringify([...utilityIds].sort(codepointCompare))!==JSON.stringify(["blood_tax","manifested_strike"]))diagnostics.push({severity:"error",code:"calculator.utility_coverage",message:"Calculator utility cards must be exactly Manifested Strike and Blood Tax",path:"/calculator/utility_cards"});
+  for(const [utilityIndex,card] of calculator.utility_cards.entries()){
+    const path=`/calculator/utility_cards/${utilityIndex}`,source=entities.get(card.source_entity_id);
+    if(!source)diagnostics.push({severity:"error",code:"calculator.utility_source_unknown",message:`Calculator utility ${card.id} references unknown source entity ${card.source_entity_id}`,path:`${path}/source_entity_id`});
+    if(card.id!==card.calculation_kind)diagnostics.push({severity:"error",code:"calculator.utility_kind",message:`Calculator utility ${card.id} must use its matching typed calculation kind`,path:`${path}/calculation_kind`});
+    for(const [contextIndex,context] of (card.context??[]).entries()){
+      const contextEntity=entities.get(context.entity_id),contextPath=`${path}/context/${contextIndex}`;
+      if(!contextEntity)diagnostics.push({severity:"error",code:"calculator.utility_context_unknown",message:`Calculator utility ${card.id} references unknown context entity ${context.entity_id}`,path:`${contextPath}/entity_id`});
+      else for(const blockIndex of context.content_block_indexes)if(!contextEntity.content[blockIndex])diagnostics.push({severity:"error",code:"calculator.utility_context_block",message:`Calculator utility ${card.id} references missing ${context.entity_id} content block ${blockIndex}`,path:`${contextPath}/content_block_indexes`});
+    }
+  }
   const tierMinimums=calculator.tier_minimum_levels.map(item=>item.tier);diagnostics.push(...duplicateDiagnostics(tierMinimums.map(String),"calculator.tier_minimum_duplicate","calculator tier minimum"));
   const expectedTierMinimums=[[0,3],[1,3],[2,10]] as const;
   if(JSON.stringify(calculator.tier_minimum_levels.map(item=>[item.tier,item.minimum_level]))!==JSON.stringify(expectedTierMinimums))diagnostics.push({severity:"error",code:"calculator.tier_minimum_levels",message:"Calculator tier minimum levels must be Tier 0 at level 3, Tier 1 at level 3, and Tier 2 at level 10",path:"/calculator/tier_minimum_levels"});
@@ -76,8 +85,8 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
   if(JSON.stringify([...disciplineIds].sort(codepointCompare))!==JSON.stringify(expectedDisciplines))diagnostics.push({severity:"error",code:"harness.discipline_coverage",message:"Harness mechanics must define exactly the four Kinetic Disciplines",path:"/calculator/harness_mechanics/disciplines"});
   const featureRules=harness.feature_rules,featureRuleIds=featureRules.map(item=>item.entity_id);
   diagnostics.push(...duplicateDiagnostics(featureRuleIds,"harness.feature_duplicate","harness feature entity ID"));
-  const missingShared=calculatorFeatureIds.filter(id=>!featureRuleIds.includes(id));
-  if(missingShared.length)diagnostics.push({severity:"error",code:"harness.feature_coverage",message:`Harness mechanics are missing Calculator features: ${missingShared.join(", ")}`,path:"/calculator/harness_mechanics/feature_rules"});
+  const missingShared=featureRuleIds.filter(id=>!calculatorFeatureIds.includes(id));
+  if(missingShared.length)diagnostics.push({severity:"error",code:"harness.feature_coverage",message:`Harness mechanics require missing Calculator projections: ${missingShared.join(", ")}`,path:"/calculator/features"});
   for(const [ruleIndex,rule] of featureRules.entries()){
     const rulePath=`/calculator/harness_mechanics/feature_rules/${ruleIndex}`,entity=entities.get(rule.entity_id);
     if(!entity)diagnostics.push({severity:"error",code:"harness.feature_unknown",message:`Harness mechanics reference unknown entity ${rule.entity_id}`,path:`${rulePath}/entity_id`});
@@ -117,14 +126,15 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
     const featurePath=`/calculator/features/${featureIndex}`,entity=entities.get(feature.entity_id);
     if(!entity)diagnostics.push({severity:"error",code:"calculator.feature_unknown",message:`Calculator references unknown feature entity ${feature.entity_id}`,path:`${featurePath}/entity_id`});
     else{
+      if(!isCalculatorDeckEntity(entity))diagnostics.push({severity:"error",code:"calculator.feature_ownership",message:`Calculator projection ${feature.entity_id} is not deck-owned`,path:`${featurePath}/entity_id`});
       const validDelivery=feature.delivery==="on_hit_rider"
         ? entity.activation==="on_hit"&&entity.classifications.feature_role==="rider"
-        : entity.activation!=="on_hit"&&entity.classifications.feature_role==="standalone";
+        : feature.delivery===entity.classifications.feature_role;
       if(!validDelivery)diagnostics.push({severity:"error",code:"calculator.feature_delivery",message:`Calculator entity ${feature.entity_id} is inconsistent with delivery ${feature.delivery}`,path:`${featurePath}/delivery`});
     }
-    const tiers=feature.tiers.map(tier=>tier.tier);diagnostics.push(...duplicateDiagnostics(tiers.map(String),"calculator.tier_duplicate",`${feature.entity_id} calculator tier`));
-    if(JSON.stringify([...tiers].sort((a,b)=>a-b))!==JSON.stringify([0,1,2]))diagnostics.push({severity:"error",code:"calculator.tier_coverage",message:`${feature.entity_id} calculator tiers must be exactly 0, 1, and 2`,path:`${featurePath}/tiers`});
-    for(const [tierIndex,tier] of feature.tiers.entries()){
+    const tiers=(feature.tiers??[]).map(tier=>tier.tier);diagnostics.push(...duplicateDiagnostics(tiers.map(String),"calculator.tier_duplicate",`${feature.entity_id} calculator tier`));
+    if(feature.tiers&&JSON.stringify([...tiers].sort((a,b)=>a-b))!==JSON.stringify([0,1,2]))diagnostics.push({severity:"error",code:"calculator.tier_coverage",message:`${feature.entity_id} calculator tiers must be exactly 0, 1, and 2`,path:`${featurePath}/tiers`});
+    for(const [tierIndex,tier] of (feature.tiers??[]).entries()){
       const tierPath=`${featurePath}/tiers/${tierIndex}`;
       const validateDamage=(damage:typeof tier.damage,path:string,label:string)=>{
         const gated=damage.resolution!=="always";
@@ -137,11 +147,9 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
         validateDamage(tier.secondary_damage,`${tierPath}/secondary_damage`,"secondary damage");
       }else if(feature.entity_id==="forked_lightning")diagnostics.push({severity:"error",code:"calculator.secondary_damage_required",message:`forked_lightning Tier ${tier.tier} must define secondary damage`,path:`${tierPath}/secondary_damage`});
     }
+    for(const [metricIndex,metric] of (feature.metrics??[]).entries())if("values" in metric){const metricTiers=metric.values.map(value=>value.tier);if(JSON.stringify([...metricTiers].sort((a,b)=>a-b))!==JSON.stringify([0,1,2]))diagnostics.push({severity:"error",code:"calculator.metric_tier_coverage",message:`${feature.entity_id} metric ${metric.label} must cover Tiers 0, 1, and 2 exactly once`,path:`${featurePath}/metrics/${metricIndex}/values`});}
   }
-  const defaultEntity=entities.get(calculator.default_feature_id),defaultFeature=calculator.features.find(feature=>feature.entity_id===calculator.default_feature_id);
-  if(!defaultEntity)diagnostics.push({severity:"error",code:"calculator.default_feature_unknown",message:`Calculator default feature ${calculator.default_feature_id} is unknown`,path:"/calculator/default_feature_id"});
-  else if(!defaultFeature&&calculator.default_feature_id!=="common_manifested_strike")diagnostics.push({severity:"error",code:"calculator.default_feature_unregistered",message:`Calculator default feature ${calculator.default_feature_id} is not in the feature registry`,path:"/calculator/default_feature_id"});
-  if(defaultEntity?.level!==undefined&&defaultEntity.level>calculator.default_fighter_level)diagnostics.push({severity:"error",code:"calculator.default_feature_level",message:"Calculator default feature is unavailable at the default Fighter level",path:"/calculator/default_fighter_level"});
+  if(!calculator.utility_cards.some(card=>card.id===calculator.default_card_id)&&!authority.entities.some(entity=>isCalculatorDeckEntity(entity)&&entity.id===calculator.default_card_id))diagnostics.push({severity:"error",code:"calculator.default_card_unknown",message:`Calculator default card ${calculator.default_card_id} is not a deck or utility card`,path:"/calculator/default_card_id"});
   diagnostics.push(...validateCalculatorLevelBands(calculator.proficiency_bonus_bands,calculator.fighter_level_minimum,calculator.fighter_level_maximum,"Proficiency Bonus","/calculator/proficiency_bonus_bands"));
   diagnostics.push(...validateCalculatorLevelBands(calculator.psi_point_bands,calculator.fighter_level_minimum,calculator.fighter_level_maximum,"Psi Points","/calculator/psi_point_bands"));
   diagnostics.push(...validateCalculatorLevelBands(calculator.psionic_focus_bands,calculator.fighter_level_minimum,calculator.fighter_level_maximum,"Psionic Focus","/calculator/psionic_focus_bands"));
@@ -154,10 +162,8 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
     if(psiBand.value!==expected)diagnostics.push({severity:"error",code:"calculator.psi_point_progression",message:`Calculator Psi Points at Fighter level ${level} must equal half the Fighter level rounded up plus Proficiency Bonus (${expected})`,path:`/calculator/psi_point_bands/${calculator.psi_point_bands.indexOf(psiBand)}/value`});
   }
   diagnostics.push(...duplicateDiagnostics(authority.facets.map(facet=>facet.id),"facet.duplicate","facet ID"));
-  const requiredAreas=["common_features","advanced_training","cryokinesis","pyrokinesis","psychokinesis","electrokinesis"];
   const categories=new Map(authority.navigation.categories.map(category=>[category.id,category]));
-  for(const area of requiredAreas)if(!categories.has(area))diagnostics.push({severity:"error",code:"navigation.category_missing",message:`Required category ${area} is missing`});
-  if(authority.navigation.categories.some(category=>category.id==="disciplines"||category.label==="Disciplines"))diagnostics.push({severity:"error",code:"navigation.umbrella",message:"Umbrella Disciplines category is prohibited"});
+  if(!categories.has(authority.navigation.default_category_id))diagnostics.push({severity:"error",code:"navigation.default_category",message:"Rules Reference default category is missing"});
   diagnostics.push(...duplicateDiagnostics(authority.navigation.categories.map(category=>category.id),"navigation.category_duplicate","category ID"));
   const topicToArea=new Map<string,string>();const topicEntities=new Map<string,Set<string>>();
   for(const category of authority.navigation.categories){
@@ -169,6 +175,10 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
   if(authority.entities.length!==44)diagnostics.push({severity:"error",code:"onboarding.entity_boundary",message:`Onboarding must remain outside the 44-entity publication boundary; found ${authority.entities.length} entities`,path:"/entities"});
   const sectionIds=new Set([authority.onboarding.basic_turn.id,authority.onboarding.build_checklist.id,authority.onboarding.disciplines.id,authority.onboarding.glossary.id,authority.onboarding.next_destinations.id]);
   for(const {path,value:destination} of collectOnboardingDestinations(authority.onboarding)){
+    if(destination.kind==="calculator"){
+      if(destination.rules_area!==undefined&&!vocabulary(authority,"rules_areas").has(destination.rules_area))diagnostics.push({severity:"error",code:"onboarding.calculator_area_unknown",message:`Unknown Calculator rules area ${destination.rules_area}`,path});
+      continue;
+    }
     if(destination.kind==="onboarding_section"){
       if(!sectionIds.has(destination.section_id))diagnostics.push({severity:"error",code:"onboarding.section_unknown",message:`Unknown onboarding section ${destination.section_id}`,path});
       continue;
@@ -182,18 +192,20 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
     if(destination.kind==="entity"){
       const targetEntity=entities.get(destination.entity_id);
       if(!targetEntity){diagnostics.push({severity:"error",code:"onboarding.entity_unknown",message:`Unknown onboarding entity ${destination.entity_id}`,path});continue;}
+      if(isCalculatorDeckEntity(targetEntity))continue;
       const primaryArea=targetEntity.presentation_metadata.primary_rules_area,targetCategory=categories.get(primaryArea);
       const containingTopics=targetCategory?.topics.filter(topic=>topic.entity_ids.includes(targetEntity.id))??[];
       const canonicalTopic=targetEntity.presentation_metadata.canonical_topic_by_area[primaryArea]??containingTopics.sort((a,b)=>a.order-b.order)[0]?.id;
       if(!canonicalTopic||!containingTopics.some(topic=>topic.id===canonicalTopic))diagnostics.push({severity:"error",code:"onboarding.entity_route",message:`Onboarding entity ${destination.entity_id} has no resolvable canonical route`,path});
     }
   }
-  const disciplineCategories=authority.onboarding.disciplines.cards.map(card=>card.destination.kind==="category"?card.destination.category_id:"").sort(codepointCompare);
+  const disciplineCategories=authority.onboarding.disciplines.cards.map(card=>card.destination.kind==="calculator"?card.destination.rules_area??"":"").sort(codepointCompare);
   const requiredDisciplines=["cryokinesis","electrokinesis","psychokinesis","pyrokinesis"].sort(codepointCompare);
-  if(JSON.stringify(disciplineCategories)!==JSON.stringify(requiredDisciplines))diagnostics.push({severity:"error",code:"onboarding.disciplines",message:"Onboarding must target each Discipline category exactly once",path:"/onboarding/disciplines/cards"});
+  if(JSON.stringify(disciplineCategories)!==JSON.stringify(requiredDisciplines))diagnostics.push({severity:"error",code:"onboarding.disciplines",message:"Onboarding must target each Discipline Calculator group exactly once",path:"/onboarding/disciplines/cards"});
   const internalPaths=authority.onboarding.primary_paths.filter(path=>path.destination.kind==="onboarding_section").map(path=>path.destination.kind==="onboarding_section"?path.destination.section_id:"").sort(codepointCompare);
   const referencePaths=authority.onboarding.primary_paths.filter(path=>path.destination.kind==="category"&&path.destination.category_id===authority.navigation.default_category_id);
-  if(JSON.stringify(internalPaths)!==JSON.stringify([authority.onboarding.basic_turn.id,authority.onboarding.build_checklist.id].sort(codepointCompare))||referencePaths.length!==1)diagnostics.push({severity:"error",code:"onboarding.primary_paths",message:"Onboarding primary paths must target Build Checklist, Basic Turn, and the default Rules Reference exactly once",path:"/onboarding/primary_paths"});
+  const calculatorPaths=authority.onboarding.primary_paths.filter(path=>path.destination.kind==="calculator"&&path.destination.rules_area===undefined);
+  if(JSON.stringify(internalPaths)!==JSON.stringify([authority.onboarding.basic_turn.id,authority.onboarding.build_checklist.id].sort(codepointCompare))||referencePaths.length!==1||calculatorPaths.length!==1)diagnostics.push({severity:"error",code:"onboarding.primary_paths",message:"Onboarding primary paths must target Build Checklist, Basic Turn, Calculator / Feature Deck, and the default Rules Reference exactly once",path:"/onboarding/primary_paths"});
   if(collectOnboardingStrings(authority.onboarding).some(value=>/(?:https?:|www\.|mailto:)/iu.test(value)))diagnostics.push({severity:"error",code:"onboarding.external_url",message:"Onboarding must not contain raw external URLs",path:"/onboarding"});
   const rulesAreas=vocabulary(authority,"rules_areas"),entityKinds=vocabulary(authority,"entity_kinds"),roles=vocabulary(authority,"feature_roles"),modes=vocabulary(authority,"acquisition_modes");
   const titleByGroup=new Set<string>();
@@ -210,10 +222,11 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
     if(!entity.classifications.rules_area.includes(entity.presentation_metadata.primary_rules_area))diagnostics.push({severity:"error",code:"presentation.primary_area",message:`${entity.id}: primary area is not in rules_area`,path});
     const renderedAreas=new Set<string>();const topicsByArea=new Map<string,string[]>();
     for(const [topicId,ids] of topicEntities)if(ids.has(entity.id)){const area=topicToArea.get(topicId)!;renderedAreas.add(area);const list=topicsByArea.get(area)??[];list.push(topicId);topicsByArea.set(area,list);}
-    const authored=[...entity.classifications.rules_area].sort(),rendered=[...renderedAreas].sort();
-    if(JSON.stringify(authored)!==JSON.stringify(rendered))diagnostics.push({severity:"error",code:"classification.rules_area_redundancy",message:`${entity.id}: authored areas [${authored}] differ from rendered areas [${rendered}]`,path});
+    const authored=[...entity.classifications.rules_area].sort(),rendered=[...renderedAreas].sort(),deckOwned=isCalculatorDeckEntity(entity);
+    if(deckOwned&&rendered.length)diagnostics.push({severity:"error",code:"presentation.deck_reference_duplicate",message:`${entity.id}: deck-owned feature must not retain Rules Reference long-form topics`,path});
+    if(!deckOwned&&JSON.stringify(authored)!==JSON.stringify(rendered))diagnostics.push({severity:"error",code:"classification.rules_area_redundancy",message:`${entity.id}: authored areas [${authored}] differ from rendered Rules Reference areas [${rendered}]`,path});
     for(const [area,topicIds] of topicsByArea)if(topicIds.length>1){const canonical=entity.presentation_metadata.canonical_topic_by_area[area];if(!canonical||!topicIds.includes(canonical))diagnostics.push({severity:"error",code:"presentation.canonical_topic",message:`${entity.id}: area ${area} needs one valid canonical topic`,path});}
-    for(const [area,topicId] of Object.entries(entity.presentation_metadata.canonical_topic_by_area))if(!topicsByArea.get(area)?.includes(topicId))diagnostics.push({severity:"error",code:"presentation.canonical_topic_extra",message:`${entity.id}: invalid canonical mapping ${area} -> ${topicId}`,path});
+    for(const [area,topicId] of Object.entries(entity.presentation_metadata.canonical_topic_by_area))if(!deckOwned&&!topicsByArea.get(area)?.includes(topicId))diagnostics.push({severity:"error",code:"presentation.canonical_topic_extra",message:`${entity.id}: invalid canonical mapping ${area} -> ${topicId}`,path});
     const titleKey=`${entity.presentation_metadata.primary_rules_area}\0${entity.title}`;if(titleByGroup.has(titleKey))diagnostics.push({severity:"error",code:"presentation.name_duplicate",message:`Duplicate Name label ${entity.title} in ${entity.presentation_metadata.primary_rules_area}`,path});titleByGroup.add(titleKey);
     if(!entity.content.length)diagnostics.push({severity:"error",code:"coverage.empty_entity",message:`${entity.id}: no rule-significant content`,path});
     for(const [blockIndex,block] of entity.content.entries()){
@@ -269,14 +282,14 @@ export function buildFilterIndex(authority:Authority):FilterIndex{
   const areaOrder=new Map((authority.vocabularies.rules_areas??[]).map(value=>[value.id,value.order]));
   const roleOrder=new Map((authority.vocabularies.feature_roles??[]).map(value=>[value.id,value.order]));
   const topicOrderByEntityArea=new Map<string,number>();for(const category of authority.navigation.categories)for(const topic of category.topics)for(const entityId of topic.entity_ids)topicOrderByEntityArea.set(`${entityId}\0${category.id}`,Math.min(topic.order,topicOrderByEntityArea.get(`${entityId}\0${category.id}`)??Number.MAX_SAFE_INTEGER));
-  const entries=authority.entities.map(entity=>{const primaryArea=entity.presentation_metadata.primary_rules_area;const areaRoutes=routesByEntity.get(entity.id)!;const routes=Object.fromEntries([...areaRoutes].map(([area,topics])=>[area,entity.presentation_metadata.canonical_topic_by_area[area]??topics[0]! ]));return{id:entity.id,title:entity.title,primary_rules_area:primaryArea,rules_area_order:areaOrder.get(primaryArea)!,minimum_level:entity.level??null,progression_section:(entity.level===undefined?entity.progression_section!:"levelled") as ProgressionSection,progression_order:topicOrderByEntityArea.get(`${entity.id}\0${primaryArea}`)!,feature_role_order:entity.classifications.feature_role?roleOrder.get(entity.classifications.feature_role)!:Number.MAX_SAFE_INTEGER,classifications:{rules_area:[primaryArea],entity_kind:[entity.classifications.entity_kind],...(entity.classifications.feature_role?{feature_role:[entity.classifications.feature_role]}:{}),...(entity.classifications.acquisition_mode?{acquisition_mode:[entity.classifications.acquisition_mode]}:{})},routes};});
+  const entries=authority.entities.map(entity=>{const primaryArea=entity.presentation_metadata.primary_rules_area;const areaRoutes=routesByEntity.get(entity.id)??new Map<string,string[]>();const routes=Object.fromEntries([...areaRoutes].map(([area,topics])=>[area,entity.presentation_metadata.canonical_topic_by_area[area]??topics[0]! ]));return{id:entity.id,title:entity.title,primary_rules_area:primaryArea,rules_area_order:areaOrder.get(primaryArea)!,minimum_level:entity.level??null,progression_section:(entity.level===undefined?entity.progression_section!:"levelled") as ProgressionSection,progression_order:topicOrderByEntityArea.get(`${entity.id}\0${primaryArea}`)??0,feature_role_order:entity.classifications.feature_role?roleOrder.get(entity.classifications.feature_role)!:Number.MAX_SAFE_INTEGER,classifications:{rules_area:[primaryArea],entity_kind:[entity.classifications.entity_kind],...(entity.classifications.feature_role?{feature_role:[entity.classifications.feature_role]}:{}),...(entity.classifications.acquisition_mode?{acquisition_mode:[entity.classifications.acquisition_mode]}:{})},routes};});
   const name_groups=(authority.vocabularies.rules_areas??[]).map(area=>({id:area.id,label:area.label,order:area.order,entity_ids:entries.filter(entry=>entry.primary_rules_area===area.id).sort(compareNameEntries).map(entry=>entry.id)})).sort((a,b)=>a.order-b.order||codepointCompare(a.id,b.id));
   return{entities:[...entries].sort(compareFilterEntries),name_groups};
 }
 
 export function buildIntegrity(authority:Authority,index:FilterIndex):Record<string,unknown>{
-  const checks=index.entities.map(item=>{const entity=authority.entities.find(candidate=>candidate.id===item.id)!;const canonicalAreas=item.classifications.rules_area!;return{entity_id:item.id,identity_retrieval:item.title===entity.title,canonical_area_retrieval:canonicalAreas.length===1&&canonicalAreas[0]===item.primary_rules_area,classification_vector_retrieval:Object.entries(item.classifications).every(([facet,values])=>values.every(value=>(entity.classifications as any)[facet]?.includes?.(value)||(entity.classifications as any)[facet]===value)),route_areas:Object.keys(item.routes).sort(),rules_areas:[...entity.classifications.rules_area].sort()};});
-  return{version:1,entity_count:index.entities.length,all_passed:checks.every(check=>check.identity_retrieval&&check.canonical_area_retrieval&&check.classification_vector_retrieval&&JSON.stringify(check.route_areas)===JSON.stringify(check.rules_areas)),controlled_vocabularies:Object.fromEntries(Object.entries(authority.vocabularies).map(([name,values])=>[name,values.map(value=>value.id)])),identity_domain:index.entities.map(entity=>({id:entity.id,title:entity.title,primary_rules_area:entity.primary_rules_area})),checks};
+  const checks=index.entities.map(item=>{const entity=authority.entities.find(candidate=>candidate.id===item.id)!;const canonicalAreas=item.classifications.rules_area!,expectedRouteAreas=isCalculatorDeckEntity(entity)?[]:[...entity.classifications.rules_area].sort();return{entity_id:item.id,identity_retrieval:item.title===entity.title,canonical_area_retrieval:canonicalAreas.length===1&&canonicalAreas[0]===item.primary_rules_area,classification_vector_retrieval:Object.entries(item.classifications).every(([facet,values])=>values.every(value=>(entity.classifications as any)[facet]?.includes?.(value)||(entity.classifications as any)[facet]===value)),route_areas:Object.keys(item.routes).sort(),expected_route_areas:expectedRouteAreas,rules_areas:[...entity.classifications.rules_area].sort()};});
+  return{version:2,entity_count:index.entities.length,all_passed:checks.every(check=>check.identity_retrieval&&check.canonical_area_retrieval&&check.classification_vector_retrieval&&JSON.stringify(check.route_areas)===JSON.stringify(check.expected_route_areas)),controlled_vocabularies:Object.fromEntries(Object.entries(authority.vocabularies).map(([name,values])=>[name,values.map(value=>value.id)])),identity_domain:index.entities.map(entity=>({id:entity.id,title:entity.title,primary_rules_area:entity.primary_rules_area})),checks};
 }
 
 export function summarizeDiagnostics(diagnostics:Diagnostic[]):string{return diagnostics.map(item=>`${item.severity.toUpperCase()} ${item.code}${item.path?` ${item.path}`:""}: ${item.message}`).join("\n");}

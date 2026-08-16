@@ -7,7 +7,7 @@ import { validateSemantics } from "../src/validate.js";
 
 test("harness projection reads the real authority and joins mechanics by stable entity ID",async()=>{
   const projection=await createHarnessProjection();
-  assert.equal(projection.rules_version,"14.2.0");assert.equal(projection.schema_version,"2.1.0");assert.match(projection.authority_path,/\/KineticVanguard\.yaml$/);
+  assert.equal(projection.rules_version,"14.2.0");assert.equal(projection.schema_version,"2.2.0");assert.match(projection.authority_path,/\/KineticVanguard\.yaml$/);
   assert.deepEqual(projection.core.action_economy,{standalone_psionic_action_limit_per_turn:1,action_surge_allows_additional_standalone_psionic_action:false});
   assert.equal(projection.core.manifested_strike.rider_repeatability,"per_manifested_strike");
   assert.deepEqual(projection.disciplines.map(item=>item.id).sort(),["cryokinesis","electrokinesis","psychokinesis","pyrokinesis"]);
@@ -27,7 +27,7 @@ test("harness semantic mutations fail with focused diagnostics",async()=>{
   expectCode("harness.blood_tax_formula",candidate=>{candidate.calculator.harness_mechanics.overload.blood_tax_per_tier.proficiency_bonus_multiplier=2;});
   expectCode("harness.discipline_duplicate",candidate=>{candidate.calculator.harness_mechanics.disciplines[1].id=candidate.calculator.harness_mechanics.disciplines[0].id;});
   expectCode("harness.feature_duplicate",candidate=>{candidate.calculator.harness_mechanics.feature_rules[1].entity_id=candidate.calculator.harness_mechanics.feature_rules[0].entity_id;});
-  expectCode("harness.feature_coverage",candidate=>{candidate.calculator.harness_mechanics.feature_rules=candidate.calculator.harness_mechanics.feature_rules.filter((item:any)=>item.entity_id!=="flare");});
+  expectCode("harness.feature_coverage",candidate=>{candidate.calculator.features=candidate.calculator.features.filter((item:any)=>item.entity_id!=="flare");});
   expectCode("harness.feature_unknown",candidate=>{candidate.calculator.harness_mechanics.feature_rules[0].entity_id="missing_feature";});
   expectCode("harness.targeting_tier_duplicate",candidate=>{candidate.calculator.harness_mechanics.feature_rules.find((item:any)=>item.entity_id==="branching_bolt").targeting_by_tier[1].tier=0;});
   expectCode("harness.targeting_count",candidate=>{delete candidate.calculator.harness_mechanics.feature_rules.find((item:any)=>item.entity_id==="branching_bolt").targeting_by_tier[0].additional_targets;});

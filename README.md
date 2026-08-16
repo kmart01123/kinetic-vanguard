@@ -9,7 +9,7 @@ Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighte
 - Current published release: **v14.1.0**
 - Current development line: **v14.2.0**
 - Development branch: `14.2.0`
-- Implementation pull request: [draft PR #73](https://github.com/kmart01123/kinetic-vanguard/pull/73)
+- Implementation status: Active v14.2 development
 - Canonical rules authority: `KineticVanguard.yaml`
 
 Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v14.1.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.1.0).
@@ -64,9 +64,11 @@ Battle Master and Eldritch Knight are referenced solely as unofficial third-part
 
 ## Publication interface
 
-Opening the publication without a deep link shows **Start Here**, which introduces the subclass’s basic loop and links into the canonical rules. Existing category, topic, entity, and filter deep links continue to open the complete Rules Reference directly. The persistent publication navigation also includes a **Calculator** view.
+Opening the publication without a deep link shows **Start Here**, which introduces the subclass’s basic loop and directs players to the appropriate canonical surface. The persistent navigation separates the **Calculator / Feature Deck** for individual playable features from the **Rules Reference** for shared subclass systems and chassis material.
 
-The Rules Reference provides:
+The Calculator / Feature Deck provides one compact, rules-area-grouped index of every individual feature. Each selected card shows identity and availability facts plus its complete canonical feature text. Cards with useful level- or modifier-driven values show deterministic calculations; qualitative cards remain complete reference-only cards without fabricated math. Manifested Strike remains the default calculation experience, and Blood Tax has a dedicated calculated utility card with eligible Overload Mastery reductions and conditional Overload Mastery II context.
+
+The Rules Reference retains shared material such as How to Play, Example Play, progression tables, the Psionic Discipline and signature-save framework, Psi Reservoir, Manifested Strike procedure, Overload, Signature Riders, and Kinetic Mastery. It provides:
 
 - Category and Topic browsing;
 - a canonical Name selector;
@@ -75,7 +77,7 @@ The Rules Reference provides:
 - responsive desktop, tablet, mobile, and print layouts;
 - keyboard, focus, forced-colors, and reduced-motion support.
 
-The Calculator opens on a dedicated Manifested Strike landing card and derives its attack, damage, and save Difficulty Class, along with total Psi Points, Psi costs, on-hit rider tier results, and supported standalone feature tier results, from Feature Group, Skill / Feature, Fighter Level, and Psionic Ability Modifier selections. Feature Group scopes the supported choices to a discipline or Advanced Training without changing any calculations. Longform hit, damage, and saving throw calculations use full term names, parenthesized component values, `+` operators, and an `=` result matching the retained compact total. Every selection updates the displayed calculations immediately.
+Deck cards, Name selections, filtered results, Start Here links, and legacy individual-feature fragments converge on deterministic Calculator deep links. Shared-system selections remain in Rules Reference. Fighter Level and Psionic Ability Modifier are native controls, future-level cards remain visible, and every selection updates the displayed calculations immediately. Longform calculations use full term names, parenthesized component values, `+` operators, and an `=` result matching the retained compact total.
 
 The browser application makes no runtime network requests, does not store character state, and does not replace the rules with inferred behavior.
 

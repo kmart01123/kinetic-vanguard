@@ -15,13 +15,13 @@ const blockText=(block:any):string=>[inlineText(block.inlines),...(block.items??
 const authoredBlockText=(block:any):string=>block.type==="tier"?`T${block.tier} ${inlineText(block.heading)}: ${block.body.map((child:any)=>blockText(child)).filter(Boolean).join(" ")}`:blockText(block);
 const entityRules=(entity:any)=>entity.content.map((block:any)=>authoredBlockText(block)).filter(Boolean).join("\n");
 const ownedOnboardingIds=(value:any,result:string[]=[]):string[]=>{if(Array.isArray(value)){value.forEach(item=>ownedOnboardingIds(item,result));return result;}if(!value||typeof value!=="object")return result;for(const [key,child] of Object.entries(value)){if(key==="id"&&typeof child==="string")result.push(child);else ownedOnboardingIds(child,result);}return result;};
-const onboardingDestinations=(value:any,result:any[]=[]):any[]=>{if(Array.isArray(value)){value.forEach(item=>onboardingDestinations(item,result));return result;}if(!value||typeof value!=="object")return result;if(typeof value.kind==="string"&&(typeof value.section_id==="string"||typeof value.category_id==="string"||typeof value.entity_id==="string"))result.push(value);for(const child of Object.values(value))onboardingDestinations(child,result);return result;};
+const onboardingDestinations=(value:any,result:any[]=[]):any[]=>{if(Array.isArray(value)){value.forEach(item=>onboardingDestinations(item,result));return result;}if(!value||typeof value!=="object")return result;if(typeof value.kind==="string"&&(value.kind==="calculator"||typeof value.section_id==="string"||typeof value.category_id==="string"||typeof value.entity_id==="string"))result.push(value);for(const child of Object.values(value))onboardingDestinations(child,result);return result;};
 const onboardingStrings=(value:any,result:string[]=[]):string[]=>{if(typeof value==="string"){result.push(value);return result;}if(Array.isArray(value)){value.forEach(item=>onboardingStrings(item,result));return result;}if(value&&typeof value==="object")Object.values(value).forEach(item=>onboardingStrings(item,result));return result;};
 
 test("YAML authority is schema-valid, semantically valid, and complete",async()=>{
   const loaded=await loadAuthority();const diagnostics=[...loaded.diagnostics,...validateSemantics(loaded.authority)];
   assert.deepEqual(diagnostics,[]);
-  assert.equal(loaded.authority.schema_version,"2.1.0");
+  assert.equal(loaded.authority.schema_version,"2.2.0");
   assert.equal(loaded.authority.rules_version,"14.2.0");
   const audit=loaded.authority.audits?.find(item=>item.id==="yaml_rules_authority")!;
   assert.deepEqual([...audit.subject_ids].sort(),loaded.authority.entities.map(entity=>entity.id).sort());
@@ -43,17 +43,18 @@ test("rider repeatability is one fail-closed Manifested Strike contract",async()
 test("top-level onboarding is canonical, complete, resolvable, and outside the 44-entity rules domain",async()=>{
   const {authority}=await loadAuthority();const onboarding=authority.onboarding;
   assert.equal(onboarding.id,"start_here");assert.equal(onboarding.title,"Start Here");
-  assert.deepEqual({primary:onboarding.primary_paths.length,disciplines:onboarding.disciplines.cards.length,steps:onboarding.basic_turn.steps.length,reminders:onboarding.basic_turn.reminders.length,basicDestinations:onboarding.basic_turn.destinations.length,checklist:onboarding.build_checklist.items.length,glossary:onboarding.glossary.entries.length,next:onboarding.next_destinations.items.length},{primary:3,disciplines:4,steps:4,reminders:3,basicDestinations:2,checklist:6,glossary:5,next:7});
+  assert.deepEqual({primary:onboarding.primary_paths.length,disciplines:onboarding.disciplines.cards.length,steps:onboarding.basic_turn.steps.length,reminders:onboarding.basic_turn.reminders.length,basicDestinations:onboarding.basic_turn.destinations.length,checklist:onboarding.build_checklist.items.length,glossary:onboarding.glossary.entries.length,next:onboarding.next_destinations.items.length},{primary:4,disciplines:4,steps:4,reminders:3,basicDestinations:2,checklist:6,glossary:5,next:7});
   assert.deepEqual(onboarding.primary_paths.map(item=>item.destination),[
     {kind:"onboarding_section",section_id:"build_checklist"},
     {kind:"onboarding_section",section_id:"basic_turn"},
+    {kind:"calculator"},
     {kind:"category",category_id:"common_features"}
   ]);
   assert.deepEqual(onboarding.disciplines.cards.map(item=>[item.title,item.destination]),[
-    ["Pyrokinesis",{kind:"category",category_id:"pyrokinesis"}],
-    ["Cryokinesis",{kind:"category",category_id:"cryokinesis"}],
-    ["Psychokinesis",{kind:"category",category_id:"psychokinesis"}],
-    ["Electrokinesis",{kind:"category",category_id:"electrokinesis"}]
+    ["Pyrokinesis",{kind:"calculator",rules_area:"pyrokinesis"}],
+    ["Cryokinesis",{kind:"calculator",rules_area:"cryokinesis"}],
+    ["Psychokinesis",{kind:"calculator",rules_area:"psychokinesis"}],
+    ["Electrokinesis",{kind:"calculator",rules_area:"electrokinesis"}]
   ]);
   assert.deepEqual(onboarding.basic_turn.destinations.map(item=>item.destination),[{kind:"entity",entity_id:"how_to_play"},{kind:"entity",entity_id:"common_overload"}]);
   assert.deepEqual(onboarding.build_checklist.items.map(item=>item.destination.kind==="entity"?item.destination.entity_id:null),["common_psionic_discipline","common_psi_reservoir","common_manifested_strike","common_signature_rider","common_kinetic_mastery","common_manifested_strike"]);
@@ -62,19 +63,20 @@ test("top-level onboarding is canonical, complete, resolvable, and outside the 4
     {kind:"entity",entity_id:"how_to_play"},{kind:"entity",entity_id:"common_example_play"},{kind:"entity",entity_id:"subclass_feature_reference"},{kind:"entity",entity_id:"common_psionic_discipline"},{kind:"entity",entity_id:"common_overload"},{kind:"entity",entity_id:"common_psi_reservoir"},{kind:"category",category_id:"common_features"}
   ]);
 
-  const ids=ownedOnboardingIds(onboarding);assert.equal(ids.length,33);assert.equal(new Set(ids).size,ids.length);
+  const ids=ownedOnboardingIds(onboarding);assert.equal(ids.length,34);assert.equal(new Set(ids).size,ids.length);
   const entityIds=new Set(authority.entities.map(entity=>entity.id));assert.equal(authority.entities.length,44);assert.ok(ids.every(id=>!entityIds.has(id)));assert.ok(!entityIds.has(onboarding.id));
   const auditedIds=new Set(authority.audits?.flatMap(audit=>audit.subject_ids)??[]);assert.ok(ids.every(id=>!auditedIds.has(id)));
 
   const categories=new Map(authority.navigation.categories.map(category=>[category.id,category]));
   const sectionIds=new Set([onboarding.disciplines.id,onboarding.basic_turn.id,onboarding.build_checklist.id,onboarding.glossary.id,onboarding.next_destinations.id]);
-  const destinations=onboardingDestinations(onboarding);assert.equal(destinations.length,27);
+  const destinations=onboardingDestinations(onboarding);assert.equal(destinations.length,28);
   for(const destination of destinations){
+    if(destination.kind==="calculator"){assert.ok(destination.rules_area===undefined||authority.vocabularies.rules_areas!.some(area=>area.id===destination.rules_area));continue;}
     if(destination.kind==="onboarding_section"){assert.ok(sectionIds.has(destination.section_id),destination.section_id);continue;}
     if(destination.kind==="category"){const category=categories.get(destination.category_id);assert.ok(category,destination.category_id);assert.ok(category!.topics.some(topic=>topic.id===category!.default_topic_id),destination.category_id);continue;}
-    const entity=authority.entities.find(candidate=>candidate.id===destination.entity_id);assert.ok(entity,destination.entity_id);assert.equal(entity!.publishable,true);const category=categories.get(entity!.presentation_metadata.primary_rules_area);assert.ok(category,destination.entity_id);const topics=category!.topics.filter(topic=>topic.entity_ids.includes(entity!.id)).sort((a,b)=>a.order-b.order);const route=entity!.presentation_metadata.canonical_topic_by_area[category!.id]??topics[0]?.id;assert.ok(route&&topics.some(topic=>topic.id===route),destination.entity_id);
+    const entity=authority.entities.find(candidate=>candidate.id===destination.entity_id);assert.ok(entity,destination.entity_id);assert.equal(entity!.publishable,true);const deckOwned=entity!.presentation_metadata.presentation_owner==="calculator_deck"||(entity!.kind==="feature"&&entity!.presentation_metadata.primary_rules_area!=="common_features");if(deckOwned)continue;const category=categories.get(entity!.presentation_metadata.primary_rules_area);assert.ok(category,destination.entity_id);const topics=category!.topics.filter(topic=>topic.entity_ids.includes(entity!.id)).sort((a,b)=>a.order-b.order);const route=entity!.presentation_metadata.canonical_topic_by_area[category!.id]??topics[0]?.id;assert.ok(route&&topics.some(topic=>topic.id===route),destination.entity_id);
   }
-  assert.deepEqual(Object.fromEntries(["pyrokinesis","cryokinesis","psychokinesis","electrokinesis"].map(id=>[id,categories.get(id)?.default_topic_id])),{pyrokinesis:"pyrokinesis_ember_bolt_topic",cryokinesis:"cryokinesis_glacial_spike_topic",psychokinesis:"psychokinesis_telekinetic_shove_topic",electrokinesis:"electrokinesis_static_discharge_topic"});
+  assert.deepEqual([...categories.keys()],["common_features"]);
   assert.doesNotMatch(onboardingStrings(onboarding).join("\n"),/(?:https?:|www\.|mailto:)/iu);
 });
 
@@ -85,12 +87,13 @@ test("onboarding semantic mutations produce focused diagnostics",async()=>{
   expectCode("onboarding.entity_collision",candidate=>{candidate.onboarding.id="how_to_play";});
   expectCode("onboarding.entity_boundary",candidate=>{candidate.entities.pop();});
   expectCode("onboarding.section_unknown",candidate=>{candidate.onboarding.primary_paths[0].destination.section_id="missing_section";});
-  expectCode("onboarding.category_unknown",candidate=>{candidate.onboarding.disciplines.cards[0].destination.category_id="missing_category";});
+  expectCode("onboarding.category_unknown",candidate=>{candidate.onboarding.next_destinations.items.at(-1).destination.category_id="missing_category";});
+  expectCode("onboarding.calculator_area_unknown",candidate=>{candidate.onboarding.disciplines.cards[0].destination.rules_area="missing_area";});
   expectCode("onboarding.category_route",candidate=>{candidate.navigation.categories.find((category:any)=>category.id==="common_features").default_topic_id="missing_topic";});
   expectCode("onboarding.entity_unknown",candidate=>{candidate.onboarding.build_checklist.items[0].destination.entity_id="missing_entity";});
   expectCode("onboarding.entity_route",candidate=>{candidate.navigation.categories.find((category:any)=>category.id==="common_features").topics.find((topic:any)=>topic.id==="common_features_common_manifested_strike_topic").entity_ids=[];});
-  expectCode("onboarding.disciplines",candidate=>{candidate.onboarding.disciplines.cards[0].destination.category_id="cryokinesis";});
-  expectCode("onboarding.primary_paths",candidate=>{candidate.onboarding.primary_paths[2].destination.category_id="advanced_training";});
+  expectCode("onboarding.disciplines",candidate=>{candidate.onboarding.disciplines.cards[0].destination.rules_area="cryokinesis";});
+  expectCode("onboarding.primary_paths",candidate=>{candidate.onboarding.primary_paths[2].destination.rules_area="advanced_training";});
   expectCode("onboarding.external_url",candidate=>{candidate.onboarding.introduction.orientation="Read https://example.invalid for more rules.";});
 });
 
@@ -114,7 +117,7 @@ test("prototype and release builds reflect direct YAML edits",async()=>{
     const prototype=await executeBuild("prototype",prototypeRoot,authorityPath);process.env.KV_RELEASE_APPROVED="1";const release=await executeBuild("release",releaseRoot,authorityPath);
     for(const result of [prototype,release]){const html=await readFile(result.htmlPath,"utf8");assert.match(html,/Kinetic Vanguard YAML Edit Probe/);assert.doesNotMatch(html,/Kinetic_Vanguard\.md|npm run migrate|edit (?:the )?Markdown/i);assert.equal(result.manifest.build_identity.canonical_rules_authority,authorityPath);assert.deepEqual(result.manifest.declared_inputs.filter((input:any)=>input.role==="rules_authority").map((input:any)=>input.path),[authorityPath]);}
     for(const result of [prototype,release]){assert.equal(result.manifest.build_identity.rules_version,"14.2.0");assert.equal("application_version" in result.manifest.build_identity,false);}
-    const coverage=JSON.parse(await readFile(join(prototypeRoot,"coverage-ledger.json"),"utf8"));const {authority}=await loadAuthority(authorityPath);assert.equal(coverage.version,3);assert.equal(coverage.entity_count,44);assert.equal(coverage.entity_count,authority.entities.length);assert.deepEqual(coverage.entities.map((entity:any)=>entity.entity_id),authority.entities.map(entity=>entity.id));assert.ok(coverage.entities.every((entity:any)=>entity.content_block_count>0&&entity.destinations.length>0));assert.equal(coverage.entities.some((entity:any)=>entity.entity_id===authority.onboarding.id),false);assert.deepEqual(coverage.onboarding,{authority_path:authorityPath+"#/onboarding",onboarding_id:"start_here",section_ids:["choose_your_discipline","basic_turn","build_checklist","terms_to_know","where_to_go_next"],destination_ids:[...authority.onboarding.primary_paths,...authority.onboarding.disciplines.cards,...authority.onboarding.basic_turn.destinations,...authority.onboarding.build_checklist.items,...authority.onboarding.glossary.entries,...authority.onboarding.next_destinations.items].map(item=>item.id)});
+    const coverage=JSON.parse(await readFile(join(prototypeRoot,"coverage-ledger.json"),"utf8"));const {authority}=await loadAuthority(authorityPath);assert.equal(coverage.version,4);assert.equal(coverage.entity_count,44);assert.equal(coverage.entity_count,authority.entities.length);assert.deepEqual(coverage.entities.map((entity:any)=>entity.entity_id),authority.entities.map(entity=>entity.id));assert.ok(coverage.entities.every((entity:any)=>entity.content_block_count>0&&entity.destinations.length>0));assert.equal(coverage.entities.some((entity:any)=>entity.entity_id===authority.onboarding.id),false);assert.deepEqual(coverage.onboarding,{authority_path:authorityPath+"#/onboarding",onboarding_id:"start_here",section_ids:["choose_your_discipline","basic_turn","build_checklist","terms_to_know","where_to_go_next"],destination_ids:[...authority.onboarding.primary_paths,...authority.onboarding.disciplines.cards,...authority.onboarding.basic_turn.destinations,...authority.onboarding.build_checklist.items,...authority.onboarding.glossary.entries,...authority.onboarding.next_destinations.items].map(item=>item.id)});
   }finally{if(previousApproval===undefined)delete process.env.KV_RELEASE_APPROVED;else process.env.KV_RELEASE_APPROVED=previousApproval;await rm(temporary,{recursive:true,force:true});}
 });
 test("Manifested Strike owns its progression immediately after the core rule",async()=>{
@@ -144,8 +147,8 @@ test("Manifested Strike owns its progression immediately after the core rule",as
   assert.doesNotMatch(JSON.stringify(overload.content),/Manifested Strike die by level|Fighter Level\|MS Die/);
 
   const common=authority.navigation.categories.find(category=>category.id==="common_features")!;const manifestedTopic=common.topics.find(topic=>topic.id==="common_features_common_manifested_strike_topic")!;const overloadTopic=common.topics.find(topic=>topic.id==="common_features_common_overload_topic")!;
-  assert.deepEqual({title:manifestedTopic.title,entityIds:manifestedTopic.entity_ids,order:manifestedTopic.order},{title:"Manifested Strike",entityIds:["common_manifested_strike"],order:7});
-  assert.deepEqual({title:overloadTopic.title,entityIds:overloadTopic.entity_ids,order:overloadTopic.order},{title:"Overload",entityIds:["common_overload"],order:8});
+  assert.deepEqual({title:manifestedTopic.title,entityIds:manifestedTopic.entity_ids,order:manifestedTopic.order},{title:"Manifested Strike",entityIds:["common_manifested_strike"],order:6});
+  assert.deepEqual({title:overloadTopic.title,entityIds:overloadTopic.entity_ids,order:overloadTopic.order},{title:"Overload",entityIds:["common_overload"],order:7});
 });
 
 test("shared Overload startup exception covers every concentration feature",async()=>{
@@ -426,9 +429,7 @@ test("Mass Levitation uses five target slots, repeat-save falls, and preserves e
   assert.equal(tier1,"T1 Overload: Changes from Tier 0: Levitated creatures have Disadvantage on repeat saving throws against this feature. At the start of each of your turns, you can move each creature still levitated by this feature up to 15 feet in any direction to an unoccupied space you can see. This is forced movement; the creature remains lifted and Restrained.");
   assert.equal(tier2,"T2 Overload: Changes from Tier 1: At the start of each levitated creature’s turn, it first repeats the Strength saving throw from Tier 0. On a successful save, the effect ends for that creature, it falls from its current position, and it takes no force damage from this tier. On a failed save, it remains levitated and takes force damage equal to twice your Psionic Ability modifier.");
 
-  const psychokinesis=authority.navigation.categories.find(category=>category.id==="psychokinesis")!;
-  const topic=psychokinesis.topics.find(candidate=>candidate.id==="psychokinesis_mass_levitation_topic")!;
-  assert.deepEqual(topic,{entity_ids:["mass_levitation"],id:"psychokinesis_mass_levitation_topic",order:4,title:"Mass Levitation"});
+  assert.ok(authority.navigation.categories.every(category=>category.topics.every(topic=>!topic.entity_ids.includes("mass_levitation"))));
 });
 
 test("six dense rules targets use semantic lists with preserved tier scope",async()=>{
@@ -565,6 +566,8 @@ test("final rules decisions leave every unapproved authority field unchanged",as
   const {authority}=await loadAuthority();const projection=structuredClone(authority) as any;
   delete projection.onboarding;
   delete projection.calculator;
+  delete projection.navigation;
+  for(const entity of projection.entities)delete entity.presentation_metadata;
   projection.schema_version="1.0.0";
   projection.rules_version="<approved rules version>";
   projection.metadata.attribution="Created by NixNinja in collaboration with artificial intelligence assistants. Special thanks to various muses, great and small.";
@@ -688,7 +691,7 @@ test("final rules decisions leave every unapproved authority field unchanged",as
   for(const row of table.rows){const oldDuration=oldDurations.get(cell(row[1]));if(oldDuration)row[5][0].text=oldDuration;}
   const signature=projection.entities.find((entity:any)=>entity.id==="common_signature_rider");
   signature.content.find((block:any)=>blockText(block).includes("Like other on-hit riders")).inlines[0].text="Your Signature Rider’s Psi cost remains 0 at every tier. You can declare it repeatedly for any number of your Manifested Strike attacks.";
-  assert.equal(sha256(canonicalJson(projection)),"bbcfe7480123a0b9bdedc7815cb0684c36431d1d96ccba7e53516b1af658649c");
+  assert.equal(sha256(canonicalJson(projection)),"3eb1c0b0dfbbb30bf38443ceef3edb373f81b2b18b2be4e785d4e880b7e4a7eb");
 });
 
 test("active authority and approved UI text use full English except for the approved Calculator DC label",async()=>{
@@ -713,17 +716,11 @@ test("active authority and approved UI text use full English except for the appr
   }
 });
 
-test("Common rules do not leak into discipline Browse topics",async()=>{
+test("Rules Reference retains only reference-owned shared and chassis entities",async()=>{
   const {authority}=await loadAuthority();const entities=new Map(authority.entities.map(entity=>[entity.id,entity]));
   const categories=new Map(authority.navigation.categories.map(category=>[category.id,category]));
-  const titles=(categoryId:string)=>categories.get(categoryId)!.topics.map(topic=>topic.title);
-  assert.equal(titles("common_features").filter(title=>title==="Overload").length,1);
-  for(const categoryId of ["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]){
-    assert.ok(!titles(categoryId).includes("Overload"));
-    for(const topic of categories.get(categoryId)!.topics)for(const entityId of topic.entity_ids)assert.ok(entities.get(entityId)!.classifications.rules_area.includes(categoryId),`${entityId} leaked into ${categoryId}`);
-  }
-  const commonOnly=authority.entities.filter(entity=>entity.classifications.rules_area.length===1&&entity.classifications.rules_area[0]==="common_features").map(entity=>entity.id);
-  for(const categoryId of ["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]){const topicEntities=new Set(categories.get(categoryId)!.topics.flatMap(topic=>topic.entity_ids));assert.ok(commonOnly.every(entityId=>!topicEntities.has(entityId)));}
+  assert.deepEqual([...categories.keys()],["common_features"]);const topicEntities=authority.navigation.categories.flatMap(category=>category.topics.flatMap(topic=>topic.entity_ids));assert.equal(new Set(topicEntities).size,topicEntities.length);assert.ok(topicEntities.every(id=>{const entity=entities.get(id)!;return entity.presentation_metadata.presentation_owner!=="calculator_deck"&&!(entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area!=="common_features");}));
+  assert.deepEqual(topicEntities,["how_to_play","common_example_play","subclass_feature_reference","common_psionic_discipline","common_discipline_signature_save","common_psi_reservoir","common_manifested_strike","common_overload","common_signature_rider","common_kinetic_mastery","advanced_training_progression"]);
 });
 
 test("example turns use one semantic six-phase block contract",async()=>{
@@ -897,10 +894,10 @@ test("tiered rules use an ordered, cumulative hierarchy without changing mechani
   assert.match(frozenGround,/Restrained condition until the end of your next turn replaces the Tier 0 effect retained by Tier 1/);
 });
 
-test("calculator defaults to Manifested Strike and its registry covers every rider and all six supported standalone damage features",async()=>{
+test("calculator deck derives exhaustive ownership and calculation state from canonical entities and projections",async()=>{
   const {authority}=await loadAuthority();
   const entityById=new Map(authority.entities.map(entity=>[entity.id,entity]));
-  assert.deepEqual({feature:authority.calculator.default_feature_id,level:authority.calculator.default_fighter_level,modifier:authority.calculator.default_psionic_ability_modifier},{feature:"common_manifested_strike",level:20,modifier:5});
+  assert.deepEqual({card:authority.calculator.default_card_id,level:authority.calculator.default_fighter_level,modifier:authority.calculator.default_psionic_ability_modifier},{card:"manifested_strike",level:20,modifier:5});
   assert.deepEqual(authority.calculator.psi_point_bands,[
     {minimum_level:3,maximum_level:4,value:4},
     {minimum_level:5,maximum_level:6,value:6},
@@ -913,33 +910,32 @@ test("calculator defaults to Manifested Strike and its registry covers every rid
     {minimum_level:19,maximum_level:20,value:16}
   ]);
   const registered=authority.calculator.features;
-  assert.equal(registered.some(feature=>feature.entity_id==="common_manifested_strike"),false,"Manifested Strike remains the special calculator baseline, not a registered rider or standalone feature");
-  const authoredRiders=authority.entities.filter(entity=>entity.activation==="on_hit"&&entity.classifications.feature_role==="rider").map(entity=>entity.id).sort();
+  assert.equal(registered.length,30);assert.equal(new Set(registered.map(feature=>feature.entity_id)).size,30);
+  const deckOwned=authority.entities.filter(entity=>entity.presentation_metadata.presentation_owner==="calculator_deck"||(entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area!=="common_features"));
+  assert.equal(deckOwned.length,33);assert.deepEqual(deckOwned.filter(entity=>!registered.some(feature=>feature.entity_id===entity.id)).map(entity=>entity.id).sort(),["advanced_barrier","advanced_overload_mastery_ii","common_psionic_link"]);
+  assert.deepEqual(authority.calculator.utility_cards.map(card=>[card.id,card.source_entity_id,card.calculation_kind]),[["manifested_strike","common_manifested_strike","manifested_strike"],["blood_tax","common_overload","blood_tax"]]);
+  assert.equal(deckOwned.length+authority.calculator.utility_cards.length,35);
+  const authoredRiders=deckOwned.filter(entity=>entity.activation==="on_hit"&&entity.classifications.feature_role==="rider").map(entity=>entity.id).sort();
   const registeredRiders=registered.filter(feature=>feature.delivery==="on_hit_rider").map(feature=>feature.entity_id).sort();
   assert.deepEqual(registeredRiders,authoredRiders);
-  const expectedStandalone=["absolute_zero","arctic_tempest","ball_lightning","forked_lightning","mass_levitation","telekinetic_slam"];
-  assert.deepEqual(registered.filter(feature=>feature.delivery==="standalone").map(feature=>feature.entity_id).sort(),expectedStandalone);
-  for(const feature of registered){const entity=entityById.get(feature.entity_id)!;assert.ok(entity);assert.deepEqual(feature.tiers.map(tier=>tier.tier),[0,1,2],feature.entity_id);if(feature.delivery==="on_hit_rider"){assert.equal(entity.activation,"on_hit");assert.equal(entity.classifications.feature_role,"rider");}else{assert.notEqual(entity.activation,"on_hit");assert.equal(entity.classifications.feature_role,"standalone");}}
+  for(const feature of registered){const entity=entityById.get(feature.entity_id)!;assert.ok(deckOwned.includes(entity));assert.ok(feature.tiers?.length===3||feature.metrics?.length,feature.entity_id);if(feature.tiers)assert.deepEqual(feature.tiers.map(tier=>tier.tier),[0,1,2],feature.entity_id);if(feature.delivery==="on_hit_rider"){assert.equal(entity.activation,"on_hit");assert.equal(entity.classifications.feature_role,"rider");}else assert.equal(feature.delivery,entity.classifications.feature_role);}
   const slam=registered.find(feature=>feature.entity_id==="telekinetic_slam")!;
-  assert.deepEqual(slam.tiers.map(tier=>[tier.tier,tier.damage,tier.save]),[
+  assert.deepEqual(slam.tiers!.map(tier=>[tier.tier,tier.damage,tier.save]),[
     [0,{kind:"dice",resolution:"half_on_success",count:8,sides:10},"strength"],
     [1,{kind:"dice",resolution:"half_on_success",count:10,sides:10},"strength"],
     [2,{kind:"dice",resolution:"half_on_success",count:12,sides:10},"strength"]
   ]);
   const forked=registered.find(feature=>feature.entity_id==="forked_lightning")!;
-  assert.deepEqual(forked.tiers.map(tier=>tier.secondary_damage),[{kind:"dice",resolution:"half_on_success",count:4,sides:8},{kind:"dice",resolution:"half_on_success",count:5,sides:8},{kind:"dice",resolution:"half_on_success",count:6,sides:8}]);
+  assert.deepEqual(forked.tiers!.map(tier=>tier.secondary_damage),[{kind:"dice",resolution:"half_on_success",count:4,sides:8},{kind:"dice",resolution:"half_on_success",count:5,sides:8},{kind:"dice",resolution:"half_on_success",count:6,sides:8}]);
   const mass=registered.find(feature=>feature.entity_id==="mass_levitation")!;
-  assert.deepEqual(mass.tiers[2]!.damage,{kind:"psionic_ability_modifier",resolution:"failed_save",multiplier:2});
+  assert.deepEqual(mass.tiers![2]!.damage,{kind:"psionic_ability_modifier",resolution:"failed_save",multiplier:2});
   const missing=structuredClone(authority);
-  missing.calculator.features=missing.calculator.features.filter(feature=>feature.entity_id!=="telekinetic_slam");
-  assert.ok(validateSemantics(missing).some(diagnostic=>diagnostic.code==="calculator.standalone_coverage"));
+  missing.calculator.features=missing.calculator.features.filter(feature=>feature.entity_id!=="telekinetic_shove");
+  assert.ok(validateSemantics(missing).some(diagnostic=>diagnostic.code==="calculator.rider_coverage"));
   const invalidPsiPointBands=structuredClone(authority);
   invalidPsiPointBands.calculator.psi_point_bands[0]!.value=5;
   assert.ok(validateSemantics(invalidPsiPointBands).some(diagnostic=>diagnostic.code==="calculator.psi_point_progression"&&diagnostic.path==="/calculator/psi_point_bands/0/value"));
-  const unregisteredDefault=structuredClone(authority);
-  unregisteredDefault.calculator.default_feature_id="common_overload";
-  assert.ok(validateSemantics(unregisteredDefault).some(diagnostic=>diagnostic.code==="calculator.default_feature_unregistered"&&diagnostic.path==="/calculator/default_feature_id"));
   const unknownDefault=structuredClone(authority);
-  unknownDefault.calculator.default_feature_id="missing_calculator_feature";
-  assert.ok(validateSemantics(unknownDefault).some(diagnostic=>diagnostic.code==="calculator.default_feature_unknown"&&diagnostic.path==="/calculator/default_feature_id"));
+  unknownDefault.calculator.default_card_id="missing_calculator_card";
+  assert.ok(validateSemantics(unknownDefault).some(diagnostic=>diagnostic.code==="calculator.default_card_unknown"&&diagnostic.path==="/calculator/default_card_id"));
 });

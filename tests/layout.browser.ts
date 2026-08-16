@@ -47,39 +47,35 @@ test("master Name select renders canonical progression and stable renamed routes
       const rebuiltAdvanced=await readGroups();assert.deepEqual(rebuiltAdvanced.map(group=>group.label),["Advanced Training"],engine.name+" rebuilt Advanced Training group");assert.deepEqual(rebuiltAdvanced[0]!.labels.slice(0,2),["Deflection Screen","Phase Step"],engine.name+" rebuilt clean labels");
       assert.equal(new Set(rebuiltAdvanced[0]!.ids).size,rebuiltAdvanced[0]!.ids.length,engine.name+" no duplicate Advanced Training options");assert.ok(rebuiltAdvanced[0]!.labels.every(label=>!label.startsWith("Advanced Training I:")&&!label.startsWith("Advanced Training II:")),engine.name+" no rebuilt prefixed labels");
       const resultLabels=await page.locator("#filter-results button").allTextContents();assert.ok(resultLabels.includes("Deflection Screen — Advanced Training"));assert.ok(resultLabels.includes("Phase Step — Advanced Training"));assert.ok(resultLabels.every(label=>!label.startsWith("Advanced Training I:")&&!label.startsWith("Advanced Training II:")));await advancedFilter.uncheck();
-      for(const [id,title,topic] of [["advanced_deflection_screen","Deflection Screen","advanced_training_advanced_deflection_screen_topic"],["advanced_phase_step","Phase Step","advanced_training_advanced_phase_step_topic"]] as const){
-        const historyBefore=await page.evaluate(()=>(window as any).__namePushCount);await page.selectOption("#name-select",id);
-        assert.equal(new URL(page.url()).hash.includes(`entity=${id}`),true);assert.equal(new URLSearchParams(new URL(page.url()).hash.slice(1)).get("topic"),topic);assert.equal(await page.locator(`#entity-${id} h2`).textContent(),title);
-        assert.equal(await page.locator("#name-select").inputValue(),id);assert.equal(await page.locator("#name-open").count(),0);assert.equal(await page.evaluate(()=>(window as any).__namePushCount),historyBefore+1);
-        await page.selectOption("#name-select",id);assert.equal(await page.evaluate(()=>(window as any).__namePushCount),historyBefore+1,engine.name+" same selection history");
-        await page.goBack();await page.goForward();assert.equal(await page.locator(`#entity-${id} h2`).textContent(),title,engine.name+" Forward navigation");await page.goBack();
+      for(const [id,title] of [["advanced_deflection_screen","Deflection Screen"],["advanced_phase_step","Phase Step"]] as const){
+        await page.goto(url);await page.evaluate(()=>{const push=history.pushState.bind(history);(window as any).__namePushCount=0;history.pushState=(...args)=>{(window as any).__namePushCount++;return push(...args);};});const historyBefore=0;await page.selectOption("#name-select",id);
+        const route=new URL(page.url()).hash;assert.equal(route.startsWith(`#calculator&card=${id}&`),true);assert.equal(await page.locator("#calculator-feature-results > h3").textContent(),title);
+        assert.equal(await page.locator("#name-open").count(),0);assert.ok(await page.evaluate(()=>(window as any).__namePushCount)>=historyBefore+1);
+        await page.goBack();await page.goForward();assert.equal(await page.locator("#calculator-feature-results > h3").textContent(),title,engine.name+" Forward navigation");
       }
       await page.close();
     }finally{await browser.close();}
   }
 });
 
-test("mobile Category, Topic, Name, and result navigation focus and reveal the selected rule",async()=>{
+test("mobile Name and result navigation focus and reveal the selected Calculator card",async()=>{
   const result=await executeBuild("prototype");const url=pathToFileURL(result.htmlPath).href+defaultReferenceFragment;
   for(const engine of desktopBrowsers){
     const browser=await engine.type.launch({headless:true});
     try{
       const page=await browser.newPage({viewport:{width:412,height:915}});await page.goto(url);
-      const assertFocusedAndVisible=async(id:string)=>{
-        await page.waitForFunction(entityId=>{const heading=document.querySelector<HTMLElement>("#entity-"+entityId+" h2");if(!heading)return false;const rect=heading.getBoundingClientRect();return document.activeElement===heading&&rect.top>=-1&&rect.bottom<=innerHeight+1;},id);
+      const assertFocusedAndVisible=async(title:string)=>{
+        await page.waitForFunction(expected=>{const heading=document.querySelector<HTMLElement>("#calculator-feature-results > h3");if(!heading||heading.textContent!==expected)return false;const rect=heading.getBoundingClientRect();return document.activeElement===heading&&rect.top>=-1&&rect.bottom<=innerHeight+1;},title);
       };
-      await page.selectOption("#category-select","psychokinesis");await assertFocusedAndVisible("telekinetic_shove");
-      await page.selectOption("#topic-select","psychokinesis_mass_levitation_topic");await assertFocusedAndVisible("mass_levitation");
-      await page.selectOption("#name-select","ball_lightning");await assertFocusedAndVisible("ball_lightning");
-      await page.goto(url);await page.locator('input[data-facet="rules_area"][value="electrokinesis"]').check();await page.getByRole("button",{name:"Ball Lightning — Electrokinesis"}).click();await assertFocusedAndVisible("ball_lightning");
-      assert.equal(new URLSearchParams(new URL(page.url()).hash.slice(1)).get("entity"),"ball_lightning");
+      await page.selectOption("#name-select","ball_lightning");await assertFocusedAndVisible("Ball Lightning");assert.match(new URL(page.url()).hash,/^#calculator&card=ball_lightning&/u);
+      await page.goto(url);await page.locator('input[data-facet="rules_area"][value="electrokinesis"]').check();await page.getByRole("button",{name:"Ball Lightning — Electrokinesis"}).click();await assertFocusedAndVisible("Ball Lightning");assert.match(new URL(page.url()).hash,/^#calculator&card=ball_lightning&/u);
     }finally{await browser.close();}
   }
 });
 
 test("prototype columns and long selected topics fit in desktop browsers", async () => {
   const result = await executeBuild("prototype");
-  const url = `${pathToFileURL(result.htmlPath).href}#category=advanced_training&topic=advanced_training_advanced_deflection_screen_topic`;
+  const url = `${pathToFileURL(result.htmlPath).href}#category=common_features&topic=common_features_advanced_training_progression_topic`;
 
   for (const engine of desktopBrowsers) {
     const browser = await engine.type.launch({ headless: true });
@@ -131,7 +127,7 @@ test("prototype columns and long selected topics fit in desktop browsers", async
         assert.ok(layout.articleRight <= layout.contentRight, `${size}: article must remain inside the content panel`);
         assert.equal(layout.documentOverflow, 0, `${size}: page must not scroll horizontally`);
         assert.equal(layout.textContained, true, `${size}: headings and body text must remain contained`);
-        assert.equal(layout.selectedTopic, "Deflection Screen");
+        assert.equal(layout.selectedTopic, "Advanced Training Progression");
         assert.equal(layout.selectedTopicFits, true, `${size}: selected Topic text must fit beside the native indicator`);
       }
     } finally {
@@ -356,12 +352,12 @@ test("Rules area filtering is immediate, canonical, progressive, and history-saf
 });
 
 test("concentration metadata ribbon wraps without overflow on desktop and mobile",async()=>{
-  const result=await executeBuild("prototype");const url=`${pathToFileURL(result.htmlPath).href}#category=advanced_training&topic=advanced_training_advanced_gravitic_press_topic`;
+  const result=await executeBuild("prototype");const url=`${pathToFileURL(result.htmlPath).href}#calculator&card=advanced_gravitic_press&level=20&modifier=5&group=advanced_training`;
   const browser=await chromium.launch({headless:true});
   try{
     for(const viewport of [{width:1366,height:768},{width:390,height:844}]){
-      const page=await browser.newPage({viewport});await page.goto(url);await page.waitForSelector("#entity-advanced_gravitic_press .feature-metadata__item--concentration");
-      const rendered=await page.evaluate(()=>{const metadata=document.querySelector<HTMLElement>("#entity-advanced_gravitic_press .feature-metadata")!;const items=[...metadata.querySelectorAll<HTMLElement>(".feature-metadata__item")];const article=metadata.closest("article")!;const articleRect=article.getBoundingClientRect();const itemRects=items.map(item=>item.getBoundingClientRect());return{flexWrap:getComputedStyle(metadata).flexWrap,contained:metadata.scrollWidth<=metadata.clientWidth&&itemRects.every(rect=>rect.left>=articleRect.left&&rect.right<=articleRect.right),noOverlap:itemRects.every((rect,index)=>itemRects.slice(index+1).every(other=>rect.right<=other.left||other.right<=rect.left||rect.bottom<=other.top||other.bottom<=rect.top)),documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,badgeText:metadata.querySelector(".feature-metadata__item--concentration dd")?.textContent,lineCount:new Set(itemRects.map(rect=>Math.round(rect.top))).size};});
+      const page=await browser.newPage({viewport});await page.goto(url);await page.waitForSelector("#calculator-feature-results .feature-metadata__item--concentration");
+      const rendered=await page.evaluate(()=>{const metadata=document.querySelector<HTMLElement>("#calculator-feature-results .feature-metadata")!;const items=[...metadata.querySelectorAll<HTMLElement>(".feature-metadata__item")];const article=metadata.closest("article")!;const articleRect=article.getBoundingClientRect();const itemRects=items.map(item=>item.getBoundingClientRect());return{flexWrap:getComputedStyle(metadata).flexWrap,contained:metadata.scrollWidth<=metadata.clientWidth&&itemRects.every(rect=>rect.left>=articleRect.left&&rect.right<=articleRect.right),noOverlap:itemRects.every((rect,index)=>itemRects.slice(index+1).every(other=>rect.right<=other.left||other.right<=rect.left||rect.bottom<=other.top||other.bottom<=rect.top)),documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,badgeText:metadata.querySelector(".feature-metadata__item--concentration dd")?.textContent,lineCount:new Set(itemRects.map(rect=>Math.round(rect.top))).size};});
       const size=`${viewport.width}x${viewport.height}`;
       assert.equal(rendered.flexWrap,"wrap",`${size}: metadata must support wrapping`);
       assert.equal(rendered.contained,true,`${size}: metadata items must stay inside the article`);
@@ -373,6 +369,7 @@ test("concentration metadata ribbon wraps without overflow on desktop and mobile
   }finally{await browser.close();}
 });
 
+/* Retired select-based Calculator layout contract.
 test("calculator keeps exactly four native selects and one live result contained on desktop and mobile",async()=>{
   const result=await executeBuild("prototype"),url=pathToFileURL(result.htmlPath).href+"#calculator";
   const viewports=[{name:"desktop",width:1280,height:1000,columns:4},{name:"mobile",width:390,height:844,columns:1}] as const;
@@ -487,6 +484,24 @@ test("calculator keeps exactly four native selects and one live result contained
         assert.match(standaloneModified.text,/Strength save:\s*DC 17/u,context+" live standalone save update");assert.match(standaloneModified.text,/Saving throw calculation:\s*8 \+ Proficiency Bonus \(5\) \+ Psionic Ability Modifier \(4\) = 17/u,context+" live standalone save calculation update");assert.match(standaloneModified.text,/Damage:\s*8d10 on a failed save · half on a successful save/u,context+" standalone dice remain authored");assert.match(standaloneModified.text,/Expected avg damage:\s*44 on a failed save · 21\.75 on a successful save/u,context+" standalone average remains exact");
         assert.equal(standaloneModified.contained,true,context+" live standalone containment");assert.equal(standaloneModified.documentOverflow,0,context+" live standalone horizontal overflow");
         await page.close();
+      }
+    }finally{await browser.close();}
+  }
+});
+*/
+
+test("Calculator Feature Deck stays contained and operable on desktop and mobile",async()=>{
+  const result=await executeBuild("prototype"),url=pathToFileURL(result.htmlPath).href+"#calculator&card=manifested_strike&level=3&modifier=2";
+  for(const engine of desktopBrowsers){
+    const browser=await engine.type.launch({headless:true});
+    try{
+      for(const viewport of [{name:"desktop",width:1280,height:1000,columns:3},{name:"mobile",width:390,height:844,columns:1}] as const){
+        const page=await browser.newPage({viewport});await page.goto(url);await page.waitForSelector("#calculator-root");const context=`${engine.name} ${viewport.name}`;
+        const initial=await page.evaluate(()=>{const root=document.querySelector<HTMLElement>("#calculator-root")!,controls=root.querySelector<HTMLElement>(".calculator__controls")!,result=root.querySelector<HTMLElement>("#calculator-feature-results")!,rootRect=root.getBoundingClientRect(),fields=[...controls.querySelectorAll<HTMLElement>(":scope > .field")],fieldRects=fields.map(field=>field.getBoundingClientRect()),cards=[...root.querySelectorAll<HTMLElement>(".calculator__card")],containers=[controls,...cards,result,...result.querySelectorAll<HTMLElement>(".feature-metadata,.calculator__projection,.calculator__canonical-rules,.calculator__facts,.calculator__tiers,.calculator__tier")],contained=containers.every(element=>{const rect=element.getBoundingClientRect();return rect.left>=rootRect.left-1&&rect.right<=rootRect.right+1&&element.scrollWidth<=element.clientWidth+1;});return{selectIds:[...root.querySelectorAll<HTMLSelectElement>("select")].map(select=>select.id),columns:getComputedStyle(controls).gridTemplateColumns.trim().split(/\s+/).filter(Boolean).length,fieldTops:fieldRects.map(rect=>rect.top),fieldBottoms:fieldRects.map(rect=>rect.bottom),cardCount:cards.length,futureCount:cards.filter(card=>card.dataset.available==="false").length,selected:root.querySelector<HTMLElement>('.calculator__card[aria-pressed="true"]')?.dataset.cardId,heading:result.querySelector(":scope > h3")?.textContent,text:result.textContent??"",contained,documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};});
+        assert.deepEqual(initial.selectIds,["calculator-feature-group","calculator-level","calculator-psi-modifier"],context+" three controls");assert.equal(initial.columns,viewport.columns,context+" control columns");assert.equal(initial.cardCount,35,context+" full deck");assert.ok(initial.futureCount>0,context+" future cards visible");assert.equal(initial.selected,"manifested_strike",context+" default card");assert.equal(initial.heading,"Manifested Strike",context+" detail heading");assert.match(initial.text,/Hit:\s*1d20 \+ 5/u,context+" level 3 calculation");assert.equal(initial.contained,true,context+" contained");assert.equal(initial.documentOverflow,0,context+" no horizontal overflow");
+        if(viewport.columns===3)assert.ok(Math.max(...initial.fieldTops)-Math.min(...initial.fieldTops)<=1,context+" controls share row");else for(let index=1;index<initial.fieldTops.length;index++)assert.ok(initial.fieldTops[index]!>=initial.fieldBottoms[index-1]!-1,context+" controls stack");
+        await page.locator('.calculator__card[data-card-id="advanced_inner_reserve"]').click();await page.waitForFunction(()=>document.querySelector("#calculator-feature-results > h3")?.textContent==="Inner Reserve");assert.match(new URL(page.url()).hash,/card=advanced_inner_reserve/u);assert.equal(await page.locator("#calculator-feature-results > h3").evaluate(element=>document.activeElement===element),true,context+" selected detail focus");
+        await page.selectOption("#calculator-level","20");await page.selectOption("#calculator-psi-modifier","5");const updated=await page.locator("#calculator-feature-results").textContent();assert.match(updated??"",/Maximum Psi Points with Inner Reserve:\s*20/u,context+" live projection");assert.equal(await page.evaluate(()=>document.documentElement.scrollWidth-document.documentElement.clientWidth),0,context+" updated overflow");await page.close();
       }
     }finally{await browser.close();}
   }

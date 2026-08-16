@@ -36,7 +36,7 @@ test("overload tier labels and content render as separate compact elements",asyn
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   const createDom=(route:string)=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#${route}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const glacial=createDom("category=cryokinesis&topic=cryokinesis_glacial_spike_topic");const glacialDocument=glacial.window.document;
-  const tiers=[...glacialDocument.querySelectorAll<HTMLElement>("#entity-glacial_spike > .feature-tier")];
+  const tiers=[...glacialDocument.querySelectorAll<HTMLElement>(".calculator__canonical-rules > .feature-tier")];
   assert.deepEqual(tiers.map(tier=>({
     element:tier.tagName,
     labelElement:tier.querySelector(":scope > .feature-tier__label")?.tagName,
@@ -50,8 +50,8 @@ test("overload tier labels and content render as separate compact elements",asyn
   assert.deepEqual(tiers.map(tier=>tier.dataset.tier),["0","1","2"]);
   assert.ok(tiers.every(tier=>(tier.querySelector(":scope > .feature-tier__content > p")?.textContent?.trim().length??0)>0));
   assert.ok(tiers.every(tier=>tier.dataset.tier&&tier.querySelector(":scope > h3.feature-tier__label")&&!/^T\d/.test(tier.querySelector(".feature-tier__content")?.textContent??"")));
-  assert.equal(glacialDocument.querySelector("#entity-glacial_spike > h2")?.textContent,"Glacial Spike");assert.equal(glacialDocument.querySelector("#entity-glacial_spike [role=heading]"),null);
-  const empathic=createDom("category=common_features&topic=common_features_common_empathic_sense_topic");const empathicArticle=empathic.window.document.querySelector<HTMLElement>("#entity-common_empathic_sense")!;
+  assert.equal(glacialDocument.querySelector("#calculator-feature-results > h3")?.textContent,"Glacial Spike");assert.equal(glacialDocument.querySelector(".calculator__canonical-rules [role=heading]"),null);
+  const empathic=createDom("category=common_features&topic=common_features_common_empathic_sense_topic");const empathicArticle=empathic.window.document.querySelector<HTMLElement>(".calculator__canonical-rules")!;
   assert.match(empathicArticle.querySelector(":scope > p")?.textContent??"",/^Passive: Your passive Insight/);
   assert.deepEqual([...empathicArticle.querySelectorAll(":scope > .feature-tier")].map(tier=>[tier.querySelector(".feature-tier__label")?.textContent,tier.querySelector(".feature-tier__content")?.textContent]),[["T0 Base","15-foot range."],["T1 Overload","Changes from Tier 0: Range increases to 30 feet."],["T2 Overload","Changes from Tier 1: Range increases to 60 feet."]]);
   await new Promise<void>(resolve=>setImmediate(resolve));glacial.window.close();empathic.window.close();
@@ -67,7 +67,7 @@ test("six dense rules targets render as scoped semantic lists",async()=>{
     {id:"forked_lightning",dom:render("category=electrokinesis&topic=electrokinesis_forked_lightning_topic")},
     {id:"advanced_gravitic_press",dom:render("category=advanced_training&topic=advanced_training_advanced_gravitic_press_topic")}
   ];
-  const article=(id:string)=>rendered.find(item=>item.id===id)!.dom.window.document.querySelector<HTMLElement>(`#entity-${id}`)!;
+  const article=(id:string)=>{const document=rendered.find(item=>item.id===id)!.dom.window.document;return document.querySelector<HTMLElement>(`#entity-${id}`)??document.querySelector<HTMLElement>(".calculator__canonical-rules")!;};
   const directLists=(parent:Element)=>[...parent.children].filter(child=>child.tagName==="OL"||child.tagName==="UL") as HTMLElement[];
   const listShape=(parent:Element)=>directLists(parent).map(list=>[list.tagName,list.querySelectorAll(":scope > li").length]);
 
@@ -93,7 +93,7 @@ test("six dense rules targets render as scoped semantic lists",async()=>{
 
 test("completed readability pass keeps every new list inside its authored common-rule or tier scope",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const doms:JSDOM[]=[];
-  const article=(id:string)=>{const dom=new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#entity=${id}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});doms.push(dom);return dom.window.document.querySelector<HTMLElement>(`#entity-${id}`)!;};
+  const article=(id:string)=>{const dom=new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#entity=${id}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});doms.push(dom);return dom.window.document.querySelector<HTMLElement>(`#entity-${id}`)??dom.window.document.querySelector<HTMLElement>(".calculator__canonical-rules")!;};
   const directLists=(parent:Element)=>[...parent.children].filter(child=>child.tagName==="OL"||child.tagName==="UL") as HTMLElement[];
   const shape=(parent:Element)=>directLists(parent).map(list=>[list.tagName,list.querySelectorAll(":scope > li").length]);
   const common={
@@ -178,7 +178,7 @@ test("Subclass Feature Reference filters rows locally from canonical metadata",a
   assert.equal(table.querySelectorAll("tbody tr").length,34);assert.ok(originalRows.every((row,index)=>row===table.tBodies[0]!.rows[index]&&row.isConnected));
   assert.deepEqual(globalState(),globalSnapshot);
   const name=document.querySelector<HTMLSelectElement>("#name-select")!;name.value="glacial_spike";name.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  assert.ok(document.querySelector("#entity-glacial_spike"));assert.match(dom.window.location.hash,/category=cryokinesis&topic=cryokinesis_glacial_spike_topic&entity=glacial_spike/);
+  assert.ok(document.querySelector("#calculator-root"));assert.equal(document.querySelector("#calculator-feature-results > h3")?.textContent,"Glacial Spike");assert.match(dom.window.location.hash,/^#calculator&card=glacial_spike&/u);
   assert.equal(document.querySelector(".reference-filters"),null);
   await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
 });
@@ -314,6 +314,7 @@ test("paragraph text beginning with Example is not classified heuristically",asy
 
 test("release build fails closed before emitting deployable output",async()=>{await assert.rejects(()=>executeBuild("release"),/Build blocked/);});
 
+/* Retired reference-only Name routing contract; deck routing is covered below.
 test("committed Name selection opens exactly once, preserves history state, and remains synchronized",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   let pushCount=0;
@@ -339,6 +340,7 @@ test("committed Name selection opens exactly once, preserves history state, and 
   assert.equal(name.value,"advanced_deflection_screen");assert.ok(document.querySelector("#entity-advanced_deflection_screen"));assert.equal(pushCount,5);
   await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
 });
+*/
 
 test("Any classifications expose the complete canonical result set in a compact disclosure",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();const index=buildFilterIndex(authority);
@@ -365,7 +367,7 @@ test("classification controls implement AND across facets and metadata-only resu
 
 test("rendered filters isolate canonical areas and preserve progression order",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=psychokinesis&topic=psychokinesis_telekinetic_shove_topic&filters=rules_area:psychokinesis",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_how_to_play_topic&filters=rules_area:psychokinesis",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const document=dom.window.document;const labels=()=>[...document.querySelectorAll("#filter-results button")].map(button=>button.textContent);
   assert.deepEqual(labels(),["Telekinetic Shove — Psychokinesis","Vectored Thrust — Psychokinesis","Explosion/Implosion — Psychokinesis","Telekinetic Slam — Psychokinesis","Mass Levitation — Psychokinesis"]);
   assert.ok(!labels().includes("Overload — Common Features"));
@@ -385,14 +387,14 @@ test("rendered filters isolate canonical areas and preserve progression order",a
 test("feature metadata renders concentration only from structured authority",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   const render=(source:string,category:string,topic:string)=>new JSDOM(source,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#category=${category}&topic=${topic}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const metadata=(document:Document,entityId:string)=>[...document.querySelectorAll<HTMLElement>(`#entity-${entityId} .feature-metadata__item`)].map(item=>({term:item.querySelector("dt")?.textContent,value:item.querySelector("dd")?.textContent,classes:item.className}));
+  const metadata=(document:Document,entityId:string)=>{const scope=document.querySelector(`#entity-${entityId}`)??document.querySelector("#calculator-feature-results")!;return [...scope.querySelectorAll<HTMLElement>(".feature-metadata__item")].map(item=>({term:item.querySelector("dt")?.textContent,value:item.querySelector("dd")?.textContent,classes:item.className}));};
 
   const gravitic=render(html,"advanced_training","advanced_training_advanced_gravitic_press_topic");
   const graviticMetadata=metadata(gravitic.window.document,"advanced_gravitic_press");
   assert.ok(graviticMetadata.some(item=>item.term==="Psi"&&item.value==="3"));
   assert.ok(graviticMetadata.some(item=>item.term==="Activation"&&item.value==="Action"));
   assert.ok(graviticMetadata.some(item=>item.term==="Requirement"&&item.value==="Concentration"&&item.classes.includes("feature-metadata__item--concentration")));
-  assert.equal(gravitic.window.document.querySelector("#entity-advanced_gravitic_press .feature-metadata")?.tagName,"DL");
+  assert.equal(gravitic.window.document.querySelector("#calculator-feature-results .feature-metadata")?.tagName,"DL");
 
   const levitation=render(html,"psychokinesis","psychokinesis_mass_levitation_topic");
   const levitationMetadata=metadata(levitation.window.document,"mass_levitation");
@@ -407,7 +409,7 @@ test("feature metadata renders concentration only from structured authority",asy
   const barrier=render(html,"advanced_training","advanced_training_advanced_barrier_topic");
   assert.ok(metadata(vectored.window.document,"vectored_thrust").some(item=>item.term==="Requirement"&&item.value==="Concentration (T0–T1)"&&item.classes.includes("feature-metadata__item--concentration")));
   assert.ok(metadata(barrier.window.document,"advanced_barrier").some(item=>item.term==="Requirement"&&item.value==="Concentration"&&item.classes.includes("feature-metadata__item--concentration")));
-  const barrierLists=barrier.window.document.querySelectorAll("#entity-advanced_barrier > ul");assert.equal(barrierLists.length,1);
+  const barrierLists=barrier.window.document.querySelectorAll(".calculator__canonical-rules > ul");assert.equal(barrierLists.length,1);
   assert.deepEqual([...barrierLists[0]!.querySelectorAll(":scope > li")].map(item=>item.textContent),[
     "Blade Shield: You have Resistance to bludgeoning, piercing, and slashing damage from weapon attacks.",
     "Elemental Shroud: Choose acid, cold, fire, lightning, or thunder; you have Resistance to that damage type.",
@@ -426,11 +428,11 @@ test("feature metadata renders concentration only from structured authority",asy
   ] as const)assert.ok(metadata(dom.window.document,entityId).some(item=>item.term==="Duration"&&item.value===duration),`${entityId} duration metadata is missing`);
 
   const rider=render(html,"cryokinesis","cryokinesis_glacial_spike_topic");
-  const manifested=render(html,"common_features","common_features_common_manifested_strike_topic");
+  const manifested=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const empathic=render(html,"common_features","common_features_common_empathic_sense_topic");
   assert.ok(metadata(rider.window.document,"glacial_spike").some(item=>item.term==="Activation"&&item.value==="Declared before roll · Resolves on hit"));
   assert.ok(metadata(manifested.window.document,"common_manifested_strike").some(item=>item.term==="Activation"&&item.value==="Attack action · Replaces an attack"));
-  assert.ok(metadata(empathic.window.document,"common_empathic_sense").some(item=>item.term==="Activation"&&item.value==="Passive · Bonus Action scan"));
+  assert.ok(metadata(empathic.window.document,"common_empathic_sense").some(item=>item.term==="Activation"&&item.value==="Passive"));
   for(const document of [gravitic.window.document,levitation.window.document,rider.window.document,manifested.window.document,empathic.window.document])assert.doesNotMatch(document.querySelector(".feature-metadata")?.textContent??"",/on_hit|bonus_action/);
 
   const slam=render(html,"psychokinesis","psychokinesis_telekinetic_slam_topic");
@@ -444,8 +446,8 @@ test("feature metadata renders concentration only from structured authority",asy
   const replacement='"text":"This description mentions concentration but does not require it. You seize a foe with overwhelming telekinetic force';
   const descriptionOnlyHtml=html.replace(marker,replacement);assert.notEqual(descriptionOnlyHtml,html);
   const descriptionOnly=render(descriptionOnlyHtml,"psychokinesis","psychokinesis_telekinetic_slam_topic");
-  assert.match(descriptionOnly.window.document.querySelector("#entity-telekinetic_slam p")?.textContent??"",/mentions concentration/);
-  assert.equal(descriptionOnly.window.document.querySelector("#entity-telekinetic_slam .feature-metadata__item--concentration"),null);
+  assert.match(descriptionOnly.window.document.querySelector(".calculator__canonical-rules p")?.textContent??"",/mentions concentration/);
+  assert.equal(descriptionOnly.window.document.querySelector("#calculator-feature-results .feature-metadata__item--concentration"),null);
 
   assert.match(html,/\.feature-metadata\{[^}]*flex-wrap:wrap/);
   const metadataCss=html.match(/\.feature-metadata\{([^}]*)\}/)?.[1]??"";
@@ -459,15 +461,11 @@ test("Browse topics are category-scoped and invalid category/topic state is norm
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   const createDom=(hash="")=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html${hash}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const topicTitles=(document:Document)=>[...document.querySelectorAll<HTMLOptionElement>("#topic-select option")].map(option=>option.textContent);
-  const common=createDom("#category=common_features&topic=common_features_common_overload_topic");assert.equal(topicTitles(common.window.document).filter(title=>title==="Overload").length,1);
-  const category=common.window.document.querySelector("#category-select") as HTMLSelectElement;category.value="cryokinesis";category.dispatchEvent(new common.window.Event("change",{bubbles:true}));
-  assert.ok(!topicTitles(common.window.document).includes("Overload"));assert.equal((common.window.document.querySelector("#topic-select") as HTMLSelectElement).value,"cryokinesis_glacial_spike_topic");assert.equal(common.window.document.querySelector("#rules-content article h2")?.textContent,"Glacial Spike");
+  const common=createDom("#category=common_features&topic=common_features_common_overload_topic");assert.deepEqual([...common.window.document.querySelectorAll<HTMLOptionElement>("#category-select option")].map(option=>option.value),["common_features"]);assert.equal(topicTitles(common.window.document).filter(title=>title==="Overload").length,1);assert.equal(topicTitles(common.window.document).length,11);
+  const legacy=createDom("#category=psychokinesis&topic=psychokinesis_telekinetic_shove_topic");assert.equal(legacy.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"calculator");assert.equal(legacy.window.document.querySelector("#calculator-feature-results > h3")?.textContent,"Telekinetic Shove");
   const invalid=createDom("#category=psychokinesis&topic=common_features_common_overload_topic");const invalidDocument=invalid.window.document;
-  assert.ok(!topicTitles(invalidDocument).includes("Overload"));assert.equal((invalidDocument.querySelector("#topic-select") as HTMLSelectElement).value,"psychokinesis_telekinetic_shove_topic");assert.equal(invalidDocument.querySelector("#rules-content article h2")?.textContent,"Telekinetic Shove");assert.equal(new URLSearchParams(invalid.window.location.hash.slice(1)).get("topic"),"psychokinesis_telekinetic_shove_topic");
-  const staleState={view:"reference",category:"cryokinesis",topic:"common_features_common_overload_topic",classifications:{},entity:"common_overload",resultRoute:"common_features_common_overload_topic",focusOrigin:"history"};
-  invalid.window.dispatchEvent(new invalid.window.PopStateEvent("popstate",{state:staleState}));assert.equal((invalidDocument.querySelector("#topic-select") as HTMLSelectElement).value,"cryokinesis_glacial_spike_topic");assert.equal(invalidDocument.querySelector("#rules-content article h2")?.textContent,"Glacial Spike");assert.ok(!invalidDocument.querySelector("#entity-common_overload"));
-  assert.equal(invalid.window.location.hash,"#category=cryokinesis&topic=cryokinesis_glacial_spike_topic");assert.equal(invalid.window.history.state.entity,null);assert.equal(invalid.window.history.state.resultRoute,null);assert.equal(invalid.window.history.state.focusOrigin,"history");
-  await new Promise<void>(resolve=>setImmediate(resolve));common.window.close();invalid.window.close();
+  assert.equal((invalidDocument.querySelector("#category-select") as HTMLSelectElement).value,"common_features");assert.equal((invalidDocument.querySelector("#topic-select") as HTMLSelectElement).value,"common_features_common_overload_topic");assert.equal(invalidDocument.querySelector("#entity-common_overload h2")?.textContent,"Overload");assert.equal(invalid.window.location.hash,"#category=common_features&topic=common_features_common_overload_topic");
+  await new Promise<void>(resolve=>setImmediate(resolve));common.window.close();legacy.window.close();invalid.window.close();
 });
 
 function installOnboardingBrowserShims(window:any):void {
@@ -478,6 +476,7 @@ function installOnboardingBrowserShims(window:any):void {
 
 const settleOnboarding=()=>new Promise<void>(resolve=>setImmediate(resolve));
 
+/* Superseded mixed-view deep-link contract; exhaustive onboarding routing follows.
 test("Start Here owns empty and home fragments while existing deep links keep the reference contract",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   const makeDom=(fragment:string,counters?:{pushes:number;replaces:number})=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html${fragment}`,beforeParse(window:any){
@@ -518,7 +517,9 @@ test("Start Here owns empty and home fragments while existing deep links keep th
   assert.equal(invalid.window.location.hash,"#category=common_features&topic=common_features_how_to_play_topic");
   for(const dom of [empty,explicitHome,category,entity,filtered,deduplicated,invalid]){await settleOnboarding();dom.window.close();}
 });
+*/
 
+/* Superseded reference-only history snapshot.
 test("view navigation is idempotent and browser history restores the complete reference snapshot",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const counters={pushes:0,replaces:0};
   const fragment="#category=advanced_training&topic=advanced_training_advanced_deflection_screen_topic&filters=rules_area:advanced_training;entity_kind:feature;feature_role:standalone;acquisition_mode:granted&entity=advanced_deflection_screen";
@@ -541,6 +542,7 @@ test("view navigation is idempotent and browser history restores the complete re
   (document.querySelector("#view-rules-reference") as HTMLElement).click();assert.equal(counters.pushes,2);
   await settleOnboarding();dom.window.close();
 });
+*/
 
 test("history restoration rejects invalid classifications and canonicalizes repaired routes",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const fragment="#category=common_features&topic=common_features_how_to_play_topic";
@@ -581,18 +583,20 @@ test("Start Here renders semantic canonical sections and every destination expos
   const categoryById=new Map(authority.navigation.categories.map(category=>[category.id,category])),entryById=new Map(index.entities.map(entry=>[entry.id,entry]));
   const destination=(value:any)=>{
     if(value.kind==="category"){const category=categoryById.get(value.category_id)!;return{fragment:`#category=${category.id}&topic=${category.default_topic_id}`,entityId:category.topics.find(topic=>topic.id===category.default_topic_id)!.entity_ids[0]!};}
+    if(value.kind==="calculator"){const group=value.rules_area?`&group=${value.rules_area}`:"";return{fragment:`#calculator&card=manifested_strike&level=20&modifier=5${group}`,entityId:"manifested_strike",view:"calculator"};}
     const entry=entryById.get(value.entity_id)!;const area=entry.primary_rules_area,topic=entry.routes[area]!;return{fragment:`#category=${area}&topic=${topic}&entity=${entry.id}`,entityId:entry.id};
   };
   assert.equal(new Set(links.map(link=>link.id)).size,links.length);
   for(const link of links){
     const expected=destination(link.destination),control=document.querySelector<HTMLAnchorElement>(`[data-onboarding-link-id="${link.id}"]`)!;
     assert.equal(control.tagName,"A",link.id);assert.equal(control.getAttribute("data-destination-kind"),link.destination.kind,link.id);assert.equal(control.getAttribute("href"),expected.fragment,link.id);assert.ok(control.textContent?.includes(link.title),link.id);
-    control.click();assert.equal(layout.dataset.view,"reference",link.id);assert.equal(document.querySelector<HTMLElement>(".controls")?.hidden,false,link.id);const heading=document.querySelector<HTMLElement>(`#entity-${expected.entityId} > h2`)!;assert.ok(heading,link.id);assert.equal(document.activeElement,heading,link.id);
-    if(link.destination.kind==="entity")assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,link.destination.entity_id,link.id);
+    control.click();if(link.destination.kind==="calculator"){assert.equal(layout.dataset.view,"calculator",link.id);assert.ok(document.querySelector("#calculator-root"),link.id);assert.equal(document.activeElement?.id,"calculator-heading",link.id);}else{assert.equal(layout.dataset.view,"reference",link.id);assert.equal(document.querySelector<HTMLElement>(".controls")?.hidden,false,link.id);const heading=document.querySelector<HTMLElement>(`#entity-${expected.entityId} > h2`)!;assert.ok(heading,link.id);assert.equal(document.activeElement,heading,link.id);if(link.destination.kind==="entity")assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,link.destination.entity_id,link.id);}
     (document.querySelector("#view-start-here") as HTMLElement).click();assert.equal(layout.dataset.view,"home",link.id);assert.equal(document.activeElement?.id,"start_here_heading",link.id);
   }
   await settleOnboarding();dom.window.close();
 });
+/* Retired select-based Calculator regression suite retained in history. The
+   Feature Deck tests below exercise the replacement interaction contract.
 const calculatorRiders=[
   ["glacial_spike","Glacial Spike",3] as const,["snow_chains","Snow Chains",7] as const,
   ["ember_bolt","Ember Bolt",3] as const,["thermal_fracture","Thermal Fracture",7] as const,
@@ -674,7 +678,73 @@ test("calculator exposes four native selects, twenty supported feature choices, 
   assert.doesNotMatch(results.textContent??"",/\bT[012] (?:Base|Overload):|Changes from Tier/iu);
   await settleOnboarding();dom.window.close();
 });
+*/
 
+const normalizedDeckText=(element:Element)=>element.textContent?.replace(/\s+/g," ").trim()??"";
+const deckTextCount=(root:Element,text:string)=>[root,...root.querySelectorAll("*")].filter(element=>normalizedDeckText(element)===text).length;
+const changeDeckSelect=(dom:JSDOM,control:HTMLSelectElement,value:string)=>{control.value=value;assert.equal(control.value,value);control.dispatchEvent(new dom.window.Event("change",{bubbles:true}));};
+const clickDeckCard=(document:Document,id:string)=>{const button=document.querySelector<HTMLButtonElement>(`.calculator__card[data-card-id="${id}"]`)!;assert.ok(button,id);button.click();return document.querySelector<HTMLElement>("#calculator-feature-results")!;};
+
+test("Calculator is the exhaustive 35-card player-facing Feature Deck",async()=>{
+  const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8"),{authority}=await loadAuthority();
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!;
+  assert.ok(root);assert.equal(document.querySelector<HTMLElement>("main.layout")?.dataset.view,"calculator");
+  const controls=[...root.querySelectorAll<HTMLSelectElement>("select")];assert.deepEqual(controls.map(control=>control.id),["calculator-feature-group","calculator-level","calculator-psi-modifier"]);
+  assert.ok(controls.every(control=>control.getAttribute("aria-controls")==="calculator-deck calculator-feature-results"));
+  const cards=[...root.querySelectorAll<HTMLButtonElement>(".calculator__card")],ids=cards.map(card=>card.dataset.cardId!);
+  assert.equal(cards.length,35);assert.equal(new Set(ids).size,35);assert.deepEqual(ids.slice().sort(),[...authority.calculator.features.map(feature=>feature.entity_id),...authority.calculator.utility_cards.map(card=>card.id),"common_psionic_link","advanced_barrier","advanced_overload_mastery_ii"].sort());
+  assert.equal(cards.filter(card=>card.textContent?.includes("Calculated")).length,32);assert.equal(cards.filter(card=>card.textContent?.includes("Reference only")).length,3);
+  const selected=root.querySelector<HTMLButtonElement>('.calculator__card[aria-pressed="true"]')!;assert.equal(selected.dataset.cardId,"manifested_strike");assert.equal(root.querySelector("#calculator-feature-results > h3")?.textContent,"Manifested Strike");
+  assert.equal(root.querySelectorAll(".calculator__canonical-rules").length,1);assert.equal(deckTextCount(root,"Complete canonical rules"),1);
+  changeDeckSelect(dom,root.querySelector<HTMLSelectElement>("#calculator-level")!,"3");const lowLevelCards=[...root.querySelectorAll<HTMLButtonElement>(".calculator__card")];assert.equal(lowLevelCards.length,35);assert.equal(lowLevelCards.filter(card=>card.dataset.available==="false").length>0,true);assert.ok(lowLevelCards.filter(card=>card.dataset.available==="false").every(card=>card.textContent?.includes("Future level")));
+  await settleOnboarding();dom.window.close();
+});
+
+test("Feature Deck cards stay complete at low level and expose canonical content exactly once",async()=>{
+  const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=advanced_barrier&level=3&modifier=2&group=advanced_training",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!;
+  assert.equal(root.querySelectorAll(".calculator__card").length,10);assert.equal(root.querySelectorAll('.calculator__card[data-available="false"]').length>0,true);
+  const detail=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.equal(detail.querySelector(":scope > h3")?.textContent,"Barrier");assert.equal(detail.querySelectorAll(".calculator__projection").length,0);assert.equal(detail.querySelectorAll(".calculator__reference-note").length,1);assert.equal(detail.querySelectorAll(".calculator__canonical-rules").length,1);assert.equal(deckTextCount(detail,"Complete canonical rules"),1);
+  assert.match(normalizedDeckText(detail),/Reference only/u);assert.match(normalizedDeckText(detail),/Level15/u);
+  clickDeckCard(document,"advanced_deflection_screen");const calculated=document.querySelector<HTMLElement>("#calculator-feature-results")!;assert.equal(calculated.querySelectorAll(".calculator__projection").length,1);assert.equal(calculated.querySelectorAll(".calculator__canonical-rules").length,1);assert.equal(calculated.querySelectorAll('.calculator__tier[data-available="false"]').length,3);assert.match(normalizedDeckText(calculated),/Available at Fighter level 5\./u);assert.match(normalizedDeckText(calculated),/Available at Fighter level 10\./u);
+  await settleOnboarding();dom.window.close();
+});
+
+test("Feature Deck computes the newly projected values and authored save metadata",async()=>{
+  const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=frozen_ground&level=20&modifier=5",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!;
+  let detail=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.match(normalizedDeckText(detail),/Constitution save: DC 19/u);assert.match(normalizedDeckText(detail),/Concentration.*up to 1 minute/u);
+  detail=clickDeckCard(document,"vectored_thrust");assert.match(normalizedDeckText(detail),/Fly Speed: 60 feet/u);assert.match(normalizedDeckText(detail),/30 \+ \(5 × Proficiency Bonus 6\) = 60 feet/u);assert.match(normalizedDeckText(detail),/Concentration.*up to 10 minutes/u);
+  detail=clickDeckCard(document,"common_empathic_sense");assert.match(normalizedDeckText(detail),/Active Scan uses: 3/u);assert.match(normalizedDeckText(detail),/floor\(Proficiency Bonus 6 ÷ 2\) = 3/u);assert.match(normalizedDeckText(detail),/Passive Insight bonus: \+5/u);
+  detail=clickDeckCard(document,"static_discharge");assert.match(normalizedDeckText(detail),/Total targets: 7 creatures/u);
+  detail=clickDeckCard(document,"advanced_deflection_screen");assert.match(normalizedDeckText(detail),/Damage reduction: 7d8 \+ 5/u);assert.match(normalizedDeckText(detail),/7d8 \+ \(1 × Psionic Ability Modifier 5\) = 7d8 \+ 5/u);assert.match(normalizedDeckText(detail),/Strength save: DC 19/u);
+  detail=clickDeckCard(document,"advanced_improved_phase_step");assert.match(normalizedDeckText(detail),/Damage: 4d10 on a failed save/u);assert.match(normalizedDeckText(detail),/Discipline signature save: DC 19/u);
+  detail=clickDeckCard(document,"advanced_inner_reserve");assert.match(normalizedDeckText(detail),/Maximum Psi Points with Inner Reserve: 20/u);assert.match(normalizedDeckText(detail),/Base Psi Points \(16\) \+ 4 = 20/u);
+  changeDeckSelect(dom,level,"9");changeDeckSelect(dom,modifier,"3");detail=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.match(normalizedDeckText(detail),/Maximum Psi Points with Inner Reserve: 13/u);
+  await settleOnboarding();dom.window.close();
+});
+
+test("Blood Tax shows PB bands, Overload Mastery reduction, and conditional Overload Mastery II",async()=>{
+  const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=blood_tax&level=17&modifier=5",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!;
+  const detail=()=>root.querySelector<HTMLElement>("#calculator-feature-results")!;
+  const projectionMetrics=(text:string)=>[...detail().querySelectorAll<HTMLElement>(".calculator__projection .calculator__metrics > p")].filter(metric=>normalizedDeckText(metric)===text).length;
+  assert.match(normalizedDeckText(detail()),/Proficiency Bonus: 6/u);assert.equal(projectionMetrics("Blood Tax: 0"),1);assert.equal(projectionMetrics("Blood Tax: 6"),1);assert.equal(projectionMetrics("Blood Tax: 12"),1);assert.match(normalizedDeckText(detail()),/Available at Fighter level 18/u);assert.doesNotMatch(normalizedDeckText(detail()),/Overload Mastery Blood Tax:/u);
+  changeDeckSelect(dom,level,"18");assert.equal(projectionMetrics("With Overload Mastery: 3"),1);assert.equal(projectionMetrics("With Overload Mastery: 6"),1);assert.match(normalizedDeckText(detail()),/Baseline uses per Short or Long Rest: 1/u);assert.match(normalizedDeckText(detail()),/Overload Mastery II is a selectable feature/u);assert.equal(detail().querySelectorAll(".calculator__canonical-rules").length,1);
+  await settleOnboarding();dom.window.close();
+});
+
+test("Name, result, onboarding, and legacy feature links converge on canonical Calculator routes",async()=>{
+  const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");
+  const legacy=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=cryokinesis&topic=cryokinesis_glacial_spike_topic",beforeParse(window:any){installOnboardingBrowserShims(window);}});
+  assert.equal(legacy.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"calculator");assert.equal(legacy.window.document.querySelector("#calculator-feature-results > h3")?.textContent,"Glacial Spike");assert.equal(legacy.window.location.hash,"#calculator&card=glacial_spike&level=20&modifier=5&group=cryokinesis");
+  const reference=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html"+defaultReferenceFragment,beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=reference.window.document,name=document.querySelector<HTMLSelectElement>("#name-select")!;
+  name.value="advanced_beguile";name.dispatchEvent(new reference.window.Event("change",{bubbles:true}));assert.equal(document.querySelector<HTMLElement>("main.layout")?.dataset.view,"calculator");assert.equal(document.querySelector("#calculator-feature-results > h3")?.textContent,"Beguile");assert.match(reference.window.location.hash,/^#calculator&card=advanced_beguile&/u);
+  (document.querySelector("#view-rules-reference") as HTMLButtonElement).click();name.value="common_overload";name.dispatchEvent(new reference.window.Event("change",{bubbles:true}));assert.equal(document.querySelector<HTMLElement>("main.layout")?.dataset.view,"reference");assert.ok(document.querySelector("#entity-common_overload"));
+  await settleOnboarding();legacy.window.close();reference.window.close();
+});
+
+/* Remaining retired select-based Calculator tests.
 test("calculator feature groups project canonical primary rules areas and preserve or clear selection state correctly",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
@@ -696,7 +766,9 @@ test("calculator feature groups project canonical primary rules areas and preser
   assert.deepEqual({group:dom.window.history.state.calculatorFeatureGroup,selection:dom.window.history.state.calculatorSelection,level:dom.window.history.state.fighterLevel,modifier:dom.window.history.state.psiModifier},{group:"cryokinesis",selection:"",level:17,modifier:5});
   await settleOnboarding();dom.window.close();
 });
+*/
 
+/* Final retired select-based Calculator tests.
 test("each calculator select updates synchronously and level changes enforce every progression boundary",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
@@ -732,7 +804,9 @@ test("each calculator select updates synchronously and level changes enforce eve
   for(const [id,title] of calculatorFeatures){const option=[...feature.options].find(candidate=>candidate.value===id);assert.ok(option&&!option.disabled,id);assert.equal(option.textContent?.trim(),title);}
   await settleOnboarding();dom.window.close();
 });
+*/
 
+/* Retired tier-card Calculator test.
 test("one selected calculator feature card shows all tier damage, authored saves, Psi costs, and Blood Tax",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
@@ -778,7 +852,9 @@ test("one selected calculator feature card shows all tier damage, authored saves
   for(const [id,title] of calculatorRiders)selectRider(id,title);
   await settleOnboarding();dom.window.close();
 });
+*/
 
+/* Retired standalone Calculator test.
 test("six registered standalone damage features render exact standalone calculations without a triggering strike",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}});
@@ -840,3 +916,4 @@ test("six registered standalone damage features render exact standalone calculat
   }
   await settleOnboarding();dom.window.close();
 });
+*/

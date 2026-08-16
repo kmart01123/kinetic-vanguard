@@ -51,7 +51,7 @@ audits:
     subject_ids:
       - common_example_play
 calculator:
-  default_feature_id: common_manifested_strike
+  default_card_id: manifested_strike
   default_fighter_level: 20
   default_psionic_ability_modifier: 5
   fighter_level_minimum: 3
@@ -626,6 +626,14 @@ calculator:
           save: strength
     - entity_id: static_discharge
       delivery: on_hit_rider
+      metrics:
+        - kind: fixed_plus_proficiency_bonus_multiplier
+          label: total_targets
+          unit: creatures
+          values:
+            - {tier: 0, fixed: 2, multiplier: 0}
+            - {tier: 1, fixed: 1, multiplier: 1}
+            - {tier: 2, fixed: 1, multiplier: 1}
       tiers:
         - tier: 0
           damage:
@@ -877,6 +885,94 @@ calculator:
             count: 4
             sides: 8
           save: charisma
+    - entity_id: frozen_ground
+      delivery: standalone
+      tiers:
+        - {tier: 0, damage: {kind: none, resolution: always}, save: constitution}
+        - {tier: 1, damage: {kind: none, resolution: always}, save: constitution}
+        - {tier: 2, damage: {kind: none, resolution: always}, save: constitution}
+    - entity_id: vectored_thrust
+      delivery: standalone
+      metrics:
+        - kind: fixed_plus_proficiency_bonus_multiplier
+          label: fly_speed
+          unit: feet
+          values:
+            - {tier: 0, fixed: 30, multiplier: 0}
+            - {tier: 1, fixed: 30, multiplier: 5}
+            - {tier: 2, fixed: 30, multiplier: 5}
+      tiers:
+        - {tier: 0, damage: {kind: none, resolution: always}}
+        - {tier: 1, damage: {kind: none, resolution: always}}
+        - {tier: 2, damage: {kind: none, resolution: always}}
+    - entity_id: common_empathic_sense
+      delivery: passive
+      metrics:
+        - {kind: floor_proficiency_bonus_divisor, label: uses_per_rest, divisor: 2}
+        - {kind: psionic_ability_modifier_multiplier, label: passive_insight_bonus, multiplier: 1}
+      tiers:
+        - {tier: 0, damage: {kind: none, resolution: always}}
+        - {tier: 1, damage: {kind: none, resolution: always}}
+        - {tier: 2, damage: {kind: none, resolution: always}}
+    - entity_id: common_vanguard_training
+      delivery: passive
+      metrics:
+        - {kind: psionic_ability_modifier_multiplier, label: chosen_skill_bonus, multiplier: 1}
+    - entity_id: advanced_deflection_screen
+      delivery: standalone
+      metrics:
+        - kind: dice_plus_psionic_ability_modifier
+          label: damage_reduction
+          values:
+            - {tier: 0, count: 3, sides: 8, multiplier: 1}
+            - {tier: 1, count: 5, sides: 8, multiplier: 1}
+            - {tier: 2, count: 7, sides: 8, multiplier: 1}
+      tiers:
+        - {tier: 0, damage: {kind: none, resolution: always}}
+        - {tier: 1, damage: {kind: none, resolution: always}}
+        - {tier: 2, damage: {kind: none, resolution: always}, save: strength}
+    - entity_id: advanced_phase_step
+      delivery: standalone
+      tiers:
+        - {tier: 0, damage: {kind: none, resolution: always}}
+        - {tier: 1, damage: {kind: none, resolution: always}}
+        - {tier: 2, damage: {kind: none, resolution: always}, save: discipline_signature}
+    - entity_id: advanced_beguile
+      delivery: standalone
+      tiers:
+        - {tier: 0, damage: {kind: none, resolution: always}, save: charisma}
+        - {tier: 1, damage: {kind: none, resolution: always}, save: charisma}
+        - {tier: 2, damage: {kind: none, resolution: always}, save: charisma}
+    - entity_id: advanced_gravitic_press
+      delivery: standalone
+      tiers:
+        - {tier: 0, damage: {kind: none, resolution: always}, save: strength}
+        - {tier: 1, damage: {kind: none, resolution: always}, save: strength}
+        - {tier: 2, damage: {kind: none, resolution: always}, save: strength}
+    - entity_id: advanced_improved_phase_step
+      delivery: standalone
+      tiers:
+        - {tier: 0, damage: {kind: dice, resolution: half_on_success, count: 2, sides: 10}, save: discipline_signature}
+        - {tier: 1, damage: {kind: dice, resolution: half_on_success, count: 3, sides: 10}, save: discipline_signature}
+        - {tier: 2, damage: {kind: dice, resolution: half_on_success, count: 4, sides: 10}, save: discipline_signature}
+    - entity_id: advanced_inner_reserve
+      delivery: passive
+      metrics:
+        - {kind: psi_points_plus_fixed, label: maximum_psi_points, value: 4}
+  utility_cards:
+    - id: manifested_strike
+      source_entity_id: common_manifested_strike
+      calculation_kind: manifested_strike
+    - id: blood_tax
+      source_entity_id: common_overload
+      calculation_kind: blood_tax
+      context:
+        - entity_id: common_overload
+          content_block_indexes: [2, 3, 4, 11, 12, 17, 19, 20]
+        - entity_id: advanced_training_progression
+          content_block_indexes: [8, 9]
+        - entity_id: advanced_overload_mastery_ii
+          content_block_indexes: [0]
 entities:
   - classifications:
       entity_kind: system
@@ -2525,6 +2621,7 @@ entities:
     level: 3
     presentation_metadata:
       canonical_topic_by_area: {}
+      presentation_owner: calculator_deck
       primary_rules_area: common_features
     publishable: true
     title: Psionic Link
@@ -2824,6 +2921,7 @@ entities:
     level: 7
     presentation_metadata:
       canonical_topic_by_area: {}
+      presentation_owner: calculator_deck
       primary_rules_area: common_features
     publishable: true
     title: Empathic Sense
@@ -2843,6 +2941,7 @@ entities:
     level: 7
     presentation_metadata:
       canonical_topic_by_area: {}
+      presentation_owner: calculator_deck
       primary_rules_area: common_features
     publishable: true
     title: Vanguard Training
@@ -4466,223 +4565,33 @@ navigation:
           order: 5
           title: Psi Reservoir
         - entity_ids:
-            - common_psionic_link
-          id: common_features_common_psionic_link_topic
-          order: 6
-          title: Psionic Link
-        - entity_ids:
             - common_manifested_strike
           id: common_features_common_manifested_strike_topic
-          order: 7
+          order: 6
           title: Manifested Strike
         - entity_ids:
             - common_overload
           id: common_features_common_overload_topic
-          order: 8
+          order: 7
           title: Overload
         - entity_ids:
             - common_signature_rider
           id: common_features_common_signature_rider_topic
-          order: 9
+          order: 8
           title: Signature Rider
         - entity_ids:
             - common_kinetic_mastery
           id: common_features_common_kinetic_mastery_topic
-          order: 10
+          order: 9
           title: Kinetic Mastery
-        - entity_ids:
-            - common_empathic_sense
-          id: common_features_common_empathic_sense_topic
-          order: 11
-          title: Empathic Sense
-        - entity_ids:
-            - common_vanguard_training
-          id: common_features_common_vanguard_training_topic
-          order: 12
-          title: Vanguard Training
         - entity_ids:
             - advanced_training_progression
           id: common_features_advanced_training_progression_topic
-          order: 13
+          order: 10
           title: Advanced Training Progression
-    - default_topic_id: advanced_training_advanced_deflection_screen_topic
-      id: advanced_training
-      label: Advanced Training
-      order: 1
-      topics:
-        - entity_ids:
-            - advanced_deflection_screen
-          id: advanced_training_advanced_deflection_screen_topic
-          order: 0
-          title: Deflection Screen
-        - entity_ids:
-            - advanced_phase_step
-          id: advanced_training_advanced_phase_step_topic
-          order: 1
-          title: Phase Step
-        - entity_ids:
-            - advanced_mind_shred
-          id: advanced_training_advanced_mind_shred_topic
-          order: 2
-          title: Mind Shred
-        - entity_ids:
-            - advanced_beguile
-          id: advanced_training_advanced_beguile_topic
-          order: 3
-          title: Beguile
-        - entity_ids:
-            - advanced_mind_lock
-          id: advanced_training_advanced_mind_lock_topic
-          order: 4
-          title: Mind Lock
-        - entity_ids:
-            - advanced_gravitic_press
-          id: advanced_training_advanced_gravitic_press_topic
-          order: 5
-          title: Gravitic Press
-        - entity_ids:
-            - advanced_barrier
-          id: advanced_training_advanced_barrier_topic
-          order: 6
-          title: Barrier
-        - entity_ids:
-            - advanced_improved_phase_step
-          id: advanced_training_advanced_improved_phase_step_topic
-          order: 7
-          title: Improved Phase Step
-        - entity_ids:
-            - advanced_overload_mastery_ii
-          id: advanced_training_advanced_overload_mastery_ii_topic
-          order: 8
-          title: Overload Mastery II
-        - entity_ids:
-            - advanced_inner_reserve
-          id: advanced_training_advanced_inner_reserve_topic
-          order: 9
-          title: Inner Reserve
-    - default_topic_id: cryokinesis_glacial_spike_topic
-      id: cryokinesis
-      label: Cryokinesis
-      order: 2
-      topics:
-        - entity_ids:
-            - glacial_spike
-          id: cryokinesis_glacial_spike_topic
-          order: 0
-          title: Glacial Spike
-        - entity_ids:
-            - snow_chains
-          id: cryokinesis_snow_chains_topic
-          order: 1
-          title: Snow Chains
-        - entity_ids:
-            - frozen_ground
-          id: cryokinesis_frozen_ground_topic
-          order: 2
-          title: Frozen Ground
-        - entity_ids:
-            - arctic_tempest
-          id: cryokinesis_arctic_tempest_topic
-          order: 3
-          title: Arctic Tempest
-        - entity_ids:
-            - absolute_zero
-          id: cryokinesis_absolute_zero_topic
-          order: 4
-          title: Absolute Zero
-    - default_topic_id: pyrokinesis_ember_bolt_topic
-      id: pyrokinesis
-      label: Pyrokinesis
-      order: 3
-      topics:
-        - entity_ids:
-            - ember_bolt
-          id: pyrokinesis_ember_bolt_topic
-          order: 0
-          title: Ember Bolt
-        - entity_ids:
-            - thermal_fracture
-          id: pyrokinesis_thermal_fracture_topic
-          order: 1
-          title: Thermal Fracture
-        - entity_ids:
-            - cinder_lance
-          id: pyrokinesis_cinder_lance_topic
-          order: 2
-          title: Cinder Lance
-        - entity_ids:
-            - flare
-          id: pyrokinesis_flare_topic
-          order: 3
-          title: Flare
-        - entity_ids:
-            - furnace_strike
-          id: pyrokinesis_furnace_strike_topic
-          order: 4
-          title: Furnace Strike
-    - default_topic_id: psychokinesis_telekinetic_shove_topic
-      id: psychokinesis
-      label: Psychokinesis
-      order: 4
-      topics:
-        - entity_ids:
-            - telekinetic_shove
-          id: psychokinesis_telekinetic_shove_topic
-          order: 0
-          title: Telekinetic Shove
-        - entity_ids:
-            - vectored_thrust
-          id: psychokinesis_vectored_thrust_topic
-          order: 1
-          title: Vectored Thrust
-        - entity_ids:
-            - explosion_implosion
-          id: psychokinesis_explosion_implosion_topic
-          order: 2
-          title: Explosion/Implosion
-        - entity_ids:
-            - telekinetic_slam
-          id: psychokinesis_telekinetic_slam_topic
-          order: 3
-          title: Telekinetic Slam
-        - entity_ids:
-            - mass_levitation
-          id: psychokinesis_mass_levitation_topic
-          order: 4
-          title: Mass Levitation
-    - default_topic_id: electrokinesis_static_discharge_topic
-      id: electrokinesis
-      label: Electrokinesis
-      order: 5
-      topics:
-        - entity_ids:
-            - static_discharge
-          id: electrokinesis_static_discharge_topic
-          order: 0
-          title: Static Discharge
-        - entity_ids:
-            - branching_bolt
-          id: electrokinesis_branching_bolt_topic
-          order: 1
-          title: Branching Bolt
-        - entity_ids:
-            - electron_burst
-          id: electrokinesis_electron_burst_topic
-          order: 2
-          title: Electron Burst
-        - entity_ids:
-            - forked_lightning
-          id: electrokinesis_forked_lightning_topic
-          order: 3
-          title: Forked Lightning
-        - entity_ids:
-            - ball_lightning
-          id: electrokinesis_ball_lightning_topic
-          order: 4
-          title: Ball Lightning
   default_category_id: common_features
 rules_version: 14.2.0
-schema_version: 2.1.0
+schema_version: 2.2.0
 vocabularies:
   acquisition_modes:
     - id: granted
@@ -4792,26 +4701,26 @@ onboarding:
     cards:
       - description: Focused fire damage and offensive pressure.
         destination:
-          category_id: pyrokinesis
-          kind: category
+          kind: calculator
+          rules_area: pyrokinesis
         id: discipline_pyrokinesis
         title: Pyrokinesis
       - description: Slowing, restraint, and battlefield control.
         destination:
-          category_id: cryokinesis
-          kind: category
+          kind: calculator
+          rules_area: cryokinesis
         id: discipline_cryokinesis
         title: Cryokinesis
       - description: Force damage, forced movement, and personal mobility.
         destination:
-          category_id: psychokinesis
-          kind: category
+          kind: calculator
+          rules_area: psychokinesis
         id: discipline_psychokinesis
         title: Psychokinesis
       - description: Chained damage and enemy disruption.
         destination:
-          category_id: electrokinesis
-          kind: category
+          kind: calculator
+          rules_area: electrokinesis
         id: discipline_electrokinesis
         title: Electrokinesis
     id: choose_your_discipline
@@ -4853,7 +4762,7 @@ onboarding:
   id: start_here
   introduction:
     no_psi_note: Manifested Strike costs no Psi. You can use it even when you have no Psi Points remaining.
-    orientation: This page introduces the subclass. The linked rules provide the complete mechanics.
+    orientation: Use Calculator / Feature Deck for complete individual feature rules and quick-reference calculations. Use Rules Reference for shared subclass systems and chassis rules such as Psi, Manifested Strike procedure, Overload, rider rules, progression, and worked examples.
     summary: A Kinetic Vanguard is a Fighter who replaces weapon attacks with ranged psionic Manifested Strikes, enhances those strikes with riders, and can take psychic damage called Blood Tax to Overload psionic techniques.
   next_destinations:
     id: where_to_go_next
@@ -4907,10 +4816,15 @@ onboarding:
         section_id: basic_turn
       id: primary_basic_turn
       title: Learn how a normal turn works
-    - description: Open the complete searchable and filterable rules publication.
+    - description: Browse complete individual feature rules and quick-reference calculations. Features with useful level- or modifier-driven math show those calculations; other features remain complete reference cards.
+      destination:
+        kind: calculator
+      id: primary_feature_deck
+      title: Open Calculator / Feature Deck
+    - description: Browse shared subclass systems, chassis rules, progression, and worked examples.
       destination:
         category_id: common_features
         kind: category
       id: primary_full_reference
-      title: Open the full Rules Reference
+      title: Open Rules Reference
   title: Start Here
