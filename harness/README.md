@@ -10,7 +10,7 @@ The benchmark keeps four distinct input layers:
 
 1. **Kinetic Vanguard authority:** root `KineticVanguard.yaml`, projected by stable entity ID only after canonical schema and semantic validation.
 2. **Benchmark configuration:** project-authored seeds, profiles, aggregation, target clustering, and scenario policy, together with SRD-derived base Fighter progression/mechanics, in `config/benchmark.json`, plus the project-authored Python simulation/reporting code.
-3. **SRD target data:** the pinned 28-row SRD 5.2.1 roster and provenance in `data/srd_targets.csv`.
+3. **SRD target data:** one 330-creature SRD 5.2.1 catalog in `data/srd_creatures.json` and explicit ordered membership for `legacy_v14_1` (28), `headline` (47), and `eligible_census` (93) in `data/srd_creature_rosters.json`.
 4. **Third-party comparator assumptions:** minimal independently expressed Battle Master and Eldritch Knight numerical packages in `comparators/fighter-subclasses.json`.
 
 The runtime loads and hashes methodology and comparator assumptions separately. Neither file is Kinetic Vanguard rules authority.
@@ -22,7 +22,7 @@ Licensing follows the distinguishable components rather than assigning one blank
 - project-authored Python software, report structure, and technical configuration structure are licensed under BSD-3-Clause;
 - the project-authored methodology and structure in `config/benchmark.json` are BSD-3-Clause, while its SRD-derived base Fighter mechanics remain separately available under CC BY 4.0;
 - the project-authored structure, benchmark selection, and independently authored analytical/policy expression in `comparators/fighter-subclasses.json` are BSD-3-Clause; individual parameters retain SRD or third-party status as applicable, and Battle Master/Eldritch Knight identifiers and underlying third-party mechanics are not licensed by the project;
-- `data/srd_targets.csv` is SRD 5.2.1-derived material under CC BY 4.0; and
+- `data/srd_creatures.json` and `data/srd_creature_rosters.json` are SRD 5.2.1-derived material under CC BY 4.0; and
 - original Kinetic Vanguard rules, examples, explanatory and editorial prose, documentation, approved interface text, and project-authored benchmark explanation remain under CC BY-NC-SA 4.0.
 
 No configuration file or generated report relicenses SRD or third-party material. See the repository `LICENSE.md` and `NOTICE.md` for the complete component boundaries and attribution.
@@ -49,9 +49,13 @@ Full configured roster runs:
 ```text
 npm run harness:damage -- --output-dir harness/results/damage
 npm run harness:control -- --output-dir harness/results/control
+python3 -m harness.damage_harness --profile headline --output-dir /tmp/kv-headline-damage --workers 4
+python3 -m harness.control_harness --profile headline --output-dir /tmp/kv-headline-control
 ```
 
-Use `--matrix-only` to omit detailed CSVs or `--no-matrix` to omit the compact matrix. Both CLIs default to the repository-root authority and accept `--authority` for mutation tests. They write only below the explicit `--output-dir` and perform no network access.
+Both CLIs share the same catalog/profile loader and default to `legacy_v14_1` pending expanded-roster review. `headline` is the frozen source-only 47-target sensitivity profile. `eligible_census` is validation inventory only and must not be run analytically without explicit authorization. Use `--matrix-only` to omit detailed CSVs or `--no-matrix` to omit the compact matrix. Both CLIs default to the repository-root authority and accept `--authority` for mutation tests. They write only below the explicit `--output-dir` and perform no network access.
+
+The catalog contains static SRD source facts only: identity, CR, AC, HP, ability and source-explicit save/skill bonuses, defenses, MR/LR, size/type, movement, hover, senses, passive Perception, and source locators. Missing skills remain absent rather than becoming explicit +0 facts. Position, current HP or conditions, visibility, concentration, routes, target choice, Advantage/Disadvantage, and other encounter state belong to scenario/runtime code and are not catalog data. No non-SRD creature source is accepted.
 
 Synchronize the generated balance snapshot near the top of the repository README:
 
@@ -79,7 +83,7 @@ The maintained evaluator analytically enumerates d20, save, and damage-die outco
 - Exact reevaluation of all 336 preserved historical policies agrees with the 25,000-trial rows at sampling scale: primary DPR mean absolute delta `0.0323169` and maximum `0.176034` (`0.289663%`); aggregate DPR mean absolute delta `0.0374951` and maximum `0.340120` (`0.281098%`).
 - The clean observed-state policy improves aggregate damage in 123 rows, ties 213, and regresses in none. Nine rows trade lower primary-target damage for higher aggregate damage under the declared aggregate-first objective; the largest is level-20 Lich Psychokinesis, cluster 3 (primary `-6.26215`, aggregate `+2.06485`).
 - Reviewed differences come from corrected struck-target parity for Branching Bolt and Electron Burst, state-aware Thermal Fracture decisions, and optimal observed-state Studied Attacks, Combat Prowess, and Overload Mastery timing. Historical outputs were not normalized back into the implementation.
-- The fixed benchmark limits still apply: 28 equally weighted SRD targets, three rounds, legal configured positioning, no target death or ally damage, Advanced Training disabled, and delayed Mass Levitation target-turn damage excluded.
+- The default `legacy_v14_1` limits still apply: 28 equally weighted SRD targets, three rounds, legal configured positioning, no target death or ally damage, Advanced Training disabled, and delayed Mass Levitation target-turn damage excluded. Expanded profiles use the same loader and mechanics.
 
 Damage produces separate primary-target and aggregate-cluster DPR rows. Headline percentages use displayed equal-weight roster aggregate values:
 

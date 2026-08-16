@@ -14,7 +14,7 @@ from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PR
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
 from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_repeat_rider_probability,run as run_control
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,run as run_damage
-from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,load_comparators,load_config,load_targets,save_success_probability
+from harness.model import DEFAULT_CATALOG,DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_PROFILE,DEFAULT_ROSTERS,Target,attack_probabilities,file_sha256,load_comparators,load_config,load_targets,save_success_probability
 
 
 def _leaf_paths(value:object,prefix:tuple[object,...]=())->list[tuple[object,...]]:
@@ -726,6 +726,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);damage=run_damage(DEFAULT_AUTHORITY,root/"damage",{7},2,16,19);control=run_control(DEFAULT_AUTHORITY,root/"control",{7},1,16,19)
             parallel_damage=run_damage(DEFAULT_AUTHORITY,root/"damage-parallel",{7},2,16,19,workers=2);repeated_control=run_control(DEFAULT_AUTHORITY,root/"control-repeated",{7},1,31,29)
+            headline_damage=run_damage(DEFAULT_AUTHORITY,root/"headline-damage",{7},1,16,19,write_headline=False,profile="headline");headline_control=run_control(DEFAULT_AUTHORITY,root/"headline-control",{7},1,16,19,write_headline=False,profile="headline")
             self.assertEqual(damage["matrix_rows"],24);self.assertEqual(control["matrix_rows"],4)
             for result in (damage,control,parallel_damage,repeated_control):
                 self.assertEqual(set(result["paths"]),{"csv","markdown","html"})
@@ -734,7 +735,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             with audit.open(encoding="utf-8") as stream:
                 rows=list(csv.DictReader(stream))
             self.assertTrue(rows);self.assertTrue(all(row["Selected Scenario"] for row in rows))
-            self.assertTrue(all(row["Rules Version"]=="14.2.0" and row["Authority SHA-256"] and row["Roster SHA-256"] for row in rows))
+            self.assertTrue(all(row["Rules Version"]=="14.2.0" and row["Authority SHA-256"] and row["Catalog SHA-256"]==file_sha256(DEFAULT_CATALOG) and row["Roster SHA-256"]==file_sha256(DEFAULT_ROSTERS) and row["Target Profile"]==DEFAULT_PROFILE for row in rows))
             self.assertTrue(all(row["Comparator Config SHA-256"] for row in rows))
             self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in rows))
             with (root/"damage"/"kv-14-2-0-damage-detail.csv").open(encoding="utf-8") as stream:
@@ -749,6 +750,11 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             self.assertEqual(keyed[("eldritch_knight","blindness_deafness")]["Whole-package control stick %"],"55.000000")
             self.assertTrue(all(row["Comparator Config SHA-256"] for row in control_rows))
             self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in control_rows))
+            with (root/"headline-damage"/"kv-14-2-0-damage-detail.csv").open(encoding="utf-8") as stream:headline_damage_row=next(csv.DictReader(stream))
+            with (root/"headline-control"/"kv-14-2-0-control-detail.csv").open(encoding="utf-8") as stream:headline_control_row=next(csv.DictReader(stream))
+            for row in (damage_row,control_rows[0],headline_damage_row,headline_control_row):
+                self.assertEqual(row["Catalog SHA-256"],file_sha256(DEFAULT_CATALOG));self.assertEqual(row["Roster SHA-256"],file_sha256(DEFAULT_ROSTERS))
+            self.assertEqual(damage_row["Target Profile"],DEFAULT_PROFILE);self.assertEqual(control_rows[0]["Target Profile"],DEFAULT_PROFILE);self.assertEqual(headline_damage_row["Target Profile"],"headline");self.assertEqual(headline_control_row["Target Profile"],"headline")
             self.assertEqual((root/"damage"/"kv-14-2-0-damage-detail.csv").read_bytes(),(root/"damage-parallel"/"kv-14-2-0-damage-detail.csv").read_bytes())
             for format_name in damage["paths"]:
                 self.assertEqual(damage["paths"][format_name].read_bytes(),parallel_damage["paths"][format_name].read_bytes())
@@ -763,6 +769,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
                 self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in matrix_rows))
                 self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
                 self.assertTrue(all(row["Provenance Trial Seed Role"]=="historical_compatibility_metadata" for row in matrix_rows))
+                self.assertTrue(all(row["Provenance Catalog Sha256"]==file_sha256(DEFAULT_CATALOG) and row["Provenance Roster Sha256"]==file_sha256(DEFAULT_ROSTERS) and row["Provenance Target Profile"]==DEFAULT_PROFILE for row in matrix_rows))
                 self.assertTrue(all(row["Benchmark Type"]==expected_type for row in matrix_rows))
                 for row in matrix_rows:
                     comparators={"Eldritch Knight":float(row["Eldritch Knight"]),"Battle Master":float(row["Battle Master"])}

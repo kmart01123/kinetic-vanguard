@@ -22,9 +22,11 @@ from .comparison_report import (
 from .control_harness import run as run_control
 from .damage_harness import run as run_damage
 from .model import (
+    DEFAULT_CATALOG,
     DEFAULT_COMPARATORS,
     DEFAULT_CONFIG,
-    DEFAULT_ROSTER,
+    DEFAULT_PROFILE,
+    DEFAULT_ROSTERS,
     file_sha256,
     load_config,
 )
@@ -44,7 +46,9 @@ RESULT_FIELDS = tuple(VALUE_COLUMNS)
 PROVENANCE_FIELDS = (
     "Provenance Rules Version",
     "Provenance Authority Sha256",
+    "Provenance Catalog Sha256",
     "Provenance Roster Sha256",
+    "Provenance Target Profile",
     "Provenance Config Sha256",
     "Provenance Comparator Config Sha256",
     "Provenance Trials",
@@ -239,7 +243,9 @@ def validate_authoritative_rows(
     expected_common = {
         "Provenance Rules Version": model.rules_version,
         "Provenance Authority Sha256": model.authority_sha256,
-        "Provenance Roster Sha256": file_sha256(DEFAULT_ROSTER),
+        "Provenance Catalog Sha256": file_sha256(DEFAULT_CATALOG),
+        "Provenance Roster Sha256": file_sha256(DEFAULT_ROSTERS),
+        "Provenance Target Profile": DEFAULT_PROFILE,
         "Provenance Config Sha256": file_sha256(DEFAULT_CONFIG),
         "Provenance Comparator Config Sha256": file_sha256(DEFAULT_COMPARATORS),
         "Provenance Evaluator": "exact_analytical_enumeration",
@@ -516,7 +522,7 @@ def render_balance_region(
             "come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the "
             "[maintained harness guide](harness/README.md), "
             "[methodology configuration](harness/config/benchmark.json), "
-            "[SRD target roster](harness/data/srd_targets.csv), and "
+            "[SRD creature profiles](harness/data/srd_creature_rosters.json), and "
             "[comparator assumptions](harness/comparators/fighter-subclasses.json) for the "
             "complete methodology, provenance, regeneration commands, and report paths."
         ),

@@ -57,7 +57,7 @@ Control Reliability measures how often the configured control package takes effe
 | 15 | HOT (+21.16%) | HOT (+21.16%) | HOT (+21.89%) | HOT (+10.72%) |
 | 20 | HOT (+22.60%) | HOT (+22.08%) | HOT (+22.60%) | IDEAL |
 
-This snapshot is a summary, not the full evidence set. Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the [maintained harness guide](harness/README.md), [methodology configuration](harness/config/benchmark.json), [SRD target roster](harness/data/srd_targets.csv), and [comparator assumptions](harness/comparators/fighter-subclasses.json) for the complete methodology, provenance, regeneration commands, and report paths.
+This snapshot is a summary, not the full evidence set. Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the [maintained harness guide](harness/README.md), [methodology configuration](harness/config/benchmark.json), [SRD creature profiles](harness/data/srd_creature_rosters.json), and [comparator assumptions](harness/comparators/fighter-subclasses.json) for the complete methodology, provenance, regeneration commands, and report paths.
 
 Battle Master and Eldritch Knight are referenced solely as unofficial third-party comparative benchmarks. The Kinetic Vanguard project is not affiliated with or endorsed by Wizards of the Coast. No project license purports to grant rights in Wizards-owned material outside the System Reference Document. See [`LICENSE.md`](LICENSE.md) for component boundaries and [`NOTICE.md`](NOTICE.md) for attribution and notices.
 <!-- END GENERATED BALANCE MATRICES -->
