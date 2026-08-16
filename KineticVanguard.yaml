@@ -138,6 +138,7 @@ calculator:
       action_surge_allows_additional_standalone_psionic_action: false
     manifested_strike:
       entity_id: common_manifested_strike
+      rider_repeatability: per_manifested_strike
       damage_type_source: discipline
       holdout_damage_type: force
       holdout_damage_divisor: 2
@@ -180,7 +181,6 @@ calculator:
       - entity_id: glacial_spike
         discipline_ids: [cryokinesis]
         damage_type: discipline
-        repeatability: unlimited
         control_tiers:
           - tier: 0
             application: no_save
@@ -203,7 +203,6 @@ calculator:
       - entity_id: snow_chains
         discipline_ids: [cryokinesis]
         damage_type: discipline
-        repeatability: once_per_attack_action
         control_tiers:
           - tier: 0
             application: failed_save
@@ -231,7 +230,6 @@ calculator:
       - entity_id: frozen_ground
         discipline_ids: [cryokinesis]
         damage_type: discipline
-        repeatability: once_per_attack_action
         control_tiers:
           - tier: 0
             application: failed_save
@@ -244,7 +242,6 @@ calculator:
       - entity_id: arctic_tempest
         discipline_ids: [cryokinesis]
         damage_type: discipline
-        repeatability: once_per_attack_action
         targeting_by_tier: [{tier: 0, kind: fixed_additional, additional_targets: 2}, {tier: 1, kind: fixed_additional, additional_targets: 2}, {tier: 2, kind: fixed_additional, additional_targets: 2}]
         control_tiers:
           - {tier: 0, application: failed_save, save: constitution, effects: [{gate: on_failed_save, conditions: [restrained], duration: until_end_next_turn}]}
@@ -252,7 +249,6 @@ calculator:
       - entity_id: absolute_zero
         discipline_ids: [cryokinesis]
         damage_type: discipline
-        repeatability: once_per_attack_action
         control_tiers:
           - {tier: 0, application: failed_save, save: constitution, effects: [{gate: on_failed_save, outcomes: [speed_zero], duration: until_end_next_turn}]}
           - tier: 1
@@ -267,27 +263,24 @@ calculator:
             effects:
               - {gate: on_reach, outcomes: [speed_zero], duration: until_end_next_turn}
               - {gate: on_failed_save, conditions: [stunned], duration: until_end_next_turn}
-      - {entity_id: ember_bolt, discipline_ids: [pyrokinesis], damage_type: discipline, repeatability: unlimited}
+      - {entity_id: ember_bolt, discipline_ids: [pyrokinesis], damage_type: discipline}
       - entity_id: thermal_fracture
         discipline_ids: [pyrokinesis]
         damage_type: discipline
-        repeatability: once_per_attack_action
         armor_class_reduction_by_tier: [{tier: 0, value: 1}, {tier: 1, value: 2}, {tier: 2, value: 3}]
-      - {entity_id: cinder_lance, discipline_ids: [pyrokinesis], damage_type: fire, repeatability: once_per_attack_action, ignore_resistance_tiers: [2]}
+      - {entity_id: cinder_lance, discipline_ids: [pyrokinesis], damage_type: fire, ignore_resistance_tiers: [2]}
       - entity_id: flare
         discipline_ids: [pyrokinesis]
         damage_type: fire
-        repeatability: once_per_attack_action
         ignore_resistance_tiers: [2]
         control_tiers:
           - {tier: 0, application: failed_save, save: dexterity, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
           - {tier: 1, application: no_save, hit_gated: true, effects: [{gate: on_reach, conditions: [blinded], duration: until_end_next_turn}]}
           - {tier: 2, application: no_save, hit_gated: true, effects: [{gate: on_reach, conditions: [blinded], duration: until_end_next_turn}]}
-      - {entity_id: furnace_strike, discipline_ids: [pyrokinesis], damage_type: fire, repeatability: once_per_attack_action, ignore_resistance_tiers: [2]}
+      - {entity_id: furnace_strike, discipline_ids: [pyrokinesis], damage_type: fire, ignore_resistance_tiers: [2]}
       - entity_id: telekinetic_shove
         discipline_ids: [psychokinesis]
         damage_type: discipline
-        repeatability: unlimited
         replaces_mastery: true
         control_tiers:
           - {tier: 0, application: failed_save, save: strength, hit_gated: true, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous}]}
@@ -299,11 +292,10 @@ calculator:
             effects:
               - {gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous}
               - {gate: on_failed_save, outcomes: [speed_zero], duration: until_end_next_turn}
-      - {entity_id: vectored_thrust, discipline_ids: [psychokinesis], damage_type: discipline, repeatability: once_per_attack_action}
+      - {entity_id: vectored_thrust, discipline_ids: [psychokinesis], damage_type: discipline}
       - entity_id: explosion_implosion
         discipline_ids: [psychokinesis]
         damage_type: force
-        repeatability: once_per_attack_action
         targeting_by_tier: [{tier: 0, kind: cluster_remainder}, {tier: 1, kind: cluster_remainder}, {tier: 2, kind: cluster_remainder}]
         control_tiers:
           - tier: 0
@@ -323,7 +315,6 @@ calculator:
       - entity_id: telekinetic_slam
         discipline_ids: [psychokinesis]
         damage_type: force
-        repeatability: once_per_attack_action
         control_tiers:
           - {tier: 0, application: failed_save, save: strength, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous}]}
           - {tier: 1, application: failed_save, save: strength, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous}]}
@@ -336,7 +327,6 @@ calculator:
       - entity_id: mass_levitation
         discipline_ids: [psychokinesis]
         damage_type: force
-        repeatability: once_per_attack_action
         damage_timing: start_of_affected_turn_after_repeat_save
         control_tiers:
           - tier: 0
@@ -357,7 +347,6 @@ calculator:
       - entity_id: static_discharge
         discipline_ids: [electrokinesis]
         damage_type: discipline
-        repeatability: unlimited
         targeting_by_tier:
           - {tier: 0, kind: fixed_additional, additional_targets: 1}
           - {tier: 1, kind: proficiency_bonus_additional}
@@ -367,7 +356,6 @@ calculator:
       - entity_id: branching_bolt
         discipline_ids: [electrokinesis]
         damage_type: lightning
-        repeatability: once_per_attack_action
         targeting_by_tier:
           - {tier: 0, kind: fixed_additional, additional_targets: 1}
           - {tier: 1, kind: fixed_additional, additional_targets: 2}
@@ -375,15 +363,13 @@ calculator:
       - entity_id: electron_burst
         discipline_ids: [electrokinesis]
         damage_type: lightning
-        repeatability: once_per_attack_action
         targeting_by_tier: [{tier: 0, kind: cluster_remainder}, {tier: 1, kind: cluster_remainder}, {tier: 2, kind: cluster_remainder}]
         control_tiers:
           - {tier: 2, application: failed_save, save: charisma, hit_gated: true, effects: [{gate: on_failed_save, outcomes: [reaction_denial, attack_disadvantage], duration: until_start_next_turn}]}
-      - {entity_id: advanced_mind_shred, discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis], damage_type: psychic, repeatability: once_per_attack_action, ignore_resistance_tiers: [2]}
+      - {entity_id: advanced_mind_shred, discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis], damage_type: psychic, ignore_resistance_tiers: [2]}
       - entity_id: advanced_mind_lock
         discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
         damage_type: psychic
-        repeatability: once_per_attack_action
         control_tiers:
           - {tier: 0, application: no_save, hit_gated: true, effects: [{gate: on_reach, conditions: [blinded], duration: until_end_next_turn}]}
           - tier: 1
@@ -403,7 +389,6 @@ calculator:
       - entity_id: forked_lightning
         discipline_ids: [electrokinesis]
         damage_type: lightning
-        repeatability: once_per_attack_action
         targeting_by_tier: [{tier: 0, kind: fixed_additional, additional_targets: 3}, {tier: 1, kind: fixed_additional, additional_targets: 4}, {tier: 2, kind: fixed_additional, additional_targets: 5}]
         control_tiers:
           - tier: 2
@@ -415,7 +400,6 @@ calculator:
       - entity_id: ball_lightning
         discipline_ids: [electrokinesis]
         damage_type: lightning
-        repeatability: once_per_attack_action
         damage_repetition: remaining_round_starts
         starts_persistent_zone: true
         targeting_by_tier: [{tier: 0, kind: cluster_remainder}, {tier: 1, kind: cluster_remainder}, {tier: 2, kind: cluster_remainder}]
@@ -424,13 +408,11 @@ calculator:
       - entity_id: advanced_phase_step
         discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
         damage_type: discipline
-        repeatability: once_per_attack_action
         control_tiers:
           - {tier: 2, application: failed_save, save: discipline_signature, effects: [{gate: on_failed_save, outcomes: [reaction_denial], duration: until_start_next_turn}]}
       - entity_id: advanced_deflection_screen
         discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
         damage_type: force
-        repeatability: once_per_attack_action
         control_tiers:
           - tier: 2
             application: failed_save
@@ -441,13 +423,11 @@ calculator:
       - entity_id: advanced_beguile
         discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
         damage_type: psychic
-        repeatability: once_per_attack_action
         control_tiers:
           - {tier: 0, application: failed_save, save: charisma, required_creature_type: humanoid, effects: [{gate: on_failed_save, conditions: [charmed], duration: one_hour}]}
       - entity_id: advanced_gravitic_press
         discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
         damage_type: force
-        repeatability: once_per_attack_action
         control_tiers:
           - tier: 0
             application: failed_save
@@ -470,7 +450,6 @@ calculator:
       - entity_id: advanced_improved_phase_step
         discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
         damage_type: force
-        repeatability: once_per_attack_action
         control_tiers:
           - {tier: 2, application: failed_save, save: discipline_signature, effects: [{gate: on_failed_save, outcomes: [reaction_denial], duration: until_start_next_turn}]}
   features:
@@ -924,9 +903,11 @@ entities:
         style: ordered
         type: list
       - items:
-          - - text: Your Signature Rider costs no Psi and can be used repeatedly.
+          - - text: Your Signature Rider costs no Psi.
               type: text
-          - - text: Other riders cost their listed Psi, and each can be used once per Attack action.
+          - - text: Unless a rider explicitly states otherwise, you can declare the same on-hit rider for more than one Manifested Strike in the same Attack action. Each declaration can target any creature legal for that strike.
+              type: text
+          - - text: Paid riders cost their listed Psi each time. Every declaration pays its Psi and any Blood Tax independently, including when the attack misses.
               type: text
           - - text: Each Manifested Strike can carry only one rider.
               type: text
@@ -964,9 +945,9 @@ entities:
               type: strong
             - text: After each attack resolves, you can choose a different target, rider, Overload tier, or damage-type option for the next attack.
               type: text
-          - - text: "Spent limits: "
+          - - text: "Tier 2 limit: "
               type: strong
-            - text: A per-Attack-action limit remains spent once used.
+            - text: Once you declare a Tier 2 rider in an Attack action, later Manifested Strikes in that action can use only Tier 0 or Tier 1 riders.
               type: text
           - - text: "Action Surge: "
               type: strong
@@ -1667,7 +1648,7 @@ entities:
                 type: text
             - - text: None
                 type: text
-            - - text: Signature Rider is repeatable at every tier; other riders are once per Attack action
+            - - text: Every rider is repeatable per Manifested Strike; pay the listed cost for each declaration
                 type: text
           - - - text: Manifested Strike + Tier 1 rider
                 type: text
@@ -1990,7 +1971,7 @@ entities:
                 type: text
             - - text: "2"
                 type: text
-            - - text: Declared before roll · Resolves on hit · Once per Attack action
+            - - text: Declared before roll · Resolves on hit
                 type: text
             - - text: Until the end of your next turn
                 type: text
@@ -2002,7 +1983,7 @@ entities:
                 type: text
             - - text: "1"
                 type: text
-            - - text: Declared before roll · Resolves on hit · Once per Attack action
+            - - text: Declared before roll · Resolves on hit
                 type: text
             - - text: Until the start of your next turn
                 type: text
@@ -2026,7 +2007,7 @@ entities:
                 type: text
             - - text: "2"
                 type: text
-            - - text: Declared before roll · Resolves on hit · Once per Attack action
+            - - text: Declared before roll · Resolves on hit
                 type: text
             - - text: Instantaneous
                 type: text
@@ -2050,7 +2031,7 @@ entities:
                 type: text
             - - text: "3"
                 type: text
-            - - text: Declared before roll · Resolves on hit · Once per Attack action
+            - - text: Declared before roll · Resolves on hit
                 type: text
             - - text: Instantaneous
                 type: text
@@ -2062,7 +2043,7 @@ entities:
                 type: text
             - - text: "2"
                 type: text
-            - - text: Declared before roll · Resolves on hit · Once per Attack action
+            - - text: Declared before roll · Resolves on hit
                 type: text
             - - text: Until the end of your next turn
                 type: text
@@ -2074,7 +2055,7 @@ entities:
                 type: text
             - - text: "2"
                 type: text
-            - - text: Declared before roll · Resolves on hit · Once per Attack action
+            - - text: Declared before roll · Resolves on hit
                 type: text
             - - text: Varies by tier
                 type: text
@@ -2110,7 +2091,7 @@ entities:
                 type: text
             - - text: "3"
                 type: text
-            - - text: Declared before roll · Resolves on hit · Once per Attack action
+            - - text: Declared before roll · Resolves on hit
                 type: text
             - - text: Until the end of your next turn
                 type: text
@@ -2182,7 +2163,7 @@ entities:
                 type: text
             - - text: "3"
                 type: text
-            - - text: Declared before roll · Resolves on hit · Once per Attack action
+            - - text: Declared before roll · Resolves on hit
                 type: text
             - - text: Instantaneous
                 type: text
@@ -2206,7 +2187,7 @@ entities:
                 type: text
             - - text: "3"
                 type: text
-            - - text: Declared before roll · Resolves on hit · Once per Attack action
+            - - text: Declared before roll · Resolves on hit
                 type: text
             - - text: Until the end of your next turn
                 type: text
@@ -2290,7 +2271,7 @@ entities:
                 type: text
             - - text: "5"
                 type: text
-            - - text: Declared before roll · Resolves on hit · Once per Attack action
+            - - text: Declared before roll · Resolves on hit
                 type: text
             - - text: Instantaneous
                 type: text
@@ -2702,7 +2683,7 @@ entities:
         style: unordered
         type: list
       - inlines:
-          - text: Your Signature Rider’s Psi cost remains 0 at every tier. You can declare it repeatedly for any number of your Manifested Strike attacks.
+          - text: Your Signature Rider’s Psi cost remains 0 at every tier. Like other on-hit riders, you can declare it for more than one Manifested Strike in the same Attack action.
             type: text
         type: paragraph
       - inlines:
@@ -4701,7 +4682,7 @@ navigation:
           order: 4
           title: Ball Lightning
   default_category_id: common_features
-rules_version: 14.1.0
+rules_version: 14.2.0
 schema_version: 2.1.0
 vocabularies:
   acquisition_modes:
@@ -4765,8 +4746,8 @@ onboarding:
         title: Overload and Blood Tax
     id: basic_turn
     reminders:
-      - Your Signature Rider costs no Psi and can be used repeatedly.
-      - Other riders normally cost their listed Psi and can each be used once per Attack action.
+      - Your Signature Rider costs no Psi.
+      - The same on-hit rider can be declared for more than one Manifested Strike; pay each listed Psi and Blood Tax cost independently.
       - Manifested Strike itself is never Overloaded.
     steps:
       - Replace one weapon attack with a Manifested Strike.
@@ -4850,7 +4831,7 @@ onboarding:
           kind: entity
         id: term_rider
         title: Rider
-      - definition: Your Discipline’s 3rd-level rider. It costs no Psi and can be used repeatedly.
+      - definition: Your Discipline’s 3rd-level rider. It costs no Psi and follows the common per-Manifested-Strike rider rule.
         destination:
           entity_id: common_signature_rider
           kind: entity

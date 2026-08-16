@@ -7,11 +7,13 @@ import { validateSemantics } from "../src/validate.js";
 
 test("harness projection reads the real authority and joins mechanics by stable entity ID",async()=>{
   const projection=await createHarnessProjection();
-  assert.equal(projection.rules_version,"14.1.0");assert.equal(projection.schema_version,"2.1.0");assert.match(projection.authority_path,/\/KineticVanguard\.yaml$/);
+  assert.equal(projection.rules_version,"14.2.0");assert.equal(projection.schema_version,"2.1.0");assert.match(projection.authority_path,/\/KineticVanguard\.yaml$/);
   assert.deepEqual(projection.core.action_economy,{standalone_psionic_action_limit_per_turn:1,action_surge_allows_additional_standalone_psionic_action:false});
+  assert.equal(projection.core.manifested_strike.rider_repeatability,"per_manifested_strike");
   assert.deepEqual(projection.disciplines.map(item=>item.id).sort(),["cryokinesis","electrokinesis","psychokinesis","pyrokinesis"]);
   assert.equal(new Set(projection.features.map(item=>item.entity_id)).size,projection.features.length);
   assert.ok(projection.features.every(item=>Number.isInteger(item.minimum_level)&&Number.isInteger(item.psi_cost)&&!Object.hasOwn(item,"title")));
+  assert.ok(projection.features.every(item=>!Object.hasOwn(item,"repeatability")));
   const flare=projection.features.find(item=>item.entity_id==="flare")!;assert.equal(flare.minimum_level,15);assert.equal(flare.psi_cost,3);assert.equal(flare.damage_tiers.length,3);assert.equal(flare.control_tiers?.length,3);
 });
 
@@ -19,6 +21,7 @@ test("harness semantic mutations fail with focused diagnostics",async()=>{
   const {authority}=await loadAuthority();
   const expectCode=(code:string,mutate:(candidate:any)=>void)=>{const candidate=structuredClone(authority) as any;mutate(candidate);const diagnostics=validateSemantics(candidate);assert.ok(diagnostics.some(item=>item.code===code),`${code}: ${diagnostics.map(item=>item.code).join(", ")}`);};
   expectCode("harness.action_economy",candidate=>{candidate.calculator.harness_mechanics.action_economy.action_surge_allows_additional_standalone_psionic_action=true;});
+  expectCode("harness.rider_repeatability",candidate=>{candidate.calculator.harness_mechanics.manifested_strike.rider_repeatability="once_per_target";});
   expectCode("harness.attack_formula",candidate=>{candidate.calculator.harness_mechanics.manifested_strike.attack_bonus.base=1;});
   expectCode("harness.save_dc_formula",candidate=>{candidate.calculator.harness_mechanics.manifested_strike.save_dc.components.reverse();});
   expectCode("harness.blood_tax_formula",candidate=>{candidate.calculator.harness_mechanics.overload.blood_tax_per_tier.proficiency_bonus_multiplier=2;});

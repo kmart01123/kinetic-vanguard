@@ -119,22 +119,14 @@ class _KVDamagePlanner:
 
     def __init__(self,model:AuthorityModel,target:Target,packages:tuple[Package,...],rider_values:dict[Package,tuple[float,float]],strike_options:tuple[tuple[str,tuple[float,float,float]],...],standalones_by_round:tuple[tuple[Standalone,...],...],attack_bonus:int,attacks_per_action:int,action_slots_by_round:tuple[int,...],studied_enabled:bool,prowess_enabled:bool,psi_pool:int,blood_budget:int,mastery:dict[str,Any],mastery_uses:int,standalone_limit:int)->None:
         self.model=model;self.target=target;self.packages=packages;self.rider_values=rider_values;self.strike_options=strike_options;self.standalones_by_round=standalones_by_round;self.attack_bonus=attack_bonus;self.attacks_per_action=attacks_per_action;self.action_slots_by_round=action_slots_by_round;self.studied_enabled=studied_enabled;self.prowess_enabled=prowess_enabled;self.psi_pool=psi_pool;self.blood_budget=blood_budget;self.mastery=mastery;self.mastery_uses=mastery_uses;self.standalone_limit=standalone_limit
-        limited=sorted({str(package.entity_id) for package in packages if package.entity_id and model.features[package.entity_id]["repeatability"]=="once_per_attack_action"});bits={entity_id:1<<index for index,entity_id in enumerate(limited)}
-        self.package_bits=tuple(bits.get(package.entity_id,0) for package in packages);self.fractures=tuple(_fracture(model.features[package.entity_id],package.tier) if package.entity_id else 0 for package in packages);self.tier_two_limit=int(model.projection["core"]["overload"]["tier_two_limit_per_attack_action"]);self._roll_probability_cache={}
+        self.fractures=tuple(_fracture(model.features[package.entity_id],package.tier) if package.entity_id else 0 for package in packages);self.tier_two_limit=int(model.projection["core"]["overload"]["tier_two_limit_per_attack_action"]);self._roll_probability_cache={}
 
     @staticmethod
     def _better(candidate:_Decision,best:_Decision|None)->bool:
         return best is None or (candidate.score.aggregate,candidate.score.primary)>(best.score.aggregate,best.score.primary)
 
-    def _mastered_tax(self,tax:int)->int:
-        return max(int(self.mastery["minimum_per_overload"]),tax//int(self.mastery["blood_tax_divisor"]))
-
     def _payment_options(self,tax:int,mastery_remaining:int,mastery_mode:int)->tuple[tuple[int,int,int,bool],...]:
-        if tax==0:return ((0,mastery_remaining,mastery_mode,False),)
-        if mastery_mode==1:return ((self._mastered_tax(tax),mastery_remaining,1,False),)
-        raw=(tax,mastery_remaining,2,False)
-        if mastery_mode==0 and mastery_remaining:return (raw,(self._mastered_tax(tax),mastery_remaining-1,1,True))
-        return (raw,)
+        return self.model.overload_payment_options(tax,mastery_remaining,mastery_mode)
 
     @lru_cache(maxsize=None)
     def _round(self,round_index:int,studied:bool,psi:int,blood:int,mastery_remaining:int,zone_active:bool)->_Decision:
@@ -149,7 +141,7 @@ class _KVDamagePlanner:
             continuation=self._round(round_index+1,carry_studied,psi,blood,mastery_remaining,zone_active)
             return _Decision(continuation.score,("end_turn",carry_studied))
         best=None
-        attack=self._attacks(round_index,action_slots_left-1,self.attacks_per_action,0,0,studied,prowess,ac_reduction,psi,blood,mastery_remaining,mastery_mode,zone_active,standalone_count)
+        attack=self._attacks(round_index,action_slots_left-1,self.attacks_per_action,0,studied,prowess,ac_reduction,psi,blood,mastery_remaining,mastery_mode,zone_active,standalone_count)
         candidate=_Decision(attack.score,("attack",))
         if self._better(candidate,best):best=candidate
         if standalone_count<self.standalone_limit:
@@ -184,36 +176,33 @@ class _KVDamagePlanner:
         if prowess:options.append(("prowess",False,False,max(ac_reduction,fracture),strike[1]+rider_primary,strike[1]+rider_aggregate))
         return tuple(options)
 
-    def _resolve_attack_roll(self,round_index:int,action_slots_after:int,attacks_left_after:int,used_mask:int,tier_twos:int,package_index:int,strike_index:int,outcome:str,prowess:bool,ac_reduction:int,psi:int,blood:int,mastery_remaining:int,mastery_mode:int,zone_active:bool,standalone_count:int)->_Decision:
+    def _resolve_attack_roll(self,round_index:int,action_slots_after:int,attacks_left_after:int,tier_twos:int,package_index:int,strike_index:int,outcome:str,prowess:bool,ac_reduction:int,psi:int,blood:int,mastery_remaining:int,mastery_mode:int,zone_active:bool,standalone_count:int)->_Decision:
         best=None
         for resolution,next_studied,next_prowess,next_reduction,primary,aggregate in self._roll_options(package_index,strike_index,outcome,prowess,ac_reduction):
-            continuation=self._attacks(round_index,action_slots_after,attacks_left_after,used_mask,tier_twos,next_studied,next_prowess,next_reduction,psi,blood,mastery_remaining,mastery_mode,zone_active,standalone_count)
+            continuation=self._attacks(round_index,action_slots_after,attacks_left_after,tier_twos,next_studied,next_prowess,next_reduction,psi,blood,mastery_remaining,mastery_mode,zone_active,standalone_count)
             candidate=_Decision(_Score(primary+continuation.score.primary,aggregate+continuation.score.aggregate),(resolution,next_studied,next_prowess,next_reduction,primary,aggregate))
             if self._better(candidate,best):best=candidate
         if best is None:raise RuntimeError("No legal roll resolution")
         return best
 
     @lru_cache(maxsize=None)
-    def _attacks(self,round_index:int,action_slots_after:int,attacks_left:int,used_mask:int,tier_twos:int,studied:bool,prowess:bool,ac_reduction:int,psi:int,blood:int,mastery_remaining:int,mastery_mode:int,zone_active:bool,standalone_count:int)->_Decision:
+    def _attacks(self,round_index:int,action_slots_after:int,attacks_left:int,tier_twos:int,studied:bool,prowess:bool,ac_reduction:int,psi:int,blood:int,mastery_remaining:int,mastery_mode:int,zone_active:bool,standalone_count:int)->_Decision:
         if attacks_left==0:
             continuation=self._actions(round_index,action_slots_after,studied,prowess,ac_reduction,psi,blood,mastery_remaining,mastery_mode,zone_active,standalone_count,True)
             return _Decision(continuation.score,("end_attack_action",))
         best=None
         for package_index,package in enumerate(self.packages):
-            bit=self.package_bits[package_index]
-            if bit and used_mask&bit:continue
             next_tier_twos=tier_twos+int(package.tier==2)
             if next_tier_twos>self.tier_two_limit:continue
             next_psi=psi+package.psi
             if next_psi>self.psi_pool:continue
-            next_mask=used_mask|bit
             for strike_index,_ in enumerate(self.strike_options):
                 for tax,next_mastery,next_mode,activated in self._payment_options(package.blood,mastery_remaining,mastery_mode):
                     next_blood=blood+tax
                     if next_blood>self.blood_budget:continue
                     primary=aggregate=0.0
                     for outcome,probability in self._roll_probabilities(studied,ac_reduction):
-                        resolution=self._resolve_attack_roll(round_index,action_slots_after,attacks_left-1,next_mask,next_tier_twos,package_index,strike_index,outcome,prowess,ac_reduction,next_psi,next_blood,next_mastery,next_mode,zone_active,standalone_count)
+                        resolution=self._resolve_attack_roll(round_index,action_slots_after,attacks_left-1,next_tier_twos,package_index,strike_index,outcome,prowess,ac_reduction,next_psi,next_blood,next_mastery,next_mode,zone_active,standalone_count)
                         primary+=probability*resolution.score.primary;aggregate+=probability*resolution.score.aggregate
                     candidate=_Decision(_Score(primary,aggregate),("strike",package_index,strike_index,tax,next_mastery,next_mode,activated))
                     if self._better(candidate,best):best=candidate
@@ -231,13 +220,13 @@ class _KVDamagePlanner:
                 action=self._actions(round_index,slots,studied,prowess,ac_reduction,psi,blood,mastery_remaining,mastery_mode,zone_active,standalone_count,attacked)
                 if action.choice[0]=="standalone":
                     _,index,tax,mastery_remaining,mastery_mode,activated=action.choice;standalone=self.standalones_by_round[round_index][index];psi+=standalone.psi;blood+=tax;zone_active=zone_active or standalone.starts_zone;standalone_count+=1;slots-=1;mastery_activated=mastery_activated or activated;entries.append(f"{standalone.entity_id}:T{standalone.tier}");continue
-                labels=[];used_mask=tier_twos=0
+                labels=[];tier_twos=0
                 for attacks_left in range(self.attacks_per_action,0,-1):
-                    declaration=self._attacks(round_index,slots-1,attacks_left,used_mask,tier_twos,studied,prowess,ac_reduction,psi,blood,mastery_remaining,mastery_mode,zone_active,standalone_count)
-                    _,package_index,strike_index,tax,mastery_remaining,mastery_mode,activated=declaration.choice;package=self.packages[package_index];psi+=package.psi;blood+=tax;used_mask|=self.package_bits[package_index];tier_twos+=int(package.tier==2);mastery_activated=mastery_activated or activated
+                    declaration=self._attacks(round_index,slots-1,attacks_left,tier_twos,studied,prowess,ac_reduction,psi,blood,mastery_remaining,mastery_mode,zone_active,standalone_count)
+                    _,package_index,strike_index,tax,mastery_remaining,mastery_mode,activated=declaration.choice;package=self.packages[package_index];psi+=package.psi;blood+=tax;tier_twos+=int(package.tier==2);mastery_activated=mastery_activated or activated
                     grouped:dict[tuple[Any,...],float]=defaultdict(float)
                     for outcome,probability in self._roll_probabilities(studied,ac_reduction):
-                        resolution=self._resolve_attack_roll(round_index,slots-1,attacks_left-1,used_mask,tier_twos,package_index,strike_index,outcome,prowess,ac_reduction,psi,blood,mastery_remaining,mastery_mode,zone_active,standalone_count)
+                        resolution=self._resolve_attack_roll(round_index,slots-1,attacks_left-1,tier_twos,package_index,strike_index,outcome,prowess,ac_reduction,psi,blood,mastery_remaining,mastery_mode,zone_active,standalone_count)
                         grouped[resolution.choice]+=probability
                     resolved=sorted(grouped.items(),key=lambda item:(-item[1],repr(item[0])))[0][0];_,studied,prowess,ac_reduction,_,_=resolved
                     if package.entity_id:labels.append(f"{package.entity_id}:T{package.tier}")

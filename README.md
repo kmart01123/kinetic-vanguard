@@ -7,7 +7,9 @@ Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighte
 ## Release status
 
 - Current published release: **v14.1.0**
-- Current development line: **None**
+- Current development line: **v14.2.0**
+- Development branch: `14.2.0`
+- Implementation pull request: [draft PR #73](https://github.com/kmart01123/kinetic-vanguard/pull/73)
 - Canonical rules authority: `KineticVanguard.yaml`
 
 Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v14.1.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.1.0).
@@ -19,7 +21,7 @@ Version 14.1.0 restores maintained damage and control benchmark harness source. 
 <!-- BEGIN GENERATED BALANCE MATRICES -->
 ## Balance benchmark snapshot
 
-**Published snapshot** — canonical rules **v14.1.0**.
+**Unreleased development snapshot** — canonical rules **v14.2.0**; current published release **v14.1.0**.
 
 Profile: `official_default_25_percent_hp`. Numerical review status: `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`. These are exact analytical full-roster results, not Monte Carlo estimates.
 
@@ -36,7 +38,7 @@ The front-door damage view is the single-target benchmark: primary-target DPR at
 | 7 | IDEAL | IDEAL | IDEAL | IDEAL |
 | 11 | COLD (-9.75%) | IDEAL | IDEAL | IDEAL |
 | 15 | IDEAL | IDEAL | IDEAL | IDEAL |
-| 20 | COLD (-40.35%) | IDEAL | COLD (-9.30%) | COLD (-14.31%) |
+| 20 | COLD (-40.35%) | IDEAL | COLD (-9.30%) | COLD (-12.84%) |
 
 ### Control Reliability
 
@@ -44,14 +46,16 @@ This single-target benchmark evaluates each configured control package against o
 
 Configured headline metric: **roster-adjusted whole-package control stick %**.
 
+This v14.2 snapshot evaluates legal repeated attack-delivered opportunities within one ordinary Attack action when the configured package permits them. Kinetic Vanguard Signature Riders were already 0-Psi and repeatable before issue #58; issue #58 newly extends that repeatability to paid on-hit riders. Battle Master maneuvers receive legal hit-gated retries, while Eldritch Knight keeps one Blindness/Deafness cast and uses all ordinary primer attacks for Eldritch Strike. Published v14.1 used simpler one-shot approximations, so control deltas can combine the paid-rider rule with historical KV, Battle Master, and Eldritch Knight evaluator corrections. Those effects interact and are not assumed to be additively separable.
+
 Control Reliability measures how often the configured control package takes effect. It does not measure the relative severity, duration, area, or strategic value of different control effects. A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
-| 7 | HOT (+65.70%) | COLD (-100.00%) | HOT (+44.19%) | HOT (+65.70%) |
-| 11 | HOT (+70.93%) | COLD (-100.00%) | HOT (+57.39%) | HOT (+70.93%) |
-| 15 | HOT (+44.97%) | HOT (+44.97%) | HOT (+72.25%) | HOT (+56.46%) |
-| 20 | HOT (+117.66%) | HOT (+76.85%) | HOT (+117.66%) | HOT (+76.85%) |
+| 7 | HOT (+32.13%) | COLD (-100.00%) | HOT (+5.74%) | HOT (+11.29%) |
+| 11 | HOT (+17.89%) | COLD (-100.00%) | HOT (+13.79%) | IDEAL |
+| 15 | HOT (+21.16%) | HOT (+21.16%) | HOT (+21.89%) | HOT (+10.72%) |
+| 20 | HOT (+22.60%) | HOT (+22.08%) | HOT (+22.60%) | IDEAL |
 
 This snapshot is a summary, not the full evidence set. Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the [maintained harness guide](harness/README.md), [methodology configuration](harness/config/benchmark.json), [SRD target roster](harness/data/srd_targets.csv), and [comparator assumptions](harness/comparators/fighter-subclasses.json) for the complete methodology, provenance, regeneration commands, and report paths.
 

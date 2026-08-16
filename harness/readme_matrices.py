@@ -491,6 +491,18 @@ def render_balance_region(
         f"Configured headline metric: **{metric}**.",
         "",
         (
+            "This v14.2 snapshot evaluates legal repeated attack-delivered opportunities within "
+            "one ordinary Attack action when the configured package permits them. Kinetic Vanguard "
+            "Signature Riders were already 0-Psi and repeatable before issue #58; issue #58 newly "
+            "extends that repeatability to paid on-hit riders. Battle Master maneuvers receive legal "
+            "hit-gated retries, while Eldritch Knight keeps one Blindness/Deafness cast and uses all "
+            "ordinary primer attacks for Eldritch Strike. Published v14.1 used simpler one-shot "
+            "approximations, so control deltas can combine the paid-rider rule with historical KV, "
+            "Battle Master, and Eldritch Knight evaluator corrections. Those effects interact and "
+            "are not assumed to be additively separable."
+        ),
+        "",
+        (
             "Control Reliability measures how often the configured control package takes effect. "
             "It does not measure the relative severity, duration, area, or strategic value of "
             "different control effects. A HOT result is a balance-review signal, not an automatic "

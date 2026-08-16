@@ -22,9 +22,22 @@ test("YAML authority is schema-valid, semantically valid, and complete",async()=
   const loaded=await loadAuthority();const diagnostics=[...loaded.diagnostics,...validateSemantics(loaded.authority)];
   assert.deepEqual(diagnostics,[]);
   assert.equal(loaded.authority.schema_version,"2.1.0");
-  assert.equal(loaded.authority.rules_version,"14.1.0");
+  assert.equal(loaded.authority.rules_version,"14.2.0");
   const audit=loaded.authority.audits?.find(item=>item.id==="yaml_rules_authority")!;
   assert.deepEqual([...audit.subject_ids].sort(),loaded.authority.entities.map(entity=>entity.id).sort());
+});
+
+test("rider repeatability is one fail-closed Manifested Strike contract",async()=>{
+  const {authority}=await loadAuthority();
+  assert.equal(authority.calculator.harness_mechanics.manifested_strike.rider_repeatability,"per_manifested_strike");
+  assert.ok(authority.calculator.harness_mechanics.feature_rules.every(rule=>!Object.hasOwn(rule,"repeatability")));
+  assert.ok(authority.calculator.harness_mechanics.feature_rules.every(rule=>!Object.keys(rule).some(key=>/target.*repeat|repeat.*target/i.test(key))));
+  const source=await readFile("KineticVanguard.yaml","utf8"),directory=await mkdtemp(join(tmpdir(),"kv-repeatability-")),path=join(directory,"KineticVanguard.yaml");
+  try{
+    await writeFile(path,source.replace("rider_repeatability: per_manifested_strike","rider_repeatability: unsupported_value"));
+    const invalid=await loadAuthority(path);
+    assert.ok(invalid.diagnostics.some(item=>item.code==="schema.invalid"&&item.path?.includes("rider_repeatability")));
+  }finally{await rm(directory,{recursive:true,force:true});}
 });
 
 test("top-level onboarding is canonical, complete, resolvable, and outside the 44-entity rules domain",async()=>{
@@ -100,7 +113,7 @@ test("prototype and release builds reflect direct YAML edits",async()=>{
     const prototypeRoot=join(temporary,"prototype"),releaseRoot=join(temporary,"release");
     const prototype=await executeBuild("prototype",prototypeRoot,authorityPath);process.env.KV_RELEASE_APPROVED="1";const release=await executeBuild("release",releaseRoot,authorityPath);
     for(const result of [prototype,release]){const html=await readFile(result.htmlPath,"utf8");assert.match(html,/Kinetic Vanguard YAML Edit Probe/);assert.doesNotMatch(html,/Kinetic_Vanguard\.md|npm run migrate|edit (?:the )?Markdown/i);assert.equal(result.manifest.build_identity.canonical_rules_authority,authorityPath);assert.deepEqual(result.manifest.declared_inputs.filter((input:any)=>input.role==="rules_authority").map((input:any)=>input.path),[authorityPath]);}
-    for(const result of [prototype,release]){assert.equal(result.manifest.build_identity.rules_version,"14.1.0");assert.equal("application_version" in result.manifest.build_identity,false);}
+    for(const result of [prototype,release]){assert.equal(result.manifest.build_identity.rules_version,"14.2.0");assert.equal("application_version" in result.manifest.build_identity,false);}
     const coverage=JSON.parse(await readFile(join(prototypeRoot,"coverage-ledger.json"),"utf8"));const {authority}=await loadAuthority(authorityPath);assert.equal(coverage.version,3);assert.equal(coverage.entity_count,44);assert.equal(coverage.entity_count,authority.entities.length);assert.deepEqual(coverage.entities.map((entity:any)=>entity.entity_id),authority.entities.map(entity=>entity.id));assert.ok(coverage.entities.every((entity:any)=>entity.content_block_count>0&&entity.destinations.length>0));assert.equal(coverage.entities.some((entity:any)=>entity.entity_id===authority.onboarding.id),false);assert.deepEqual(coverage.onboarding,{authority_path:authorityPath+"#/onboarding",onboarding_id:"start_here",section_ids:["choose_your_discipline","basic_turn","build_checklist","terms_to_know","where_to_go_next"],destination_ids:[...authority.onboarding.primary_paths,...authority.onboarding.disciplines.cards,...authority.onboarding.basic_turn.destinations,...authority.onboarding.build_checklist.items,...authority.onboarding.glossary.entries,...authority.onboarding.next_destinations.items].map(item=>item.id)});
   }finally{if(previousApproval===undefined)delete process.env.KV_RELEASE_APPROVED;else process.env.KV_RELEASE_APPROVED=previousApproval;await rm(temporary,{recursive:true,force:true});}
 });
@@ -186,7 +199,7 @@ test("approved trigger, timing, replacement, and flavor clarifications remain ca
   for(const [index,fragments] of stepMechanics.entries())for(const fragment of fragments)assert.ok(steps[index]!.includes(fragment),"How to Play step "+(index+1)+": "+fragment);
   assert.match(blockText(howToPlay.content[0]!),/^Resolve attacks one at a time\. A rider is an on-hit feature/);
   const limits=howToPlay.content.find(block=>block.type==="list"&&block.style==="unordered")!;const limitText=limits.items!.map(item=>inlineText(item)).join("\n");
-  for(const rule of ["Signature Rider costs no Psi and can be used repeatedly","Other riders cost their listed Psi, and each can be used once per Attack action","only one rider","Only one rider can be Tier 2","Manifested Strike itself is never Overloaded"])assert.ok(limitText.includes(rule),rule);
+  for(const rule of ["Signature Rider costs no Psi","same on-hit rider for more than one Manifested Strike","any creature legal for that strike","Paid riders cost their listed Psi each time","including when the attack misses","only one rider","Only one rider can be Tier 2","Manifested Strike itself is never Overloaded"])assert.ok(limitText.includes(rule),rule);
   for(const edgeCase of ["Action Surge","Rider Target Parity","only one standalone psionic feature","Short Disruption Timing"])assert.ok(procedureIndex<howToPlay.content.findIndex(block=>blockText(block).includes(edgeCase)),edgeCase);
 
   const overload=authority.entities.find(entity=>entity.id==="common_overload")!;
@@ -199,7 +212,7 @@ test("approved trigger, timing, replacement, and flavor clarifications remain ca
   const orderedOverload=[overloadIndex(block=>blockText(block).startsWith("Overload strengthens")),overloadIndex(block=>block.type==="tier"&&block.tier===1),overloadIndex(block=>block.type==="tier"&&block.tier===2),exampleIndex,costTableIndex,overloadIndex(block=>blockText(block).startsWith("Multiple Overloads")),overloadIndex(block=>blockText(block).startsWith("Critical Hits and Riders")),overloadIndex(block=>blockText(block).startsWith("Damage Immunity and Riders")),overloadIndex(block=>blockText(block).startsWith("Blood Tax Resistance and Immunity")),overloadIndex(block=>blockText(block).startsWith("Concentration Startup Exception")),overloadIndex(block=>blockText(block).startsWith("Blood Tax and Temporary Hit Points")),overloadIndex(block=>blockText(block).startsWith("Blood Tax at 0 Hit Points"))];
   assert.deepEqual(orderedOverload,[...orderedOverload].sort((a,b)=>a-b));assert.equal(new Set(orderedOverload).size,orderedOverload.length);assert.ok(orderedOverload.every(index=>index>=0));
   const costTable=overload.content[costTableIndex]!;const cells=(row:any[])=>row.map(cell=>inlineText(cell));const costRows=costTable.rows!.map(cells);const tier2Row=costRows.find(row=>row[0]==="Manifested Strike + Tier 2 rider")!;assert.equal(tier2Row[2],"2 × Proficiency Bonus in total");
-  const tier0Row=costRows.find(row=>row[0]==="Manifested Strike + Tier 0 rider")!;assert.match(tier0Row[3]??"",/Signature Rider is repeatable at every tier/);
+  const tier0Row=costRows.find(row=>row[0]==="Manifested Strike + Tier 0 rider")!;assert.match(tier0Row[3]??"",/Every rider is repeatable per Manifested Strike/);
   const standaloneRow=costRows.find(row=>row[0]==="Overloaded standalone feature")!;assert.equal(standaloneRow[2],"Tier 1: Proficiency Bonus; Tier 2: 2 × Proficiency Bonus in total");
   assert.deepEqual(costRows.find(row=>row[0]==="Overloaded rider + overloaded standalone feature"),["Overloaded rider + overloaded standalone feature","Rider cost + feature cost","Sum both","Each Overload pays separately"]);
   const holdout=rulesFor("common_manifested_strike");assert.match(holdout,/Declare this option before the attack roll\.\s+If the attack has a rider, declare the option at the same time as that rider and its tier\./);
@@ -259,7 +272,7 @@ test("newcomer common rules preserve choices, resources, Signature Riders, and K
 
   assert.deepEqual(listItems("common_signature_rider"),["Pyrokinesis: Ember Bolt","Cryokinesis: Glacial Spike","Psychokinesis: Telekinetic Shove","Electrokinesis: Static Discharge"]);
   const signatureRules=rules("common_signature_rider");
-  for(const rule of ["Psi cost remains 0 at every tier","declare it repeatedly for any number of your Manifested Strike attacks","only one rider","pay the applicable Blood Tax","Only one rider in each Attack action can be Tier 2"])assert.ok(signatureRules.includes(rule),rule);
+  for(const rule of ["Psi cost remains 0 at every tier","more than one Manifested Strike in the same Attack action","only one rider","pay the applicable Blood Tax","Only one rider in each Attack action can be Tier 2"])assert.ok(signatureRules.includes(rule),rule);
 
   const mastery=entity("common_kinetic_mastery");const masteryRules=rules("common_kinetic_mastery");
   assert.deepEqual(listItems("common_kinetic_mastery"),["Pyrokinesis: Graze","Cryokinesis: Slow","Psychokinesis: Push","Electrokinesis: Sap"]);
@@ -463,7 +476,7 @@ test("remaining dense common and tier rules use deliberate semantic list groupin
 
   const how=entity("how_to_play");
   expectList(how.content[3],"unordered",4,["Feature classification:","Advanced Training riders:","Rider exclusivity:","Manifested Strike dice:"]);
-  expectList(how.content[4],"unordered",4,["Attack order:","Next attack:","Spent limits:","Action Surge:"]);
+  expectList(how.content[4],"unordered",4,["Attack order:","Next attack:","Tier 2 limit:","Action Surge:"]);
   expectList(how.content[6],"unordered",2,["Standalone Action limit:","Action Surge:"]);
   expectList(how.content[9],"unordered",3,["Reaction denial and attack-roll Disadvantage:","Conditions:","Zones and recurring saves:"]);
 
@@ -563,12 +576,18 @@ test("final rules decisions leave every unapproved authority field unchanged",as
   const collapseLeadAndList=(entity:any,prefix:string)=>{const index=entity.content.findIndex((block:any)=>block.type==="paragraph"&&blockText(block).startsWith(prefix));assert.ok(index>=0);const list=entity.content[index+1];assert.equal(list.type,"list");entity.content[index].inlines[0].text+=" "+listMechanics(list).join(" ");entity.content.splice(index+1,1);};
   const replaceListWithParagraph=(entity:any,firstLabel:string)=>{const index=entity.content.findIndex((block:any)=>block.type==="list"&&inlineText(block.items[0]).startsWith(firstLabel));assert.ok(index>=0);entity.content.splice(index,1,paragraph(listMechanics(entity.content[index]).join(" ")));return index;};
   const howToPlayForLists=projection.entities.find((entity:any)=>entity.id==="how_to_play");
+  const riderLimits=howToPlayForLists.content.find((block:any)=>block.type==="list"&&blockText(block).includes("same on-hit rider"));
+  riderLimits.items=["Your Signature Rider costs no Psi and can be used repeatedly.","Other riders cost their listed Psi, and each can be used once per "+"Attack action.","Each Manifested Strike can carry only one rider.","Only one rider can be Tier 2 in each Attack action.","Manifested Strike itself is never Overloaded."].map(text=>[{text,type:"text"}]);
+  const attackLimits=howToPlayForLists.content.find((block:any)=>block.type==="list"&&blockText(block).includes("Tier 2 limit:"));
+  attackLimits.items[2]=[{text:"Spent limits: ",type:"strong"},{text:"A per-Attack-action limit remains spent once used.",type:"text"}];
   collapseLeadAndList(howToPlayForLists,"Short Disruption Timing:");
   const standaloneIndex=howToPlayForLists.content.findIndex((block:any)=>block.type==="list"&&inlineText(block.items[0]).startsWith("Standalone Action limit:"));assert.ok(standaloneIndex>=0);
   howToPlayForLists.content.splice(standaloneIndex,2,paragraph(listMechanics(howToPlayForLists.content[standaloneIndex]).join(" ")+" "+blockText(howToPlayForLists.content[standaloneIndex+1])));
   replaceListWithParagraph(howToPlayForLists,"Attack order:");replaceListWithParagraph(howToPlayForLists,"Feature classification:");
 
   const overloadForLists=projection.entities.find((entity:any)=>entity.id==="common_overload");
+  const overloadCostTable=overloadForLists.content.find((block:any)=>block.type==="table"&&block.rows.some((row:any[])=>inlineText(row[0])==="Manifested Strike + Tier 0 rider"));
+  overloadCostTable.rows.find((row:any[])=>inlineText(row[0])==="Manifested Strike + Tier 0 rider")[3]=[{text:"Signature Rider is repeatable at every tier; other riders are once per "+"Attack action",type:"text"}];
   for(const prefix of ["Damage Immunity and Riders:","Critical Hits and Riders:","Multiple Overloads and Tier 2 Riders:"])collapseLeadAndList(overloadForLists,prefix);
   const declarationList=overloadForLists.content[1],declarationItems=listMechanics(declarationList);overloadForLists.content[0].inlines[0].text+=` For a rider, ${declarationItems[0][0].toLowerCase()+declarationItems[0].slice(1)} For a standalone feature, ${declarationItems[1][0].toLowerCase()+declarationItems[1].slice(1)}`;overloadForLists.content.splice(1,1);
   const bloodList=overloadForLists.content[2],bloodItems=listMechanics(bloodList);overloadForLists.content[1].inlines[0].text+=` Tier 1 ${bloodItems[0][0].toLowerCase()+bloodItems[0].slice(1)} Tier 2 ${bloodItems[1][0].toLowerCase()+bloodItems[1].slice(1)} Manifested Strike itself ${bloodItems[2][0].toLowerCase()+bloodItems[2].slice(1)}`;overloadForLists.content.splice(2,1);
@@ -638,10 +657,14 @@ test("final rules decisions leave every unapproved authority field unchanged",as
   reference.content.find((block:any)=>blockText(block).startsWith("The second table compares")).inlines[0].text="The second table compares each feature’s Discipline, Psi cost, activation, and duration.";
   const definitionIndex=reference.content.findIndex((block:any)=>blockText(block).startsWith("Ongoing Duration shows"));assert.ok(definitionIndex>=0);reference.content.splice(definitionIndex,1);
   const table=reference.content.find((block:any)=>block.type==="table"&&block.headers.map(cell).includes("Ongoing Duration"));
+  const formerlyLimitedRiders=new Set(["Snow Chains","Thermal Fracture","Branching Bolt","Cinder Lance","Explosion/Implosion","Electron Burst","Flare","Mind Shred","Mind Lock","Furnace Strike"]);
+  for(const row of table.rows)if(formerlyLimitedRiders.has(cell(row[1])))row[4][0].text="Declared before roll · Resolves on hit · Once per Attack action";
   table.headers[5][0].text="Duration";
   const barrierRow=table.rows.find((row:any[])=>cell(row[1])==="Barrier");assert.equal(cell(barrierRow[4]),"Bonus Action · Concentration");barrierRow[4][0].text="Bonus Action";
   const oldDurations=new Map([["Glacial Spike","Varies by tier"],["Deflection Screen","Instantaneous"],["Empathic Sense","Continuous; scan instantaneous"],["Vectored Thrust","Up to 10 minutes"],["Frozen Ground","Up to 1 minute"],["Explosion/Implosion","Instantaneous"],["Electron Burst","Until the start of your next turn"],["Phase Step","Instantaneous"],["Arctic Tempest","Varies by tier"],["Flare","Varies by tier"],["Gravitic Press","Up to 1 minute"],["Absolute Zero","Varies by tier"],["Mass Levitation","Up to 1 minute"],["Ball Lightning","Up to 1 minute"]]);
   for(const row of table.rows){const oldDuration=oldDurations.get(cell(row[1]));if(oldDuration)row[5][0].text=oldDuration;}
+  const signature=projection.entities.find((entity:any)=>entity.id==="common_signature_rider");
+  signature.content.find((block:any)=>blockText(block).includes("Like other on-hit riders")).inlines[0].text="Your Signature Rider’s Psi cost remains 0 at every tier. You can declare it repeatedly for any number of your Manifested Strike attacks.";
   assert.equal(sha256(canonicalJson(projection)),"bbcfe7480123a0b9bdedc7815cb0684c36431d1d96ccba7e53516b1af658649c");
 });
 
