@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Revised Vectored Thrust so Tier 1 increases its fly Speed by `5 × Proficiency Bonus` feet instead of preventing Opportunity Attacks, while Tier 2 removes its Concentration requirement and retains the 10-minute duration and Incapacitated end condition.
 - Restored the vetted 330-creature SRD 5.2.1 catalog and shared ordered `legacy_v14_1`, `headline`, and validation-only `eligible_census` profiles while keeping the reviewed 28-target profile as the default.
 - Allowed the same paid on-hit rider to be declared on multiple Manifested Strikes in one Attack action, with independent Psi and Blood Tax payment for every declaration, including misses.
 - Allowed rider declarations to retry the same legal target or spread among different legal targets while retaining one rider per Manifested Strike and one Tier 2 rider per Attack action.
