@@ -13,7 +13,7 @@ from harness.comparison_report import COMPARATOR_NOTICE, NOTICE_COLUMNS, matrix_
 from harness.model import (
     DEFAULT_COMPARATORS,
     DEFAULT_CONFIG,
-    DEFAULT_ROSTER,
+    DEFAULT_ROSTERS,
     file_sha256,
     load_config,
 )
@@ -88,7 +88,7 @@ def _full_authoritative_rows() -> tuple[list[dict[str, str]], list[dict[str, str
     common = {
         "Provenance Rules Version": model.rules_version,
         "Provenance Authority Sha256": model.authority_sha256,
-        "Provenance Roster Sha256": file_sha256(DEFAULT_ROSTER),
+        "Provenance Roster Sha256": file_sha256(DEFAULT_ROSTERS),
         "Provenance Config Sha256": file_sha256(DEFAULT_CONFIG),
         "Provenance Comparator Config Sha256": file_sha256(DEFAULT_COMPARATORS),
         "Provenance Evaluator": "exact_analytical_enumeration",

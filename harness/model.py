@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import csv
 import hashlib
 import json
 from dataclasses import dataclass
@@ -13,9 +12,16 @@ from typing import Any
 HARNESS_ROOT = Path(__file__).resolve().parent
 DEFAULT_CONFIG = HARNESS_ROOT / "config" / "benchmark.json"
 DEFAULT_COMPARATORS = HARNESS_ROOT / "comparators" / "fighter-subclasses.json"
-DEFAULT_ROSTER = HARNESS_ROOT / "data" / "srd_targets.csv"
+DEFAULT_CATALOG = HARNESS_ROOT / "data" / "srd_creatures.json"
+DEFAULT_ROSTERS = HARNESS_ROOT / "data" / "srd_creature_rosters.json"
+DEFAULT_PROFILE = "legacy_v14_1"
 ABILITIES = ("strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma")
 SIZE_ORDER = {"tiny":0,"small":1,"medium":2,"large":3,"huge":4,"gargantuan":5}
+MOVEMENT_MODES = ("walk","fly","swim","climb","burrow")
+SENSE_KINDS = ("darkvision","blindsight","tremorsense","truesight")
+SKILLS = frozenset({"acrobatics","animal_handling","arcana","athletics","deception","history","insight","intimidation","investigation","medicine","nature","perception","performance","persuasion","religion","sleight_of_hand","stealth","survival"})
+PROFILE_COUNTS = {"legacy_v14_1":28,"headline":47,"eligible_census":93}
+PROFILE_LEVEL_COUNTS = {"legacy_v14_1":{7:8,11:6,15:6,20:8},"headline":{7:12,11:12,15:11,20:12},"eligible_census":{7:47,11:20,15:11,20:15}}
 
 
 @dataclass(frozen=True)
@@ -169,18 +175,113 @@ def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
     return data
 
 
-def _items(value:str)->frozenset[str]:
-    return frozenset(item.strip().lower() for item in value.split(";") if item.strip())
+def _string(value:Any,label:str)->str:
+    if not isinstance(value,str) or not value:raise ValueError(f"{label} must be a non-empty string")
+    return value
 
 
-def load_targets(path:Path=DEFAULT_ROSTER,levels:set[int]|None=None,limit:int|None=None)->list[Target]:
-    rows:list[Target]=[]
-    with path.open(newline="",encoding="utf-8") as stream:
-        for raw in csv.DictReader(stream):
-            level=int(raw["Level"])
-            if levels is not None and level not in levels:continue
-            if raw["Source"]!="SRD 5.2.1" or not raw["Source Page"] or not raw["HP"] or not raw["Source URL"]:raise ValueError(f"Pinned roster row {raw.get('Target','?')} lacks required SRD provenance or HP")
-            rows.append(Target(level,raw["Target"],int(raw["AC"]),{ability:int(raw[ability[:3].upper()]) for ability in ABILITIES},raw["Magic Resistance"].lower()=="true",int(raw["Legendary Resistance"]),raw["Size"].lower(),raw["Creature Type"].lower(),_items(raw["Condition Immunities"]),_items(raw["Damage Resistances"]),_items(raw["Damage Immunities"]),_items(raw["Damage Vulnerabilities"]),int(raw["HP"]),raw["Source"],raw["Source Page"],raw["Source URL"]))
+def load_catalog(path:Path=DEFAULT_CATALOG)->dict[str,Any]:
+    with path.open(encoding="utf-8") as stream:data=json.load(stream)
+    data=_object(data,"SRD creature catalog");_exact_keys(data,{"format_version","source","creatures"},"SRD creature catalog")
+    if data["format_version"]!=1:raise ValueError("Unsupported SRD creature catalog format version")
+    source=_object(data["source"],"catalog source");_exact_keys(source,{"ruleset","pdf_sha256","url","modification_notice"},"catalog source")
+    if source["ruleset"]!="SRD 5.2.1" or source["pdf_sha256"]!="8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87":raise ValueError("Catalog must remain pinned to the verified SRD 5.2.1 source")
+    for key in ("url","modification_notice"):_string(source[key],f"catalog source.{key}")
+    creatures=data["creatures"]
+    if not isinstance(creatures,list) or len(creatures)!=330:raise ValueError("SRD creature catalog must contain exactly 330 creatures")
+    expected={"id","name","cr","ac","hp","ability_modifiers","saving_throw_bonuses","skill_bonuses","magic_resistance","legendary_resistance","sizes","creature_type","defenses","movement","senses","passive_perception","source"};ids:set[str]=set()
+    for index,value in enumerate(creatures):
+        label=f"creatures[{index}]";row=_object(value,label);_exact_keys(row,expected,label);creature_id=_string(row["id"],f"{label}.id")
+        if not creature_id.startswith("srd521:") or creature_id in ids:raise ValueError(f"{label}.id must be a unique stable SRD 5.2.1 ID")
+        ids.add(creature_id);_string(row["name"],f"{label}.name");_integer(row["ac"],f"{label}.ac",1);_integer(row["hp"],f"{label}.hp",1)
+        cr=_object(row["cr"],f"{label}.cr");_exact_keys(cr,{"numerator","denominator"},f"{label}.cr");_integer(cr["numerator"],f"{label}.cr.numerator",0);_integer(cr["denominator"],f"{label}.cr.denominator",1)
+        modifiers=_object(row["ability_modifiers"],f"{label}.ability_modifiers");_exact_keys(modifiers,set(ABILITIES),f"{label}.ability_modifiers")
+        for ability,bonus in modifiers.items():_integer(bonus,f"{label}.ability_modifiers.{ability}")
+        saves=_object(row["saving_throw_bonuses"],f"{label}.saving_throw_bonuses")
+        if not saves.keys()<=set(ABILITIES):raise ValueError(f"{label}.saving_throw_bonuses contains an unknown ability")
+        for ability,bonus in saves.items():_integer(bonus,f"{label}.saving_throw_bonuses.{ability}")
+        skills=row["skill_bonuses"]
+        if not isinstance(skills,list):raise ValueError(f"{label}.skill_bonuses must be a list")
+        skill_ids=[]
+        for skill_index,item_value in enumerate(skills):
+            item=_object(item_value,f"{label}.skill_bonuses[{skill_index}]");_exact_keys(item,{"skill","bonus"},f"{label}.skill_bonuses[{skill_index}]");skill=_string(item["skill"],f"{label}.skill_bonuses[{skill_index}].skill")
+            if skill not in SKILLS:raise ValueError(f"{label} has unknown skill {skill}")
+            _integer(item["bonus"],f"{label}.skill_bonuses[{skill_index}].bonus");skill_ids.append(skill)
+        if skill_ids!=sorted(set(skill_ids)):raise ValueError(f"{label}.skill_bonuses must be unique and sorted")
+        _boolean(row["magic_resistance"],f"{label}.magic_resistance");legendary=_object(row["legendary_resistance"],f"{label}.legendary_resistance")
+        _exact_keys(legendary,{"uses_per_day","lair_uses_per_day","policy"},f"{label}.legendary_resistance");_integer(legendary["uses_per_day"],f"{label}.legendary_resistance.uses_per_day",0)
+        if legendary["lair_uses_per_day"] is not None:_integer(legendary["lair_uses_per_day"],f"{label}.legendary_resistance.lair_uses_per_day",0)
+        if legendary["policy"]!="metadata_only":raise ValueError(f"{label}.legendary_resistance.policy must remain metadata_only")
+        if not isinstance(row["sizes"],list) or not row["sizes"] or any(size not in SIZE_ORDER for size in row["sizes"]):raise ValueError(f"{label}.sizes is invalid")
+        _string(row["creature_type"],f"{label}.creature_type")
+        defenses=_object(row["defenses"],f"{label}.defenses");_exact_keys(defenses,{"damage_resistances","damage_immunities","damage_vulnerabilities","condition_immunities"},f"{label}.defenses")
+        for family,facts in defenses.items():
+            if not isinstance(facts,list):raise ValueError(f"{label}.defenses.{family} must be a list")
+            fact_key="condition" if family=="condition_immunities" else "damage_type"
+            for fact_index,fact_value in enumerate(facts):
+                fact_label=f"{label}.defenses.{family}[{fact_index}]";fact=_object(fact_value,fact_label);required={fact_key,"qualifier_id","qualifier"};allowed=required|{"choices"}
+                if not required<=fact.keys() or not fact.keys()<=allowed:raise ValueError(f"{fact_label} keys are invalid")
+                choices=fact.get("choices",[])
+                if fact[fact_key] is None:
+                    if not isinstance(choices,list) or not choices:raise ValueError(f"{fact_label} must provide a value or choices")
+                    for choice_index,choice in enumerate(choices):_string(choice,f"{fact_label}.choices[{choice_index}]")
+                else:_string(fact[fact_key],f"{fact_label}.{fact_key}")
+        movement=_object(row["movement"],f"{label}.movement");_exact_keys(movement,{"modes","hover","choice_groups"},f"{label}.movement");modes=_object(movement["modes"],f"{label}.movement.modes");_exact_keys(modes,set(MOVEMENT_MODES),f"{label}.movement.modes");_boolean(movement["hover"],f"{label}.movement.hover")
+        if not isinstance(movement["choice_groups"],list):raise ValueError(f"{label}.movement.choice_groups must be a list")
+        for mode,facts in modes.items():
+            if not isinstance(facts,list):raise ValueError(f"{label}.movement.modes.{mode} must be a list")
+            for fact_index,fact_value in enumerate(facts):
+                fact=_object(fact_value,f"{label}.movement.modes.{mode}[{fact_index}]");_exact_keys(fact,{"feet","qualifier","choice_group_id"},f"{label}.movement.modes.{mode}[{fact_index}]");_integer(fact["feet"],f"{label}.movement.modes.{mode}[{fact_index}].feet",0)
+        senses=_object(row["senses"],f"{label}.senses");_exact_keys(senses,set(SENSE_KINDS),f"{label}.senses")
+        for kind,facts in senses.items():
+            if not isinstance(facts,list):raise ValueError(f"{label}.senses.{kind} must be a list")
+            for fact_index,fact_value in enumerate(facts):
+                fact=_object(fact_value,f"{label}.senses.{kind}[{fact_index}]");_exact_keys(fact,{"range_feet","limitation"},f"{label}.senses.{kind}[{fact_index}]");_integer(fact["range_feet"],f"{label}.senses.{kind}[{fact_index}].range_feet",0)
+        _integer(row["passive_perception"],f"{label}.passive_perception",0);locator=_object(row["source"],f"{label}.source");_exact_keys(locator,{"page","stat_block_order","anchor"},f"{label}.source");_integer(locator["page"],f"{label}.source.page",1);_integer(locator["stat_block_order"],f"{label}.source.stat_block_order",1);_string(locator["anchor"],f"{label}.source.anchor")
+    return data
+
+
+def load_profiles(path:Path=DEFAULT_ROSTERS,catalog:dict[str,Any]|None=None)->dict[str,list[dict[str,Any]]]:
+    with path.open(encoding="utf-8") as stream:data=json.load(stream)
+    data=_object(data,"SRD creature profiles");_exact_keys(data,{"format_version","source_catalog","methodology","profiles"},"SRD creature profiles")
+    if data["format_version"]!=1 or data["source_catalog"]!="srd_creatures.json":raise ValueError("Unsupported SRD creature profile format")
+    methodology=_object(data["methodology"],"profile methodology");_exact_keys(methodology,{"eligibility_policy","headline_selection","ordering"},"profile methodology")
+    for key,value in methodology.items():_string(value,f"profile methodology.{key}")
+    profiles=_object(data["profiles"],"profiles");_exact_keys(profiles,set(PROFILE_COUNTS),"profiles");catalog_ids={row["id"] for row in (catalog or load_catalog())["creatures"]}
+    for profile,entries in profiles.items():
+        if not isinstance(entries,list) or len(entries)!=PROFILE_COUNTS[profile]:raise ValueError(f"Profile {profile} must contain exactly {PROFILE_COUNTS[profile]} entries")
+        seen:set[str]=set();counts={level:0 for level in PROFILE_LEVEL_COUNTS[profile]}
+        for index,value in enumerate(entries):
+            row=_object(value,f"profiles.{profile}[{index}]");_exact_keys(row,{"creature_id","benchmark_level"},f"profiles.{profile}[{index}]");creature_id=_string(row["creature_id"],f"profiles.{profile}[{index}].creature_id");level=_integer(row["benchmark_level"],f"profiles.{profile}[{index}].benchmark_level")
+            if creature_id in seen:raise ValueError(f"Profile {profile} repeats {creature_id}")
+            if creature_id not in catalog_ids:raise ValueError(f"Profile {profile} references missing creature {creature_id}")
+            if level not in counts:raise ValueError(f"Profile {profile} uses unsupported benchmark level {level}")
+            seen.add(creature_id);counts[level]+=1
+        if counts!=PROFILE_LEVEL_COUNTS[profile]:raise ValueError(f"Profile {profile} per-level counts changed: {counts}")
+    headline={(row["creature_id"],row["benchmark_level"]) for row in profiles["headline"]};census={(row["creature_id"],row["benchmark_level"]) for row in profiles["eligible_census"]}
+    if not headline<census:raise ValueError("Headline profile must be a proper subset of eligible_census")
+    return profiles
+
+
+def _defense_values(creature:dict[str,Any],family:str)->frozenset[str]:
+    key="condition" if family=="condition_immunities" else "damage_type";values=[]
+    for fact in creature["defenses"][family]:
+        qualifier=fact["qualifier_id"]
+        if fact[key] is None:raise ValueError(f"{creature['id']} has unresolved choice-based {family} fact")
+        if qualifier is not None and not (family=="condition_immunities" and qualifier=="source_default_mind_blank"):raise ValueError(f"{creature['id']} has unsupported qualified {family} fact")
+        values.append(fact[key])
+    return frozenset(values)
+
+
+def load_targets(profile:str=DEFAULT_PROFILE,levels:set[int]|None=None,limit:int|None=None,catalog_path:Path=DEFAULT_CATALOG,profiles_path:Path=DEFAULT_ROSTERS)->list[Target]:
+    catalog=load_catalog(catalog_path);profiles=load_profiles(profiles_path,catalog)
+    if profile not in profiles:raise ValueError(f"Unknown target profile {profile!r}; expected one of {sorted(profiles)}")
+    by_id={row["id"]:row for row in catalog["creatures"]};source=catalog["source"];rows=[]
+    for member in profiles[profile]:
+        level=member["benchmark_level"]
+        if levels is not None and level not in levels:continue
+        creature=by_id[member["creature_id"]];saves={**creature["ability_modifiers"],**creature["saving_throw_bonuses"]}
+        rows.append(Target(level,creature["name"],creature["ac"],saves,creature["magic_resistance"],creature["legendary_resistance"]["uses_per_day"],creature["sizes"][0],creature["creature_type"],_defense_values(creature,"condition_immunities"),_defense_values(creature,"damage_resistances"),_defense_values(creature,"damage_immunities"),_defense_values(creature,"damage_vulnerabilities"),creature["hp"],source["ruleset"],str(creature["source"]["page"]),source["url"]))
     if limit is not None:rows=rows[:limit]
     if not rows:raise ValueError("Target selection is empty")
     return rows

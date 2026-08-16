@@ -1,0 +1,689 @@
+{
+  "format_version": 1,
+  "source_catalog": "srd_creatures.json",
+  "methodology": {
+    "eligibility_policy": "Closed CR bands: level 7 CR 5-8; level 11 CR 10-13; level 15 CR 14-16; level 20 CR 19-30.",
+    "headline_selection": "Frozen source-only mechanical-diversity selection; no benchmark result, comparator output, scenario, or classification participated.",
+    "ordering": "Benchmark level, then historical SRD source order."
+  },
+  "profiles": {
+    "legacy_v14_1": [
+      {
+        "creature_id": "srd521:air-elemental",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:troll",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:chimera",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:mage",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:young-black-dragon",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:stone-giant",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:hydra",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:young-green-dragon",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:aboleth",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:stone-golem",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:deva",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:archmage",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:adult-white-dragon",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:vampire",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:adult-black-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:adult-green-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:mummy-lord",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:purple-worm",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:iron-golem",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:marilith",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:balor",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:pit-fiend",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-white-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-black-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:lich",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:solar",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:kraken",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:tarrasque",
+        "benchmark_level": 20
+      }
+    ],
+    "headline": [
+      {
+        "creature_id": "srd521:air-elemental",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:barbed-devil",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:young-brass-dragon",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:earth-elemental",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:gladiator",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:young-green-dragon",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:mage",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:pirate-captain",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:unicorn",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:vampire-spawn",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:werebear",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:giant-ape",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:deva",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:djinni",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:erinyes",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:young-gold-dragon",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:guardian-naga",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:archmage",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:remorhaz",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:sphinx-of-lore",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:stone-golem",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:storm-giant",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:vampire",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:adult-white-dragon",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:adult-black-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:adult-blue-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:adult-bronze-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:adult-copper-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:adult-green-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:ice-devil",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:marilith",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:mummy-lord",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:planetar",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:purple-worm",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:adult-silver-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:balor",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-blue-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-brass-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-copper-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-gold-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-green-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:kraken",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:lich",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:pit-fiend",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-silver-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:solar",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-white-dragon",
+        "benchmark_level": 20
+      }
+    ],
+    "eligible_census": [
+      {
+        "creature_id": "srd521:air-elemental",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:barbed-devil",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:young-black-dragon",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:young-brass-dragon",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:young-bronze-dragon",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:bulette",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:chain-devil",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:chimera",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:cloaker",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:young-copper-dragon",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:drider",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:earth-elemental",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:fire-elemental",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:frost-giant",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:gladiator",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:gorgon",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:young-green-dragon",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:hezrou",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:hill-giant",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:hydra",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:mage",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:medusa",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:night-hag",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:oni",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:otyugh",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:pirate-captain",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:roper",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:salamander",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:shield-guardian",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:spirit-naga",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:stone-giant",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:troll",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:unicorn",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:vampire-spawn",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:vrock",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:water-elemental",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:werebear",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:young-white-dragon",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:wraith",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:wyvern",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:xorn",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:giant-ape",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:giant-crocodile",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:giant-shark",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:mammoth",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:triceratops",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:tyrannosaurus-rex",
+        "benchmark_level": 7
+      },
+      {
+        "creature_id": "srd521:aboleth",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:behir",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:adult-brass-dragon",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:deva",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:djinni",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:efreeti",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:erinyes",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:young-gold-dragon",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:guardian-naga",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:horned-devil",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:archmage",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:nalfeshnee",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:young-red-dragon",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:remorhaz",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:roc",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:sphinx-of-lore",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:stone-golem",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:storm-giant",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:vampire",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:adult-white-dragon",
+        "benchmark_level": 11
+      },
+      {
+        "creature_id": "srd521:adult-black-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:adult-blue-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:adult-bronze-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:adult-copper-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:adult-green-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:ice-devil",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:marilith",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:mummy-lord",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:planetar",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:purple-worm",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:adult-silver-dragon",
+        "benchmark_level": 15
+      },
+      {
+        "creature_id": "srd521:balor",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-black-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-blue-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-brass-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-bronze-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-copper-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-gold-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-green-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:kraken",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:lich",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:pit-fiend",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-red-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-silver-dragon",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:solar",
+        "benchmark_level": 20
+      },
+      {
+        "creature_id": "srd521:ancient-white-dragon",
+        "benchmark_level": 20
+      }
+    ]
+  }
+}

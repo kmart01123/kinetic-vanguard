@@ -201,7 +201,7 @@ test("README exposes one synchronized headline balance snapshot", async () => {
     "[`KineticVanguard.yaml`](KineticVanguard.yaml)",
     "[maintained harness guide](harness/README.md)",
     "[methodology configuration](harness/config/benchmark.json)",
-    "[SRD target roster](harness/data/srd_targets.csv)",
+    "[SRD creature profiles](harness/data/srd_creature_rosters.json)",
     "[comparator assumptions](harness/comparators/fighter-subclasses.json)",
     "[`LICENSE.md`](LICENSE.md)",
     "[`NOTICE.md`](NOTICE.md)"

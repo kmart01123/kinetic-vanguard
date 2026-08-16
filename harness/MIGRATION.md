@@ -20,7 +20,7 @@ The immutable import was verified before use. Historical files retain their old 
 | BM/EK control scenarios | `harness/comparators/fighter-subclasses.json#/control` | Minimal frozen third-party comparator parameters |
 | levels, rounds, base Fighter action-slot/feature progression plus Studied Attacks and Combat Prowess semantics, seeds, trials, cluster sizes, Blood Tax profile, all-Manifested-Strike/AT policy and optimizer information timing | `harness/config/benchmark.json` | Mixed configuration: project-authored methodology/profile structure plus SRD 5.2.1-derived Fighter mechanics |
 | compact control scenario selection | `harness/config/benchmark.json#/control_matrix` | Matrix profile selection, not rules authority |
-| SRD targets, HP, defenses, immunities, pages, URL | `harness/data/srd_targets.csv` | Pinned SRD data/provenance |
+| SRD targets, HP, defenses, immunities, pages, URL | `harness/data/srd_creatures.json` plus `harness/data/srd_creature_rosters.json` | Pinned SRD catalog and ordered profiles |
 | attack/save enumeration, exact damage-defense application, equal weighting, and finite-horizon observed-state policy choice | `harness/model.py`, `damage_harness.py`, `control_harness.py` | Simulation/aggregation algorithm |
 | `action_configurations`, `standalone_choices`, `turn_options` | Legal projected feature candidates and exact resource-aware Bellman policy in `damage_harness.py` | Reimplemented algorithm; no KV table |
 | legacy CSV/Markdown/plot code | `comparison_report.py` and detailed CSV writers | Reporting algorithm |
