@@ -91,6 +91,7 @@ export interface Entity {
   psi_cost?: number;
   activation?: string;
   requires_concentration?: boolean;
+  concentration_tiers?: Array<0|1|2>;
   concentration_duration?: string;
   content: ContentBlock[];
   classifications: {

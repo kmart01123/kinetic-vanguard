@@ -1127,7 +1127,7 @@ entities:
                   type: text
               - - text: "Movement: "
                   type: strong
-                - text: You use the 30-foot fly Speed to move to a point 30 feet from the creature’s starting position, then take the Attack action.
+                - text: Your Tier-1 fly Speed is 50 feet (30 feet + (5 × 4) for Proficiency Bonus +4). You use 30 feet of that fly Speed to move to a point 30 feet from the creature’s starting position, then take the Attack action.
                   type: text
               - - text: "Attack 1: "
                   type: strong
@@ -1173,10 +1173,6 @@ entities:
               - - text: "Duration: "
                   type: strong
                 - text: Vectored Thrust remains active while you maintain concentration.
-                  type: text
-              - - text: "Opportunity Attacks: "
-                  type: strong
-                - text: The flight provokes no Opportunity Attacks.
                   type: text
             style: unordered
             type: list
@@ -1995,9 +1991,9 @@ entities:
                 type: text
             - - text: "2"
                 type: text
-            - - text: Bonus Action · Concentration
+            - - text: Bonus Action · Concentration at T0–T1
                 type: text
-            - - text: Concentration, up to 10 minutes
+            - - text: Up to 10 minutes
                 type: text
           - - - text: 7th
                 type: text
@@ -3327,11 +3323,11 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: Your flight does not provoke Opportunity Attacks."
+          - text: "T1 Overload: Changes from Tier 0: Vectored Thrust’s fly Speed increases by a number of feet equal to 5 × your Proficiency Bonus."
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: Your fly Speed increases by a number of feet equal to 5 × your Proficiency Bonus."
+          - text: "T2 Overload: Changes from Tier 1: Vectored Thrust no longer requires Concentration."
             type: text
         type: paragraph
     id: vectored_thrust
@@ -3343,6 +3339,9 @@ entities:
     psi_cost: 2
     publishable: true
     requires_concentration: true
+    concentration_tiers:
+      - 0
+      - 1
     concentration_duration: Up to 10 minutes
     title: Vectored Thrust
   - activation: on_hit

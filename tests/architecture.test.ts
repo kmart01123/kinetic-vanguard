@@ -297,7 +297,8 @@ test("concentration durations are explicit in structured authority and rules tex
   const features=authority.entities.filter(entity=>entity.concentration_duration!==undefined).sort((a,b)=>a.id.localeCompare(b.id));
   assert.deepEqual(features.map(entity=>[entity.id,entity.concentration_duration]),expected);
   assert.ok(features.every(entity=>entity.requires_concentration===true));
-  for(const entity of features.filter(entity=>entity.concentration_duration!=="Varies by tier")){
+  assert.deepEqual(features.filter(entity=>entity.concentration_tiers!==undefined).map(entity=>[entity.id,entity.concentration_tiers]),[["vectored_thrust",[0,1]]]);
+  for(const entity of features.filter(entity=>entity.concentration_duration!=="Varies by tier"&&entity.concentration_tiers===undefined)){
     const rules=entityRules(entity);
     assert.ok(rules.includes(`requires Concentration for ${entity.concentration_duration!.toLowerCase()}.`),`${entity.id} is missing its canonical maximum duration`);
   }
@@ -315,6 +316,20 @@ test("concentration durations are explicit in structured authority and rules tex
   ]);
   assert.match(barrierBlocks[2]!,/^T1 Overload: Changes from Tier 0:/);assert.doesNotMatch(barrierBlocks[2]!,/duration|minute|Concentration/iu);
   assert.match(barrierBlocks[3]!,/^T2 Overload: Changes from Tier 1: The duration increases to 10 minutes\./);
+});
+
+test("Vectored Thrust progression and example match tier-specific concentration authority",async()=>{
+  const {authority}=await loadAuthority();const feature=authority.entities.find(entity=>entity.id==="vectored_thrust")!;
+  assert.equal(feature.requires_concentration,true);assert.equal(feature.concentration_duration,"Up to 10 minutes");assert.deepEqual(feature.concentration_tiers,[0,1]);
+  const tiers=feature.content.map(block=>blockText(block));assert.deepEqual(tiers,[
+    "T0 Base: This effect requires Concentration for up to 10 minutes. You gain a fly Speed of 30 feet for the duration. The effect ends early if you are Incapacitated.",
+    "T1 Overload: Changes from Tier 0: Vectored Thrust’s fly Speed increases by a number of feet equal to 5 × your Proficiency Bonus.",
+    "T2 Overload: Changes from Tier 1: Vectored Thrust no longer requires Concentration."
+  ]);
+  const activeText=tiers.join(" ");assert.doesNotMatch(activeText,/Opportunity Attacks/);assert.match(activeText,/up to 10 minutes/);assert.match(activeText,/ends early if you are Incapacitated/);
+  const examples=authority.entities.find(entity=>entity.id==="common_example_play")!;const psychokinesis=(examples.content as any[]).find(block=>block.type==="example_play_section"&&block.discipline==="psychokinesis")!;
+  const exampleText=["setup","activation","rolls_or_saves","damage","effects","result"].flatMap(phase=>psychokinesis[phase].map((block:any)=>blockText(block))).join(" ");
+  assert.match(exampleText,/level 11 Psychokinesis fighter/);assert.match(exampleText,/Proficiency Bonus \+4/);assert.match(exampleText,/Tier-1 fly Speed is 50 feet \(30 feet \+ \(5 × 4\) for Proficiency Bonus \+4\)/);assert.match(exampleText,/use 30 feet of that fly Speed/);assert.doesNotMatch(exampleText,/Opportunity Attacks/);assert.match(exampleText,/concentrating on Vectored Thrust/);
 });
 
 
@@ -531,8 +546,9 @@ test("Psi Cost Reference defines complete tier-aware Ongoing Duration values",as
   const acquisitions=references.flatMap(reference=>"entity_id" in reference?[entityById.get(reference.entity_id)?.classifications.acquisition_mode].filter(Boolean):[]).sort();
   assert.deepEqual(acquisitions,["granted","granted","selectable","selectable","selectable","selectable","selectable","selectable","selectable","selectable"]);
   assert.deepEqual(rows.reduce<Record<string,number>>((counts,row)=>({...counts,[row[0]!]:(counts[row[0]!]??0)+1}),{}),{"3rd":4,"5th":1,"7th":5,"10th":5,"15th":5,"18th":1,"20th":5,"15th+":7,"18th+":1});
-  assert.deepEqual(rows.map(row=>[row[1],row[5]]),[["Glacial Spike","Until the end of your next turn"],["Ember Bolt","Instantaneous"],["Telekinetic Shove","Varies by tier"],["Static Discharge","Varies by tier"],["Deflection Screen","Varies by tier"],["Empathic Sense","Continuous"],["Snow Chains","Until the end of your next turn"],["Thermal Fracture","Until the start of your next turn"],["Vectored Thrust","Concentration, up to 10 minutes"],["Branching Bolt","Instantaneous"],["Frozen Ground","Concentration, up to 1 minute"],["Cinder Lance","Instantaneous"],["Explosion/Implosion","Until the end of your next turn"],["Electron Burst","Varies by tier"],["Phase Step","Varies by tier"],["Arctic Tempest","Until the end of your next turn"],["Flare","Until the end of your next turn"],["Telekinetic Slam","Varies by tier"],["Forked Lightning","Varies by tier"],["Advanced Training III choice","Varies by feature"],["Advanced Training IV choice","Varies by feature"],["Advanced Training V choice","Varies by feature"],["Mind Shred","Instantaneous"],["Beguile","Varies by tier"],["Mind Lock","Until the end of your next turn"],["Gravitic Press","Concentration, up to 1 minute"],["Barrier","Varies by tier"],["Improved Phase Step","Varies by tier"],["Overload Mastery II","Continuous"],["Inner Reserve","Continuous"],["Absolute Zero","Until the end of your next turn"],["Furnace Strike","Instantaneous"],["Mass Levitation","Concentration, up to 1 minute"],["Ball Lightning","Concentration, up to 1 minute"]]);
+  assert.deepEqual(rows.map(row=>[row[1],row[5]]),[["Glacial Spike","Until the end of your next turn"],["Ember Bolt","Instantaneous"],["Telekinetic Shove","Varies by tier"],["Static Discharge","Varies by tier"],["Deflection Screen","Varies by tier"],["Empathic Sense","Continuous"],["Snow Chains","Until the end of your next turn"],["Thermal Fracture","Until the start of your next turn"],["Vectored Thrust","Up to 10 minutes"],["Branching Bolt","Instantaneous"],["Frozen Ground","Concentration, up to 1 minute"],["Cinder Lance","Instantaneous"],["Explosion/Implosion","Until the end of your next turn"],["Electron Burst","Varies by tier"],["Phase Step","Varies by tier"],["Arctic Tempest","Until the end of your next turn"],["Flare","Until the end of your next turn"],["Telekinetic Slam","Varies by tier"],["Forked Lightning","Varies by tier"],["Advanced Training III choice","Varies by feature"],["Advanced Training IV choice","Varies by feature"],["Advanced Training V choice","Varies by feature"],["Mind Shred","Instantaneous"],["Beguile","Varies by tier"],["Mind Lock","Until the end of your next turn"],["Gravitic Press","Concentration, up to 1 minute"],["Barrier","Varies by tier"],["Improved Phase Step","Varies by tier"],["Overload Mastery II","Continuous"],["Inner Reserve","Continuous"],["Absolute Zero","Until the end of your next turn"],["Furnace Strike","Instantaneous"],["Mass Levitation","Concentration, up to 1 minute"],["Ball Lightning","Concentration, up to 1 minute"]]);
   const byFeature=new Map(rows.map(row=>[row[1],row]));
+  assert.equal(byFeature.get("Vectored Thrust")?.[4],"Bonus Action · Concentration at T0–T1");
   assert.equal(byFeature.get("Barrier")?.[4],"Bonus Action · Concentration");
   assert.equal(byFeature.get("Glacial Spike")?.[4],"Declared before roll · Resolves on hit");
   assert.equal(byFeature.get("Empathic Sense")?.[4],"Passive · Bonus Action scan");
@@ -601,12 +617,18 @@ test("final rules decisions leave every unapproved authority field unchanged",as
   const empathicForLists=projection.entities.find((entity:any)=>entity.id==="common_empathic_sense");collapseLeadAndList(empathicForLists,"Active Scan:");empathicForLists.content[1].inlines[0].text=empathicForLists.content[1].inlines[0].text.replace("The scan does not update after activation. The scan does not reveal","The scan does not update after activation and does not reveal");
   const beguileRuleList=beguileForTierCollapse.content.find((block:any)=>block.type==="list");beguileForTierCollapse.content.splice(beguileForTierCollapse.content.indexOf(beguileRuleList),1,paragraph(listMechanics(beguileRuleList).join(" ")));beguileForTierCollapse.content[3].inlines[0].text=beguileForTierCollapse.content[3].inlines[0].text.replace("It requires no spell components. It cannot","It requires no spell components, cannot");
 
+  const vectored=projection.entities.find((entity:any)=>entity.id==="vectored_thrust");
+  delete vectored.concentration_tiers;
+  vectored.content[1].inlines[0].text="T1 Overload: Changes from Tier 0: Your flight does not provoke Opportunity Attacks.";
+  vectored.content[2].inlines[0].text="T2 Overload: Changes from Tier 1: Your fly Speed increases by a number of feet equal to 5 × your Proficiency Bonus.";
+
   const examplePlay=projection.entities.find((entity:any)=>entity.id==="common_example_play");
   const legacyExampleOverrides:Record<string,string>={
     "pyrokinesis.rolls_or_saves":"Your attack bonus is +10 (+4 Charisma, +4 Proficiency Bonus, +2 Psionic Focus). You roll 9 + 10 = 19, 13 + 10 = 23, and 7 + 10 = 17; all three attacks hit Armor Class 16. These Ember Bolt and Cinder Lance tiers require no saving throws.",
     "pyrokinesis.damage":"Attack 1 rolls 8 on its 1d10 and deals 8 + 4 + 6 from Ember Bolt at Tier 2 = 18 fire damage. Attack 2 rolls 6 for Manifested Strike and 7 and 4 for Cinder Lance’s two additional base Manifested Strike dice, dealing 6 + 7 + 4 + 4 = 21 fire damage. Attack 3 rolls 5 and deals 5 + 4 + 2 from Ember Bolt at Tier 0 = 11 fire damage. The total is 18 + 21 + 11 = 50 fire damage.",
     "psychokinesis.rolls_or_saves":"Your attack bonus is +10 (+4 Intelligence, +4 Proficiency Bonus, +2 Psionic Focus). You roll 9 + 10 = 19, 12 + 10 = 22, and 7 + 10 = 17; all three attacks hit Armor Class 16. After attack 1 deals damage, the creature rolls 12 against Difficulty Class 16 (8 + 4 + 4) and fails its Strength saving throw.",
     "psychokinesis.damage":"Attack 1 rolls 7 on its 1d10 and deals 7 + 4 Intelligence + 2 from Telekinetic Shove = 13 force damage. Attack 2 rolls 6 and deals 6 + 4 = 10 force damage. Attack 3 rolls 4 and deals 4 + 4 = 8 force damage. The total is 13 + 10 + 8 = 31 force damage.",
+    "psychokinesis.activation":"As a bonus action, you activate standalone Vectored Thrust at Tier 1. You spend 2 Psi, take 4 Blood Tax (1 × Proficiency Bonus), and begin concentrating for up to 10 minutes. The startup Blood Tax requires no concentration saving throw. You use the 30-foot fly Speed to move to a point 30 feet from the creature’s starting position, then take the Attack action. Immediately before attack 1, you declare Telekinetic Shove at Tier 0; it costs 0 Psi. Attacks 2 and 3 are plain Manifested Strikes.",
     "psychokinesis.effects":"The failed Strength saving throw lets you push the creature 10 feet horizontally in a direction you choose. Telekinetic Shove replaces Push mastery for that hit, so the creature moves only once. Vectored Thrust remains active while you maintain concentration, and the flight provokes no Opportunity Attacks.",
     "cryokinesis.rolls_or_saves":"Your attack bonus is +10 (+4 Intelligence, +4 Proficiency Bonus, +2 Psionic Focus). You roll 10 + 10 = 20, 8 + 10 = 18, and 12 + 10 = 22; all three attacks hit Armor Class 16. After attack 2 deals damage, the creature rolls 11 against Difficulty Class 16 (8 + 4 + 4) and fails its Constitution saving throw.",
     "cryokinesis.damage":"Attack 1 rolls 6 on its 1d10 and deals 6 + 4 Intelligence + 2 from Glacial Spike = 12 cold damage. Attack 2 rolls 8 and deals 8 + 4 + 2 = 14 cold damage. Attack 3 rolls 5 and deals 5 + 4 = 9 cold damage. The total is 12 + 14 + 9 = 35 cold damage.",
@@ -660,6 +682,7 @@ test("final rules decisions leave every unapproved authority field unchanged",as
   const formerlyLimitedRiders=new Set(["Snow Chains","Thermal Fracture","Branching Bolt","Cinder Lance","Explosion/Implosion","Electron Burst","Flare","Mind Shred","Mind Lock","Furnace Strike"]);
   for(const row of table.rows)if(formerlyLimitedRiders.has(cell(row[1])))row[4][0].text="Declared before roll · Resolves on hit · Once per Attack action";
   table.headers[5][0].text="Duration";
+  const vectoredRow=table.rows.find((row:any[])=>cell(row[1])==="Vectored Thrust");assert.equal(cell(vectoredRow[4]),"Bonus Action · Concentration at T0–T1");vectoredRow[4][0].text="Bonus Action · Concentration";
   const barrierRow=table.rows.find((row:any[])=>cell(row[1])==="Barrier");assert.equal(cell(barrierRow[4]),"Bonus Action · Concentration");barrierRow[4][0].text="Bonus Action";
   const oldDurations=new Map([["Glacial Spike","Varies by tier"],["Deflection Screen","Instantaneous"],["Empathic Sense","Continuous; scan instantaneous"],["Vectored Thrust","Up to 10 minutes"],["Frozen Ground","Up to 1 minute"],["Explosion/Implosion","Instantaneous"],["Electron Burst","Until the start of your next turn"],["Phase Step","Instantaneous"],["Arctic Tempest","Varies by tier"],["Flare","Varies by tier"],["Gravitic Press","Up to 1 minute"],["Absolute Zero","Varies by tier"],["Mass Levitation","Up to 1 minute"],["Ball Lightning","Up to 1 minute"]]);
   for(const row of table.rows){const oldDuration=oldDurations.get(cell(row[1]));if(oldDuration)row[5][0].text=oldDuration;}
@@ -720,7 +743,7 @@ test("example turns use one semantic six-phase block contract",async()=>{
   const phaseShape=(section:any,field:typeof phases[number])=>section[field].map((block:any)=>block.type==="list"?`${block.type}:${block.style}:${block.items.length}`:block.type);
   assert.deepEqual(sections.map(section=>phases.map(field=>[field,phaseShape(section,field)])),[
     [["setup",["list:unordered:2"]],["activation",["paragraph","list:ordered:3","paragraph"]],["rolls_or_saves",["paragraph","list:ordered:3","paragraph"]],["damage",["list:ordered:3","paragraph"]],["effects",["paragraph"]],["result",["list:unordered:3"]]],
-    [["setup",["list:unordered:2"]],["activation",["list:ordered:4"]],["rolls_or_saves",["paragraph","list:ordered:4"]],["damage",["list:ordered:3","paragraph"]],["effects",["list:unordered:4"]],["result",["list:unordered:4"]]],
+    [["setup",["list:unordered:2"]],["activation",["list:ordered:4"]],["rolls_or_saves",["paragraph","list:ordered:4"]],["damage",["list:ordered:3","paragraph"]],["effects",["list:unordered:3"]],["result",["list:unordered:4"]]],
     [["setup",["list:unordered:2"]],["activation",["paragraph","list:ordered:3"]],["rolls_or_saves",["paragraph","list:ordered:4"]],["damage",["list:ordered:3","paragraph"]],["effects",["list:ordered:4"]],["result",["list:unordered:4"]]],
     [["setup",["list:unordered:4"]],["activation",["paragraph","list:ordered:3","paragraph"]],["rolls_or_saves",["paragraph","list:ordered:5"]],["damage",["list:ordered:3","paragraph"]],["effects",["list:unordered:5"]],["result",["list:unordered:5"]]]
   ]);
@@ -737,10 +760,10 @@ test("example turns use one semantic six-phase block contract",async()=>{
     {
       discipline:"psychokinesis",
       setup:["within 5 feet","Armor Class 16","10 Psi","Intelligence +4","open concentration slot"],
-      activation:["Vectored Thrust at Tier 1","spend 2 Psi","4 Blood Tax","move to a point 30 feet from the creature’s starting position","Telekinetic Shove at Tier 0"],
+      activation:["Vectored Thrust at Tier 1","spend 2 Psi","4 Blood Tax","Tier-1 fly Speed is 50 feet","use 30 feet of that fly Speed","move to a point 30 feet from the creature’s starting position","Telekinetic Shove at Tier 0"],
       rolls_or_saves:["9 + 10 = 19","12 + 10 = 22","7 + 10 = 17","12 against Difficulty Class 16","fails its Strength saving throw"],
       damage:["13 force damage","10 force damage","8 force damage","13 + 10 + 8 = 31 force damage"],
-      effects:["push the creature 10 feet","replaces Push mastery","flight provokes no Opportunity Attacks"],
+      effects:["push the creature 10 feet","replaces Push mastery"],
       result:["30 feet from the creature’s starting position","8 of 10 Psi","4 Hit Points lost to Blood Tax","concentrating on Vectored Thrust","31 force damage","ends 10 feet from its starting position","reaction remains unused"]
     },
     {
