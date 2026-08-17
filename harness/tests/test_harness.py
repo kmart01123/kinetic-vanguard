@@ -309,9 +309,18 @@ class ComparatorLeafContractTests(unittest.TestCase):
             build=str(path[1]);row_field=str(path[2]);scenario_index=int(path[3]) if row_field=="scenarios" else None
             field=str(path[4]) if scenario_index is not None else row_field
             before=deepcopy(self.comparators);after=deepcopy(self.comparators);current=_path_value(after,path)
+            if row_field=="reliability_scenario_ids":
+                _set_path(after,path,f"{current}_contract_probe")
+                before_ids=before["control"][build]["reliability_scenario_ids"];after_ids=after["control"][build]["reliability_scenario_ids"]
+                with self.subTest(path=_path_label(path)):self.assertNotEqual(after_ids,before_ids)
+                continue
             condition_immunities:tuple[str,...]=()
             if field=="id":replacement=f"{current}_contract_probe";_set_path(after,path,replacement)
             elif field=="save":replacement="wisdom" if current=="strength" else "strength";_set_path(after,path,replacement)
+            elif field=="delivery":replacement="action_spell" if current=="war_magic_cantrip" else "war_magic_cantrip";_set_path(after,path,replacement)
+            elif field=="duration":replacement="until_start_next_turn" if current!="until_start_next_turn" else "until_end_next_turn";_set_path(after,path,replacement)
+            elif field=="repeat_save_trigger":replacement="start_of_affected_turn";_set_path(after,path,replacement)
+            elif field=="required_creature_type":replacement="construct";_set_path(after,path,replacement)
             elif field=="conditions":
                 condition_immunities=(str(current),);replacement="stunned" if current!="stunned" else "blinded";_set_path(after,path,replacement)
             elif field=="outcomes":_set_path(after,path[:-1],[])
@@ -324,8 +333,11 @@ class ComparatorLeafContractTests(unittest.TestCase):
                 level=int(before["control"][build]["scenarios"][scenario_index].get("minimum_level",before["control"][build]["minimum_level"]))
                 before_scenario=before["control"][build]["scenarios"][scenario_index];after_scenario=after["control"][build]["scenarios"][scenario_index]
             else:
-                level=next((int(part) for part in path if isinstance(part,str) and part in {"7","11","15","20"}),11 if build=="eldritch_knight" and field=="attack_ability_modifier" else 7)
-                scenario_index=0 if build=="battle_master" or field not in {"attack_ability_modifier","magic_weapon_bonus_by_level"} else 1
+                level=next((int(part) for part in path if isinstance(part,str) and part in {"7","11","15","20"}),11 if build=="eldritch_knight" and field in {"attack_ability_modifier","magic_weapon_bonus_by_level"} else 7)
+                if build=="battle_master":scenario_index=0
+                else:
+                    scenario_id="blindness_after_eldritch_strike" if field in {"attack_ability_modifier","magic_weapon_bonus_by_level"} else "blindness_deafness"
+                    scenario_index=next(index for index,item in enumerate(before["control"][build]["scenarios"]) if item["id"]==scenario_id)
                 before_scenario=before["control"][build]["scenarios"][scenario_index];after_scenario=after["control"][build]["scenarios"][scenario_index]
                 if build=="eldritch_knight" and field=="minimum_level":
                     before_scenario.pop("minimum_level",None);after_scenario.pop("minimum_level",None)
@@ -333,9 +345,15 @@ class ComparatorLeafContractTests(unittest.TestCase):
                     before_scenario["minimum_level"]=level;after_scenario["minimum_level"]=level
 
             target=self.target(level,condition_immunities=condition_immunities)
+            required_type=before_scenario.get("required_creature_type")
+            if required_type is not None:target=replace(target,creature_type=str(required_type))
             baseline=_comparator_scenario(self.model,self.config,before,target,build,before_scenario)
+            if field=="spell_attack":
+                with self.subTest(path=_path_label(path)):
+                    with self.assertRaisesRegex(ValueError,"spell attack or saving throw"):_comparator_scenario(self.model,self.config,after,target,build,after_scenario)
+                continue
             changed=_comparator_scenario(self.model,self.config,after,target,build,after_scenario)
-            signature=lambda row:(row["scenario"],row["eligible"],row["reach"],row["named"],row["whole"])
+            signature=lambda row:(row["scenario"],row["eligible"],row["reach"],row["named"],row["whole"],row["after_repeats"],row["shadow_components"])
             with self.subTest(path=_path_label(path)):
                 self.assertNotEqual(signature(changed),signature(baseline))
 
@@ -573,7 +591,7 @@ class ControlComparatorRetryTests(unittest.TestCase):
 
     def test_plain_blindness_remains_one_cast_and_level_seven_is_unchanged(self)->None:
         target=self.target(7);row=self.comparators["control"]["eldritch_knight"];scenario=self.scenario("eldritch_knight","blindness_deafness");result=_comparator_scenario(self.model,self.config,self.comparators,target,"eldritch_knight",scenario)
-        dc=int(row["save_dc_base"])+self.model.progression("proficiency_bonus",7)+int(row["save_ability_modifier_by_level"]["7"]);expected=1-save_success_probability(target,"constitution",dc,False,True)
+        dc=int(row["save_dc_base"])+self.model.progression("proficiency_bonus",7)+int(row["spellcasting_ability_modifier_by_level"]["7"]);expected=1-save_success_probability(target,"constitution",dc,False,True)
         self.assertEqual(result["reach"],100.0);self.assertAlmostEqual(result["whole"],100*expected,places=12)
         eldritch=self.scenario("eldritch_knight","blindness_after_eldritch_strike");self.assertFalse(_comparator_scenario(self.model,self.config,self.comparators,target,"eldritch_knight",eldritch)["eligible"])
 
@@ -583,7 +601,7 @@ class ControlComparatorRetryTests(unittest.TestCase):
             with self.subTest(level=level):
                 target=self.target(level);pb=self.model.progression("proficiency_bonus",level);bonus=pb+int(row["attack_ability_modifier"])+int(row["magic_weapon_bonus_by_level"][str(level)]);hit=sum(attack_probabilities(bonus,target.ac)[1:]);mark=1-(1-hit)**attacks
                 self.assertAlmostEqual(_eldritch_strike_primer_probability(attacks,hit),mark,places=12)
-                dc=int(row["save_dc_base"])+pb+int(row["save_ability_modifier_by_level"][str(level)]);normal=1-save_success_probability(target,"constitution",dc,False,True);disadvantaged=1-save_success_probability(target,"constitution",dc,True,True);expected=mark*disadvantaged+(1-mark)*normal
+                dc=int(row["save_dc_base"])+pb+int(row["spellcasting_ability_modifier_by_level"][str(level)]);normal=1-save_success_probability(target,"constitution",dc,False,True);disadvantaged=1-save_success_probability(target,"constitution",dc,True,True);expected=mark*disadvantaged+(1-mark)*normal
                 result=_comparator_scenario(self.model,self.config,self.comparators,target,"eldritch_knight",scenario)
                 self.assertAlmostEqual(result["whole"],100*expected,places=12)
                 action_surge_mark=_eldritch_strike_primer_probability(2*attacks,hit)

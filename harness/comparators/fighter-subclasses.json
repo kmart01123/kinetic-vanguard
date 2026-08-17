@@ -65,11 +65,20 @@
       "attack_ability_modifier": 5,
       "magic_weapon_bonus_by_level": {"7": 1, "11": 2, "15": 2, "20": 3},
       "save_dc_base": 8,
-      "save_ability_modifier_by_level": {"7": 3, "11": 3, "15": 5, "20": 5},
+      "spellcasting_ability_modifier_by_level": {"7": 3, "11": 3, "15": 5, "20": 5},
       "magic_resistance_applies": true,
+      "reliability_scenario_ids": ["blindness_deafness", "blindness_after_eldritch_strike"],
       "scenarios": [
-        {"id": "blindness_deafness", "minimum_level": 7, "save": "constitution", "conditions": ["blinded"]},
-        {"id": "blindness_after_eldritch_strike", "minimum_level": 11, "save": "constitution", "conditions": ["blinded"], "primer_hit_disadvantage": true}
+        {"id": "ray_of_frost", "minimum_level": 7, "spell_level": 0, "delivery": "war_magic_cantrip", "spell_attack": true, "hit_gated": true, "outcomes": ["speed_reduction"], "magnitude_feet": 10, "duration": "until_start_next_turn"},
+        {"id": "color_spray", "minimum_level": 7, "spell_level": 1, "delivery": "action_spell", "save": "constitution", "conditions": ["blinded"], "duration": "until_end_next_turn", "improved_war_magic_eligible": true},
+        {"id": "color_spray_after_eldritch_strike", "minimum_level": 11, "spell_level": 1, "delivery": "action_spell", "save": "constitution", "conditions": ["blinded"], "duration": "until_end_next_turn", "primer_hit_disadvantage": true, "improved_war_magic_eligible": true},
+        {"id": "ray_of_sickness", "minimum_level": 7, "spell_level": 1, "delivery": "action_spell", "spell_attack": true, "hit_gated": true, "conditions": ["poisoned"], "duration": "until_end_next_turn", "improved_war_magic_eligible": true},
+        {"id": "thunderwave", "minimum_level": 7, "spell_level": 1, "delivery": "action_spell", "save": "constitution", "outcomes": ["forced_movement"], "magnitude_feet": 10, "duration": "instantaneous", "improved_war_magic_eligible": true},
+        {"id": "thunderwave_after_eldritch_strike", "minimum_level": 11, "spell_level": 1, "delivery": "action_spell", "save": "constitution", "outcomes": ["forced_movement"], "magnitude_feet": 10, "duration": "instantaneous", "primer_hit_disadvantage": true, "improved_war_magic_eligible": true},
+        {"id": "hold_person", "minimum_level": 7, "spell_level": 2, "delivery": "action_spell", "save": "wisdom", "conditions": ["paralyzed"], "duration": "one_minute_concentration", "repeat_save_trigger": "end_of_affected_turn", "required_creature_type": "humanoid", "improved_war_magic_eligible": true},
+        {"id": "hold_person_after_eldritch_strike", "minimum_level": 11, "spell_level": 2, "delivery": "action_spell", "save": "wisdom", "conditions": ["paralyzed"], "duration": "one_minute_concentration", "repeat_save_trigger": "end_of_affected_turn", "required_creature_type": "humanoid", "primer_hit_disadvantage": true, "improved_war_magic_eligible": true},
+        {"id": "blindness_deafness", "minimum_level": 7, "spell_level": 2, "delivery": "action_spell", "save": "constitution", "conditions": ["blinded"], "duration": "one_minute", "repeat_save_trigger": "end_of_affected_turn", "improved_war_magic_eligible": true},
+        {"id": "blindness_after_eldritch_strike", "minimum_level": 11, "spell_level": 2, "delivery": "action_spell", "save": "constitution", "conditions": ["blinded"], "duration": "one_minute", "repeat_save_trigger": "end_of_affected_turn", "primer_hit_disadvantage": true, "improved_war_magic_eligible": true}
       ]
     }
   }

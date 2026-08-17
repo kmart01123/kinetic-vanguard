@@ -263,7 +263,7 @@ def expose_label(
         else:
             if duration in {"until_end_current_turn", "until_start_next_turn", "until_end_next_turn"}:
                 active = fixed_exposure(application_probability, 1)
-            elif duration in {"one_minute_concentration", "one_hour", "eight_hours"}:
+            elif duration in {"one_minute", "one_minute_concentration", "one_hour", "eight_hours"}:
                 if repeat_survival_probability is None:
                     active = fixed_exposure(application_probability, horizon)
                 elif repeat_checkpoint == "start_of_affected_turn" and spec.exposure_basis == "target_turn_window":
@@ -279,6 +279,21 @@ def expose_label(
                     expected = None
                     status = "context_required" if status != "unsupported" else status
                     reason_parts.append("This exposure basis has no established side of the start-of-affected-turn repeat-save checkpoint.")
+                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
+                    continue
+                elif repeat_checkpoint == "end_of_affected_turn" and spec.exposure_basis == "target_turn_window":
+                    active = repeat_save_exposure(
+                        application_probability,
+                        repeat_survival_probability,
+                        horizon,
+                        checkpoint_side="after_scored_window",
+                    )
+                    reason_parts.append("The end-of-affected-turn repeat save follows each scored target-turn window; window 1 is p.")
+                elif repeat_checkpoint == "end_of_affected_turn":
+                    active = ()
+                    expected = None
+                    status = "context_required" if status != "unsupported" else status
+                    reason_parts.append("This exposure basis has no established side of the end-of-affected-turn repeat-save checkpoint.")
                     result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
                     continue
                 else:
