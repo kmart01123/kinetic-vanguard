@@ -184,6 +184,7 @@
     "directional_movement_tax": {"primitive":"directional_movement_tax"},
     "forced_dodge_action": {"primitive":"specified_action_requirement","qualifiers":{"required_action":"dodge"}},
     "forced_dash_action": {"primitive":"specified_action_requirement","qualifiers":{"required_action":"dash"}},
+    "escape_action": {"primitive":"specified_action_requirement","qualifiers":{"required_action":"escape_check"}},
     "action_bonus_exclusivity": {"primitive":"action_bonus_exclusivity"},
     "one_attack_cap": {"primitive":"attack_action_cap","requires_magnitude":true,"qualifiers":{"action":"attack"}},
     "bonus_action_denial": {"primitive":"bonus_action_denial"},

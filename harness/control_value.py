@@ -444,6 +444,9 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
     revised: list[PrimitiveExposure] = []
     for item in normalized:
         current = item
+        if current.normalization_disposition != "suppressed" and current.primitive_id == "bonus_action_denial":
+            for stronger in denials:
+                current = _subtract(current, stronger, "turn denial includes and dominates Bonus Action denial")
         if current.normalization_disposition != "suppressed" and current.primitive_id in {"offensive_impairment_next_attack", "offensive_impairment_all_attacks"}:
             for stronger in denials:
                 current = _subtract(current, stronger, "turn denial dominates offensive impairment")

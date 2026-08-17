@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from functools import lru_cache
 from fractions import Fraction
 from pathlib import Path
@@ -30,6 +30,7 @@ class Target:
     level:int;name:str;ac:int;saves:dict[str,int];magic_resistance:bool;legendary_resistance:int;size:str;creature_type:str
     condition_immunities:frozenset[str];damage_resistances:frozenset[str];damage_immunities:frozenset[str];damage_vulnerabilities:frozenset[str]
     hp:int;source:str;source_page:str;source_url:str
+    ability_modifiers:dict[str,int]=field(default_factory=dict);skill_bonuses:dict[str,int]=field(default_factory=dict)
 
 
 def _object(value:Any,label:str)->dict[str,Any]:
@@ -392,7 +393,8 @@ def load_targets(profile:str=DEFAULT_PROFILE,levels:set[int]|None=None,limit:int
         level=member["benchmark_level"]
         if levels is not None and level not in levels:continue
         creature=by_id[member["creature_id"]];saves={**creature["ability_modifiers"],**creature["saving_throw_bonuses"]}
-        rows.append(Target(level,creature["name"],creature["ac"],saves,creature["magic_resistance"],creature["legendary_resistance"]["uses_per_day"],creature["sizes"][0],creature["creature_type"],_defense_values(creature,"condition_immunities"),_defense_values(creature,"damage_resistances"),_defense_values(creature,"damage_immunities"),_defense_values(creature,"damage_vulnerabilities"),creature["hp"],source["ruleset"],str(creature["source"]["page"]),source["url"]))
+        skill_bonuses={str(item["skill"]):int(item["bonus"]) for item in creature["skill_bonuses"]}
+        rows.append(Target(level,creature["name"],creature["ac"],saves,creature["magic_resistance"],creature["legendary_resistance"]["uses_per_day"],creature["sizes"][0],creature["creature_type"],_defense_values(creature,"condition_immunities"),_defense_values(creature,"damage_resistances"),_defense_values(creature,"damage_immunities"),_defense_values(creature,"damage_vulnerabilities"),creature["hp"],source["ruleset"],str(creature["source"]["page"]),source["url"],dict(creature["ability_modifiers"]),skill_bonuses))
     if limit is not None:rows=rows[:limit]
     if not rows:raise ValueError("Target selection is empty")
     return rows
@@ -438,6 +440,21 @@ def modified_save_success_probability(target:Target,ability:str,dc:int,*,advanta
 
 def save_success_probability(target:Target,ability:str,dc:int,disadvantage:bool=False,magic_resistance:bool=True)->float:
     return modified_save_success_probability(target,ability,dc,disadvantage=disadvantage,magic_resistance=magic_resistance)
+
+
+def ability_check_success_probability(target:Target,ability:str,dc:int,skill:str|None=None)->float:
+    """Resolve an ordinary d20 ability check from explicit target facts.
+
+    A listed skill bonus wins; otherwise the underlying ability modifier is
+    used. The ``saves`` fallback exists only for small synthetic test targets
+    created before check facts were projected and never invents proficiency.
+    """
+    if ability not in ABILITIES:raise ValueError(f"Unknown ability check ability: {ability}")
+    if skill is not None and skill not in SKILLS:raise ValueError(f"Unknown ability check skill: {skill}")
+    if dc<0:raise ValueError("Ability check DC cannot be negative")
+    bonus=target.skill_bonuses.get(skill) if skill is not None else None
+    if bonus is None:bonus=target.ability_modifiers.get(ability,target.saves[ability])
+    return sum(roll+bonus>=dc for roll in range(1,21))/20
 
 
 def damage_multiplier(target:Target,damage_type:str,ignore_resistance:bool=False)->float:

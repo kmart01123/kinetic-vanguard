@@ -9,9 +9,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from harness.authority import AuthorityModel
-from harness.control_harness import _comparator_scenario,_eldritch_strike_primer_probability,_finite_penalty_save_failure_probability,_finite_penalty_with_disadvantage_probability,_kv_scenario
+from harness.control_harness import _comparator_scenario,_composed_eldritch_knight_scenarios,_eldritch_strike_primer_probability,_finite_penalty_save_failure_probability,_finite_penalty_with_disadvantage_probability,_kv_scenario
 from harness.control_value import PrimitiveExposure,decompose_label,expose_label,fixed_exposure,instantaneous_exposure,load_primitive_catalog,normalize_exposures,repeat_save_exposure,shadow_rows
-from harness.model import Target,attack_probabilities,load_comparators,load_config,save_success_probability
+from harness.model import Target,ability_check_success_probability,attack_probabilities,load_comparators,load_config,modified_save_success_probability,save_success_probability
 
 
 def target(*immunities:str)->Target:
@@ -259,11 +259,63 @@ class CurrentScenarioShadowTests(unittest.TestCase):
         self.assertAlmostEqual(_finite_penalty_with_disadvantage_probability(probe,"wisdom",dc,4,mark),combined,places=12)
         primer=self.scenario("mind_sliver");self.assertEqual(primer["effects"][0]["magnitude"],4);self.assertNotIn("save_disadvantage",json.dumps(primer));self.assertIn("same_attack_action_sequence_not_established",primer["context_predicates"])
 
+        expanded=_composed_eldritch_knight_scenarios(self.comparators,probe);slow=self.scenario("slow")
+        ordinary=_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",slow)
+        composed=next(item for item in expanded if item["id"]=="slow_after_mind_sliver")
+        composed_value=_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",composed)
+        ek_row=self.comparators["control"]["eldritch_knight"];spell_dc=int(ek_row["save_dc_base"])+self.model.progression("proficiency_bonus",20)+int(ek_row["spellcasting_ability_modifier_by_level"]["20"])
+        primer_probability=1-modified_save_success_probability(probe,"intelligence",spell_dc,magic_resistance=True)
+        ordinary_failure=1-modified_save_success_probability(probe,"wisdom",spell_dc,magic_resistance=True)
+        exact_penalized=sum(roll-penalty+probe.saves["wisdom"]<spell_dc for roll in range(1,21) for penalty in range(1,5))/80
+        self.assertAlmostEqual(composed_value["whole"]/100,primer_probability*exact_penalized+(1-primer_probability)*ordinary_failure,places=12)
+        self.assertNotAlmostEqual(composed_value["whole"],ordinary["whole"])
+
+        combined=next(item for item in expanded if item["id"]=="slow_after_mind_sliver_and_eldritch_strike")
+        combined_value=_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",combined)
+        weapon_bonus=self.model.progression("proficiency_bonus",20)+int(ek_row["attack_ability_modifier"])+int(ek_row["magic_weapon_bonus_by_level"]["20"])
+        hit=sum(attack_probabilities(weapon_bonus,probe.ac)[1:]);mark=_eldritch_strike_primer_probability(4,hit)
+        penalized_disadvantage=sum(min(first,second)-penalty+probe.saves["wisdom"]<spell_dc for first in range(1,21) for second in range(1,21) for penalty in range(1,5))/1600
+        ordinary_disadvantage=1-modified_save_success_probability(probe,"wisdom",spell_dc,disadvantage=True,magic_resistance=True)
+        expected_combined=primer_probability*(mark*penalized_disadvantage+(1-mark)*exact_penalized)+(1-primer_probability)*(mark*ordinary_disadvantage+(1-mark)*ordinary_failure)
+        self.assertAlmostEqual(combined_value["whole"]/100,expected_combined,places=12)
+        resistant=replace(probe,magic_resistance=True);resistant_expanded=_composed_eldritch_knight_scenarios(self.comparators,resistant);resistant_combined=next(item for item in resistant_expanded if item["id"]=="slow_after_mind_sliver_and_eldritch_strike");resistant_value=_comparator_scenario(self.model,self.config,self.comparators,resistant,"eldritch_knight",resistant_combined)
+        resistant_mark=float(resistant_value["save_composition"]["eldritch_strike_establishment_probability"]);resistant_primer=float(resistant_value["save_composition"]["mind_sliver_establishment_probability"])
+        resistant_normal=1-modified_save_success_probability(resistant,"wisdom",spell_dc,magic_resistance=True);resistant_disadvantage=1-modified_save_success_probability(resistant,"wisdom",spell_dc,disadvantage=True,magic_resistance=True)
+        resistant_penalty=_finite_penalty_save_failure_probability(resistant,"wisdom",spell_dc,4,magic_resistance=True);resistant_penalty_cancelled=_finite_penalty_save_failure_probability(resistant,"wisdom",spell_dc,4,disadvantage=True,magic_resistance=True)
+        self.assertAlmostEqual(resistant_value["whole"]/100,resistant_primer*(resistant_mark*resistant_penalty_cancelled+(1-resistant_mark)*resistant_penalty)+(1-resistant_primer)*(resistant_mark*resistant_disadvantage+(1-resistant_mark)*resistant_normal),places=12)
+        invalid=_composed_eldritch_knight_scenarios(self.comparators,probe,mind_sliver_timing="same_attack_action")
+        self.assertFalse(any("after_mind_sliver" in item["id"] for item in invalid))
+
     def test_area_movement_tax_and_action_escape_are_generic(self)->None:
         terrain=decompose_label("difficult_terrain")[0];self.assertEqual(terrain.primitive_id,"terrain_movement_tax");self.assertNotEqual(terrain.primitive_id,"mobility_loss_feet");self.assertEqual(dict(terrain.qualifiers)["stacking"],"nonstacking")
         web=self.scenario("web");tentacles=self.scenario("evards_black_tentacles")
         self.assertEqual(web["escapes"],tentacles["escapes"]);self.assertEqual(web["area_exit_policy"],tentacles["area_exit_policy"])
-        for scenario in (web,tentacles):self.assertTrue(any("difficult_terrain" in effect.get("outcomes",[]) for effect in scenario["effects"]))
+        probe=replace(self.target,ability_modifiers={"strength":1},skill_bonuses={"athletics":7})
+        dc=8+self.model.progression("proficiency_bonus",20)+int(self.comparators["control"]["eldritch_knight"]["spellcasting_ability_modifier_by_level"]["20"])
+        self.assertAlmostEqual(ability_check_success_probability(probe,"strength",dc,"athletics"),sum(roll+7>=dc for roll in range(1,21))/20)
+        fallback=replace(probe,skill_bonuses={});self.assertAlmostEqual(ability_check_success_probability(fallback,"strength",dc,"athletics"),sum(roll+1>=dc for roll in range(1,21))/20)
+        for scenario in (web,tentacles):
+            self.assertTrue(any("difficult_terrain" in effect.get("outcomes",[]) for effect in scenario["effects"]))
+            value=_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",scenario);resolution=value["escape_resolution"];self.assertIsNotNone(resolution)
+            success=float(resolution["success_probability"]);application=1-save_success_probability(probe,scenario["save"],dc,False,True);attempts=tuple(float(item) for item in resolution["attempt_probabilities"])
+            self.assertEqual(resolution["area_trigger"],next(effect["area_trigger"] for effect in scenario["effects"] if "restrained" in effect.get("conditions",[])))
+            self.assertAlmostEqual(attempts[0],application);self.assertAlmostEqual(attempts[1],application*(1-success));self.assertAlmostEqual(attempts[2],application*(1-success)**2)
+            self.assertEqual(tuple(float(item) for item in resolution["legal_exit_probabilities"]),tuple(attempt*success for attempt in attempts))
+            rows=self.rows(value,"all");escape_action=next(row for row in rows if row["Source Effect"]==f"{scenario['id']}:escape_action")
+            restrained=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="mobility_loss_feet")
+            for observed,expected in zip(self.active(escape_action),attempts):self.assertAlmostEqual(observed,expected,places=12)
+            for observed,expected in zip(self.active(restrained),attempts):self.assertAlmostEqual(observed,expected,places=12)
+            self.assertEqual(escape_action["Pricing Status"],"candidate")
+
+    def test_generic_eldritch_strike_variants_cover_new_spells_and_only_the_initial_save(self)->None:
+        expanded=_composed_eldritch_knight_scenarios(self.comparators,self.target);by_id={item["id"]:item for item in expanded}
+        for scenario_id in ("slow","confusion","phantasmal_killer"):
+            base=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",by_id[scenario_id]);primed=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",by_id[f"{scenario_id}_after_eldritch_strike"])
+            self.assertGreater(primed["whole"],base["whole"]);self.assertEqual(primed["save_composition"]["primers"],["eldritch_strike"])
+        slow=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",by_id["slow_after_eldritch_strike"]);speed=next(row for row in self.rows(slow,"all") if row["Mechanical Primitive"]=="speed_multiplier")
+        active=self.active(speed);repeat=float(slow["save_composition"]["repeat_failure_probability"]);self.assertAlmostEqual(active[1],active[0]*repeat);self.assertAlmostEqual(active[2],active[1]*repeat)
+        level7=replace(self.target,level=7);level7_ids={item["id"] for item in _composed_eldritch_knight_scenarios(self.comparators,level7)};self.assertNotIn("slow_after_eldritch_strike",level7_ids)
+        self.assertEqual(self.comparators["control"]["eldritch_knight"]["reliability_scenario_ids"],["blindness_deafness","blindness_after_eldritch_strike"])
 
     def test_bestow_curse_modes_are_separate_and_forced_dodge_is_not_turn_denial(self)->None:
         modes={scenario["id"]:scenario for scenario in self.comparators["control"]["eldritch_knight"]["scenarios"] if scenario["spell_id"]=="bestow_curse"}
@@ -279,8 +331,19 @@ class CurrentScenarioShadowTests(unittest.TestCase):
     def test_confusion_branches_are_exact_and_deterministic(self)->None:
         scenario=self.scenario("confusion");branches={row["id"]:Fraction(row["numerator"],row["denominator"]) for row in scenario["turn_branches"]};self.assertEqual(sum(branches.values(),Fraction(0,1)),1)
         value=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",scenario);rows=self.rows(value,"all");p=float(next(row for row in rows if row["Mechanical Primitive"]=="reaction_denial")["Application Probability"])
-        action=next(row for row in rows if row["Mechanical Primitive"]=="active_turn_denial");movement=next(row for row in rows if row["Mechanical Primitive"]=="turn_movement_denial")
+        reaction=next(row for row in rows if row["Mechanical Primitive"]=="reaction_denial");action=next(row for row in rows if row["Mechanical Primitive"]=="active_turn_denial");movement=next(row for row in rows if row["Mechanical Primitive"]=="turn_movement_denial");bonus=next(row for row in rows if row["Mechanical Primitive"]=="bonus_action_denial")
         self.assertAlmostEqual(float(action["Application Probability"]),p*0.6,places=12);self.assertAlmostEqual(float(movement["Application Probability"]),p*0.7,places=12)
+        self.assertEqual(bonus["Normalization"],"partially_suppressed");self.assertEqual(len(self.active(bonus)),3)
+        for residual,affected in zip(self.active(bonus),self.active(reaction)):self.assertAlmostEqual(residual,affected*0.4,places=12)
+
+    def test_condition_dependencies_block_charmed_and_other_conditional_outcomes(self)->None:
+        immune=replace(self.target,creature_type="humanoid",condition_immunities=frozenset({"charmed"}))
+        for scenario_id in ("crown_of_madness","charm_person","charm_monster","suggestion"):
+            value=_comparator_scenario(self.model,self.config,self.comparators,immune,"eldritch_knight",self.scenario(scenario_id));labels={label for component in value["shadow_components"] for _,label in component["labels"]}
+            self.assertTrue({"restricted_melee_attack","attitude_change","open_ended_behavior"}.isdisjoint(labels),scenario_id)
+            self.assertEqual(value["whole"],0,scenario_id)
+        frightened_immune=replace(self.target,condition_immunities=frozenset({"frightened"}));fear=_comparator_scenario(self.model,self.config,self.comparators,frightened_immune,"eldritch_knight",self.scenario("fear"));fear_labels={label for component in fear["shadow_components"] for _,label in component["labels"]};self.assertNotIn("forced_dash_action",fear_labels);self.assertIn("held_item_drop",fear_labels)
+        poisoned_immune=replace(self.target,condition_immunities=frozenset({"poisoned"}));cloud=_comparator_scenario(self.model,self.config,self.comparators,poisoned_immune,"eldritch_knight",self.scenario("stinking_cloud"));cloud_labels={label for component in cloud["shadow_components"] for _,label in component["labels"]};self.assertNotIn("active_turn_denial",cloud_labels);self.assertIn("sight_barrier",cloud_labels)
 
     def test_two_sided_isolation_and_phantasmal_killer_supersession(self)->None:
         banishment=self.scenario("banishment");sphere=self.scenario("otilukes_resilient_sphere")
