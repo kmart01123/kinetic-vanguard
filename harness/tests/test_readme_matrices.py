@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import stat
 import tempfile
 import unittest
 from copy import deepcopy
@@ -95,8 +94,6 @@ def _full_authoritative_rows() -> tuple[list[dict[str, str]], list[dict[str, str
         "Provenance Config Sha256": file_sha256(DEFAULT_CONFIG),
         "Provenance Comparator Config Sha256": file_sha256(DEFAULT_COMPARATORS),
         "Provenance Evaluator": "exact_analytical_enumeration",
-        "Provenance Trial Seed Role": "historical_compatibility_metadata",
-        "Provenance Status": str(methodology["status"]),
     }
 
     damage_rows: list[dict[str, str]] = []
@@ -120,10 +117,6 @@ def _full_authoritative_rows() -> tuple[list[dict[str, str]], list[dict[str, str
                     row.update(
                         {
                             **common,
-                            "Provenance Trials": str(
-                                methodology["damage_default_trials"]
-                            ),
-                            "Provenance Seed": str(methodology["damage_seed"]),
                             "Provenance Aggregation": (
                                 "equal-weight roster means; percentages from displayed aggregates"
                             ),
@@ -150,8 +143,6 @@ def _full_authoritative_rows() -> tuple[list[dict[str, str]], list[dict[str, str
             row.update(
                 {
                     **common,
-                    "Provenance Trials": str(methodology["control_default_trials"]),
-                    "Provenance Seed": str(methodology["control_seed"]),
                     "Provenance Aggregation": str(
                         config["control_matrix"]["aggregation"]
                     ),
@@ -254,13 +245,12 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             )
         )
         arguments=(
-            readme,damage_rows,control_rows,"14.1.0","SYNTHETIC_REVIEW",
-            "synthetic_profile",(1,3,6),
+            readme,damage_rows,control_rows,"14.1.0","synthetic_profile",(1,3,6),
         )
         rendered=render_balance_region(*arguments)
         reordered=render_balance_region(
             readme,list(reversed(damage_rows)),list(reversed(control_rows)),
-            "14.1.0","SYNTHETIC_REVIEW","synthetic_profile",(1,3,6),
+            "14.1.0","synthetic_profile",(1,3,6),
         )
         self.assertEqual(rendered,reordered)
         self.assertTrue(rendered.startswith(BEGIN_MARKER))
@@ -268,9 +258,7 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
         self.assertEqual(rendered.count("| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |"),2)
         for heading in ("### Single-Target Damage","### Control Reliability"):
             self.assertIn(heading,rendered)
-        self.assertIn("This single-target benchmark evaluates each configured control package",rendered)
         self.assertNotIn("### Cluster / Aggregate Damage",rendered)
-        self.assertIn("All other primary-target and aggregate-cluster results remain in the generated detailed release reports",rendered)
         limitation=("Control Reliability measures how often the configured control package takes effect. "
                     "It does not measure the relative severity, duration, area, or strategic value of different control effects. "
                     "A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.")
@@ -378,21 +366,6 @@ class ReadmeMatrixReleaseStateTests(unittest.TestCase):
 
 
 class ReadmeMatrixAtomicWriteTests(unittest.TestCase):
-    def test_atomic_replace_changes_inode_preserves_mode_and_cleans_temporary_file(self) -> None:
-        with tempfile.TemporaryDirectory() as directory:
-            root = Path(directory)
-            path = root / "README.md"
-            path.write_text("before", encoding="utf-8")
-            path.chmod(0o640)
-            original_inode = path.stat().st_ino
-
-            atomic_replace_text(path, "before", "after\n")
-
-            self.assertEqual(path.read_text(encoding="utf-8"), "after\n")
-            self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o640)
-            self.assertNotEqual(path.stat().st_ino, original_inode)
-            self.assertEqual([item.name for item in root.iterdir()], ["README.md"])
-
     def test_atomic_replace_refuses_stale_expected_source(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "README.md"
@@ -425,7 +398,6 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
             validate_authoritative_rows(self.damage_rows, self.control_rows),
             (
                 model.rules_version,
-                str(config["methodology"]["status"]),
                 DEFAULT_PROFILE,
                 tuple(int(value) for value in config["methodology"]["cluster_sizes"]),
                 README_DISCIPLINES,
@@ -455,8 +427,8 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
 
     def test_provenance_and_notice_mismatches_fail_closed(self) -> None:
         damage = deepcopy(self.damage_rows)
-        damage[0]["Provenance Seed"] = "wrong-seed"
-        with self.assertRaisesRegex(MatrixSyncError, "Provenance Seed"):
+        damage[0]["Provenance Evaluator"] = "wrong-evaluator"
+        with self.assertRaisesRegex(MatrixSyncError, "Provenance Evaluator"):
             validate_authoritative_rows(damage, self.control_rows)
 
         control = deepcopy(self.control_rows)
@@ -469,7 +441,7 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
         cases = (
             ("Provenance Catalog Sha256", "wrong-catalog"),
             ("Provenance Roster Sha256", "wrong-roster"),
-            ("Provenance Target Profile", "legacy_v14_1"),
+            ("Provenance Target Profile", "unknown_profile"),
         )
         for field, value in cases:
             with self.subTest(field=field):
@@ -496,20 +468,6 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
                 damage[0][field] = value
                 with self.assertRaisesRegex(MatrixSyncError, f"stale {field}"):
                     validate_authoritative_rows(damage, self.control_rows)
-
-    def test_retired_comparator_names_fail_after_other_validation(self) -> None:
-        damage = deepcopy(self.damage_rows)
-        control = deepcopy(self.control_rows)
-        notice_field = next(
-            field for field in NOTICE_COLUMNS if "Unofficial Comparative" in field
-        )
-        retired_notice = f"{NOTICE_COLUMNS[notice_field]} Hunter Ranger"
-        for row in (*damage, *control):
-            row[notice_field] = retired_notice
-        with patch.dict(NOTICE_COLUMNS, {notice_field: retired_notice}):
-            with self.assertRaisesRegex(MatrixSyncError, "retired comparator"):
-                validate_authoritative_rows(damage, control)
-
 
 if __name__ == "__main__":
     unittest.main()

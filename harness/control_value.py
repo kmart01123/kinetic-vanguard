@@ -74,8 +74,6 @@ def load_primitive_catalog(path: str | Path = DEFAULT_PRIMITIVES) -> dict[str, A
     for row in rows:
         if row.get("exposure_basis") not in bases or row.get("default_status") not in statuses:
             raise ValueError(f"Invalid primitive contract for {row.get('id')}")
-        if row.get("historical_disposition") == "merge" and row.get("merged_into") not in by_id:
-            raise ValueError(f"Invalid merged primitive target for {row.get('id')}")
     for group_name in ("conditions", "outcomes"):
         group = _object(data.get(group_name), group_name)
         for label, definition in group.items():
@@ -95,10 +93,6 @@ def load_primitive_catalog(path: str | Path = DEFAULT_PRIMITIVES) -> dict[str, A
                 if included_unknown:
                     raise ValueError(f"conditions.{label} includes unknown conditions: {', '.join(included_unknown)}")
     return data
-
-
-def primitive_inventory(path: str | Path = DEFAULT_PRIMITIVES) -> tuple[dict[str, Any], ...]:
-    return tuple(dict(row) for row in load_primitive_catalog(path)["primitives"])
 
 
 def _qualifiers(value: Mapping[str, Any] | None) -> tuple[tuple[str, str], ...]:

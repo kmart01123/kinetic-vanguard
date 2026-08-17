@@ -1,8 +1,6 @@
 {
   "format_version": 1,
   "methodology": {
-    "status": "REVIEWED_WITH_DOCUMENTED_DIFFERENCES",
-    "historical_source": "Kinetic Vanguard v12.1.0 carry-forward of certified v12.0.0 methodology",
     "levels": [
       7,
       11,
@@ -19,12 +17,7 @@
     "target_death": false,
     "ally_turns": false,
     "legal_positioning_assumed": true,
-    "legendary_resistance": "metadata_only",
-    "damage_default_trials": 25000,
-    "control_default_trials": 250000,
-    "smoke_trials": 32,
-    "damage_seed": 1151001,
-    "control_seed": 1000001
+    "legendary_resistance": "metadata_only"
   },
   "fighter_progression": {
     "7": {

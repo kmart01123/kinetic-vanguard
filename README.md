@@ -24,7 +24,7 @@ Version 14.1.0 restores maintained damage and control benchmark harness source. 
 
 The current v14.3.0 development line contains rule changes not yet reflected in this published benchmark snapshot.
 
-Target profile: `headline`. Numerical review status: `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`. These are exact analytical full-roster results, not Monte Carlo estimates.
+Target profile: `headline`. These are exact analytical full-roster results.
 
 Battle Master and Eldritch Knight define the comparison envelope for each benchmark result. `IDEAL` means Kinetic Vanguard falls between the two comparator results, inclusive. `COLD` is below both; `HOT` is above both. The percentage on COLD and HOT cells shows the signed distance outside the nearest envelope boundary. `N/A` is reserved for a comparison that cannot be evaluated.
 
@@ -47,7 +47,7 @@ This single-target benchmark evaluates each configured control package against o
 
 Configured headline metric: **roster-adjusted whole-package control stick %**.
 
-This v14.2 snapshot evaluates legal repeated attack-delivered opportunities within one ordinary Attack action when the configured package permits them. Kinetic Vanguard Signature Riders were already 0-Psi and repeatable before issue #58; issue #58 newly extends that repeatability to paid on-hit riders. Battle Master maneuvers receive legal hit-gated retries, while Eldritch Knight keeps one Blindness/Deafness cast and uses all ordinary primer attacks for Eldritch Strike. Published v14.1 used simpler one-shot approximations, so control deltas can combine the paid-rider rule with historical KV, Battle Master, and Eldritch Knight evaluator corrections. Those effects interact and are not assumed to be additively separable.
+This snapshot evaluates legal repeated attack-delivered opportunities within one ordinary Attack action when the configured package permits them. Kinetic Vanguard on-hit riders and Battle Master maneuvers receive legal retries while resources remain. Eldritch Knight keeps one Blindness/Deafness cast and uses all ordinary primer attacks for Eldritch Strike.
 
 Control Reliability measures how often the configured control package takes effect. It does not measure the relative severity, duration, area, or strategic value of different control effects. A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.
 
@@ -99,7 +99,7 @@ npm run test:harness
 npm run readme:benchmarks:check
 ```
 
-Optional full-roster commands are `npm run harness:damage -- --output-dir harness/results/damage` and `npm run harness:control -- --output-dir harness/results/control`. Generated results are ignored. See `harness/README.md` for methodology, provenance, matrix interpretation, and current numerical-review status.
+Optional full-roster commands are `npm run harness:damage -- --output-dir harness/results/damage` and `npm run harness:control -- --output-dir harness/results/control`. Generated results are ignored. See `harness/README.md` for current methodology, provenance, and matrix interpretation.
 `npm run build` writes the development publication to `artifacts/KineticVanguard.prototype.html`. It always carries a visible and accessibility-exposed `NON-RELEASE PROTOTYPE` identity.
 
 
@@ -116,8 +116,6 @@ It writes `artifacts/KineticVanguard.html` with `release_status: release` and no
 The build parses restricted YAML 1.2, validates the canonical JSON Schema, performs semantic navigation, classification, authority-coverage, route, text, filtered-search integrity, and release-identity checks, constructs immutable projections, and emits one release or prototype HTML publication. Failed integrity or coverage checks stop the build rather than producing ceremonial report files.
 
 The top-level onboarding authority is canonical and validated but remains outside the 44 publishable rules entities, Name index, classification results, and progression order.
-
-The completed one-time Markdown migration has been retired. Contributors edit `KineticVanguard.yaml` directly; there is no Markdown synchronization step.
 
 The maintained Python harnesses consume a deterministic runtime projection emitted by the existing TypeScript YAML loader and semantic validator. Kinetic Vanguard mechanics remain exclusively in YAML; project-authored methodology remains in `harness/config/`; minimal BM/EK third-party comparator parameters remain isolated in `harness/comparators/`; and pinned SRD roster data remains in `harness/data/`.
 

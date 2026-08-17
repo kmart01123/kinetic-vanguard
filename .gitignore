@@ -12,8 +12,6 @@ playwright-report/
 blob-report/
 
 # Local historical evidence and generated harness output
-.codex-import/
-*-harness-import.zip
 harness/results/
 harness/output/
 __pycache__/
