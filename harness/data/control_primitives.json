@@ -1,0 +1,122 @@
+{
+  "format_version": 1,
+  "source": {
+    "ruleset": "SRD 5.2.1",
+    "pdf_sha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",
+    "url": "https://media.dndbeyond.com/compendium-images/srd/5.2.1/SRD_CC_v5.2.1.pdf",
+    "historical_catalog_head": "91a3e3b097a6ca18c812d5bf883b8e3cfd6c3284",
+    "note": "Mechanical consequence vocabulary salvaged for the Slice-1 shadow evaluator; no weights are defined here."
+  },
+  "pricing_statuses": ["candidate", "context_required", "unsupported"],
+  "exposure_bases": [
+    "target_turn_window",
+    "reaction_window",
+    "attack_opportunity",
+    "incoming_attack_opportunity",
+    "save_opportunity",
+    "instantaneous_occurrence",
+    "contextual_opportunity"
+  ],
+  "primitives": [
+    {"id":"active_turn_denial","family":"action_denial","exposure_basis":"target_turn_window","default_status":"candidate","historical_disposition":"retain_as_is","reason":"Actions and bonus actions are unavailable."},
+    {"id":"reaction_denial","family":"reaction_denial","exposure_basis":"reaction_window","default_status":"candidate","historical_disposition":"retain_as_is","reason":"Reactions are unavailable."},
+    {"id":"offensive_impairment_next_attack","family":"offense","exposure_basis":"attack_opportunity","default_status":"candidate","historical_disposition":"retain_as_is","reason":"Only the next attack is impaired."},
+    {"id":"offensive_impairment_all_attacks","family":"offense","exposure_basis":"target_turn_window","default_status":"candidate","historical_disposition":"retain_as_is","reason":"All attacks in the affected window are impaired."},
+    {"id":"target_choice_restriction","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Value depends on the restricted source and available target choices."},
+    {"id":"sight_option_denial","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Value depends on sight-dependent options and alternative senses."},
+    {"id":"mobility_loss_feet","family":"mobility","exposure_basis":"target_turn_window","default_status":"candidate","historical_disposition":"retain_as_is","reason":"Movement capacity is reduced or completely denied."},
+    {"id":"movement_mode_denial","family":"mobility","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Value depends on the target's usable movement modes."},
+    {"id":"forced_displacement","family":"displacement","exposure_basis":"instantaneous_occurrence","default_status":"candidate","historical_disposition":"retain_as_is","reason":"Intrinsic displacement is measured only in feet; no battlefield bonus is inferred."},
+    {"id":"geometry_sensitive_approach_restriction","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Requires source geometry and a willing movement choice."},
+    {"id":"defensive_attack_advantage","family":"defense_enablement","exposure_basis":"incoming_attack_opportunity","default_status":"candidate","historical_disposition":"retain_as_is","reason":"Incoming attacks have Advantage."},
+    {"id":"defense_numerical_reduction","family":"defense_enablement","exposure_basis":"incoming_attack_opportunity","default_status":"candidate","historical_disposition":"retain_as_is","reason":"A defense is numerically reduced."},
+    {"id":"save_disadvantage","family":"save_enablement","exposure_basis":"save_opportunity","default_status":"candidate","historical_disposition":"retain_as_is","reason":"A specified saving throw has Disadvantage."},
+    {"id":"save_auto_failure","family":"save_enablement","exposure_basis":"save_opportunity","default_status":"candidate","historical_disposition":"retain_as_is","reason":"A specified saving throw automatically fails."},
+    {"id":"sight_dependent_opportunity","family":"defense_enablement","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"merge","merged_into":"defensive_attack_advantage","reason":"The maintained mappings express the applicable attack benefit directly."},
+    {"id":"ability_check_impairment","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Requires a relevant ability-check opportunity and any stated predicate."},
+    {"id":"speech_denial","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Requires a communication-dependent opportunity."},
+    {"id":"social_interaction_advantage","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Requires a social interaction check involving the source."},
+    {"id":"concentration_break","family":"option_restriction","exposure_basis":"instantaneous_occurrence","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Requires the target to be concentrating."},
+    {"id":"persistent_elevation","family":"mobility","exposure_basis":"target_turn_window","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Requires explicit elevation and movement-mode context."},
+    {"id":"fall_transition","family":"displacement","exposure_basis":"instantaneous_occurrence","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Requires airborne state and lack of hover or fall prevention."},
+    {"id":"nonsight_location_awareness","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"omit_current_unproduced","reason":"No current maintained condition or configured outcome produces this primitive."},
+    {"id":"prone_incoming_attack_context","family":"defense_enablement","exposure_basis":"incoming_attack_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Incoming attack effect depends on attacker distance."}
+  ],
+  "conditions": {
+    "blinded": {
+      "source_page": 176,
+      "includes": [],
+      "primitives": [
+        {"id":"sight_option_denial","qualifiers":{"sense_mode":"physical_sight"}},
+        {"id":"ability_check_impairment","qualifiers":{"ability_check_effect":"automatic_failure_when_sight_required"}},
+        {"id":"offensive_impairment_all_attacks","qualifiers":{"attack_scope":"all_attacks"}},
+        {"id":"defensive_attack_advantage"}
+      ]
+    },
+    "charmed": {
+      "source_page": 177,
+      "includes": [],
+      "primitives": [
+        {"id":"target_choice_restriction","qualifiers":{"restricted_target_relation":"charmer"}},
+        {"id":"social_interaction_advantage","qualifiers":{"social_actor_relation":"charmer"}}
+      ]
+    },
+    "frightened": {
+      "source_page": 181,
+      "includes": [],
+      "primitives": [
+        {"id":"offensive_impairment_all_attacks","status":"context_required","qualifiers":{"predicate":"source_in_line_of_sight"}},
+        {"id":"ability_check_impairment","qualifiers":{"predicate":"source_in_line_of_sight","ability_check_effect":"disadvantage"}},
+        {"id":"geometry_sensitive_approach_restriction","qualifiers":{"movement_relation":"cannot_willingly_move_closer"}}
+      ]
+    },
+    "incapacitated": {
+      "source_page": 183,
+      "includes": [],
+      "primitives": [
+        {"id":"active_turn_denial","qualifiers":{"denied_turn_options":"action_and_bonus_action"}},
+        {"id":"reaction_denial"},
+        {"id":"concentration_break"},
+        {"id":"speech_denial"},
+        {"id":"fall_transition"}
+      ]
+    },
+    "prone": {
+      "source_page": 185,
+      "includes": [],
+      "primitives": [
+        {"id":"offensive_impairment_all_attacks","status":"context_required","qualifiers":{"reason":"standing_and_timing_not_established"}},
+        {"id":"defensive_attack_advantage","status":"context_required","qualifiers":{"attacker_distance":"within_5_feet"}},
+        {"id":"prone_incoming_attack_context","qualifiers":{"attacker_distance":"farther_than_5_feet","incoming_attack_effect":"disadvantage"}},
+        {"id":"fall_transition"}
+      ]
+    },
+    "restrained": {
+      "source_page": 186,
+      "includes": [],
+      "primitives": [
+        {"id":"mobility_loss_feet","status":"context_required","qualifiers":{"mobility_effect":"speed_zero"}},
+        {"id":"defensive_attack_advantage"},
+        {"id":"offensive_impairment_all_attacks","qualifiers":{"attack_scope":"all_attacks"}},
+        {"id":"save_disadvantage","qualifiers":{"save_ability":"dexterity"}}
+      ]
+    },
+    "stunned": {
+      "source_page": 188,
+      "includes": ["incapacitated"],
+      "primitives": [
+        {"id":"save_auto_failure","qualifiers":{"save_ability":"strength"}},
+        {"id":"save_auto_failure","qualifiers":{"save_ability":"dexterity"}},
+        {"id":"defensive_attack_advantage"}
+      ]
+    }
+  },
+  "outcomes": {
+    "attack_disadvantage": {"primitive_by_attack_scope":{"next_attack":"offensive_impairment_next_attack","all_attacks":"offensive_impairment_all_attacks"}},
+    "forced_movement": {"primitive":"forced_displacement","requires_magnitude_feet":true},
+    "movement_option_denial": {"primitive":"movement_mode_denial"},
+    "reaction_denial": {"primitive":"reaction_denial"},
+    "speed_reduction": {"primitive":"mobility_loss_feet","requires_magnitude_feet":true,"qualifiers":{"mobility_effect":"flat_reduction"}},
+    "speed_zero": {"primitive":"mobility_loss_feet","qualifiers":{"mobility_effect":"speed_zero"}}
+  }
+}

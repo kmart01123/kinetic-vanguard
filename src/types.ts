@@ -171,6 +171,9 @@ export interface HarnessMastery {
   damage_required?:boolean;
   maximum_size?:HarnessSize;
   control_outcomes:HarnessControlOutcome[];
+  control_duration?:HarnessControlDuration;
+  control_magnitude_feet?:number;
+  attack_scope?:"next_attack"|"all_attacks";
 }
 export interface HarnessDiscipline {
   id:HarnessDisciplineId;
@@ -191,6 +194,10 @@ export interface HarnessControlEffect {
   duration:HarnessControlDuration;
   target_role?:"primary"|"secondary"|"all";
   requires_condition?:HarnessCondition;
+  magnitude_feet?:number;
+  failed_save_magnitude_feet?:number;
+  successful_save_magnitude_feet?:number;
+  attack_scope?:"next_attack"|"all_attacks";
 }
 export interface HarnessControlTier {
   tier:0|1|2;

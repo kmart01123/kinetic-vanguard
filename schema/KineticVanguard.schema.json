@@ -100,7 +100,7 @@
     },
     "harnessMastery": {
       "type":"object","additionalProperties":false,"required":["kind","control_outcomes"],
-      "properties":{"kind":{"enum":["graze","slow","push","sap"]},"damage":{"const":"psionic_ability_modifier"},"damage_required":{"type":"boolean"},"maximum_size":{"enum":["tiny","small","medium","large","huge","gargantuan"]},"control_outcomes":{"type":"array","items":{"enum":["speed_reduction","forced_movement","attack_disadvantage"]},"uniqueItems":true}}
+      "properties":{"kind":{"enum":["graze","slow","push","sap"]},"damage":{"const":"psionic_ability_modifier"},"damage_required":{"type":"boolean"},"maximum_size":{"enum":["tiny","small","medium","large","huge","gargantuan"]},"control_outcomes":{"type":"array","items":{"enum":["speed_reduction","forced_movement","attack_disadvantage"]},"uniqueItems":true},"control_duration":{"enum":["instantaneous","until_start_next_turn"]},"control_magnitude_feet":{"type":"integer","minimum":1},"attack_scope":{"enum":["next_attack","all_attacks"]}}
     },
     "harnessDiscipline": {
       "type":"object","additionalProperties":false,"required":["id","damage_type","signature_save","mastery"],
@@ -112,7 +112,7 @@
     },
     "harnessControlEffect": {
       "type":"object","additionalProperties":false,"required":["gate","duration"],
-      "properties":{"gate":{"enum":["on_reach","on_failed_save","while_in_area"]},"conditions":{"type":"array","items":{"enum":["blinded","charmed","incapacitated","prone","restrained","stunned"]},"uniqueItems":true},"outcomes":{"type":"array","items":{"enum":["attack_disadvantage","forced_movement","movement_option_denial","reaction_denial","speed_reduction","speed_zero"]},"uniqueItems":true},"duration":{"enum":["instantaneous","until_end_current_turn","until_start_next_turn","until_end_next_turn","while_in_area","one_minute_concentration","one_hour","eight_hours"]},"target_role":{"enum":["primary","secondary","all"]},"requires_condition":{"enum":["blinded","charmed","incapacitated","prone","restrained","stunned"]}}
+      "properties":{"gate":{"enum":["on_reach","on_failed_save","while_in_area"]},"conditions":{"type":"array","items":{"enum":["blinded","charmed","incapacitated","prone","restrained","stunned"]},"uniqueItems":true},"outcomes":{"type":"array","items":{"enum":["attack_disadvantage","forced_movement","movement_option_denial","reaction_denial","speed_reduction","speed_zero"]},"uniqueItems":true},"duration":{"enum":["instantaneous","until_end_current_turn","until_start_next_turn","until_end_next_turn","while_in_area","one_minute_concentration","one_hour","eight_hours"]},"target_role":{"enum":["primary","secondary","all"]},"requires_condition":{"enum":["blinded","charmed","incapacitated","prone","restrained","stunned"]},"magnitude_feet":{"type":"integer","minimum":1},"failed_save_magnitude_feet":{"type":"integer","minimum":1},"successful_save_magnitude_feet":{"type":"integer","minimum":1},"attack_scope":{"enum":["next_attack","all_attacks"]}}
     },
     "harnessControlTier": {
       "type":"object","additionalProperties":false,"required":["tier","application","effects"],

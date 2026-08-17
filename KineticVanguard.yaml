@@ -168,15 +168,15 @@ calculator:
       - id: cryokinesis
         damage_type: cold
         signature_save: constitution
-        mastery: {kind: slow, damage_required: true, control_outcomes: [speed_reduction]}
+        mastery: {kind: slow, damage_required: true, control_outcomes: [speed_reduction], control_duration: until_start_next_turn, control_magnitude_feet: 10}
       - id: psychokinesis
         damage_type: force
         signature_save: strength
-        mastery: {kind: push, maximum_size: large, control_outcomes: [forced_movement]}
+        mastery: {kind: push, maximum_size: large, control_outcomes: [forced_movement], control_duration: instantaneous, control_magnitude_feet: 10}
       - id: electrokinesis
         damage_type: lightning
         signature_save: charisma
-        mastery: {kind: sap, control_outcomes: [attack_disadvantage]}
+        mastery: {kind: sap, control_outcomes: [attack_disadvantage], control_duration: until_start_next_turn, attack_scope: next_attack}
     feature_rules:
       - entity_id: glacial_spike
         discipline_ids: [cryokinesis]
@@ -185,20 +185,20 @@ calculator:
           - tier: 0
             application: no_save
             hit_gated: true
-            effects: [{gate: on_reach, outcomes: [speed_reduction], duration: until_end_next_turn}]
+            effects: [{gate: on_reach, outcomes: [speed_reduction], duration: until_end_next_turn, magnitude_feet: 10}]
           - tier: 1
             application: failed_save
             save: constitution
             hit_gated: true
             effects:
-              - {gate: on_reach, outcomes: [speed_reduction], duration: until_end_next_turn}
+              - {gate: on_reach, outcomes: [speed_reduction], duration: until_end_next_turn, magnitude_feet: 10}
               - {gate: on_failed_save, outcomes: [speed_zero], duration: until_end_next_turn}
           - tier: 2
             application: failed_save
             save: constitution
             hit_gated: true
             effects:
-              - {gate: on_reach, outcomes: [speed_reduction], duration: until_end_next_turn}
+              - {gate: on_reach, outcomes: [speed_reduction], duration: until_end_next_turn, magnitude_feet: 10}
               - {gate: on_failed_save, conditions: [restrained], duration: until_end_next_turn}
       - entity_id: snow_chains
         discipline_ids: [cryokinesis]
@@ -283,14 +283,14 @@ calculator:
         damage_type: discipline
         replaces_mastery: true
         control_tiers:
-          - {tier: 0, application: failed_save, save: strength, hit_gated: true, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous}]}
-          - {tier: 1, application: failed_save, save: strength, hit_gated: true, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous}]}
+          - {tier: 0, application: failed_save, save: strength, hit_gated: true, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, magnitude_feet: 10}]}
+          - {tier: 1, application: failed_save, save: strength, hit_gated: true, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, magnitude_feet: 15}]}
           - tier: 2
             application: failed_save
             save: strength
             hit_gated: true
             effects:
-              - {gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous}
+              - {gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, magnitude_feet: 20}
               - {gate: on_failed_save, outcomes: [speed_zero], duration: until_end_next_turn}
       - {entity_id: vectored_thrust, discipline_ids: [psychokinesis], damage_type: discipline}
       - entity_id: explosion_implosion
@@ -304,25 +304,25 @@ calculator:
             hit_gated: true
             effects:
               - {gate: on_failed_save, conditions: [restrained], duration: until_end_next_turn, target_role: all}
-              - {gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, target_role: secondary}
+              - {gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, target_role: secondary, magnitude_feet: 15}
           - tier: 1
             application: failed_save
             save: strength
             hit_gated: true
             effects:
               - {gate: on_failed_save, conditions: [restrained], duration: until_end_next_turn, target_role: all}
-              - {gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, target_role: secondary}
+              - {gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, target_role: secondary, magnitude_feet: 30}
       - entity_id: telekinetic_slam
         discipline_ids: [psychokinesis]
         damage_type: force
         control_tiers:
-          - {tier: 0, application: failed_save, save: strength, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous}]}
-          - {tier: 1, application: failed_save, save: strength, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous}]}
+          - {tier: 0, application: failed_save, save: strength, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, magnitude_feet: 10}]}
+          - {tier: 1, application: failed_save, save: strength, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, magnitude_feet: 20}]}
           - tier: 2
             application: failed_save
             save: strength
             effects:
-              - {gate: on_reach, outcomes: [forced_movement], duration: instantaneous}
+              - {gate: on_reach, outcomes: [forced_movement], duration: instantaneous, failed_save_magnitude_feet: 30, successful_save_magnitude_feet: 10}
               - {gate: on_failed_save, outcomes: [speed_zero], duration: until_end_next_turn}
       - entity_id: mass_levitation
         discipline_ids: [psychokinesis]
@@ -343,7 +343,7 @@ calculator:
             repeat_save_disadvantage: true
             effects:
               - {gate: on_failed_save, conditions: [restrained], duration: one_minute_concentration}
-              - {gate: on_failed_save, outcomes: [forced_movement], duration: one_minute_concentration, requires_condition: restrained}
+              - {gate: on_failed_save, outcomes: [forced_movement], duration: one_minute_concentration, requires_condition: restrained, magnitude_feet: 15}
       - entity_id: static_discharge
         discipline_ids: [electrokinesis]
         damage_type: discipline
@@ -365,7 +365,7 @@ calculator:
         damage_type: lightning
         targeting_by_tier: [{tier: 0, kind: cluster_remainder}, {tier: 1, kind: cluster_remainder}, {tier: 2, kind: cluster_remainder}]
         control_tiers:
-          - {tier: 2, application: failed_save, save: charisma, hit_gated: true, effects: [{gate: on_failed_save, outcomes: [reaction_denial, attack_disadvantage], duration: until_start_next_turn}]}
+          - {tier: 2, application: failed_save, save: charisma, hit_gated: true, effects: [{gate: on_failed_save, outcomes: [reaction_denial, attack_disadvantage], duration: until_start_next_turn, attack_scope: all_attacks}]}
       - {entity_id: advanced_mind_shred, discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis], damage_type: psychic, ignore_resistance_tiers: [2]}
       - entity_id: advanced_mind_lock
         discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
@@ -395,7 +395,7 @@ calculator:
             application: failed_save
             save: charisma
             effects:
-              - {gate: on_failed_save, outcomes: [reaction_denial, attack_disadvantage], duration: until_start_next_turn, target_role: all}
+              - {gate: on_failed_save, outcomes: [reaction_denial, attack_disadvantage], duration: until_start_next_turn, target_role: all, attack_scope: all_attacks}
               - {gate: on_failed_save, outcomes: [speed_zero], duration: until_start_next_turn, target_role: primary}
       - entity_id: ball_lightning
         discipline_ids: [electrokinesis]
@@ -404,7 +404,7 @@ calculator:
         starts_persistent_zone: true
         targeting_by_tier: [{tier: 0, kind: cluster_remainder}, {tier: 1, kind: cluster_remainder}, {tier: 2, kind: cluster_remainder}]
         control_tiers:
-          - {tier: 2, application: failed_save, save: charisma, effects: [{gate: on_failed_save, outcomes: [reaction_denial, attack_disadvantage], duration: while_in_area}]}
+          - {tier: 2, application: failed_save, save: charisma, effects: [{gate: on_failed_save, outcomes: [reaction_denial, attack_disadvantage], duration: while_in_area, attack_scope: all_attacks}]}
       - entity_id: advanced_phase_step
         discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
         damage_type: discipline
@@ -418,7 +418,7 @@ calculator:
             application: failed_save
             save: strength
             effects:
-              - {gate: on_reach, outcomes: [forced_movement], duration: instantaneous}
+              - {gate: on_reach, outcomes: [forced_movement], duration: instantaneous, failed_save_magnitude_feet: 15, successful_save_magnitude_feet: 5}
               - {gate: on_failed_save, conditions: [prone], duration: instantaneous}
       - entity_id: advanced_beguile
         discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
@@ -439,13 +439,13 @@ calculator:
             application: failed_save
             save: strength
             effects:
-              - {gate: while_in_area, outcomes: [speed_reduction, attack_disadvantage], duration: while_in_area}
+              - {gate: while_in_area, outcomes: [speed_reduction, attack_disadvantage], duration: while_in_area, attack_scope: all_attacks}
               - {gate: on_failed_save, outcomes: [reaction_denial], duration: until_start_next_turn}
           - tier: 2
             application: failed_save
             save: strength
             effects:
-              - {gate: while_in_area, outcomes: [speed_reduction, attack_disadvantage], duration: while_in_area}
+              - {gate: while_in_area, outcomes: [speed_reduction, attack_disadvantage], duration: while_in_area, attack_scope: all_attacks}
               - {gate: on_failed_save, outcomes: [reaction_denial, speed_zero], duration: until_start_next_turn}
       - entity_id: advanced_improved_phase_step
         discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
