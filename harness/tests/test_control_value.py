@@ -77,6 +77,12 @@ class NormalizationTests(unittest.TestCase):
         rows=self.normalized(expose_label("stun","stunned",0.5,"until_end_next_turn"),expose_label("sap","attack_disadvantage",0.5,"until_end_next_turn",attack_scope="all_attacks"))
         offense=next(item for item in rows if item.source_effect=="sap");self.assertEqual(offense.normalization_disposition,"suppressed");self.assertEqual(offense.expected_exposure,0)
 
+    def test_all_attacks_only_suppresses_an_explicitly_nested_next_attack_source(self)->None:
+        nested=self.normalized(expose_label("burst","attack_disadvantage",0.4,"until_start_next_turn",attack_scope="all_attacks",overlapping_attack_impairment_sources=("sap",)),expose_label("sap","attack_disadvantage",0.7,"until_start_next_turn",attack_scope="next_attack"));sap=next(item for item in nested if item.source_effect=="sap")
+        self.assertEqual(sap.normalization_disposition,"partially_suppressed");self.assertAlmostEqual(sap.active_probabilities[0],0.3);self.assertAlmostEqual(sap.expected_exposure or 0,0.3);self.assertIn("burst:offensive_impairment_all_attacks",sap.suppressed_by)
+        independent=self.normalized(expose_label("unrelated","attack_disadvantage",0.4,"until_start_next_turn",attack_scope="all_attacks"),expose_label("standalone","attack_disadvantage",0.7,"until_start_next_turn",attack_scope="next_attack"));standalone=next(item for item in independent if item.source_effect=="standalone")
+        self.assertEqual(standalone.normalization_disposition,"retained");self.assertEqual(standalone.active_probabilities,(0.7,));self.assertEqual(standalone.expected_exposure,0.7)
+
     def test_auto_failure_speed_zero_and_condition_inclusion_normalize(self)->None:
         save_rows=self.normalized(expose_label("stun","stunned",0.5,"until_end_next_turn"),expose_label("restrain","restrained",0.5,"until_end_next_turn"))
         dex_disadvantage=next(item for item in save_rows if item.primitive_id=="save_disadvantage");self.assertEqual(dex_disadvantage.normalization_disposition,"suppressed")
@@ -98,6 +104,8 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual(sum(item.primitive_id=="defensive_attack_advantage" and item.normalization_disposition!="suppressed" for item in advantage),1)
         disadvantage=self.normalized(expose_label("one","attack_disadvantage",0.5,"until_end_next_turn",attack_scope="all_attacks"),expose_label("two","attack_disadvantage",0.5,"until_end_next_turn",attack_scope="all_attacks"))
         self.assertEqual(sum(item.primitive_id=="offensive_impairment_all_attacks" and item.normalization_disposition!="suppressed" for item in disadvantage),1)
+        next_attack=self.normalized(expose_label("one","attack_disadvantage",0.5,"until_end_next_turn",attack_scope="next_attack"),expose_label("two","attack_disadvantage",0.5,"until_end_next_turn",attack_scope="next_attack"))
+        self.assertEqual(sum(item.primitive_id=="offensive_impairment_next_attack" and item.normalization_disposition!="suppressed" for item in next_attack),1)
 
 
 class CurrentScenarioShadowTests(unittest.TestCase):
@@ -126,6 +134,12 @@ class CurrentScenarioShadowTests(unittest.TestCase):
         self.assertEqual({row["Source Effect"] for row in reductions},{"glacial_spike:T1:effect0","mastery:slow"});self.assertTrue(all(row["Normalization"]=="partially_suppressed" for row in reductions))
         successful_branch=float(reductions[0]["Application Probability"])-float(speed_zero["Application Probability"]);active=[float(str(row["Active Probabilities"]).split("=")[1]) for row in reductions];self.assertGreater(successful_branch,0)
         self.assertTrue(all(abs(value-successful_branch)<1e-10 for value in active));self.assertTrue(all(abs(float(row["Expected Exposure"])-10*value)<1e-10 for row,value in zip(reductions,active)))
+
+    def test_electron_burst_all_attacks_only_suppresses_the_failed_save_sap_overlap(self)->None:
+        rows=self.rows(_kv_scenario(self.model,self.config,self.target,"electrokinesis","electron_burst",2),"electrokinesis");all_attacks=next(row for row in rows if row["Mechanical Primitive"]=="offensive_impairment_all_attacks");sap=next(row for row in rows if row["Mechanical Primitive"]=="offensive_impairment_next_attack")
+        self.assertEqual(all_attacks["Normalization"],"retained");self.assertEqual(sap["Source Effect"],"mastery:sap");self.assertEqual(sap["Normalization"],"partially_suppressed")
+        successful_save_branch=float(sap["Application Probability"])-float(all_attacks["Application Probability"]);residual=float(str(sap["Active Probabilities"]).split("=")[1]);self.assertGreater(successful_save_branch,0);self.assertAlmostEqual(residual,successful_save_branch,places=10);self.assertAlmostEqual(float(sap["Expected Exposure"]),residual,places=10)
+        self.assertIn("electron_burst:T2:effect0:offensive_impairment_all_attacks",str(sap["Suppressed By"]))
 
     def test_battle_master_and_eldritch_knight_gaps_are_explicit(self)->None:
         for build in ("battle_master","eldritch_knight"):

@@ -92,13 +92,14 @@ def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipl
     mastery_single=reach if mastery_available else 0.0;rider=feature.get("damage_delivery")=="on_hit_rider" and feature.get("activation")=="on_hit"
     repeat=lambda value:_repeat_rider_probability(model,config,target.level,tier,int(feature["psi_cost"]),value) if rider else value
     named=repeat(named_single);mastery_value=repeat(mastery_single);whole=max(named,mastery_value);repeat_count=int(config["methodology"]["rounds"])-1 if control.get("repeat_save_trigger")=="start_of_affected_turn" else 0
+    mastery_attack_source=f"mastery:{mastery['kind']}" if mastery_available and "attack_disadvantage" in mastery["control_outcomes"] and mastery.get("attack_scope")=="next_attack" else None
     after=[];shadow_components=[]
     for effect_index,effect in enumerate(effects):
         value=repeat(effect_probability(effect))
         if repeat_count and effect["gate"]=="on_failed_save":value*=repeat_failed**repeat_count
         after.append(value)
         labels=[*(('condition',condition) for condition in effect.get("conditions",[]) if condition.lower() not in target.condition_immunities),*(('outcome',outcome) for outcome in effect.get("outcomes",[]))]
-        component={"source_effect":f"{entity_id}:T{tier}:effect{effect_index}","labels":labels,"duration":effect["duration"],"application_probability":repeat(effect_probability(effect)),"repeat_survival_probability":repeat_failed if repeat_count and effect["gate"]=="on_failed_save" else None,"repeat_checkpoint":control.get("repeat_save_trigger") if repeat_count and effect["gate"]=="on_failed_save" else None,"magnitude_feet":effect.get("magnitude_feet"),"attack_scope":effect.get("attack_scope"),"reason":f"KineticVanguard.yaml calculator.harness_mechanics.feature_rules[{entity_id}].control_tiers[T{tier}]"}
+        component={"source_effect":f"{entity_id}:T{tier}:effect{effect_index}","labels":labels,"duration":effect["duration"],"application_probability":repeat(effect_probability(effect)),"repeat_survival_probability":repeat_failed if repeat_count and effect["gate"]=="on_failed_save" else None,"repeat_checkpoint":control.get("repeat_save_trigger") if repeat_count and effect["gate"]=="on_failed_save" else None,"magnitude_feet":effect.get("magnitude_feet"),"attack_scope":effect.get("attack_scope"),"overlapping_attack_impairment_sources":[mastery_attack_source] if mastery_attack_source and ('outcome','attack_disadvantage') in labels and effect.get("attack_scope")=="all_attacks" else [],"reason":f"KineticVanguard.yaml calculator.harness_mechanics.feature_rules[{entity_id}].control_tiers[T{tier}]"}
         if "failed_save_magnitude_feet" in effect or "successful_save_magnitude_feet" in effect:
             failed_probability=repeat(reach*failed);reached_probability=repeat(reach);success_probability=max(0.0,reached_probability-failed_probability)
             branch_labels=[item for item in labels if item[1]=="forced_movement"]

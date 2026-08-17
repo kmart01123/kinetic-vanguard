@@ -40,6 +40,7 @@ class PrimitiveExposure:
     pricing_status: str
     reason: str
     qualifiers: tuple[tuple[str, str], ...] = ()
+    overlapping_attack_impairment_sources: tuple[str, ...] = ()
     normalization_disposition: str = "retained"
     suppressed_by: str = ""
 
@@ -222,6 +223,7 @@ def expose_label(
     repeat_checkpoint: str | None = None,
     magnitude_feet: float | None = None,
     attack_scope: str | None = None,
+    overlapping_attack_impairment_sources: Sequence[str] = (),
     source_reason: str = "",
 ) -> tuple[PrimitiveExposure, ...]:
     if not 0.0 <= application_probability <= 1.0:
@@ -229,6 +231,7 @@ def expose_label(
     if horizon < 1:
         raise ValueError("Exposure horizon must be positive")
     specs = decompose_label(label, magnitude_feet=magnitude_feet, attack_scope=attack_scope)
+    attack_overlap_sources = tuple(sorted(set(overlapping_attack_impairment_sources)))
     result: list[PrimitiveExposure] = []
     for spec in specs:
         status = spec.pricing_status
@@ -276,34 +279,34 @@ def expose_label(
                     expected = None
                     status = "context_required" if status != "unsupported" else status
                     reason_parts.append("This exposure basis has no established side of the start-of-affected-turn repeat-save checkpoint.")
-                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers))
+                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
                     continue
                 else:
                     active = ()
                     expected = None
                     status = "context_required" if status != "unsupported" else status
                     reason_parts.append("Repeat-save exposure lacks a supported checkpoint convention.")
-                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers))
+                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
                     continue
             elif duration == "instantaneous":
                 active = ()
                 expected = None
                 status = "context_required" if status != "unsupported" else status
                 reason_parts.append("A persistent condition created instantaneously needs explicit end timing.")
-                result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers))
+                result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
                 continue
             else:
                 active = ()
                 expected = None
                 status = "unsupported"
                 reason_parts.append(f"Unsupported exposure duration: {duration}.")
-                result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers))
+                result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
                 continue
             scale = spec.magnitude if spec.magnitude is not None else 1.0
             expected = sum(active) * scale if status != "unsupported" else None
         if status == "unsupported":
             expected = None
-        result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers))
+        result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
     return tuple(result)
 
 
@@ -365,6 +368,7 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
         return [item for item in normalized if item.normalization_disposition != "suppressed" and predicate(item)]
 
     denials = retained(lambda item: item.primitive_id == "active_turn_denial")
+    all_attack_impairments = retained(lambda item: item.primitive_id == "offensive_impairment_all_attacks")
     auto_failures = retained(lambda item: item.primitive_id == "save_auto_failure")
     speed_zeroes = retained(lambda item: item.primitive_id == "mobility_loss_feet" and _qualifier(item, "mobility_effect") == "speed_zero")
     revised: list[PrimitiveExposure] = []
@@ -373,6 +377,10 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
         if current.normalization_disposition != "suppressed" and current.primitive_id in {"offensive_impairment_next_attack", "offensive_impairment_all_attacks"}:
             for stronger in denials:
                 current = _subtract(current, stronger, "turn denial dominates offensive impairment")
+        if current.normalization_disposition != "suppressed" and current.primitive_id == "offensive_impairment_next_attack":
+            for stronger in all_attack_impairments:
+                if current.source_effect in stronger.overlapping_attack_impairment_sources:
+                    current = _subtract(current, stronger, "all-attacks impairment dominates overlapping next-attack impairment")
         if current.normalization_disposition != "suppressed" and current.primitive_id == "save_disadvantage":
             ability = _qualifier(current, "save_ability")
             for stronger in auto_failures:
@@ -402,6 +410,7 @@ def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, A
                     repeat_checkpoint=component.get("repeat_checkpoint"),
                     magnitude_feet=component.get("magnitude_feet"),
                     attack_scope=component.get("attack_scope"),
+                    overlapping_attack_impairment_sources=component.get("overlapping_attack_impairment_sources", ()),
                     source_reason=str(component.get("reason", "")),
                 )
             )
