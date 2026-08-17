@@ -181,6 +181,7 @@ calculator:
       - entity_id: glacial_spike
         discipline_ids: [cryokinesis]
         damage_type: discipline
+        replaces_mastery: true
         control_tiers:
           - tier: 0
             application: no_save
@@ -2851,7 +2852,7 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "Slow and Glacial Spike: Slow and Glacial Spike are separate Speed reductions and stack with each other. If both apply, the target’s Speed is reduced by 20 feet until the start of your next turn. After Slow ends, Glacial Spike’s remaining 10-foot reduction continues until the end of that turn. Neither effect stacks with additional applications of itself."
+          - text: "Slow and Glacial Spike: Declaring Glacial Spike replaces Slow for that hit. Resolve only Glacial Spike’s Speed effect for that Manifested Strike. Repeated applications of the same Speed reduction do not stack."
             type: text
         type: paragraph
       - inlines:
@@ -4590,7 +4591,7 @@ navigation:
           order: 10
           title: Advanced Training Progression
   default_category_id: common_features
-rules_version: 14.2.0
+rules_version: 14.3.0
 schema_version: 2.2.0
 vocabularies:
   acquisition_modes:

@@ -7,7 +7,7 @@ import { validateSemantics } from "../src/validate.js";
 
 test("harness projection reads the real authority and joins mechanics by stable entity ID",async()=>{
   const projection=await createHarnessProjection();
-  assert.equal(projection.rules_version,"14.2.0");assert.equal(projection.schema_version,"2.2.0");assert.match(projection.authority_path,/\/KineticVanguard\.yaml$/);
+  assert.equal(projection.rules_version,"14.3.0");assert.equal(projection.schema_version,"2.2.0");assert.match(projection.authority_path,/\/KineticVanguard\.yaml$/);
   assert.deepEqual(projection.core.action_economy,{standalone_psionic_action_limit_per_turn:1,action_surge_allows_additional_standalone_psionic_action:false});
   assert.equal(projection.core.manifested_strike.rider_repeatability,"per_manifested_strike");
   assert.deepEqual(projection.disciplines.map(item=>item.id).sort(),["cryokinesis","electrokinesis","psychokinesis","pyrokinesis"]);
@@ -16,6 +16,7 @@ test("harness projection reads the real authority and joins mechanics by stable 
   assert.ok(projection.features.every(item=>!Object.hasOwn(item,"repeatability")));
   const flare=projection.features.find(item=>item.entity_id==="flare")!;assert.equal(flare.minimum_level,15);assert.equal(flare.psi_cost,3);assert.equal(flare.damage_tiers.length,3);assert.equal(flare.control_tiers?.length,3);
   const slow=projection.disciplines.find(item=>item.id==="cryokinesis")!.mastery;assert.equal(slow.control_magnitude_feet,10);assert.equal(slow.control_duration,"until_start_next_turn");
+  const glacial=projection.features.find(item=>item.entity_id==="glacial_spike")!;assert.equal(glacial.replaces_mastery,true);
   const shove=projection.features.find(item=>item.entity_id==="telekinetic_shove")!;assert.deepEqual(shove.control_tiers?.map(item=>item.effects[0]!.magnitude_feet),[10,15,20]);
   const sap=projection.disciplines.find(item=>item.id==="electrokinesis")!.mastery;assert.equal(sap.attack_scope,"next_attack");
 });

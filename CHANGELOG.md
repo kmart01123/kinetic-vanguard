@@ -1,5 +1,11 @@
 # Changelog
 
+## 14.3.0 — Unreleased
+
+### Changed
+
+- Made Glacial Spike replace Slow mastery for its triggering Manifested Strike instead of stacking both 10-foot Speed reductions on the same hit.
+
 ## 14.2.0 — 2026-08-16
 
 ### Changed

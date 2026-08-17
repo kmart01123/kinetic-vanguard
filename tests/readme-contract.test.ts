@@ -44,9 +44,8 @@ test("README and release process stay synchronized with canonical development st
   if (development !== "None") {
     assert.equal(development, `v${authority.rules_version}`);
     assert.ok(readme.split("\n").includes(`- Development branch: \`${authority.rules_version}\``));
-    assert.match(readme, /^- Release candidate branch: `release-prep\/14\.2\.0`$/m);
-    assert.match(readme, /^- Release candidate status: Feature-complete; final release verification in progress\.$/m);
-    assert.doesNotMatch(readme, /^- Implementation status:/m);
+    assert.ok(readme.split("\n").includes(`- Implementation status: Active v${authority.rules_version.replace(/\.0$/u, "")} development`));
+    assert.doesNotMatch(readme, /^- Release candidate (?:branch|status):/m);
   }
 
   for (const heading of ["Release status", "Publication interface", "Commands", "Architecture", "Licensing", "Development and release discipline"]) {
