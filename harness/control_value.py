@@ -184,10 +184,25 @@ def fixed_exposure(application_probability: float, windows: int) -> tuple[float,
     return (application_probability,) * windows
 
 
-def repeat_save_exposure(application_probability: float, survival_probability: float, windows: int) -> tuple[float, ...]:
+def repeat_save_exposure(
+    application_probability: float,
+    survival_probability: float,
+    windows: int,
+    *,
+    checkpoint_side: str,
+) -> tuple[float, ...]:
+    """Expose windows on an explicit side of the repeat-save checkpoint.
+
+    ``before_scored_window`` means the repeat save occurs before each scored
+    window, so window 1 is p*q. ``after_scored_window`` means the first scored
+    window precedes its repeat save, so window 1 is p.
+    """
     if not 0.0 <= application_probability <= 1.0 or not 0.0 <= survival_probability <= 1.0 or windows < 0:
         raise ValueError("Repeat-save exposure requires probabilities in [0, 1] and non-negative windows")
-    return tuple(application_probability * survival_probability**index for index in range(windows))
+    if checkpoint_side not in {"before_scored_window", "after_scored_window"}:
+        raise ValueError(f"Unsupported repeat-save checkpoint side: {checkpoint_side}")
+    first_exponent = 1 if checkpoint_side == "before_scored_window" else 0
+    return tuple(application_probability * survival_probability ** (index + first_exponent) for index in range(windows))
 
 
 def instantaneous_exposure(application_probability: float, magnitude: float) -> float:
@@ -204,6 +219,7 @@ def expose_label(
     *,
     horizon: int = 3,
     repeat_survival_probability: float | None = None,
+    repeat_checkpoint: str | None = None,
     magnitude_feet: float | None = None,
     attack_scope: str | None = None,
     source_reason: str = "",
@@ -245,11 +261,30 @@ def expose_label(
             if duration in {"until_end_current_turn", "until_start_next_turn", "until_end_next_turn"}:
                 active = fixed_exposure(application_probability, 1)
             elif duration in {"one_minute_concentration", "one_hour", "eight_hours"}:
-                active = (
-                    repeat_save_exposure(application_probability, repeat_survival_probability, horizon)
-                    if repeat_survival_probability is not None
-                    else fixed_exposure(application_probability, horizon)
-                )
+                if repeat_survival_probability is None:
+                    active = fixed_exposure(application_probability, horizon)
+                elif repeat_checkpoint == "start_of_affected_turn" and spec.exposure_basis == "target_turn_window":
+                    active = repeat_save_exposure(
+                        application_probability,
+                        repeat_survival_probability,
+                        horizon,
+                        checkpoint_side="before_scored_window",
+                    )
+                    reason_parts.append("The start-of-affected-turn repeat save precedes each scored target-turn window; window 1 is p*q.")
+                elif repeat_checkpoint == "start_of_affected_turn":
+                    active = ()
+                    expected = None
+                    status = "context_required" if status != "unsupported" else status
+                    reason_parts.append("This exposure basis has no established side of the start-of-affected-turn repeat-save checkpoint.")
+                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers))
+                    continue
+                else:
+                    active = ()
+                    expected = None
+                    status = "context_required" if status != "unsupported" else status
+                    reason_parts.append("Repeat-save exposure lacks a supported checkpoint convention.")
+                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers))
+                    continue
             elif duration == "instantaneous":
                 active = ()
                 expected = None
@@ -317,6 +352,8 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
     retained_by_key: dict[tuple[Any, ...], PrimitiveExposure] = {}
     for item in ordered:
         key = (item.primitive_id, item.exposure_basis, item.qualifiers, item.magnitude)
+        if item.primitive_id == "mobility_loss_feet" and _qualifier(item, "mobility_effect") == "flat_reduction":
+            key = (*key, item.source_effect)
         retained = retained_by_key.get(key)
         if retained is None:
             retained_by_key[key] = item
@@ -362,6 +399,7 @@ def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, A
                     component.get("duration"),
                     horizon=horizon,
                     repeat_survival_probability=component.get("repeat_survival_probability"),
+                    repeat_checkpoint=component.get("repeat_checkpoint"),
                     magnitude_feet=component.get("magnitude_feet"),
                     attack_scope=component.get("attack_scope"),
                     source_reason=str(component.get("reason", "")),

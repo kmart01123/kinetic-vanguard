@@ -71,6 +71,10 @@ def _eldritch_strike_primer_probability(attacks:int,hit_probability:float)->floa
     return 1-(1-hit_probability)**attacks
 
 
+def _mastery_shadow_component(mastery:dict[str,Any],discipline_id:str,application_probability:float)->dict[str,Any]:
+    return {"source_effect":f"mastery:{mastery['kind']}","labels":[('outcome',outcome) for outcome in mastery["control_outcomes"]],"duration":mastery.get("control_duration"),"application_probability":application_probability,"repeat_survival_probability":None,"repeat_checkpoint":None,"magnitude_feet":mastery.get("control_magnitude_feet"),"attack_scope":mastery.get("attack_scope"),"reason":f"KineticVanguard.yaml calculator.harness_mechanics.disciplines[{discipline_id}].mastery"}
+
+
 def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int,target_role:str="primary")->dict[str,Any]:
     feature=model.feature(entity_id,target.level,tier);control=next((item for item in feature.get("control_tiers",[]) if int(item["tier"])==tier),None)
     if control is None:raise ValueError(f"Configured control scenario {entity_id} Tier {tier} lacks canonical control mechanics")
@@ -94,7 +98,7 @@ def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipl
         if repeat_count and effect["gate"]=="on_failed_save":value*=repeat_failed**repeat_count
         after.append(value)
         labels=[*(('condition',condition) for condition in effect.get("conditions",[]) if condition.lower() not in target.condition_immunities),*(('outcome',outcome) for outcome in effect.get("outcomes",[]))]
-        component={"source_effect":f"{entity_id}:T{tier}:effect{effect_index}","labels":labels,"duration":effect["duration"],"application_probability":repeat(effect_probability(effect)),"repeat_survival_probability":repeat_failed if repeat_count and effect["gate"]=="on_failed_save" else None,"magnitude_feet":effect.get("magnitude_feet"),"attack_scope":effect.get("attack_scope"),"reason":f"KineticVanguard.yaml calculator.harness_mechanics.feature_rules[{entity_id}].control_tiers[T{tier}]"}
+        component={"source_effect":f"{entity_id}:T{tier}:effect{effect_index}","labels":labels,"duration":effect["duration"],"application_probability":repeat(effect_probability(effect)),"repeat_survival_probability":repeat_failed if repeat_count and effect["gate"]=="on_failed_save" else None,"repeat_checkpoint":control.get("repeat_save_trigger") if repeat_count and effect["gate"]=="on_failed_save" else None,"magnitude_feet":effect.get("magnitude_feet"),"attack_scope":effect.get("attack_scope"),"reason":f"KineticVanguard.yaml calculator.harness_mechanics.feature_rules[{entity_id}].control_tiers[T{tier}]"}
         if "failed_save_magnitude_feet" in effect or "successful_save_magnitude_feet" in effect:
             failed_probability=repeat(reach*failed);reached_probability=repeat(reach);success_probability=max(0.0,reached_probability-failed_probability)
             branch_labels=[item for item in labels if item[1]=="forced_movement"]
@@ -104,6 +108,8 @@ def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipl
                 shadow_components.append({**component,"source_effect":f"{component['source_effect']}:successful_save","labels":branch_labels,"application_probability":success_probability,"magnitude_feet":effect.get("successful_save_magnitude_feet")})
             if other_labels:shadow_components.append({**component,"labels":other_labels})
         else:shadow_components.append(component)
+    if mastery_available and mastery["control_outcomes"]:
+        shadow_components.append(_mastery_shadow_component(mastery,discipline_id,mastery_value))
     repeat=max([mastery_value,*after]);suffix=f":{target_role}" if target_role!="primary" else ""
     return {"build":discipline_id,"scenario":f"{entity_id}:T{tier}{suffix}","eligible":eligible,"reach":100*reach,"named":100*named,"mastery":100*mastery_value,"whole":100*whole,"after_repeats":100*repeat,"shadow_components":shadow_components}
 
@@ -113,7 +119,7 @@ def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,di
     bonus=model.kv_attack_bonus(target.level,int(profile["psionic_ability_modifier"]))+int(profile["archery_attack_bonus"]);probabilities=attack_probabilities(bonus,target.ac);reach=probabilities[1]+probabilities[2]
     eligible=not mastery.get("maximum_size") or target_is_eligible(target,mastery["maximum_size"])
     whole=reach if eligible and mastery["control_outcomes"] else 0.0
-    component={"source_effect":f"mastery:{mastery['kind']}","labels":[('outcome',outcome) for outcome in mastery["control_outcomes"]],"duration":mastery.get("control_duration"),"application_probability":whole,"repeat_survival_probability":None,"magnitude_feet":mastery.get("control_magnitude_feet"),"attack_scope":mastery.get("attack_scope"),"reason":f"KineticVanguard.yaml calculator.harness_mechanics.disciplines[{discipline_id}].mastery"}
+    component=_mastery_shadow_component(mastery,discipline_id,whole)
     return {"build":discipline_id,"scenario":f"mastery:{mastery['kind']}","eligible":eligible,"reach":100*reach,"named":0.0,"mastery":100*whole,"whole":100*whole,"after_repeats":100*whole,"shadow_components":[component] if component["labels"] else []}
 
 

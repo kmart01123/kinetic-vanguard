@@ -109,6 +109,8 @@ The public headline is **Control Reliability**; the configured numerical metric 
 
 The optional `--shadow-detail` path adds `kv-<version>-control-value-shadow-detail.csv` beside the ordinary Control Reliability outputs. It reuses the runner's existing target eligibility, hit/save, paid-rider retry, Battle Master retry, Eldritch Strike primer, and repeat-save probabilities, then expands each condition or bare outcome into inspectable mechanical primitives. The shadow rows report their exposure basis, feet magnitude where canonical structure supplies one, active probabilities, expected exposure, normalization or suppression disposition, and `candidate`, `context_required`, or `unsupported` status.
 
+For a repeat save at the start of the affected target's turn, a target-turn exposure window is scored after that save: with initial application probability `p` and repeat-save survival probability `q`, windows 1 through 3 are `p*q`, `p*q^2`, and `p*q^3`. Exposure bases whose event could occur on either side of that checkpoint remain `context_required`. Duplicate boolean primitives do not stack; measured speed reductions deduplicate only within the same source, so canonical reductions from distinct sources can stack until an overlapping Speed 0 effect dominates them.
+
 The primitive layer has no weights and produces no Control Value scalar, winner selection, matrix cell, or README classification. `while_in_area` persistence and comparator timing, magnitude, or scope absent from the maintained comparator configuration fail closed as contextual or unsupported instead of invoking a battlefield or timeline model. Until a later reviewed slice authorizes analytical evidence, inspect this path only with focused sentinels such as:
 
 ```text

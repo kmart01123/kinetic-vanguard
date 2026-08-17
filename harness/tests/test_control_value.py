@@ -49,12 +49,17 @@ class PrimitiveDecompositionTests(unittest.TestCase):
 class ExposureMathTests(unittest.TestCase):
     def test_closed_form_exposure_helpers(self)->None:
         self.assertEqual(fixed_exposure(0.0,3),(0.0,0.0,0.0));self.assertEqual(fixed_exposure(0.4,1),(0.4,))
-        self.assertEqual(fixed_exposure(0.4,3),(0.4,0.4,0.4));self.assertEqual(repeat_save_exposure(0.5,0.5,3),(0.5,0.25,0.125));self.assertEqual(instantaneous_exposure(0.5,20),10)
+        self.assertEqual(fixed_exposure(0.4,3),(0.4,0.4,0.4));self.assertEqual(repeat_save_exposure(0.5,0.5,3,checkpoint_side="after_scored_window"),(0.5,0.25,0.125));self.assertEqual(repeat_save_exposure(0.5,0.5,3,checkpoint_side="before_scored_window"),(0.25,0.125,0.0625));self.assertEqual(instantaneous_exposure(0.5,20),10)
 
     def test_repeat_save_and_instantaneous_expected_exposure_are_hand_computable(self)->None:
-        repeated=expose_label("probe","restrained",0.5,"one_minute_concentration",repeat_survival_probability=0.5)
-        advantage=next(item for item in repeated if item.primitive_id=="defensive_attack_advantage");self.assertEqual(advantage.active_probabilities,(0.5,0.25,0.125));self.assertEqual(advantage.expected_exposure,0.875)
+        repeated=expose_label("probe","restrained",0.5,"one_minute_concentration",repeat_survival_probability=0.5,repeat_checkpoint="start_of_affected_turn")
+        offense=next(item for item in repeated if item.primitive_id=="offensive_impairment_all_attacks");self.assertEqual(offense.active_probabilities,(0.25,0.125,0.0625));self.assertEqual(offense.expected_exposure,0.4375)
+        advantage=next(item for item in repeated if item.primitive_id=="defensive_attack_advantage");self.assertEqual(advantage.pricing_status,"context_required");self.assertFalse(advantage.active_probabilities);self.assertIsNone(advantage.expected_exposure)
         movement=expose_label("probe","forced_movement",0.5,"instantaneous",magnitude_feet=20)[0];self.assertEqual(movement.expected_exposure,10)
+
+    def test_repeat_save_without_a_supported_checkpoint_fails_closed(self)->None:
+        rows=expose_label("probe","restrained",0.5,"one_minute_concentration",repeat_survival_probability=0.5)
+        self.assertTrue(rows);self.assertTrue(all(item.pricing_status in {"context_required","unsupported"} and item.expected_exposure is None and not item.active_probabilities for item in rows))
 
     def test_unknown_timing_fails_closed(self)->None:
         rows=expose_label("probe","blinded",0.5,None);self.assertTrue(rows);self.assertTrue(all(item.pricing_status=="unsupported" and item.expected_exposure is None and not item.active_probabilities for item in rows))
@@ -80,6 +85,14 @@ class NormalizationTests(unittest.TestCase):
         included=self.normalized(expose_label("stun","stunned",0.5,"until_end_next_turn"),expose_label("incap","incapacitated",0.5,"until_end_next_turn"))
         self.assertEqual(sum(item.primitive_id=="active_turn_denial" and item.normalization_disposition!="suppressed" for item in included),1)
 
+    def test_measured_reductions_stack_across_sources_but_not_with_themselves(self)->None:
+        slow=expose_label("mastery:slow","speed_reduction",0.8,"until_start_next_turn",magnitude_feet=10)
+        glacial=expose_label("glacial_spike:T0:effect0","speed_reduction",0.8,"until_end_next_turn",magnitude_feet=10)
+        distinct=self.normalized(slow,glacial);self.assertEqual(sum(item.normalization_disposition=="retained" for item in distinct),2)
+        duplicate=self.normalized(glacial,glacial);self.assertEqual(sum(item.normalization_disposition=="retained" for item in duplicate),1);self.assertEqual(sum(item.normalization_disposition=="suppressed" for item in duplicate),1)
+        dominated=self.normalized(slow,glacial,expose_label("stop","speed_zero",0.4,"until_end_next_turn"));reductions=[item for item in dominated if dict(item.qualifiers).get("mobility_effect")=="flat_reduction"]
+        self.assertEqual(len(reductions),2);self.assertTrue(all(item.normalization_disposition=="partially_suppressed" and item.active_probabilities==(0.4,) and item.expected_exposure==4 for item in reductions))
+
     def test_duplicate_advantage_and_disadvantage_do_not_stack(self)->None:
         advantage=self.normalized(expose_label("blind","blinded",0.5,"until_end_next_turn"),expose_label("stun","stunned",0.5,"until_end_next_turn"))
         self.assertEqual(sum(item.primitive_id=="defensive_attack_advantage" and item.normalization_disposition!="suppressed" for item in advantage),1)
@@ -101,6 +114,18 @@ class CurrentScenarioShadowTests(unittest.TestCase):
             with self.subTest(discipline=discipline):
                 value=_kv_scenario(self.model,self.config,self.target,discipline,entity,tier,role);rows=self.rows(value,discipline);self.assertTrue(rows);self.assertTrue(all(row["Mechanical Primitive"] for row in rows))
         shove=self.rows(_kv_scenario(self.model,self.config,self.target,"psychokinesis","telekinetic_shove",2),"psychokinesis");movement=next(row for row in shove if row["Mechanical Primitive"]=="forced_displacement");self.assertEqual(movement["Magnitude"],"20");self.assertNotIn("cliff",str(movement).lower())
+
+    def test_same_strike_mastery_vectors_respect_normal_and_replacement_rules(self)->None:
+        cryo=self.rows(_kv_scenario(self.model,self.config,self.target,"cryokinesis","glacial_spike",0),"cryokinesis");reductions=[row for row in cryo if row["Mechanical Primitive"]=="mobility_loss_feet"]
+        self.assertEqual({row["Source Effect"] for row in reductions},{"glacial_spike:T0:effect0","mastery:slow"});self.assertTrue(all(row["Normalization"]=="retained" and row["Magnitude"]=="10" for row in reductions))
+        electro=self.rows(_kv_scenario(self.model,self.config,self.target,"electrokinesis","static_discharge",2),"electrokinesis");sap=next(row for row in electro if row["Source Effect"]=="mastery:sap");self.assertEqual(sap["Mechanical Primitive"],"offensive_impairment_next_attack")
+        shove=self.rows(_kv_scenario(self.model,self.config,self.target,"psychokinesis","telekinetic_shove",2),"psychokinesis");self.assertFalse(any(str(row["Source Effect"]).startswith("mastery:") for row in shove));self.assertEqual([row["Magnitude"] for row in shove if row["Mechanical Primitive"]=="forced_displacement"],["20"])
+
+    def test_glacial_speed_zero_suppresses_failed_branch_but_success_keeps_both_reductions(self)->None:
+        rows=self.rows(_kv_scenario(self.model,self.config,self.target,"cryokinesis","glacial_spike",1),"cryokinesis");reductions=[row for row in rows if row["Mechanical Primitive"]=="mobility_loss_feet" and row["Magnitude"]=="10"];speed_zero=next(row for row in rows if row["Mechanical Primitive"]=="mobility_loss_feet" and row["Magnitude"]=="")
+        self.assertEqual({row["Source Effect"] for row in reductions},{"glacial_spike:T1:effect0","mastery:slow"});self.assertTrue(all(row["Normalization"]=="partially_suppressed" for row in reductions))
+        successful_branch=float(reductions[0]["Application Probability"])-float(speed_zero["Application Probability"]);active=[float(str(row["Active Probabilities"]).split("=")[1]) for row in reductions];self.assertGreater(successful_branch,0)
+        self.assertTrue(all(abs(value-successful_branch)<1e-10 for value in active));self.assertTrue(all(abs(float(row["Expected Exposure"])-10*value)<1e-10 for row,value in zip(reductions,active)))
 
     def test_battle_master_and_eldritch_knight_gaps_are_explicit(self)->None:
         for build in ("battle_master","eldritch_knight"):
