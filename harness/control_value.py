@@ -41,6 +41,7 @@ class PrimitiveExposure:
     reason: str
     qualifiers: tuple[tuple[str, str], ...] = ()
     overlapping_attack_impairment_sources: tuple[str, ...] = ()
+    disjoint_stage_group: str = ""
     normalization_disposition: str = "retained"
     suppressed_by: str = ""
 
@@ -176,7 +177,13 @@ def decompose_label(
             add(str(definition["primitive"]), status, definition.get("qualifiers"), magnitude, reason)
     else:
         raise ValueError(f"Unknown control condition/outcome: {label}")
-    return tuple(specs)
+    deduplicated: list[PrimitiveSpec] = []
+    seen: set[tuple[Any, ...]] = set()
+    for spec in specs:
+        key=(spec.primitive_id,spec.exposure_basis,spec.magnitude,spec.pricing_status,spec.qualifiers)
+        if key not in seen:seen.add(key);deduplicated.append(spec)
+    unconditional={spec.primitive_id for spec in deduplicated if not spec.qualifiers}
+    return tuple(spec for spec in deduplicated if not spec.qualifiers or spec.primitive_id not in unconditional)
 
 
 def fixed_exposure(application_probability: float, windows: int) -> tuple[float, ...]:
@@ -224,6 +231,8 @@ def expose_label(
     magnitude_feet: float | None = None,
     attack_scope: str | None = None,
     overlapping_attack_impairment_sources: Sequence[str] = (),
+    active_probabilities_by_basis: Mapping[str, Sequence[float]] | None = None,
+    disjoint_stage_group: str = "",
     source_reason: str = "",
 ) -> tuple[PrimitiveExposure, ...]:
     if not 0.0 <= application_probability <= 1.0:
@@ -238,7 +247,19 @@ def expose_label(
         reason_parts = [part for part in (source_reason, spec.reason) if part]
         active: tuple[float, ...]
         expected: float | None
-        if duration is None:
+        if active_probabilities_by_basis is not None:
+            staged=active_probabilities_by_basis.get(spec.exposure_basis)
+            if staged is None:
+                active=()
+                expected=None
+                status="context_required" if status!="unsupported" else status
+                reason_parts.append("This exposure basis has no approved placement in the closed-form staged package.")
+            else:
+                active=tuple(float(value) for value in staged)
+                if len(active)!=horizon or any(value<0.0 or value>1.0 for value in active):raise ValueError("Staged exposure probabilities must cover the horizon with values in [0, 1]")
+                expected=sum(active)*(spec.magnitude if spec.magnitude is not None else 1.0) if status!="unsupported" else None
+                reason_parts.append("Closed-form staged target-turn exposure; no mutable timeline is used.")
+        elif duration is None:
             active = ()
             expected = None
             status = "unsupported"
@@ -279,7 +300,7 @@ def expose_label(
                     expected = None
                     status = "context_required" if status != "unsupported" else status
                     reason_parts.append("This exposure basis has no established side of the start-of-affected-turn repeat-save checkpoint.")
-                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
+                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources, disjoint_stage_group))
                     continue
                 elif repeat_checkpoint == "end_of_affected_turn" and spec.exposure_basis == "target_turn_window":
                     active = repeat_save_exposure(
@@ -294,34 +315,34 @@ def expose_label(
                     expected = None
                     status = "context_required" if status != "unsupported" else status
                     reason_parts.append("This exposure basis has no established side of the end-of-affected-turn repeat-save checkpoint.")
-                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
+                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources, disjoint_stage_group))
                     continue
                 else:
                     active = ()
                     expected = None
                     status = "context_required" if status != "unsupported" else status
                     reason_parts.append("Repeat-save exposure lacks a supported checkpoint convention.")
-                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
+                    result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources, disjoint_stage_group))
                     continue
             elif duration == "instantaneous":
                 active = ()
                 expected = None
                 status = "context_required" if status != "unsupported" else status
                 reason_parts.append("A persistent condition created instantaneously needs explicit end timing.")
-                result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
+                result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources, disjoint_stage_group))
                 continue
             else:
                 active = ()
                 expected = None
                 status = "unsupported"
                 reason_parts.append(f"Unsupported exposure duration: {duration}.")
-                result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
+                result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources, disjoint_stage_group))
                 continue
             scale = spec.magnitude if spec.magnitude is not None else 1.0
             expected = sum(active) * scale if status != "unsupported" else None
         if status == "unsupported":
             expected = None
-        result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources))
+        result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources, disjoint_stage_group))
     return tuple(result)
 
 
@@ -368,6 +389,7 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
     )
     normalized: list[PrimitiveExposure] = []
     retained_by_key: dict[tuple[Any, ...], PrimitiveExposure] = {}
+    retained_index_by_key: dict[tuple[Any, ...], int] = {}
     for item in ordered:
         key = (item.primitive_id, item.exposure_basis, item.qualifiers, item.magnitude)
         if item.primitive_id == "mobility_loss_feet" and _qualifier(item, "mobility_effect") == "flat_reduction":
@@ -375,7 +397,14 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
         retained = retained_by_key.get(key)
         if retained is None:
             retained_by_key[key] = item
+            retained_index_by_key[key]=len(normalized)
             normalized.append(item)
+        elif item.disjoint_stage_group and item.disjoint_stage_group==retained.disjoint_stage_group and item.active_probabilities and len(item.active_probabilities)==len(retained.active_probabilities):
+            combined_active=tuple(left+right for left,right in zip(retained.active_probabilities,item.active_probabilities))
+            if any(value>1.0+1e-12 for value in combined_active):raise ValueError("Disjoint staged exposure exceeds probability 1")
+            combined=replace(retained,active_probabilities=combined_active,expected_exposure=_expected(combined_active,retained.magnitude,retained.pricing_status),normalization_disposition="combined_disjoint_stages",suppressed_by=f"{item.source_effect}:{item.primitive_id} (disjoint sequential stage)")
+            normalized[retained_index_by_key[key]]=combined;retained_by_key[key]=combined
+            zeroes=tuple(0.0 for _ in item.active_probabilities);normalized.append(replace(item,active_probabilities=zeroes,expected_exposure=_expected(zeroes,item.magnitude,item.pricing_status),normalization_disposition="combined_into_disjoint_stages",suppressed_by=f"{combined.source_effect}:{combined.primitive_id} (disjoint sequential stage)"))
         else:
             zeroes=tuple(0.0 for _ in item.active_probabilities);normalized.append(replace(item, active_probabilities=zeroes, expected_exposure=_expected(zeroes,item.magnitude,item.pricing_status), normalization_disposition="suppressed", suppressed_by=f"{retained.source_effect}:{retained.primitive_id} (duplicate primitive)"))
 
@@ -426,6 +455,8 @@ def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, A
                     magnitude_feet=component.get("magnitude_feet"),
                     attack_scope=component.get("attack_scope"),
                     overlapping_attack_impairment_sources=component.get("overlapping_attack_impairment_sources", ()),
+                    active_probabilities_by_basis=component.get("active_probabilities_by_basis"),
+                    disjoint_stage_group=str(component.get("disjoint_stage_group", "")),
                     source_reason=str(component.get("reason", "")),
                 )
             )

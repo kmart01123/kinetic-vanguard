@@ -34,6 +34,24 @@ def _eldritch_knight_spellcasting_modifier(row:dict[str,Any],level:int)->int:
     return int(row["spellcasting_ability_modifier_by_level"][str(level)])
 
 
+def _automatic_save_success(target:Target,scenario:dict[str,Any])->bool:
+    for rule in scenario.get("automatic_success_if",[]):
+        kind,value=str(rule).split(":",1)
+        if kind=="condition_immunity" and value in target.condition_immunities:return True
+        if kind=="source_explicit" and bool(getattr(target,value,False)):return True
+    return False
+
+
+def _resolved_targeting(row:dict[str,Any],scenario:dict[str,Any],level:int)->dict[str,Any]|None:
+    targeting=scenario.get("targeting")
+    if targeting is None:return None
+    resolved={**targeting,"area":dict(targeting["area"])} if "area" in targeting else dict(targeting)
+    if targeting["mode"]=="capped_selectable":
+        highest_slot=int(row["spell_access"]["highest_slot_level_by_fighter_level"][str(level)]);spell_level=int(scenario["spell_level"]);increments=max(0,highest_slot-spell_level)//int(targeting["higher_slot_levels_per_increment"])
+        resolved["maximum_target_cap"]=int(targeting["base_target_cap"])+increments*int(targeting["higher_slot_target_increment"])
+    return resolved
+
+
 def _repeat_rider_probability(model:AuthorityModel,config:dict[str,Any],level:int,tier:int,psi_cost:int,attempt_success:float)->float:
     """Optimize retry legality for one fixed rider tier without target identity state."""
     if model.projection["core"]["manifested_strike"]["rider_repeatability"]!="per_manifested_strike":raise ValueError("Unsupported canonical rider repeatability")
@@ -130,29 +148,51 @@ def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,di
 
 
 def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,build_id:str,scenario:dict[str,Any])->dict[str,Any]:
-    if build_id=="eldritch_knight" and not scenario.get("spell_attack") and "save" not in scenario:raise ValueError("Eldritch Knight scenario requires a spell attack or saving throw")
-    row=comparators["control"][build_id];minimum=int(scenario.get("minimum_level",row["minimum_level"]));eligible=target.level>=minimum and target_is_eligible(target,scenario.get("maximum_size"),scenario.get("required_creature_type"))
-    available=_comparator_effect_available(target,scenario)
-    pb=model.progression("proficiency_bonus",target.level);weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(target.level)]);weapon_bonus_total=pb+int(row["attack_ability_modifier"])+weapon_bonus;reach=1.0
+    row=comparators["control"][build_id];pb=model.progression("proficiency_bonus",target.level);weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(target.level)]);weapon_bonus_total=pb+int(row["attack_ability_modifier"])+weapon_bonus;reach=1.0
+    if build_id=="battle_master":
+        eligible=target.level>=int(row["minimum_level"]) and target_is_eligible(target,scenario.get("maximum_size"));available=_comparator_effect_available(target,scenario)
+        if scenario.get("hit_gated"):probabilities=attack_probabilities(weapon_bonus_total,target.ac);reach=probabilities[1]+probabilities[2]
+        dc=int(row["save_dc_base"])+pb+int(row["save_ability_modifier"]);normal_fail=1-save_success_probability(target,scenario["save"],dc,False,bool(row["magic_resistance_applies"]))
+        if not eligible or not available:value=0.0
+        elif scenario.get("hit_gated"):
+            attacks=int(level_config(config,target.level)["attacks_per_action"]);superiority_dice=int(comparators["damage"]["battle_master"]["superiority_pool_by_level"][str(target.level)]);value=_battle_master_retry_probability(attacks,superiority_dice,reach,normal_fail)
+        else:value=normal_fail
+        labels=[*(('condition',condition) for condition in scenario.get("conditions",[]) if condition.lower() not in target.condition_immunities),*(('outcome',outcome) for outcome in scenario.get("outcomes",[]))]
+        component={"source_effect":scenario["id"],"labels":labels,"duration":None,"application_probability":value,"repeat_survival_probability":None,"repeat_checkpoint":None,"magnitude_feet":None,"attack_scope":None,"reason":f"harness/comparators/fighter-subclasses.json control.{build_id}; timing, scope, or magnitude not present in current comparator config"}
+        return {"build":build_id,"scenario":scenario["id"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*value,"shadow_components":[component] if labels else [],"targeting":None,"breaks":[]}
+
+    if not scenario.get("spell_attack") and "save" not in scenario:raise ValueError("Eldritch Knight scenario requires a spell attack or saving throw")
+    highest_slot=int(row["spell_access"]["highest_slot_level_by_fighter_level"][str(target.level)]);access_legal=int(scenario["spell_level"])==0 or int(scenario["spell_level"])<=highest_slot;primer_legal=not scenario.get("primer_hit_disadvantage") or target.level>=int(row["eldritch_strike_minimum_level"])
+    eligible=target.level>=int(row["minimum_level"]) and access_legal and primer_legal and target_is_eligible(target,None,scenario.get("required_creature_type"));automatic_success=_automatic_save_success(target,scenario)
     if scenario.get("hit_gated"):
-        attack_bonus=pb+_eldritch_knight_spellcasting_modifier(row,target.level) if scenario.get("spell_attack") else weapon_bonus_total
-        probabilities=attack_probabilities(attack_bonus,target.ac);reach=probabilities[1]+probabilities[2]
-    repeat_failed=None
-    if not eligible or not available:value=0.0
-    elif scenario.get("spell_attack"):value=reach
-    else:
-        save_modifier=_eldritch_knight_spellcasting_modifier(row,target.level) if build_id=="eldritch_knight" else int(row["save_ability_modifier"]);dc=int(row["save_dc_base"])+pb+save_modifier;normal_fail=1-save_success_probability(target,scenario["save"],dc,False,bool(row["magic_resistance_applies"]));repeat_failed=normal_fail
-        if build_id=="battle_master" and scenario.get("hit_gated"):
-            attacks=int(level_config(config,target.level)["attacks_per_action"]);superiority_dice=int(comparators["damage"]["battle_master"]["superiority_pool_by_level"][str(target.level)])
-            value=_battle_master_retry_probability(attacks,superiority_dice,reach,normal_fail)
-        elif scenario.get("primer_hit_disadvantage"):
-            attacks=int(level_config(config,target.level)["attacks_per_action"]);primer=attack_probabilities(weapon_bonus_total,target.ac);primer_mark=_eldritch_strike_primer_probability(attacks,primer[1]+primer[2]);disadvantaged_fail=1-save_success_probability(target,scenario["save"],dc,True,bool(row["magic_resistance_applies"]));value=primer_mark*disadvantaged_fail+(1-primer_mark)*normal_fail
-        else:value=reach*normal_fail
-    labels=[*(('condition',condition) for condition in scenario.get("conditions",[]) if condition.lower() not in target.condition_immunities),*(('outcome',outcome) for outcome in scenario.get("outcomes",[]))]
-    repeat_checkpoint=scenario.get("repeat_save_trigger");repeat_count=int(config["methodology"]["rounds"])-1 if repeat_checkpoint and repeat_failed is not None else 0;after_repeats=value*(repeat_failed**repeat_count) if repeat_count else value
-    metadata=", ".join(f"{key}={scenario[key]}" for key in ("spell_level","delivery","improved_war_magic_eligible") if key in scenario)
-    component={"source_effect":scenario["id"],"labels":labels,"duration":scenario.get("duration"),"application_probability":value,"repeat_survival_probability":repeat_failed if repeat_checkpoint else None,"repeat_checkpoint":repeat_checkpoint,"magnitude_feet":scenario.get("magnitude_feet"),"attack_scope":scenario.get("attack_scope"),"reason":f"harness/comparators/fighter-subclasses.json control.{build_id}"+(f"; {metadata}" if metadata else "")}
-    return {"build":build_id,"scenario":scenario["id"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*after_repeats,"shadow_components":[component] if labels else []}
+        attack_bonus=pb+_eldritch_knight_spellcasting_modifier(row,target.level) if scenario.get("spell_attack") else weapon_bonus_total;probabilities=attack_probabilities(attack_bonus,target.ac);reach=probabilities[1]+probabilities[2]
+    normal_fail=None;initial_probability=reach if scenario.get("spell_attack") else 0.0
+    if "save" in scenario:
+        dc=int(row["save_dc_base"])+pb+_eldritch_knight_spellcasting_modifier(row,target.level);normal_fail=1-save_success_probability(target,scenario["save"],dc,False,bool(row["magic_resistance_applies"]));initial_probability=normal_fail
+        if scenario.get("primer_hit_disadvantage"):
+            attacks=int(level_config(config,target.level)["attacks_per_action"]);primer=attack_probabilities(weapon_bonus_total,target.ac);primer_mark=_eldritch_strike_primer_probability(attacks,primer[1]+primer[2]);disadvantaged_fail=1-save_success_probability(target,scenario["save"],dc,True,bool(row["magic_resistance_applies"]));initial_probability=primer_mark*disadvantaged_fail+(1-primer_mark)*normal_fail
+    effective_conditions={condition.lower() for effect in scenario["effects"] for condition in effect.get("conditions",[]) if condition.lower() not in target.condition_immunities}
+    components=[];applications=[];terminals=[];horizon=int(config["methodology"]["rounds"]);multi_effect=len(scenario["effects"])>1
+    if eligible and not automatic_success:
+        for effect in scenario["effects"]:
+            dependency=effect.get("requires_condition_effective")
+            if dependency and dependency.lower() not in effective_conditions:continue
+            labels=[*(('condition',condition) for condition in effect.get("conditions",[]) if condition.lower() not in target.condition_immunities),*(('outcome',outcome) for outcome in effect.get("outcomes",[]))]
+            if not labels:continue
+            gate=effect["gate"]
+            if gate in {"on_hit","on_failed_save"}:application=initial_probability
+            elif gate=="after_failed_second_save":application=initial_probability*float(normal_fail or 0.0)
+            else:raise ValueError(f"Unsupported comparator effect gate: {gate}")
+            active_by_basis=None;pattern=effect.get("active_pattern")
+            if pattern=="first_target_turn_only":active_by_basis={"target_turn_window":(application,*((0.0,)*(horizon-1)))};terminal=0.0
+            elif pattern=="remaining_after_first_target_turn":active_by_basis={"target_turn_window":((0.0,)+((application,)*(horizon-1)))};terminal=application
+            elif effect.get("repeat_save_trigger") and normal_fail is not None:terminal=application*normal_fail**(horizon-1)
+            else:terminal=application
+            applications.append(application);terminals.append(terminal);source_effect=f"{scenario['id']}:{effect['id']}" if multi_effect else scenario["id"]
+            metadata=", ".join(f"{key}={scenario[key]}" for key in ("spell_level","delivery","improved_war_magic_eligible") if key in scenario);effect_metadata=", ".join(f"{key}={effect[key]}" for key in ("id","gate","requires_condition_effective","active_pattern","transition_checkpoint","disjoint_stage_group","suppressed_recovery_options") if key in effect)
+            components.append({"source_effect":source_effect,"labels":labels,"duration":effect["duration"],"application_probability":application,"repeat_survival_probability":normal_fail if effect.get("repeat_save_trigger") else None,"repeat_checkpoint":effect.get("repeat_save_trigger"),"magnitude_feet":effect.get("magnitude_feet"),"attack_scope":effect.get("attack_scope"),"active_probabilities_by_basis":active_by_basis,"disjoint_stage_group":effect.get("disjoint_stage_group",""),"breaks":scenario.get("breaks",[]),"reason":f"harness/comparators/fighter-subclasses.json control.{build_id}; {metadata}"+(f"; {effect_metadata}" if effect_metadata else "")})
+    value=max(applications,default=0.0);after_repeats=max(terminals,default=0.0)
+    return {"build":build_id,"scenario":scenario["id"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*after_repeats,"shadow_components":components,"targeting":_resolved_targeting(row,scenario,target.level),"breaks":list(scenario.get("breaks",[])),"automatic_save_success":automatic_success,"automatic_success_rules":list(scenario.get("automatic_success_if",[]))}
 
 
 def _best(rows:list[dict[str,Any]])->dict[str,Any]:

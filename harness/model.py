@@ -161,26 +161,86 @@ def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
     expected_ek_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","true_strike_choice_timing":"before_attack_roll","decision_information":"observed_state_only","true_strike_use_count":"exactly_configured_per_attack_action"}
     if ek_policy!=expected_ek_policy:raise ValueError("Unsupported Eldritch Knight tactical policy")
     for build_id,row_value in control.items():
-        row=_object(row_value,f"control.{build_id}");common={"minimum_level","attack_ability_modifier","magic_weapon_bonus_by_level","save_dc_base","magic_resistance_applies","scenarios"};ability={"save_ability_modifier"} if build_id=="battle_master" else {"spellcasting_ability_modifier_by_level","reliability_scenario_ids"};_exact_keys(row,common|ability,f"control.{build_id}")
+        row=_object(row_value,f"control.{build_id}");common={"minimum_level","attack_ability_modifier","magic_weapon_bonus_by_level","save_dc_base","magic_resistance_applies","scenarios"};ability={"save_ability_modifier"} if build_id=="battle_master" else {"spellcasting_ability_modifier_by_level","spell_access","eldritch_strike_minimum_level","reliability_scenario_ids"};_exact_keys(row,common|ability,f"control.{build_id}")
         for key in ("minimum_level","attack_ability_modifier","save_dc_base"):_integer(row[key],f"control.{build_id}.{key}",0)
         _level_map(row["magic_weapon_bonus_by_level"],f"control.{build_id}.magic_weapon_bonus_by_level");_boolean(row["magic_resistance_applies"],f"control.{build_id}.magic_resistance_applies")
         if build_id=="battle_master":_integer(row["save_ability_modifier"],"control.battle_master.save_ability_modifier",0)
-        else:_level_map(row["spellcasting_ability_modifier_by_level"],"control.eldritch_knight.spellcasting_ability_modifier_by_level")
+        else:
+            _level_map(row["spellcasting_ability_modifier_by_level"],"control.eldritch_knight.spellcasting_ability_modifier_by_level");_integer(row["eldritch_strike_minimum_level"],"control.eldritch_knight.eldritch_strike_minimum_level",1)
+            access=_object(row["spell_access"],"control.eldritch_knight.spell_access");_exact_keys(access,{"highest_slot_level_by_fighter_level"},"control.eldritch_knight.spell_access");slots=_level_map(access["highest_slot_level_by_fighter_level"],"control.eldritch_knight.spell_access.highest_slot_level_by_fighter_level")
+            if any(int(value)<1 for value in slots.values()) or list(slots.values())!=sorted(slots.values()):raise ValueError("Eldritch Knight spell access must be positive and nondecreasing")
         if not isinstance(row["scenarios"],list) or not row["scenarios"]:raise ValueError(f"control.{build_id}.scenarios must be non-empty")
         for index,scenario_value in enumerate(row["scenarios"]):
-            scenario=_object(scenario_value,f"control.{build_id}.scenarios[{index}]");required={"id"}|({"save"} if build_id=="battle_master" else {"spell_level","delivery"});allowed=required|{"save","minimum_level","hit_gated","spell_attack","conditions","outcomes","maximum_size","primer_hit_disadvantage","duration","repeat_save_trigger","required_creature_type","magnitude_feet","improved_war_magic_eligible"}
+            scenario=_object(scenario_value,f"control.{build_id}.scenarios[{index}]");required={"id"}|({"save"} if build_id=="battle_master" else {"spell_level","delivery","effects"});allowed=required|({"hit_gated","conditions","outcomes","maximum_size"} if build_id=="battle_master" else {"save","hit_gated","spell_attack","primer_hit_disadvantage","required_creature_type","improved_war_magic_eligible","automatic_success_if","targeting","breaks"})
             if not required<=scenario.keys() or not scenario.keys()<=allowed:raise ValueError(f"control.{build_id}.scenarios[{index}] keys are invalid")
             if build_id=="eldritch_knight" and ("save" in scenario)==bool(scenario.get("spell_attack")):raise ValueError(f"control.{build_id}.scenarios[{index}] must use exactly one of save or spell_attack")
             for key in ("hit_gated","spell_attack","primer_hit_disadvantage","improved_war_magic_eligible"):
                 if key in scenario:_boolean(scenario[key],f"control.{build_id}.scenarios[{index}].{key}")
-            for key in ("id","save","delivery","duration","repeat_save_trigger","required_creature_type"):
+            for key in ("id","save","delivery","required_creature_type"):
                 if key in scenario:_string(scenario[key],f"control.{build_id}.scenarios[{index}].{key}")
-            for key in ("minimum_level","spell_level","magnitude_feet"):
+            for key in ("spell_level",):
                 if key in scenario:_integer(scenario[key],f"control.{build_id}.scenarios[{index}].{key}",0)
             if scenario.get("delivery") not in {None,"war_magic_cantrip","action_spell"}:raise ValueError(f"control.{build_id}.scenarios[{index}] has unsupported delivery")
-            if scenario.get("repeat_save_trigger") not in {None,"end_of_affected_turn"}:raise ValueError(f"control.{build_id}.scenarios[{index}] has unsupported repeat-save trigger")
             for key in ("conditions","outcomes"):
                 if key in scenario and (not isinstance(scenario[key],list) or not scenario[key] or any(not isinstance(item,str) or not item for item in scenario[key])):raise ValueError(f"control.{build_id}.scenarios[{index}].{key} must be a non-empty string list")
+            if build_id=="eldritch_knight":
+                if int(scenario["spell_level"])>max(int(value) for value in slots.values()):raise ValueError(f"control.{build_id}.scenarios[{index}] exceeds maintained spell access")
+                if int(scenario["spell_level"])==0 and scenario["delivery"]!="war_magic_cantrip":raise ValueError(f"control.{build_id}.scenarios[{index}] cantrip delivery is invalid")
+                if 0<int(scenario["spell_level"])<=2 and scenario["delivery"]=="action_spell" and scenario.get("improved_war_magic_eligible") is not True:raise ValueError(f"control.{build_id}.scenarios[{index}] Improved War Magic eligibility is invalid")
+                if int(scenario["spell_level"])>=3 and scenario.get("improved_war_magic_eligible") is not False:raise ValueError(f"control.{build_id}.scenarios[{index}] Improved War Magic eligibility is invalid")
+                effects=scenario["effects"]
+                if not isinstance(effects,list) or not effects:raise ValueError(f"control.{build_id}.scenarios[{index}].effects must be non-empty")
+                effect_ids=[]
+                for effect_index,effect_value in enumerate(effects):
+                    effect_label=f"control.{build_id}.scenarios[{index}].effects[{effect_index}]";effect=_object(effect_value,effect_label);effect_required={"id","gate","duration"};effect_allowed=effect_required|{"conditions","outcomes","repeat_save_trigger","requires_condition_effective","magnitude_feet","attack_scope","active_pattern","transition_checkpoint","disjoint_stage_group","suppressed_recovery_options"}
+                    if not effect_required<=effect.keys() or not effect.keys()<=effect_allowed:raise ValueError(f"{effect_label} keys are invalid")
+                    effect_ids.append(_string(effect["id"],f"{effect_label}.id"));_string(effect["duration"],f"{effect_label}.duration")
+                    if effect["gate"] not in {"on_hit","on_failed_save","after_failed_second_save"}:raise ValueError(f"{effect_label}.gate is invalid")
+                    if effect.get("repeat_save_trigger") not in {None,"end_of_affected_turn"}:raise ValueError(f"{effect_label}.repeat_save_trigger is invalid")
+                    if effect.get("active_pattern") not in {None,"first_target_turn_only","remaining_after_first_target_turn"}:raise ValueError(f"{effect_label}.active_pattern is invalid")
+                    if effect.get("active_pattern")=="first_target_turn_only" and effect["gate"]!="on_failed_save":raise ValueError(f"{effect_label} first-stage gate is invalid")
+                    if effect.get("active_pattern")=="remaining_after_first_target_turn" and (effect["gate"]!="after_failed_second_save" or effect.get("transition_checkpoint")!="end_of_first_affected_turn"):raise ValueError(f"{effect_label} second-stage transition is invalid")
+                    for key in ("requires_condition_effective","attack_scope","transition_checkpoint","disjoint_stage_group"):
+                        if key in effect:_string(effect[key],f"{effect_label}.{key}")
+                    if "magnitude_feet" in effect:_integer(effect["magnitude_feet"],f"{effect_label}.magnitude_feet",0)
+                    for key in ("conditions","outcomes","suppressed_recovery_options"):
+                        if key in effect and (not isinstance(effect[key],list) or not effect[key] or any(not isinstance(item,str) or not item for item in effect[key])):raise ValueError(f"{effect_label}.{key} must be a non-empty string list")
+                if len(effect_ids)!=len(set(effect_ids)):raise ValueError(f"control.{build_id}.scenarios[{index}] effect IDs must be unique")
+                declared_conditions={str(condition).lower() for effect in effects for condition in effect.get("conditions",[])}
+                for effect in effects:
+                    dependency=effect.get("requires_condition_effective")
+                    if dependency and dependency.lower() not in declared_conditions:raise ValueError(f"control.{build_id}.scenarios[{index}] effect dependency is not declared")
+                staged_groups={str(effect["disjoint_stage_group"]):{str(member.get("active_pattern")) for member in effects if member.get("disjoint_stage_group")==effect["disjoint_stage_group"]} for effect in effects if effect.get("disjoint_stage_group")}
+                if any(effect.get("active_pattern") and not effect.get("disjoint_stage_group") for effect in effects) or any(patterns!={"first_target_turn_only","remaining_after_first_target_turn"} for patterns in staged_groups.values()):raise ValueError(f"control.{build_id}.scenarios[{index}] staged effects must form a complete disjoint pair")
+                automatic=scenario.get("automatic_success_if",[])
+                if not isinstance(automatic,list) or len(automatic)!=len(set(automatic)) or not set(automatic)<={"condition_immunity:exhaustion","source_explicit:does_not_sleep"}:raise ValueError(f"control.{build_id}.scenarios[{index}].automatic_success_if is invalid")
+                breaks=scenario.get("breaks",[])
+                if not isinstance(breaks,list):raise ValueError(f"control.{build_id}.scenarios[{index}].breaks must be a list")
+                break_ids=[]
+                for break_index,break_value in enumerate(breaks):
+                    break_label=f"control.{build_id}.scenarios[{index}].breaks[{break_index}]";break_row=_object(break_value,break_label);break_required={"id","trigger","resolution","baseline_disposition"};break_allowed=break_required|{"save","save_advantage","success","distance_feet"}
+                    if not break_required<=break_row.keys() or not break_row.keys()<=break_allowed:raise ValueError(f"{break_label} keys are invalid")
+                    break_ids.append(_string(break_row["id"],f"{break_label}.id"))
+                    for key in ("trigger","resolution","baseline_disposition","save","success"):
+                        if key in break_row:_string(break_row[key],f"{break_label}.{key}")
+                    if break_row["trigger"] not in {"damage","external_action"} or break_row["resolution"] not in {"repeat_save","ends_effect"} or break_row["baseline_disposition"] not in {"inactive_controller_preserves_control","inactive_no_ally_turns"}:raise ValueError(f"{break_label} semantics are invalid")
+                    if break_row["resolution"]=="repeat_save" and not {"save","save_advantage","success"}<=break_row.keys():raise ValueError(f"{break_label} repeat save is incomplete")
+                    if "save_advantage" in break_row:_boolean(break_row["save_advantage"],f"{break_label}.save_advantage")
+                    if "distance_feet" in break_row:_integer(break_row["distance_feet"],f"{break_label}.distance_feet",0)
+                if len(break_ids)!=len(set(break_ids)):raise ValueError(f"control.{build_id}.scenarios[{index}] break IDs must be unique")
+                if "targeting" in scenario:
+                    target_label=f"control.{build_id}.scenarios[{index}].targeting";targeting=_object(scenario["targeting"],target_label);mode=targeting.get("mode")
+                    expected_targeting={"single_target":{"mode"},"capped_selectable":{"mode","base_target_cap","higher_slot_target_increment","higher_slot_levels_per_increment"},"area_choice":{"mode","creature_selection","area"},"area_predicate":{"mode","eligibility_predicate","baseline_visual_access","area"}}.get(mode)
+                    if expected_targeting is None:raise ValueError(f"{target_label}.mode is invalid")
+                    _exact_keys(targeting,expected_targeting,target_label)
+                    for key in expected_targeting-{"mode","area","creature_selection","eligibility_predicate","baseline_visual_access"}:_integer(targeting[key],f"{target_label}.{key}",1)
+                    for key in ("creature_selection","eligibility_predicate","baseline_visual_access"):
+                        if key in targeting:_string(targeting[key],f"{target_label}.{key}")
+                    if "area" in targeting:
+                        area=_object(targeting["area"],f"{target_label}.area");shape=area.get("shape");expected_area={"sphere":{"shape","radius_feet"},"cube":{"shape","size_feet"}}.get(shape)
+                        if expected_area is None:raise ValueError(f"{target_label}.area.shape is invalid")
+                        _exact_keys(area,expected_area,f"{target_label}.area")
+                        for key in expected_area-{"shape"}:_integer(area[key],f"{target_label}.area.{key}",1)
         if build_id=="eldritch_knight":
             scenario_ids=[scenario["id"] for scenario in row["scenarios"]];reliability_ids=row["reliability_scenario_ids"]
             if not isinstance(reliability_ids,list) or not reliability_ids or any(not isinstance(item,str) for item in reliability_ids) or len(reliability_ids)!=len(set(reliability_ids)):raise ValueError("control.eldritch_knight.reliability_scenario_ids must be a unique non-empty string list")
