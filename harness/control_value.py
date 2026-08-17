@@ -438,6 +438,7 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
         return [item for item in normalized if item.normalization_disposition != "suppressed" and predicate(item)]
 
     denials = retained(lambda item: item.primitive_id == "active_turn_denial")
+    specified_actions = retained(lambda item: item.primitive_id == "specified_action_requirement")
     all_attack_impairments = retained(lambda item: item.primitive_id == "offensive_impairment_all_attacks")
     auto_failures = retained(lambda item: item.primitive_id == "save_auto_failure")
     speed_zeroes = retained(lambda item: item.primitive_id == "mobility_loss_feet" and _qualifier(item, "mobility_effect") == "speed_zero")
@@ -450,6 +451,10 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
         if current.normalization_disposition != "suppressed" and current.primitive_id in {"offensive_impairment_next_attack", "offensive_impairment_all_attacks"}:
             for stronger in denials:
                 current = _subtract(current, stronger, "turn denial dominates offensive impairment")
+        if current.normalization_disposition != "suppressed" and current.primitive_id == "offensive_impairment_all_attacks":
+            for stronger in specified_actions:
+                if current.exposure_basis == stronger.exposure_basis == "target_turn_window":
+                    current = _subtract(current, stronger, "specified Action requirement consumes the overlapping attack opportunity")
         if current.normalization_disposition != "suppressed" and current.primitive_id == "offensive_impairment_next_attack":
             for stronger in all_attack_impairments:
                 if current.source_effect in stronger.overlapping_attack_impairment_sources:

@@ -104,6 +104,15 @@ class NormalizationTests(unittest.TestCase):
         rows=self.normalized(expose_label("stun","stunned",0.5,"until_end_next_turn"),expose_label("sap","attack_disadvantage",0.5,"until_end_next_turn",attack_scope="all_attacks"))
         offense=next(item for item in rows if item.source_effect=="sap");self.assertEqual(offense.normalization_disposition,"suppressed");self.assertEqual(offense.expected_exposure,0)
 
+    def test_specified_action_suppresses_only_overlapping_all_attacks_impairment(self)->None:
+        action=expose_label("escape","escape_action",0.5,"one_minute_concentration",active_probabilities_by_basis={"target_turn_window":(0.5,0.25,0.125)})
+        restrained=expose_label("restrained","restrained",0.7,"one_minute_concentration",active_probabilities_by_basis={"target_turn_window":(0.7,0.4,0.2),"attack_opportunity":(0.7,0.4,0.2),"incoming_attack_opportunity":(0.7,0.4,0.2),"save_opportunity":(0.7,0.4,0.2)})
+        rows=self.normalized(action,restrained);requirement=next(item for item in rows if item.primitive_id=="specified_action_requirement");offense=next(item for item in rows if item.primitive_id=="offensive_impairment_all_attacks");incoming=next(item for item in rows if item.primitive_id=="defensive_attack_advantage");save=next(item for item in rows if item.primitive_id=="save_disadvantage")
+        self.assertEqual(requirement.normalization_disposition,"retained");self.assertEqual(requirement.active_probabilities,(0.5,0.25,0.125))
+        self.assertEqual(offense.normalization_disposition,"partially_suppressed")
+        for observed,expected in zip(offense.active_probabilities,(0.2,0.15,0.075)):self.assertAlmostEqual(observed,expected,places=12)
+        self.assertEqual(incoming.normalization_disposition,"retained");self.assertEqual(incoming.active_probabilities,(0.7,0.4,0.2));self.assertEqual(save.normalization_disposition,"retained");self.assertEqual(save.active_probabilities,(0.7,0.4,0.2))
+
     def test_all_attacks_only_suppresses_an_explicitly_nested_next_attack_source(self)->None:
         nested=self.normalized(expose_label("burst","attack_disadvantage",0.4,"until_start_next_turn",attack_scope="all_attacks",overlapping_attack_impairment_sources=("sap",)),expose_label("sap","attack_disadvantage",0.7,"until_start_next_turn",attack_scope="next_attack"));sap=next(item for item in nested if item.source_effect=="sap")
         self.assertEqual(sap.normalization_disposition,"partially_suppressed");self.assertAlmostEqual(sap.active_probabilities[0],0.3);self.assertAlmostEqual(sap.expected_exposure or 0,0.3);self.assertIn("burst:offensive_impairment_all_attacks",sap.suppressed_by)
@@ -273,7 +282,7 @@ class CurrentScenarioShadowTests(unittest.TestCase):
         combined=next(item for item in expanded if item["id"]=="slow_after_mind_sliver_and_eldritch_strike")
         combined_value=_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",combined)
         weapon_bonus=self.model.progression("proficiency_bonus",20)+int(ek_row["attack_ability_modifier"])+int(ek_row["magic_weapon_bonus_by_level"]["20"])
-        hit=sum(attack_probabilities(weapon_bonus,probe.ac)[1:]);mark=_eldritch_strike_primer_probability(4,hit)
+        hit=sum(attack_probabilities(weapon_bonus,probe.ac)[1:]);mark=_eldritch_strike_primer_probability(3,hit)
         penalized_disadvantage=sum(min(first,second)-penalty+probe.saves["wisdom"]<spell_dc for first in range(1,21) for second in range(1,21) for penalty in range(1,5))/1600
         ordinary_disadvantage=1-modified_save_success_probability(probe,"wisdom",spell_dc,disadvantage=True,magic_resistance=True)
         expected_combined=primer_probability*(mark*penalized_disadvantage+(1-mark)*exact_penalized)+(1-primer_probability)*(mark*ordinary_disadvantage+(1-mark)*ordinary_failure)
@@ -285,6 +294,16 @@ class CurrentScenarioShadowTests(unittest.TestCase):
         self.assertAlmostEqual(resistant_value["whole"]/100,resistant_primer*(resistant_mark*resistant_penalty_cancelled+(1-resistant_mark)*resistant_penalty)+(1-resistant_primer)*(resistant_mark*resistant_disadvantage+(1-resistant_mark)*resistant_normal),places=12)
         invalid=_composed_eldritch_knight_scenarios(self.comparators,probe,mind_sliver_timing="same_attack_action")
         self.assertFalse(any("after_mind_sliver" in item["id"] for item in invalid))
+
+    def test_war_magic_combined_primer_replaces_one_attack_at_levels_11_and_20(self)->None:
+        configured={item["id"]:item for item in self.comparators["control"]["eldritch_knight"]["scenarios"]}
+        for level,combined_attacks,eldritch_only_attacks in ((11,2,3),(20,3,4)):
+            probe=replace(self.target,level=level);expanded={item["id"]:item for item in _composed_eldritch_knight_scenarios(self.comparators,probe)}
+            combined=_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",expanded["blindness_deafness_after_mind_sliver_and_eldritch_strike"])
+            eldritch_only=_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",configured["blindness_after_eldritch_strike"])
+            pb=self.model.progression("proficiency_bonus",level);row=self.comparators["control"]["eldritch_knight"];weapon_bonus=pb+int(row["attack_ability_modifier"])+int(row["magic_weapon_bonus_by_level"][str(level)]);hit=sum(attack_probabilities(weapon_bonus,probe.ac)[1:])
+            self.assertEqual(combined["save_composition"]["eldritch_strike_weapon_attacks"],combined_attacks);self.assertAlmostEqual(combined["save_composition"]["eldritch_strike_establishment_probability"],_eldritch_strike_primer_probability(combined_attacks,hit),places=12)
+            self.assertEqual(eldritch_only["save_composition"]["eldritch_strike_weapon_attacks"],eldritch_only_attacks);self.assertAlmostEqual(eldritch_only["save_composition"]["eldritch_strike_establishment_probability"],_eldritch_strike_primer_probability(eldritch_only_attacks,hit),places=12)
 
     def test_area_movement_tax_and_action_escape_are_generic(self)->None:
         terrain=decompose_label("difficult_terrain")[0];self.assertEqual(terrain.primitive_id,"terrain_movement_tax");self.assertNotEqual(terrain.primitive_id,"mobility_loss_feet");self.assertEqual(dict(terrain.qualifiers)["stacking"],"nonstacking")
@@ -302,10 +321,13 @@ class CurrentScenarioShadowTests(unittest.TestCase):
             self.assertAlmostEqual(attempts[0],application);self.assertAlmostEqual(attempts[1],application*(1-success));self.assertAlmostEqual(attempts[2],application*(1-success)**2)
             self.assertEqual(tuple(float(item) for item in resolution["legal_exit_probabilities"]),tuple(attempt*success for attempt in attempts))
             rows=self.rows(value,"all");escape_action=next(row for row in rows if row["Source Effect"]==f"{scenario['id']}:escape_action")
-            restrained=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="mobility_loss_feet")
+            restrained=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="mobility_loss_feet");offense=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="offensive_impairment_all_attacks");incoming=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="defensive_attack_advantage");dexterity_save=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="save_disadvantage")
             for observed,expected in zip(self.active(escape_action),attempts):self.assertAlmostEqual(observed,expected,places=12)
             for observed,expected in zip(self.active(restrained),attempts):self.assertAlmostEqual(observed,expected,places=12)
-            self.assertEqual(escape_action["Pricing Status"],"candidate")
+            self.assertEqual(escape_action["Pricing Status"],"candidate");self.assertEqual(offense["Normalization"],"suppressed");self.assertTrue(all(value==0 for value in self.active(offense)));self.assertEqual(float(offense["Expected Exposure"]),0)
+            for independent in (incoming,dexterity_save):
+                self.assertEqual(independent["Normalization"],"retained")
+                for observed,expected in zip(self.active(independent),attempts):self.assertAlmostEqual(observed,expected,places=12)
 
     def test_generic_eldritch_strike_variants_cover_new_spells_and_only_the_initial_save(self)->None:
         expanded=_composed_eldritch_knight_scenarios(self.comparators,self.target);by_id={item["id"]:item for item in expanded}

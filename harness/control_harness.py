@@ -145,9 +145,11 @@ def _save_failure_with_primers(model:AuthorityModel,config:dict[str,Any],row:dic
     if not primers<={"mind_sliver","eldritch_strike"}:raise ValueError("Unsupported composed save primer")
     advantage=bool(scenario.get("initial_save_advantage"));magic_resistance=bool(row["magic_resistance_applies"]);ability=str(scenario["save"])
     normal_fail=1-modified_save_success_probability(target,ability,dc,advantage=advantage,magic_resistance=magic_resistance)
-    eldritch_probability=0.0
+    eldritch_probability=0.0;eldritch_weapon_attacks=0
     if "eldritch_strike" in primers:
-        attacks=int(level_config(config,target.level)["attacks_per_action"]);primer=attack_probabilities(weapon_bonus_total,target.ac);eldritch_probability=_eldritch_strike_primer_probability(attacks,primer[1]+primer[2])
+        eldritch_weapon_attacks=int(level_config(config,target.level)["attacks_per_action"])-int("mind_sliver" in primers)
+        if eldritch_weapon_attacks<0:raise ValueError("War Magic primer composition cannot use negative weapon attacks")
+        primer=attack_probabilities(weapon_bonus_total,target.ac);eldritch_probability=_eldritch_strike_primer_probability(eldritch_weapon_attacks,primer[1]+primer[2])
     disadvantaged_fail=1-modified_save_success_probability(target,ability,dc,advantage=advantage,disadvantage=True,magic_resistance=magic_resistance)
     ordinary_composed=eldritch_probability*disadvantaged_fail+(1-eldritch_probability)*normal_fail
     mind_sliver_probability=0.0;initial_fail=ordinary_composed
@@ -156,7 +158,7 @@ def _save_failure_with_primers(model:AuthorityModel,config:dict[str,Any],row:dic
         penalized=_finite_penalty_with_disadvantage_probability(target,ability,dc,4,eldritch_probability,advantage=advantage,magic_resistance=magic_resistance)
         initial_fail=mind_sliver_probability*penalized+(1-mind_sliver_probability)*ordinary_composed
     timing="cross_turn" if "mind_sliver" in primers else ("prior_attack_action" if "eldritch_strike" in primers else "none")
-    metadata={"primers":sorted(primers),"timing":timing,"mind_sliver_establishment_probability":mind_sliver_probability,"eldritch_strike_establishment_probability":eldritch_probability,"initial_failure_probability":initial_fail,"repeat_failure_probability":normal_fail}
+    metadata={"primers":sorted(primers),"timing":timing,"mind_sliver_establishment_probability":mind_sliver_probability,"eldritch_strike_weapon_attacks":eldritch_weapon_attacks,"eldritch_strike_establishment_probability":eldritch_probability,"initial_failure_probability":initial_fail,"repeat_failure_probability":normal_fail}
     return initial_fail,1-initial_fail,normal_fail,metadata
 
 
