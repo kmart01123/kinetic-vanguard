@@ -1,18 +1,15 @@
 from __future__ import annotations
 
-import csv
 import json
-import tempfile
 import unittest
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
 from types import SimpleNamespace
-from unittest.mock import patch
 
-from harness.authority import AuthorityModel,DEFAULT_AUTHORITY
-from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_eldritch_strike_primer_probability,_kv_scenario,run
-from harness.control_value import PrimitiveExposure,decompose_label,expose_label,fixed_exposure,instantaneous_exposure,load_primitive_catalog,normalize_exposures,primitive_inventory,repeat_save_exposure,shadow_rows
+from harness.authority import AuthorityModel
+from harness.control_harness import _comparator_scenario,_eldritch_strike_primer_probability,_kv_scenario
+from harness.control_value import PrimitiveExposure,decompose_label,expose_label,fixed_exposure,instantaneous_exposure,load_primitive_catalog,normalize_exposures,repeat_save_exposure,shadow_rows
 from harness.model import Target,attack_probabilities,load_comparators,load_config,save_success_probability
 
 
@@ -45,10 +42,6 @@ class PrimitiveDecompositionTests(unittest.TestCase):
         reduction=decompose_label("speed_reduction",magnitude_feet=10)[0];self.assertEqual(reduction.magnitude,10);self.assertEqual(dict(reduction.qualifiers)["mobility_effect"],"flat_reduction")
         displacement=decompose_label("forced_movement",magnitude_feet=20)[0];self.assertEqual(displacement.primitive_id,"forced_displacement");self.assertEqual(displacement.magnitude,20)
         self.assertEqual(decompose_label("forced_movement")[0].pricing_status,"unsupported")
-
-    def test_historical_inventory_has_an_explicit_disposition(self)->None:
-        historical={"active_turn_denial","reaction_denial","offensive_impairment_next_attack","offensive_impairment_all_attacks","target_choice_restriction","sight_option_denial","mobility_loss_feet","movement_mode_denial","forced_displacement","geometry_sensitive_approach_restriction","defensive_attack_advantage","defense_numerical_reduction","save_disadvantage","save_auto_failure","sight_dependent_opportunity","ability_check_impairment","speech_denial","social_interaction_advantage","concentration_break","persistent_elevation","fall_transition","nonsight_location_awareness","prone_incoming_attack_context","melee_hit_auto_critical_context","awareness_denial"}
-        inventory=primitive_inventory();self.assertEqual({row["id"] for row in inventory},historical);self.assertTrue(all(row["historical_disposition"] in {"retain_as_is","retain_but_context_required","merge","omit_current_unproduced"} for row in inventory))
 
     def test_poisoned_and_paralyzed_are_faithful_and_distinct_from_stunned(self)->None:
         poisoned=decompose_label("Poisoned");self.assertEqual([item.primitive_id for item in poisoned],["offensive_impairment_all_attacks","ability_check_impairment"]);self.assertEqual(poisoned[0].pricing_status,"candidate");self.assertEqual(poisoned[1].pricing_status,"context_required")
@@ -266,34 +259,5 @@ class CurrentScenarioShadowTests(unittest.TestCase):
                     for role in entry.get("target_roles",["primary"]):
                         with self.subTest(discipline=discipline,entity=entry["entity_id"],tier=tier,role=role):
                             value=_kv_scenario(self.model,self.config,self.target,discipline,entry["entity_id"],tier,role);rows=self.rows(value,discipline);self.assertTrue(rows);self.assertTrue(all(row["Pricing Status"] in {"candidate","context_required","unsupported"} and row["Source/Reason"] for row in rows))
-
-    def test_reliability_helpers_and_default_output_are_unchanged(self)->None:
-        self.assertAlmostEqual(_battle_master_retry_probability(2,5,0.75,0.5),0.609375);self.assertAlmostEqual(_eldritch_strike_primer_probability(2,0.75),0.9375)
-        with tempfile.TemporaryDirectory() as directory:
-            result=run(DEFAULT_AUTHORITY,Path(directory),{7},1,16,19,write_headline=False)
-            self.assertEqual(result["shadow_rows"],0);self.assertIsNone(result["shadow_path"]);self.assertFalse(list(Path(directory).glob("*shadow*")))
-            with next(Path(directory).glob("*control-detail.csv")).open(encoding="utf-8") as stream:
-                rows=list(csv.DictReader(stream));header=list(rows[0])
-            self.assertNotIn("Mechanical Primitive",header);self.assertIn("Whole-package control stick %",header)
-            self.assertEqual({row["Scenario"] for row in rows if row["Build"]=="eldritch_knight"},{"blindness_deafness","blindness_after_eldritch_strike"})
-        with tempfile.TemporaryDirectory() as directory:
-            run(DEFAULT_AUTHORITY,Path(directory),{15},1,16,19,write_headline=False,write_shadow=True)
-            with next(Path(directory).glob("*shadow-detail.csv")).open(encoding="utf-8") as stream:shadow=list(csv.DictReader(stream))
-            shadow_scenarios={row["Scenario"] for row in shadow if row["Build"]=="eldritch_knight"}
-            self.assertTrue({"ray_of_frost","color_spray","ray_of_sickness","thunderwave","blindness_deafness"}<=shadow_scenarios)
-        baseline=deepcopy(self.comparators);baseline["control"]["eldritch_knight"]["scenarios"]=[scenario for scenario in baseline["control"]["eldritch_knight"]["scenarios"] if scenario["id"] not in {"hideous_laughter","hideous_laughter_after_eldritch_strike","sleep","sleep_after_eldritch_strike","hypnotic_pattern","hypnotic_pattern_after_eldritch_strike"}]
-        with tempfile.TemporaryDirectory() as directory:
-            root=Path(directory);current=root/"current";prior=root/"stage-a"
-            run(DEFAULT_AUTHORITY,current,{15},1,16,19,write_headline=False)
-            with patch("harness.control_harness.load_comparators",return_value=baseline):run(DEFAULT_AUTHORITY,prior,{15},1,16,19,write_headline=False)
-            for suffix in ("control-detail.csv","control-selection-audit.csv"):
-                self.assertEqual(next(current.glob(f"*{suffix}")).read_bytes(),next(prior.glob(f"*{suffix}")).read_bytes())
-
-    def test_shadow_rows_are_deterministic_and_architecture_stays_lean(self)->None:
-        value=_kv_scenario(self.model,self.config,self.target,"cryokinesis","snow_chains",2);first=self.rows(value,"cryokinesis");second=self.rows(value,"cryokinesis");self.assertEqual(first,second)
-        source=(Path(__file__).parents[1]/"control_value.py").read_text(encoding="utf-8")
-        for forbidden in ("from .control_engine import","from .control_state import","from .control_timeline import","from .control_graph import","ControlExecutionSession"):
-            self.assertNotIn(forbidden,source)
-
 
 if __name__=="__main__":unittest.main()

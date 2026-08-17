@@ -72,7 +72,7 @@ No content license was changed.
 
 The official PDF's prescribed SRD attribution remains verbatim in `NOTICE.md`, canonical YAML metadata, generated publication footers, and harness reports. The separate supplied Section 5 disclaimer reference and a specific modification marker are now retained with it.
 
-The recorded official PDF SHA-256 is `8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87`, matching `harness/provenance/legacy-import.json`. The maintained 28-row roster identifies SRD 5.2.1, source page, and official PDF URL for every row. Its preserved historical roster SHA-256 is `dfbda8f8e51d85b898d406a1b7dff63a40899bdf460fe5bc25d73c61d1d1ca5a`.
+The recorded official PDF SHA-256 is `8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87`, matching the maintained SRD catalog. Current roster targets retain SRD 5.2.1 source pages and the official PDF URL.
 
 The project CC BY-NC-SA notice expressly does not restrict or relicense SRD-derived components.
 

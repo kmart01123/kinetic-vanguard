@@ -200,7 +200,7 @@ def _best(rows:list[dict[str,Any]])->dict[str,Any]:
     return max(rows,key=lambda row:(float(row["whole"]),str(row["scenario"])))
 
 
-def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,trials:int,seed:int,write_detail:bool=True,write_headline:bool=True,profile:str=DEFAULT_PROFILE,write_shadow:bool=False)->dict[str,Any]:
+def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,write_detail:bool=True,write_headline:bool=True,profile:str=DEFAULT_PROFILE,write_shadow:bool=False)->dict[str,Any]:
     model=AuthorityModel.load(authority);config=load_config();comparators=load_comparators();targets=load_targets(profile=profile,levels=levels,limit=target_limit);detail=[];audit=[];envelopes=[];shadow_detail=[]
     scenario_sets=config["control_matrix"]["kv_scenarios"]
     for target in targets:
@@ -250,18 +250,18 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,tri
     for (level,discipline),values in sorted(groups.items()):
         mean=lambda key:sum(float(item[key]) for item in values)/len(values)
         rows.append(matrix_row({"Level":level,"Discipline":discipline,"Metric":config["control_matrix"]["metric"],"Profile":config["kv_profile"]["id"]},mean("KV"),mean("Eldritch Knight"),mean("Battle Master"),"control"))
-    provenance={"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"catalog_sha256":file_sha256(DEFAULT_CATALOG),"roster_sha256":file_sha256(DEFAULT_ROSTERS),"target_profile":profile,"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"trials":trials,"seed":seed,"evaluator":"exact_analytical_enumeration","trial_seed_role":"historical_compatibility_metadata","aggregation":config["control_matrix"]["aggregation"],"status":config["methodology"]["status"]}
+    provenance={"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"catalog_sha256":file_sha256(DEFAULT_CATALOG),"roster_sha256":file_sha256(DEFAULT_ROSTERS),"target_profile":profile,"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"evaluator":"exact_analytical_enumeration","aggregation":config["control_matrix"]["aggregation"]}
     paths=write_matrix(output_dir,model.rules_version,"control",rows,provenance) if write_headline else {}
     return {"rules_version":model.rules_version,"detail_rows":len(detail),"audit_rows":len(audit),"matrix_rows":len(rows),"paths":paths,"shadow_rows":len(shadow_detail),"shadow_path":shadow_path}
 
 
 def main()->None:
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--authority",type=Path,default=DEFAULT_AUTHORITY);parser.add_argument("--output-dir",type=Path,required=True);parser.add_argument("--profile",choices=tuple(PROFILE_COUNTS),default=DEFAULT_PROFILE);parser.add_argument("--levels",default="7,11,15,20");parser.add_argument("--target-limit",type=int);parser.add_argument("--trials",type=int);parser.add_argument("--seed",type=int);parser.add_argument("--validate-only",action="store_true");parser.add_argument("--matrix-only",action="store_true");parser.add_argument("--no-matrix",action="store_true");parser.add_argument("--shadow-detail",action="store_true",help="write non-default primitive exposure detail without changing selection");args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--authority",type=Path,default=DEFAULT_AUTHORITY);parser.add_argument("--output-dir",type=Path,required=True);parser.add_argument("--profile",choices=tuple(PROFILE_COUNTS),default=DEFAULT_PROFILE);parser.add_argument("--levels",default="7,11,15,20");parser.add_argument("--target-limit",type=int);parser.add_argument("--validate-only",action="store_true");parser.add_argument("--matrix-only",action="store_true");parser.add_argument("--no-matrix",action="store_true");parser.add_argument("--shadow-detail",action="store_true",help="write non-default primitive exposure detail without changing selection");args=parser.parse_args()
     model=AuthorityModel.load(args.authority)
     if args.validate_only:load_config();load_comparators();load_targets(profile=args.profile);print(f"Validated Kinetic Vanguard {model.rules_version} authority {model.authority_sha256}, target profile {args.profile}, and isolated comparator config");return
-    config=load_config();trials=args.trials if args.trials is not None else int(config["methodology"]["control_default_trials"]);seed=args.seed if args.seed is not None else int(config["methodology"]["control_seed"]);levels={int(value) for value in args.levels.split(",")}
-    if trials<=0 or (args.target_limit is not None and args.target_limit<=0):parser.error("--trials and --target-limit must be positive")
-    result=run(args.authority,args.output_dir,levels,args.target_limit,trials,seed,not args.matrix_only,not args.no_matrix,args.profile,args.shadow_detail)
+    levels={int(value) for value in args.levels.split(",")}
+    if args.target_limit is not None and args.target_limit<=0:parser.error("--target-limit must be positive")
+    result=run(args.authority,args.output_dir,levels,args.target_limit,not args.matrix_only,not args.no_matrix,args.profile,args.shadow_detail)
     if args.shadow_detail:print(f"Control harness wrote {result['detail_rows']} detail rows, {result['audit_rows']} audit rows, {result['matrix_rows']} matrix rows, and {result['shadow_rows']} optional shadow rows for rules {result['rules_version']}")
     else:print(f"Control harness wrote {result['detail_rows']} detail rows, {result['audit_rows']} audit rows, and {result['matrix_rows']} matrix rows for rules {result['rules_version']}")
 

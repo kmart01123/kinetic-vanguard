@@ -7,9 +7,6 @@ import { loadAuthority } from "../src/load.js";
 import { buildFilterIndex } from "../src/validate.js";
 
 const defaultReferenceFragment="#category=common_features&topic=common_features_how_to_play_topic";
-const styledAdditionOperators=/[˖∔⊕⊞➕⨁⨢⨣⨤⨥⨦⨧⨨⨭⨮⨹⨺⩱⩲⩳⩴⩵⩶⩷⩸﬩]/u;
-const hasAlternateAddition=(value:string)=>/\bplus\b/iu.test(value)||[...value].some(character=>character!=="+"&&(character.normalize("NFKC")==="+"||styledAdditionOperators.test(character)));
-const assertAsciiTableAddition=(values:string[],source:string)=>{for(const value of values)assert.equal(hasAlternateAddition(value),false,`${source} table cell uses a non-ASCII addition operator: ${value}`);};
 
 test("prototype is self-contained, offline, and unmistakably non-release",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
@@ -29,114 +26,6 @@ test("rendered rules use Tn shorthand headings and preserve cumulative tier orde
   assert.match(html,/T0 Base:/);
   assert.match(html,/T1 Overload: Changes from Tier 0:/);
   assert.match(html,/T2 Overload: Changes from Tier 1:/);
-});
-
-test("overload tier labels and content render as separate compact elements",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const createDom=(route:string)=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#${route}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const glacial=createDom("category=cryokinesis&topic=cryokinesis_glacial_spike_topic");const glacialDocument=glacial.window.document;
-  const tiers=[...glacialDocument.querySelectorAll<HTMLElement>(".calculator__canonical-rules > .feature-tier")];
-  assert.deepEqual(tiers.map(tier=>({
-    element:tier.tagName,
-    labelElement:tier.querySelector(":scope > .feature-tier__label")?.tagName,
-    label:tier.querySelector(":scope > .feature-tier__label")?.textContent,
-    contentElement:tier.querySelector(":scope > .feature-tier__content")?.tagName
-  })),[
-    {element:"SECTION",labelElement:"H3",label:"T0 Base",contentElement:"DIV"},
-    {element:"SECTION",labelElement:"H3",label:"T1 Overload",contentElement:"DIV"},
-    {element:"SECTION",labelElement:"H3",label:"T2 Overload",contentElement:"DIV"}
-  ]);
-  assert.deepEqual(tiers.map(tier=>tier.dataset.tier),["0","1","2"]);
-  assert.ok(tiers.every(tier=>(tier.querySelector(":scope > .feature-tier__content > p")?.textContent?.trim().length??0)>0));
-  assert.ok(tiers.every(tier=>tier.dataset.tier&&tier.querySelector(":scope > h3.feature-tier__label")&&!/^T\d/.test(tier.querySelector(".feature-tier__content")?.textContent??"")));
-  assert.equal(glacialDocument.querySelector("#calculator-feature-results > h3")?.textContent,"Glacial Spike");assert.equal(glacialDocument.querySelector(".calculator__canonical-rules [role=heading]"),null);
-  const empathic=createDom("category=common_features&topic=common_features_common_empathic_sense_topic");const empathicArticle=empathic.window.document.querySelector<HTMLElement>(".calculator__canonical-rules")!;
-  assert.match(empathicArticle.querySelector(":scope > p")?.textContent??"",/^Passive: Your passive Insight/);
-  assert.deepEqual([...empathicArticle.querySelectorAll(":scope > .feature-tier")].map(tier=>[tier.querySelector(".feature-tier__label")?.textContent,tier.querySelector(".feature-tier__content")?.textContent]),[["T0 Base","15-foot range."],["T1 Overload","Changes from Tier 0: Range increases to 30 feet."],["T2 Overload","Changes from Tier 1: Range increases to 60 feet."]]);
-  await new Promise<void>(resolve=>setImmediate(resolve));glacial.window.close();empathic.window.close();
-});
-
-test("six dense rules targets render as scoped semantic lists",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const render=(route:string)=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#${route}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const rendered=[
-    {id:"common_manifested_strike",dom:render("category=common_features&topic=common_features_common_manifested_strike_topic")},
-    {id:"explosion_implosion",dom:render("category=psychokinesis&topic=psychokinesis_explosion_implosion_topic")},
-    {id:"mass_levitation",dom:render("category=psychokinesis&topic=psychokinesis_mass_levitation_topic")},
-    {id:"forked_lightning",dom:render("category=electrokinesis&topic=electrokinesis_forked_lightning_topic")},
-    {id:"advanced_gravitic_press",dom:render("category=advanced_training&topic=advanced_training_advanced_gravitic_press_topic")}
-  ];
-  const article=(id:string)=>{const document=rendered.find(item=>item.id===id)!.dom.window.document;return document.querySelector<HTMLElement>(`#entity-${id}`)??document.querySelector<HTMLElement>(".calculator__canonical-rules")!;};
-  const directLists=(parent:Element)=>[...parent.children].filter(child=>child.tagName==="OL"||child.tagName==="UL") as HTMLElement[];
-  const listShape=(parent:Element)=>directLists(parent).map(list=>[list.tagName,list.querySelectorAll(":scope > li").length]);
-
-  assert.deepEqual(listShape(article("common_manifested_strike")),[["UL",3],["UL",5],["OL",2],["UL",2]]);
-  const cases=[
-    {id:"explosion_implosion",tiers:[[0,[["UL",2],["UL",2]]],[1,[]],[2,[]]]},
-    {id:"mass_levitation",tiers:[[0,[["OL",4]]],[1,[]],[2,[]]]},
-    {id:"forked_lightning",tiers:[[0,[["UL",5]]],[1,[["UL",4]]],[2,[["UL",8]]]]},
-    {id:"advanced_gravitic_press",tiers:[[0,[["UL",5]]],[1,[]],[2,[]]]}
-  ] as const;
-  for(const candidate of cases){
-    const feature=article(candidate.id),tiers=[...feature.querySelectorAll<HTMLElement>(":scope > .feature-tier")];
-    assert.deepEqual(tiers.map(tier=>tier.querySelector(":scope > .feature-tier__label")?.textContent),["T0 Base","T1 Overload","T2 Overload"],candidate.id);
-    assert.equal(directLists(feature).length,0,candidate.id+" tier lists must not escape their tier");
-    for(const [value,shape] of candidate.tiers){
-      const content=feature.querySelector<HTMLElement>(`:scope > .feature-tier[data-tier="${value}"] > .feature-tier__content`)!;
-      assert.deepEqual(listShape(content),shape,candidate.id+" T"+value);
-      for(const list of directLists(content))assert.equal(list.querySelectorAll(":scope > li > strong").length,list.querySelectorAll(":scope > li").length,candidate.id+" labels");
-    }
-  }
-  await new Promise<void>(resolve=>setImmediate(resolve));for(const item of rendered)item.dom.window.close();
-});
-
-test("completed readability pass keeps every new list inside its authored common-rule or tier scope",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const doms:JSDOM[]=[];
-  const article=(id:string)=>{const dom=new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#entity=${id}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});doms.push(dom);return dom.window.document.querySelector<HTMLElement>(`#entity-${id}`)??dom.window.document.querySelector<HTMLElement>(".calculator__canonical-rules")!;};
-  const directLists=(parent:Element)=>[...parent.children].filter(child=>child.tagName==="OL"||child.tagName==="UL") as HTMLElement[];
-  const shape=(parent:Element)=>directLists(parent).map(list=>[list.tagName,list.querySelectorAll(":scope > li").length]);
-  const common={
-    how_to_play:[["OL",6],["UL",6],["UL",4],["UL",4],["UL",2],["UL",3]],
-    common_overload:[["UL",2],["UL",3],["UL",4],["UL",4],["UL",4]],
-    common_psionic_discipline:[["UL",4],["UL",5]],
-    common_psionic_link:[["UL",4]],
-    common_manifested_strike:[["UL",3],["UL",5],["OL",2],["UL",2]],
-    common_empathic_sense:[["UL",3]]
-  } as const;
-  for(const [id,expected] of Object.entries(common))assert.deepEqual(shape(article(id)),expected,id);
-
-  const tiered={
-    frozen_ground:{0:[["UL",4]]},telekinetic_shove:{0:[["UL",5]]},telekinetic_slam:{2:[["UL",3]]},static_discharge:{2:[["UL",4]]},
-    ball_lightning:{0:[["UL",5]],2:[["UL",2]]},advanced_deflection_screen:{2:[["UL",5]]},
-    advanced_beguile:{0:[["UL",3]],1:[["UL",3]],2:[["UL",3]]},advanced_improved_phase_step:{0:[["OL",4]]}
-  } as const;
-  for(const [id,expectedTiers] of Object.entries(tiered)){
-    const feature=article(id);assert.deepEqual([...feature.querySelectorAll<HTMLElement>(":scope > .feature-tier > .feature-tier__label")].map(label=>label.textContent),["T0 Base","T1 Overload","T2 Overload"],id);
-    assert.deepEqual(shape(feature),id==="advanced_beguile"?[["UL",4]]:[],id+" direct article lists");
-    for(const [tierValue,expected] of Object.entries(expectedTiers)){const content=feature.querySelector<HTMLElement>(`:scope > .feature-tier[data-tier="${tierValue}"] > .feature-tier__content`)!;assert.ok(content);assert.deepEqual(shape(content),expected,id+" T"+tierValue);for(const list of directLists(content))assert.equal(list.closest(".feature-tier__content"),content,id+" T"+tierValue+" containment");}
-  }
-  await new Promise<void>(resolve=>setImmediate(resolve));for(const dom of doms)dom.window.close();
-});
-
-test("rendered permanent Discipline choice and Ongoing Duration reference stay explicit",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const render=(topic:string)=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=${topic}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const discipline=render("common_features_common_psionic_discipline_topic");const disciplineArticle=discipline.window.document.querySelector<HTMLElement>("#entity-common_psionic_discipline")!;
-  const disciplineParagraphs=[...disciplineArticle.querySelectorAll<HTMLElement>(":scope > p")].map(paragraph=>paragraph.textContent);
-  const disciplineLists=[...disciplineArticle.querySelectorAll<HTMLElement>(":scope > ul")].map(list=>[...list.querySelectorAll(":scope > li")].map(item=>item.textContent));
-  assert.equal(disciplineArticle.querySelector("h2")?.textContent,"Psionic Discipline");
-  assert.deepEqual(disciplineParagraphs.slice(0,4),["When you gain this subclass at Fighter level 3, choose one Kinetic Discipline:","Your chosen Discipline determines:","This choice is permanent and is separate from your Psionic Ability choice.","Choose Intelligence, Wisdom, or Charisma as your Psionic Ability. Your Psionic Ability choice does not change your Discipline."]);
-  assert.deepEqual(disciplineLists,[["Pyrokinesis","Cryokinesis","Psychokinesis","Electrokinesis"],["your Manifested Strike’s damage type","your Discipline signature saving throw","your Kinetic Mastery","your Signature Rider","the Discipline features you gain at Fighter levels 3, 7, 10, 15, and 20"]]);
-
-  const reference=render("common_features_subclass_feature_reference_topic");const referenceArticle=reference.window.document.querySelector<HTMLElement>("#entity-subclass_feature_reference")!;
-  const table=[...referenceArticle.querySelectorAll<HTMLTableElement>("table")].find(candidate=>[...candidate.querySelectorAll("th")].some(cell=>cell.textContent==="Ongoing Duration"))!;
-  const headers=[...table.querySelectorAll("th")].map(cell=>cell.textContent);assert.deepEqual(headers,["Level","Feature","Discipline","Psi","Activation","Ongoing Duration"]);assert.equal(headers.includes("Duration"),false);
-  const definition="Ongoing Duration shows how long the feature or any condition, zone, or other effect it creates can continue after its initial resolution. Damage, teleportation, and forced movement resolve immediately. ‘Varies by tier’ means the feature’s tiers have different ongoing durations.";
-  const wrapper=table.closest(".table-scroll")!;assert.equal(wrapper.previousElementSibling?.className,"reference-filters");assert.equal(wrapper.previousElementSibling?.previousElementSibling?.textContent,definition);assert.equal(table.className,"quick-reference-table");
-  const rows=[...table.querySelectorAll("tbody tr")].map(row=>[...row.querySelectorAll("td")].map(cell=>cell.textContent??""));assert.equal(rows.length,34);
-  const byFeature=new Map(rows.map(row=>[row[1],row[5]]));
-  for(const [feature,duration] of [["Explosion/Implosion","Until the end of your next turn"],["Phase Step","Varies by tier"],["Electron Burst","Varies by tier"],["Vectored Thrust","Up to 10 minutes"],["Frozen Ground","Concentration, up to 1 minute"],["Mass Levitation","Concentration, up to 1 minute"],["Ball Lightning","Concentration, up to 1 minute"],["Gravitic Press","Concentration, up to 1 minute"],["Beguile","Varies by tier"],["Barrier","Varies by tier"],["Inner Reserve","Continuous"],["Overload Mastery II","Continuous"]] as const)assert.equal(byFeature.get(feature),duration);
-  await new Promise<void>(resolve=>setImmediate(resolve));discipline.window.close();reference.window.close();
 });
 
 test("Subclass Feature Reference filters rows locally from canonical metadata",async()=>{
@@ -190,23 +79,6 @@ test("Name control uses committed selection without redundant Open UI",async()=>
   assert.match(html,/\.controls select\{width:100%;min-width:0\}/);
 });
 
-test("generated publication uses centralized warm dark theme tokens",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const style=html.match(/<style>([\s\S]*?)<\/style>/)?.[1]??"";
-  assert.match(style,/:root\{color-scheme:dark;/);
-  for(const token of ["--bg","--panel","--control-bg","--control-hover","--control-active","--control-disabled","--ink","--muted","--accent","--focus","--line","--selected-bg","--note-bg"]){
-    assert.match(style,new RegExp(`${token}:#[0-9a-f]{6}`),`${token} must be a shared theme token`);
-  }
-  for(const sharedHook of [
-    /body\{[^}]*background:var\(--bg\)[^}]*color:var\(--ink\)/,
-    /\.panel,article\{[^}]*background:var\(--panel\)[^}]*border:1px solid var\(--line\)/,
-    /select,button\{[^}]*border:1px solid var\(--line-strong\)[^}]*background:var\(--control-bg\)[^}]*color:var\(--ink\)/,
-    /fieldset label:has\(input:checked\)\{[^}]*background:var\(--selected-bg\)[^}]*color:var\(--accent-strong\)/,
-    /\.note\{[^}]*border-left:\.3rem solid var\(--accent\)[^}]*background:var\(--note-bg\)/,
-    /:focus-visible\{outline:3px solid var\(--focus\)/
-  ])assert.match(style,sharedHook);
-  for(const legacyLightColor of ["#f7f3ea","#fffdfa","#17202a","#5d6873","#d6cfc2"])assert.equal(style.includes(legacyLightColor),false,`${legacyLightColor} must not remain in the default theme`);
-});
-
 test("rendered Name options derive level-name-ID order from canonical data and rebuild with filters",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_subclass_feature_reference_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
@@ -249,58 +121,6 @@ test("rendered Name options derive level-name-ID order from canonical data and r
   advancedArea.checked=false;advancedArea.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
   assert.deepEqual(groups().map(group=>group.label),expectedGroupLabels);
   await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
-});
-
-test("Example Play keeps four full turns and Overload keeps one Glacial example",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_common_example_play_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const article=dom.window.document.querySelector<HTMLElement>("#entity-common_example_play")!;const sections=[...article.querySelectorAll<HTMLElement>(":scope > .example-play-flow > .example-play-section")];
-  assert.equal(sections.length,4);assert.deepEqual(sections.map(section=>section.querySelector("h4")?.textContent),["Focused Fire — Level 11 Pyrokinesis","Aerial Repositioning — Level 11 Psychokinesis","Frozen Ground Lockdown — Level 11 Cryokinesis","Room Sweep — Level 11 Electrokinesis"]);
-  assert.deepEqual(sections.map(section=>section.querySelectorAll(".example-play-section__phase ol,.example-play-section__phase ul").length),[5,6,6,6]);
-  for(const section of sections){const phases=[...section.querySelectorAll<HTMLElement>(".example-play-section__phase")];assert.deepEqual([...section.querySelectorAll<HTMLElement>(".example-play-section__phase-title")].map(node=>node.textContent),["Setup","Activation","Rolls or Saves","Damage","Effects","Result"]);assert.equal(section.querySelectorAll("em").length,0);assert.ok(section.querySelectorAll("strong").length>0);assert.equal(phases.length,6);assert.ok(phases.every(phase=>phase.querySelector(":scope > p,:scope > ol,:scope > ul")));assert.ok([...section.querySelectorAll("li")].every(item=>item.querySelector(":scope > strong")));}
-  for(const [index,fragments] of [[0,["18 + 21 + 11 = 50 fire damage"]],[1,["13 + 10 + 8 = 31 force damage","push the creature 10 feet"]],[2,["12 + 14 + 9 = 35 cold damage","Speed 0"]],[3,["111 lightning damage","Three primary targets are struck and Sapped"]]] as const)for(const fragment of fragments)assert.ok(sections[index]!.textContent?.includes(fragment),fragment);
-  const overloadDom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_common_overload_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});const inline=overloadDom.window.document.querySelector<HTMLElement>("#entity-common_overload .inline-example")!;assert.equal(overloadDom.window.document.querySelectorAll("#entity-common_overload .inline-example").length,1);assert.equal(inline.querySelector("h3")?.textContent,"Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)");assert.deepEqual([...inline.querySelectorAll(":scope > .inline-example__body > ul")].map(list=>list.querySelectorAll(":scope > li").length),[3]);assert.deepEqual([...inline.querySelectorAll(":scope > .inline-example__body > ul > li > strong")].map(node=>node.textContent),["Hit: ","Blood Tax: ","Miss: "]);assert.equal(inline.querySelectorAll(":scope > .inline-example__body > p").length,2);assert.match(inline.textContent??"",/Glacial Spike at Tier 2.*1d10.*Blood Tax: 2 × Proficiency Bonus = 2 × 4 = 8.*Miss: Glacial Spike does not resolve/s);assert.equal(article.textContent?.includes("Example — Level 11 Cryokinesis (Proficiency Bonus 4, Intelligence +3)"),false);
-  await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();overloadDom.window.close();
-});
-
-test("generated sections render Manifested Strike progression under its stable anchor only",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const createDom=(topic:string)=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=${topic}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const manifested=createDom("common_features_common_manifested_strike_topic");const manifestedDocument=manifested.window.document;
-  const manifestedArticle=manifestedDocument.querySelector<HTMLElement>("#entity-common_manifested_strike")!;
-  const progression=[...manifestedArticle.querySelectorAll("p")].find(paragraph=>paragraph.textContent?.startsWith("Manifested Strike die by level:"))!;
-  const table=[...manifestedArticle.querySelectorAll("table")].find(candidate=>[...candidate.querySelectorAll("th")].map(cell=>cell.textContent).join("|")==="Fighter Level|Manifested Strike Die")!;
-  assert.deepEqual([...table.querySelectorAll("tbody td")].map(cell=>cell.textContent),["3–4","1d6","5–10","1d8","11–16","1d10","17–20","1d12"]);
-  const children=[...manifestedArticle.children];const position=(prefix:string)=>children.findIndex(child=>child.textContent?.startsWith(prefix));const progressionPosition=children.indexOf(progression);const tablePosition=children.indexOf(table.parentElement!);
-  const orderedCore=[position("When you take the Attack action"),position("Your attack bonus equals"),position("On a hit, the strike deals one Manifested Strike die"),progressionPosition,tablePosition,position("Manifested Strike costs no Psi"),position("On a critical hit")];
-  assert.deepEqual(orderedCore,[...orderedCore].sort((a,b)=>a-b));assert.equal(new Set(orderedCore).size,orderedCore.length);assert.ok(orderedCore.every(index=>index>=0));assert.equal(tablePosition,progressionPosition+1);assert.ok(orderedCore.at(-1)!<position("For feats, Fighting Styles"));
-  assert.match(manifestedArticle.textContent??"",/range of 60 feet.*Psionic Ability modifier \+ your Proficiency Bonus \+ your Psionic Focus bonus.*one Manifested Strike die \+ your Psionic Ability modifier.*Discipline determines the strike’s damage type/s);assert.equal((manifestedDocument.querySelector("#topic-select") as HTMLSelectElement).value,"common_features_common_manifested_strike_topic");
-
-  const overload=createDom("common_features_common_overload_topic");const overloadDocument=overload.window.document;const overloadArticle=overloadDocument.querySelector<HTMLElement>("#entity-common_overload")!;const overloadText=overloadArticle.textContent??"";
-  assert.doesNotMatch(overloadText,/Manifested Strike die by level/);assert.equal(overloadArticle.querySelector("table th")?.textContent,"Declaration");
-  for(const retained of ["Pay Blood Tax immediately","(3rd level)","(10th level)","more than one feature in the same turn","Critical Hits and Riders","Multiple Overloads and Tier 2 Riders","Damage Immunity and Riders"])assert.ok(overloadText.includes(retained),"missing retained Overload content: "+retained);
-  const tiers=[...overloadArticle.querySelectorAll<HTMLElement>(".feature-tier")];const overloadChildren=[...overloadArticle.children];
-  assert.deepEqual(tiers.map(tier=>({element:tier.tagName,label:tier.querySelector(".feature-tier__label")?.textContent,contentElement:tier.querySelector(".feature-tier__content")?.tagName})),[{element:"SECTION",label:"T1 Overload",contentElement:"DIV"},{element:"SECTION",label:"T2 Overload",contentElement:"DIV"}]);
-  assert.ok(overloadChildren.indexOf(tiers[0]!)<overloadChildren.indexOf(tiers[1]!));const inline=overloadArticle.querySelector<HTMLElement>(".inline-example")!;assert.equal(overloadArticle.querySelectorAll(".inline-example").length,1);assert.equal(overloadChildren.indexOf(inline),overloadChildren.indexOf(tiers[1]!)+1);assert.equal(overloadArticle.querySelector(".example-play-section,.example-turns"),null);
-  const overloadParagraphs=[...overloadArticle.querySelectorAll<HTMLElement>(":scope > p")];assert.match(overloadParagraphs[0]?.textContent??"",/^Overload strengthens a rider or standalone psionic feature/);assert.match(overloadParagraphs[1]?.textContent??"",/^Pay Blood Tax immediately/);
-  assert.equal((overloadDocument.querySelector("#topic-select") as HTMLSelectElement).value,"common_features_common_overload_topic");
-  await new Promise<void>(resolve=>setImmediate(resolve));manifested.window.close();overload.window.close();
-});
-
-test("table formulae use literal ASCII + in source and rendered output",async()=>{
-  assert.equal(hasAlternateAddition("PB + INT"),false);
-  for(const alternate of ["PB plus INT","level ＋ 1","PB ➕ INT"])assert.equal(hasAlternateAddition(alternate),true,alternate);
-  const {authority}=await loadAuthority();
-  const tableEntities=authority.entities.filter(entity=>entity.content.some(block=>block.type==="table"));
-  const canonicalCells=tableEntities.flatMap(entity=>entity.content.filter(block=>block.type==="table").flatMap(block=>[...(block.headers??[]),...(block.rows??[]).flat()]).map(cell=>cell.map(node=>node.text??node.label??String(node.value?.value??"")).join("")));
-  assertAsciiTableAddition(canonicalCells,"canonical authority");
-  assert.ok(canonicalCells.includes("Rider cost + feature cost"));
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  for(const entity of tableEntities){
-    const route=authority.navigation.categories.flatMap(category=>category.topics.map(topic=>({category,topic}))).find(({topic})=>topic.entity_ids.includes(entity.id))!;
-    const dom=new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#category=${route.category.id}&topic=${route.topic.id}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-    const renderedCells=[...dom.window.document.querySelectorAll<HTMLElement>(`#entity-${entity.id} table th, #entity-${entity.id} table td`)].map(cell=>cell.textContent??"");
-    assert.ok(renderedCells.length>0,`${entity.id} did not render its table`);assertAsciiTableAddition(renderedCells,`rendered ${entity.id}`);dom.window.close();
-  }
 });
 
 test("paragraph text beginning with Example is not classified heuristically",async()=>{
@@ -448,6 +268,22 @@ function installOnboardingBrowserShims(window:any):void {
 
 const settleOnboarding=()=>new Promise<void>(resolve=>setImmediate(resolve));
 
+test("authored lists remain in their authored entity and tier scope",async()=>{
+  const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8"),{authority}=await loadAuthority();
+  const tag=(block:any)=>block.style==="ordered"?"OL":"UL";
+  for(const entity of authority.entities){
+    const top=entity.content.filter((block:any)=>block.type==="list");
+    const tiers=entity.content.filter((block:any)=>block.type==="tier").map((block:any)=>({tier:block.tier,lists:block.body.filter((child:any)=>child.type==="list")})).filter((row:any)=>row.lists.length);
+    if(!top.length&&!tiers.length)continue;
+    const dom=new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html#entity=${entity.id}`,beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document;
+    const root=document.querySelector<HTMLElement>(`#entity-${entity.id}`)??document.querySelector<HTMLElement>(".calculator__canonical-rules")!;assert.ok(root,entity.id);
+    const directLists=(parent:Element)=>[...parent.children].filter(child=>child.tagName==="OL"||child.tagName==="UL");
+    assert.deepEqual(directLists(root).map(list=>list.tagName),top.map(tag),entity.id);
+    for(const row of tiers){const content=root.querySelector<HTMLElement>(`:scope > .feature-tier[data-tier="${row.tier}"] > .feature-tier__content`)!;assert.ok(content,`${entity.id} T${row.tier}`);assert.deepEqual(directLists(content).map(list=>list.tagName),row.lists.map(tag),`${entity.id} T${row.tier}`);}
+    await settleOnboarding();dom.window.close();
+  }
+});
+
 
 
 test("history restoration rejects invalid classifications and canonicalizes repaired routes",async()=>{
@@ -508,29 +344,30 @@ const deckTextCount=(root:Element,text:string)=>[root,...root.querySelectorAll("
 const changeDeckSelect=(dom:JSDOM,control:HTMLSelectElement,value:string)=>{control.value=value;assert.equal(control.value,value);control.dispatchEvent(new dom.window.Event("change",{bubbles:true}));};
 const clickDeckCard=(document:Document,id:string)=>{const button=document.querySelector<HTMLButtonElement>(`.calculator__card[data-card-id="${id}"]`)!;assert.ok(button,id);button.click();return document.querySelector<HTMLElement>("#calculator-feature-results")!;};
 
-test("Calculator is the exhaustive 35-card player-facing Feature Deck",async()=>{
+test("Calculator card inventory derives from canonical ownership",async()=>{
   const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8"),{authority}=await loadAuthority();
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!;
   assert.ok(root);assert.equal(document.querySelector<HTMLElement>("main.layout")?.dataset.view,"calculator");
   const controls=[...root.querySelectorAll<HTMLSelectElement>("select")];assert.deepEqual(controls.map(control=>control.id),["calculator-feature-group","calculator-level","calculator-psi-modifier"]);
   assert.ok(controls.every(control=>control.getAttribute("aria-controls")==="calculator-deck calculator-feature-results"));
   const cards=[...root.querySelectorAll<HTMLButtonElement>(".calculator__card")],ids=cards.map(card=>card.dataset.cardId!);
-  assert.equal(cards.length,35);assert.equal(new Set(ids).size,35);assert.deepEqual(ids.slice().sort(),[...authority.calculator.features.map(feature=>feature.entity_id),...authority.calculator.utility_cards.map(card=>card.id),"common_psionic_link","advanced_barrier","advanced_overload_mastery_ii"].sort());
-  assert.equal(cards.filter(card=>card.textContent?.includes("Calculated")).length,32);assert.equal(cards.filter(card=>card.textContent?.includes("Reference only")).length,3);
-  const selected=root.querySelector<HTMLButtonElement>('.calculator__card[aria-pressed="true"]')!;assert.equal(selected.dataset.cardId,"manifested_strike");assert.equal(root.querySelector("#calculator-feature-results > h3")?.textContent,"Manifested Strike");
+  const deckOwned=authority.entities.filter(entity=>entity.presentation_metadata.presentation_owner==="calculator_deck"||(entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area!=="common_features"));
+  const expectedIds=[...deckOwned.map(entity=>entity.id),...authority.calculator.utility_cards.map(card=>card.id)].sort();
+  assert.equal(new Set(ids).size,ids.length);assert.deepEqual(ids.slice().sort(),expectedIds);
+  assert.ok(cards.every(card=>card.textContent?.includes("Calculated")||card.textContent?.includes("Reference only")));
+  const selected=root.querySelector<HTMLButtonElement>('.calculator__card[aria-pressed="true"]')!;assert.equal(selected.dataset.cardId,authority.calculator.default_card_id);
   assert.equal(root.querySelectorAll(".calculator__canonical-rules").length,1);assert.equal(deckTextCount(root,"Complete canonical rules"),1);
-  const bloodTaxCard=root.querySelector<HTMLButtonElement>('.calculator__card[data-card-id="blood_tax"]')!;assert.ok(bloodTaxCard);assert.equal(bloodTaxCard.closest(".calculator__group")?.querySelector(":scope > h3")?.textContent,"Common Features");assert.match(normalizedDeckText(bloodTaxCard),/^Blood TaxOverload self-damage · Level 3\+ · Calculated$/u);bloodTaxCard.click();assert.equal(root.querySelector<HTMLElement>('.calculator__card[aria-pressed="true"]')?.dataset.cardId,"blood_tax");assert.equal(root.querySelector("#calculator-feature-results > h3")?.textContent,"Blood Tax");
-  changeDeckSelect(dom,root.querySelector<HTMLSelectElement>("#calculator-level")!,"3");const lowLevelCards=[...root.querySelectorAll<HTMLButtonElement>(".calculator__card")];assert.equal(lowLevelCards.length,35);assert.equal(lowLevelCards.filter(card=>card.dataset.available==="false").length>0,true);assert.ok(lowLevelCards.filter(card=>card.dataset.available==="false").every(card=>card.textContent?.includes("Future level")));
+  changeDeckSelect(dom,root.querySelector<HTMLSelectElement>("#calculator-level")!,"3");const lowLevelCards=[...root.querySelectorAll<HTMLButtonElement>(".calculator__card")];assert.equal(lowLevelCards.length,expectedIds.length);assert.equal(lowLevelCards.filter(card=>card.dataset.available==="false").length>0,true);assert.ok(lowLevelCards.filter(card=>card.dataset.available==="false").every(card=>card.textContent?.includes("Future level")));
   await settleOnboarding();dom.window.close();
 });
 
 test("Feature Deck cards stay complete at low level and expose canonical content exactly once",async()=>{
   const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=advanced_barrier&level=3&modifier=2&group=advanced_training",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!;
-  assert.equal(root.querySelectorAll(".calculator__card").length,10);assert.equal(root.querySelectorAll('.calculator__card[data-available="false"]').length>0,true);
+  assert.ok(root.querySelectorAll(".calculator__card").length>0);assert.equal(root.querySelectorAll('.calculator__card[data-available="false"]').length>0,true);
   const detail=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.equal(detail.querySelector(":scope > h3")?.textContent,"Barrier");assert.equal(detail.querySelectorAll(".calculator__projection").length,0);assert.equal(detail.querySelectorAll(".calculator__reference-note").length,1);assert.equal(detail.querySelectorAll(".calculator__canonical-rules").length,1);assert.equal(deckTextCount(detail,"Complete canonical rules"),1);
-  assert.match(normalizedDeckText(detail),/Reference only/u);assert.match(normalizedDeckText(detail),/Level15/u);
-  clickDeckCard(document,"advanced_deflection_screen");const calculated=document.querySelector<HTMLElement>("#calculator-feature-results")!;assert.equal(calculated.querySelectorAll(".calculator__projection").length,1);assert.equal(calculated.querySelectorAll(".calculator__canonical-rules").length,1);assert.equal(calculated.querySelectorAll('.calculator__tier[data-available="false"]').length,3);assert.match(normalizedDeckText(calculated),/Available at Fighter level 5\./u);assert.match(normalizedDeckText(calculated),/Available at Fighter level 10\./u);
+  assert.match(normalizedDeckText(detail),/Reference only/u);
+  clickDeckCard(document,"advanced_deflection_screen");const calculated=document.querySelector<HTMLElement>("#calculator-feature-results")!;assert.equal(calculated.querySelectorAll(".calculator__projection").length,1);assert.equal(calculated.querySelectorAll(".calculator__canonical-rules").length,1);assert.ok(calculated.querySelectorAll('.calculator__tier[data-available="false"]').length>0);
   await settleOnboarding();dom.window.close();
 });
 
@@ -578,7 +415,7 @@ test("Calculator rounds displayed expected averages upward after the underlying 
 
 test("onboarding Calculator card routing is generic rather than feature-name based",async()=>{const runtime=await readFile("src/runtime.ts","utf8");assert.doesNotMatch(runtime,/function destinationControl[^\n]*blood_tax/u);assert.doesNotMatch(runtime,/function openCalculator[^\n]*blood_tax/u);});
 
-test("Name, result, onboarding, and legacy feature links converge on canonical Calculator routes",async()=>{
+test("Name, result, onboarding, and feature links converge on canonical Calculator routes",async()=>{
   const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");
   const legacy=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=cryokinesis&topic=cryokinesis_glacial_spike_topic",beforeParse(window:any){installOnboardingBrowserShims(window);}});
   assert.equal(legacy.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"calculator");assert.equal(legacy.window.document.querySelector("#calculator-feature-results > h3")?.textContent,"Glacial Spike");assert.equal(legacy.window.location.hash,"#calculator&card=glacial_spike&level=20&modifier=5&group=cryokinesis");

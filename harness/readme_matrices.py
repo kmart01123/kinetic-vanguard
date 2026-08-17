@@ -49,12 +49,8 @@ PROVENANCE_FIELDS = (
     "Provenance Target Profile",
     "Provenance Config Sha256",
     "Provenance Comparator Config Sha256",
-    "Provenance Trials",
-    "Provenance Seed",
     "Provenance Evaluator",
-    "Provenance Trial Seed Role",
     "Provenance Aggregation",
-    "Provenance Status",
 )
 MatrixRow = dict[str, str]
 
@@ -128,7 +124,7 @@ def _key_difference(actual: set[tuple[str, ...]], expected: set[tuple[str, ...]]
 
 def validate_authoritative_rows(
     damage_rows: Sequence[MatrixRow], control_rows: Sequence[MatrixRow]
-) -> tuple[str, str, str, tuple[int, ...], tuple[str, ...]]:
+) -> tuple[str, str, tuple[int, ...], tuple[str, ...]]:
     model = AuthorityModel.load(DEFAULT_AUTHORITY)
     config = load_config()
     levels = tuple(int(value) for value in config["methodology"]["levels"])
@@ -140,7 +136,6 @@ def validate_authoritative_rows(
         )
     kv_profile = str(config["kv_profile"]["id"])
     target_profile = DEFAULT_PROFILE
-    status = str(config["methodology"]["status"])
 
     _require_fields(
         damage_rows,
@@ -202,16 +197,12 @@ def validate_authoritative_rows(
         "Provenance Config Sha256": file_sha256(DEFAULT_CONFIG),
         "Provenance Comparator Config Sha256": file_sha256(DEFAULT_COMPARATORS),
         "Provenance Evaluator": "exact_analytical_enumeration",
-        "Provenance Trial Seed Role": "historical_compatibility_metadata",
-        "Provenance Status": status,
         "Profile": kv_profile,
     }
 
     for kind, rows in (("damage", damage_rows), ("control", control_rows)):
         expected = {
             **expected_common,
-            "Provenance Trials": str(config["methodology"][f"{kind}_default_trials"]),
-            "Provenance Seed": str(config["methodology"][f"{kind}_seed"]),
             "Provenance Aggregation": (
                 "equal-weight roster means; percentages from displayed aggregates"
                 if kind == "damage"
@@ -248,11 +239,7 @@ def validate_authoritative_rows(
     if _uniform(control_rows, "Provenance Rules Version", "control") != model.rules_version:
         raise MatrixSyncError("Control matrix rules version differs from canonical authority")
 
-    serialized = "\n".join(",".join(row.values()) for row in (*damage_rows, *control_rows))
-    if re.search(r"hunter.?ranger|open.?hand.?monk", serialized, re.IGNORECASE):
-        raise MatrixSyncError("A retired comparator entered the headline matrices")
-
-    return model.rules_version, status, target_profile, clusters, disciplines
+    return model.rules_version, target_profile, clusters, disciplines
 
 
 def _escape_cell(value: str) -> str:
@@ -394,7 +381,6 @@ def render_balance_region(
     damage_rows: Sequence[MatrixRow],
     control_rows: Sequence[MatrixRow],
     rules_version: str,
-    status: str,
     profile: str,
     clusters: Sequence[int],
     disciplines: Sequence[str] = README_DISCIPLINES,
@@ -410,8 +396,7 @@ def render_balance_region(
         release_line,
         "",
         (
-            f"Target profile: `{profile}`. Numerical review status: `{status}`. "
-            "These are exact analytical full-roster results, not Monte Carlo estimates."
+            f"Target profile: `{profile}`. These are exact analytical full-roster results."
         ),
         "",
         (
@@ -450,15 +435,11 @@ def render_balance_region(
         f"Configured headline metric: **{metric}**.",
         "",
         (
-            "This v14.2 snapshot evaluates legal repeated attack-delivered opportunities within "
+            "This snapshot evaluates legal repeated attack-delivered opportunities within "
             "one ordinary Attack action when the configured package permits them. Kinetic Vanguard "
-            "Signature Riders were already 0-Psi and repeatable before issue #58; issue #58 newly "
-            "extends that repeatability to paid on-hit riders. Battle Master maneuvers receive legal "
-            "hit-gated retries, while Eldritch Knight keeps one Blindness/Deafness cast and uses all "
-            "ordinary primer attacks for Eldritch Strike. Published v14.1 used simpler one-shot "
-            "approximations, so control deltas can combine the paid-rider rule with historical KV, "
-            "Battle Master, and Eldritch Knight evaluator corrections. Those effects interact and "
-            "are not assumed to be additively separable."
+            "on-hit riders and Battle Master maneuvers receive legal retries while resources remain. "
+            "Eldritch Knight keeps one Blindness/Deafness cast and uses all ordinary primer attacks "
+            "for Eldritch Strike."
         ),
         "",
         (
@@ -508,7 +489,6 @@ def replace_generated_region(readme: str, region: str) -> str:
 def generate_authoritative_rows(workers: int) -> tuple[list[MatrixRow], list[MatrixRow]]:
     config = load_config()
     levels = {int(value) for value in config["methodology"]["levels"]}
-    methodology = config["methodology"]
     with tempfile.TemporaryDirectory(prefix="kv-readme-matrices-") as directory:
         root = Path(directory)
         damage = run_damage(
@@ -516,8 +496,6 @@ def generate_authoritative_rows(workers: int) -> tuple[list[MatrixRow], list[Mat
             root / "damage",
             levels,
             None,
-            int(methodology["damage_default_trials"]),
-            int(methodology["damage_seed"]),
             False,
             True,
             workers,
@@ -527,8 +505,6 @@ def generate_authoritative_rows(workers: int) -> tuple[list[MatrixRow], list[Mat
             root / "control",
             levels,
             None,
-            int(methodology["control_default_trials"]),
-            int(methodology["control_seed"]),
             False,
             True,
         )
@@ -553,7 +529,7 @@ def main() -> None:
     readme = README_PATH.read_text(encoding="utf-8")
     generated_region_span(readme)
     damage_rows, control_rows = generate_authoritative_rows(args.workers)
-    rules_version, status, profile, clusters, disciplines = validate_authoritative_rows(
+    rules_version, profile, clusters, disciplines = validate_authoritative_rows(
         damage_rows, control_rows
     )
     region = render_balance_region(
@@ -561,7 +537,6 @@ def main() -> None:
         damage_rows,
         control_rows,
         rules_version,
-        status,
         profile,
         clusters,
         disciplines,

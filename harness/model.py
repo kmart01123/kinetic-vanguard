@@ -20,8 +20,8 @@ SIZE_ORDER = {"tiny":0,"small":1,"medium":2,"large":3,"huge":4,"gargantuan":5}
 MOVEMENT_MODES = ("walk","fly","swim","climb","burrow")
 SENSE_KINDS = ("darkvision","blindsight","tremorsense","truesight")
 SKILLS = frozenset({"acrobatics","animal_handling","arcana","athletics","deception","history","insight","intimidation","investigation","medicine","nature","perception","performance","persuasion","religion","sleight_of_hand","stealth","survival"})
-PROFILE_COUNTS = {"legacy_v14_1":28,"headline":47,"eligible_census":93}
-PROFILE_LEVEL_COUNTS = {"legacy_v14_1":{7:8,11:6,15:6,20:8},"headline":{7:12,11:12,15:11,20:12},"eligible_census":{7:47,11:20,15:11,20:15}}
+PROFILE_COUNTS = {"headline":47,"eligible_census":93}
+PROFILE_LEVEL_COUNTS = {"headline":{7:12,11:12,15:11,20:12},"eligible_census":{7:47,11:20,15:11,20:15}}
 
 
 @dataclass(frozen=True)
@@ -62,12 +62,10 @@ def load_config(path:Path=DEFAULT_CONFIG)->dict[str,Any]:
     with path.open(encoding="utf-8") as stream:data=json.load(stream)
     data=_object(data,"benchmark config");_exact_keys(data,{"format_version","methodology","fighter_progression","fighter_mechanics","kv_profile","damage_matrix","control_matrix"},"benchmark config")
     if data["format_version"]!=1:raise ValueError("Unsupported benchmark config format version")
-    methodology=_object(data["methodology"],"methodology");_exact_keys(methodology,{"status","historical_source","levels","rounds","cluster_sizes","target_weighting","target_death","ally_turns","legal_positioning_assumed","legendary_resistance","damage_default_trials","control_default_trials","smoke_trials","damage_seed","control_seed"},"methodology")
-    if methodology["status"] not in {"PORTED_UNDER_REVIEW","REVIEWED_WITH_DOCUMENTED_DIFFERENCES"}:raise ValueError("Unsupported numerical review status")
+    methodology=_object(data["methodology"],"methodology");_exact_keys(methodology,{"levels","rounds","cluster_sizes","target_weighting","target_death","ally_turns","legal_positioning_assumed","legendary_resistance"},"methodology")
     if methodology["levels"]!=[7,11,15,20] or methodology["cluster_sizes"]!=[1,3,6] or methodology["rounds"]!=3:raise ValueError("Benchmark levels, clusters, and three-round horizon are frozen")
     if methodology["target_weighting"]!="equal_weight_within_level" or methodology["legendary_resistance"]!="metadata_only":raise ValueError("Unsupported benchmark aggregation or Legendary Resistance policy")
     for key in ("target_death","ally_turns","legal_positioning_assumed"):_boolean(methodology[key],f"methodology.{key}")
-    for key in ("damage_default_trials","control_default_trials","smoke_trials","damage_seed","control_seed"):_integer(methodology[key],f"methodology.{key}",1)
     progression=_object(data["fighter_progression"],"fighter_progression");_exact_keys(progression,{"7","11","15","20"},"fighter_progression")
     for level,row_value in progression.items():
         row=_object(row_value,f"fighter_progression.{level}");_exact_keys(row,{"attacks_per_action","action_slots_by_round","studied_attacks","combat_prowess"},f"fighter_progression.{level}")
@@ -365,11 +363,6 @@ def file_sha256(path:Path)->str:
     with path.open("rb") as stream:
         for chunk in iter(lambda:stream.read(65536),b""):digest.update(chunk)
     return digest.hexdigest()
-
-
-def stable_seed(seed:int,*parts:object)->int:
-    payload="|".join([str(seed),*(str(part) for part in parts)]).encode()
-    return int.from_bytes(hashlib.sha256(payload).digest()[:8],"big")
 
 
 @lru_cache(maxsize=None)

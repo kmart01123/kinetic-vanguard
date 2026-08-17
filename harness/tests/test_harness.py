@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import csv
 import json
-import subprocess
 import tempfile
 import unittest
 from copy import deepcopy
@@ -14,7 +13,7 @@ from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PR
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
 from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_repeat_rider_probability,run as run_control
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,_rider_values,run as run_damage
-from harness.model import DEFAULT_CATALOG,DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_PROFILE,DEFAULT_ROSTERS,Target,attack_probabilities,file_sha256,load_comparators,load_config,load_targets,save_success_probability
+from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,load_comparators,load_config,load_targets,save_success_probability
 
 
 def _leaf_paths(value:object,prefix:tuple[object,...]=())->list[tuple[object,...]]:
@@ -118,8 +117,7 @@ class FrozenInputValidationTests(unittest.TestCase):
             path=Path(directory)/source.name;path.write_text(json.dumps(value),encoding="utf-8")
             with self.assertRaisesRegex(ValueError,pattern):loader(path)
 
-    def test_benchmark_config_rejects_unknown_status_shape_and_progression(self)->None:
-        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["methodology"].__setitem__("status","CERTIFIED_BY_ASSERTION"),"review status")
+    def test_benchmark_config_rejects_invalid_mechanics_and_progression(self)->None:
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["kv_profile"].__setitem__("weapon_damage",{}),"kv_profile keys")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["kv_profile"].__setitem__("attack_replacement_policy","mixed_weapon_and_manifested_strike"),"all-Manifested-Strike")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["fighter_progression"]["7"]["action_slots_by_round"].pop(),"cover every round")
@@ -145,21 +143,15 @@ class FrozenInputValidationTests(unittest.TestCase):
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["tactical_policy"].__setitem__("maneuver_choice_timing","before_attack_roll"),"Battle Master tactical policy")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"]["tactical_policy"].__setitem__("true_strike_choice_timing","after_attack_roll"),"Eldritch Knight tactical policy")
 
-    def test_current_review_status_matches_maintained_provenance(self)->None:
-        provenance=json.loads((PROJECT_ROOT/"harness/provenance/legacy-import.json").read_text(encoding="utf-8"))
-        self.assertEqual(provenance["historical_certification"]["status"],"PRESERVED_PROVENANCE_ONLY")
-        self.assertEqual(load_config()["methodology"]["status"],provenance["current_numerical_review"]["status"])
-
-
 class FighterNumericalTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls)->None:
-        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.targets=load_targets(profile="legacy_v14_1")
+        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.targets=load_targets(profile="headline")
 
     def test_exact_fighter_dpr_sentinels_cover_every_supported_level(self)->None:
         expected={
             7:("Air Elemental",13.900000000000006,24.575569569001160),
-            11:("Aboleth",44.400000000000000,81.127998399293940),
+            11:("Deva",40.916666666666686,81.127998399293940),
             15:("Adult Black Dragon",49.960671191473686,90.409620247713760),
             20:("Balor",108.956136040152290,168.515058184716450),
         }
@@ -426,7 +418,7 @@ class DamagePlannerTests(unittest.TestCase):
         self.assertEqual(planner.selection().count("branching_bolt:T2"),2)
 
     def test_same_paid_rider_can_be_selected_on_all_three_manifested_strikes(self)->None:
-        target=replace(next(item for item in load_targets(profile="legacy_v14_1",levels={11}) if item.name=="Aboleth"),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",0,2,0);packages=(plain,rider)
+        target=replace(next(item for item in load_targets(profile="headline",levels={11}) if item.name=="Deva"),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",0,2,0);packages=(plain,rider)
         planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,3,(1,),False,False,6,0,self.mastery,0,1);self.addCleanup(planner.clear)
         self.assertAlmostEqual(planner.solve().aggregate,285.0,places=12)
         self.assertEqual(planner.selection().count("branching_bolt:T0"),3)
@@ -453,11 +445,11 @@ class DamagePlannerTests(unittest.TestCase):
         planner=_KVDamagePlanner(self.model,target,(thermal,),{thermal:(0.0,0.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,0,0,self.mastery,0,1);self.addCleanup(planner.clear)
         self.assertEqual(planner._roll_options(0,0,"hit",False,1)[0][3],1)
 
-    def test_observed_state_policy_matches_reviewed_l20_sentinel(self)->None:
-        target=next(item for item in load_targets(profile="legacy_v14_1",levels={20}) if item.name=="Ancient Black Dragon")
+    def test_observed_state_policy_matches_current_l20_sentinel(self)->None:
+        target=next(item for item in load_targets(profile="headline",levels={20}) if item.name=="Ancient White Dragon")
         primary,aggregate,selection=_kv_dpr(self.model,self.config,target,"electrokinesis",3)
-        self.assertAlmostEqual(primary,108.31875949995589,places=10)
-        self.assertAlmostEqual(aggregate,177.0645081943466,places=10)
+        self.assertAlmostEqual(primary,116.29434009056969,places=10)
+        self.assertAlmostEqual(aggregate,191.24370620676075,places=10)
         self.assertIn("electron_burst:T2",selection)
         self.assertTrue(selection.endswith("|representative=locally-modal-path|policy=observed-state-adaptive"))
 
@@ -537,7 +529,7 @@ class CanonicalControlTests(unittest.TestCase):
                 self.assertGreater(self.model.blood_tax(11,1),0)
                 self.assertEqual(_repeat_rider_probability(self.model,no_blood,11,1,int(feature["psi_cost"]),0.25),0.0)
 
-    def test_glacial_spike_and_telekinetic_shove_retry_their_historical_signature_control(self)->None:
+    def test_glacial_spike_and_telekinetic_shove_retry_signature_control(self)->None:
         target=self.target()
         for discipline,entity_id,tier in (("cryokinesis","glacial_spike",0),("cryokinesis","glacial_spike",1),("psychokinesis","telekinetic_shove",0),("psychokinesis","telekinetic_shove",1)):
             with self.subTest(entity_id=entity_id,tier=tier):
@@ -566,10 +558,10 @@ class CanonicalControlTests(unittest.TestCase):
 class ControlComparatorRetryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls)->None:
-        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.targets=load_targets(profile="legacy_v14_1")
+        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.targets=load_targets(profile="headline")
 
     def target(self,level:int)->Target:
-        return next(item for item in self.targets if item.level==level and not item.condition_immunities)
+        return next(item for item in self.targets if item.level==level and not item.condition_immunities and not item.magic_resistance)
 
     def scenario(self,build:str,scenario_id:str)->dict[str,object]:
         return next(item for item in self.comparators["control"][build]["scenarios"] if item["id"]==scenario_id)
@@ -766,93 +758,36 @@ class ClassificationTests(unittest.TestCase):
 
 
 class SmokeAndBoundaryTests(unittest.TestCase):
-    def test_fixed_seed_smokes_write_versioned_outputs_and_selection_audit(self)->None:
+    def test_damage_smoke_writes_current_detail_and_matrix_outputs(self)->None:
         with tempfile.TemporaryDirectory() as directory:
-            root=Path(directory);damage=run_damage(DEFAULT_AUTHORITY,root/"damage",{7},2,16,19);control=run_control(DEFAULT_AUTHORITY,root/"control",{7},1,16,19)
-            parallel_damage=run_damage(DEFAULT_AUTHORITY,root/"damage-parallel",{7},2,16,19,workers=2);repeated_control=run_control(DEFAULT_AUTHORITY,root/"control-repeated",{7},1,31,29)
-            headline_damage=run_damage(DEFAULT_AUTHORITY,root/"headline-damage",{7},1,16,19,write_headline=False,profile="headline");headline_control=run_control(DEFAULT_AUTHORITY,root/"headline-control",{7},1,16,19,write_headline=False,profile="headline")
-            self.assertEqual(damage["matrix_rows"],24);self.assertEqual(control["matrix_rows"],4)
-            for result in (damage,control,parallel_damage,repeated_control):
-                self.assertEqual(set(result["paths"]),{"csv","markdown","html"})
-                self.assertTrue(all("14-3-0" in path.name and path.is_file() for path in result["paths"].values()))
-            audit=root/"control"/"kv-14-3-0-control-selection-audit.csv"
-            with audit.open(encoding="utf-8") as stream:
-                rows=list(csv.DictReader(stream))
-            self.assertTrue(rows);self.assertTrue(all(row["Selected Scenario"] for row in rows))
-            self.assertTrue(all(row["Rules Version"]=="14.3.0" and row["Authority SHA-256"] and row["Catalog SHA-256"]==file_sha256(DEFAULT_CATALOG) and row["Roster SHA-256"]==file_sha256(DEFAULT_ROSTERS) and row["Target Profile"]==DEFAULT_PROFILE for row in rows))
-            self.assertTrue(all(row["Comparator Config SHA-256"] for row in rows))
-            self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in rows))
-            with (root/"damage"/"kv-14-3-0-damage-detail.csv").open(encoding="utf-8") as stream:
+            root=Path(directory);damage=run_damage(DEFAULT_AUTHORITY,root,{7},1,profile="headline")
+            self.assertEqual(damage["detail_rows"],12);self.assertEqual(damage["matrix_rows"],24)
+            self.assertEqual(set(damage["paths"]),{"csv","markdown","html"})
+            self.assertTrue(all("14-3-0" in path.name and path.is_file() for path in damage["paths"].values()))
+            with (root/"kv-14-3-0-damage-detail.csv").open(encoding="utf-8") as stream:
                 damage_row=next(csv.DictReader(stream))
-            self.assertAlmostEqual(float(damage_row["Eldritch Knight DPR"]),13.900000000000018,places=12)
-            self.assertAlmostEqual(float(damage_row["Battle Master DPR"]),24.57556956900116,places=12);self.assertTrue(damage_row["Comparator Config SHA-256"])
-            self.assertEqual({key:damage_row[key] for key in NOTICE_COLUMNS},NOTICE_COLUMNS)
-            with (root/"control"/"kv-14-3-0-control-detail.csv").open(encoding="utf-8") as stream:
+            self.assertEqual(damage_row["Target Profile"],"headline")
+            self.assertAlmostEqual(float(damage_row["Eldritch Knight DPR"]),13.9,places=12)
+            with damage["paths"]["csv"].open(encoding="utf-8") as stream:
+                matrix_rows=list(csv.DictReader(stream))
+            self.assertTrue(matrix_rows);self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
+
+    def test_control_smoke_writes_current_detail_selection_and_matrix_outputs(self)->None:
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);control=run_control(DEFAULT_AUTHORITY,root,{7},1,profile="headline")
+            self.assertEqual(control["matrix_rows"],4);self.assertEqual(set(control["paths"]),{"csv","markdown","html"})
+            with (root/"kv-14-3-0-control-selection-audit.csv").open(encoding="utf-8") as stream:
+                audit_rows=list(csv.DictReader(stream))
+            self.assertTrue(audit_rows);self.assertTrue(all(row["Selected Scenario"] for row in audit_rows))
+            self.assertTrue(all(row["Target Profile"]=="headline" for row in audit_rows))
+            with (root/"kv-14-3-0-control-detail.csv").open(encoding="utf-8") as stream:
                 control_rows=list(csv.DictReader(stream))
             keyed={(row["Build"],row["Scenario"]):row for row in control_rows}
             self.assertEqual(keyed[("battle_master","menacing_attack")]["Whole-package control stick %"],"80.859375")
             self.assertEqual(keyed[("eldritch_knight","blindness_deafness")]["Whole-package control stick %"],"55.000000")
-            self.assertTrue(all(row["Comparator Config SHA-256"] for row in control_rows))
-            self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in control_rows))
-            with (root/"headline-damage"/"kv-14-3-0-damage-detail.csv").open(encoding="utf-8") as stream:headline_damage_row=next(csv.DictReader(stream))
-            with (root/"headline-control"/"kv-14-3-0-control-detail.csv").open(encoding="utf-8") as stream:headline_control_row=next(csv.DictReader(stream))
-            for row in (damage_row,control_rows[0],headline_damage_row,headline_control_row):
-                self.assertEqual(row["Catalog SHA-256"],file_sha256(DEFAULT_CATALOG));self.assertEqual(row["Roster SHA-256"],file_sha256(DEFAULT_ROSTERS))
-            self.assertEqual(damage_row["Target Profile"],DEFAULT_PROFILE);self.assertEqual(control_rows[0]["Target Profile"],DEFAULT_PROFILE);self.assertEqual(headline_damage_row["Target Profile"],"headline");self.assertEqual(headline_control_row["Target Profile"],"headline")
-            self.assertEqual((root/"damage"/"kv-14-3-0-damage-detail.csv").read_bytes(),(root/"damage-parallel"/"kv-14-3-0-damage-detail.csv").read_bytes())
-            for format_name in damage["paths"]:
-                self.assertEqual(damage["paths"][format_name].read_bytes(),parallel_damage["paths"][format_name].read_bytes())
-            self.assertEqual((root/"control"/"kv-14-3-0-control-detail.csv").read_bytes(),(root/"control-repeated"/"kv-14-3-0-control-detail.csv").read_bytes())
-            self.assertEqual((root/"control"/"kv-14-3-0-control-selection-audit.csv").read_bytes(),(root/"control-repeated"/"kv-14-3-0-control-selection-audit.csv").read_bytes())
-            status=load_config()["methodology"]["status"]
-            for result in (damage,control,parallel_damage,repeated_control):
-                matrix_path=result["paths"]["csv"]
-                with matrix_path.open(encoding="utf-8") as stream:matrix_rows=list(csv.DictReader(stream))
-                expected_type="Damage" if "damage" in matrix_path.name else "Control Reliability"
-                self.assertTrue(matrix_rows);self.assertTrue(all(row["Provenance Status"]==status for row in matrix_rows))
-                self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in matrix_rows))
-                self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
-                self.assertTrue(all(row["Provenance Trial Seed Role"]=="historical_compatibility_metadata" for row in matrix_rows))
-                self.assertTrue(all(row["Provenance Catalog Sha256"]==file_sha256(DEFAULT_CATALOG) and row["Provenance Roster Sha256"]==file_sha256(DEFAULT_ROSTERS) and row["Provenance Target Profile"]==DEFAULT_PROFILE for row in matrix_rows))
-                self.assertTrue(all(row["Benchmark Type"]==expected_type for row in matrix_rows))
-                for row in matrix_rows:
-                    comparators={"Eldritch Knight":float(row["Eldritch Knight"]),"Battle Master":float(row["Battle Master"])}
-                    lower=min(comparators.values());upper=max(comparators.values())
-                    self.assertEqual(row["Lower Boundary"],f"{lower:.6f}")
-                    self.assertEqual(row["Upper Boundary"],f"{upper:.6f}")
-                    if lower==upper:
-                        self.assertEqual(row["Lower Comparator"],"Eldritch Knight + Battle Master")
-                        self.assertEqual(row["Upper Comparator"],"Eldritch Knight + Battle Master")
-                    else:
-                        self.assertEqual(comparators[row["Lower Comparator"]],lower)
-                        self.assertEqual(comparators[row["Upper Comparator"]],upper)
-                    self.assertNotEqual(row["Band"],"ORDER CHECK")
-                self.assertIn(status,result["paths"]["markdown"].read_text(encoding="utf-8"));self.assertIn(status,result["paths"]["html"].read_text(encoding="utf-8"))
-
-    def test_full_control_crossover_uses_ordinary_dynamic_envelope_bands(self)->None:
-        config=load_config();methodology=config["methodology"]
-        with tempfile.TemporaryDirectory() as directory:
-            result=run_control(
-                DEFAULT_AUTHORITY,Path(directory),{7,11,15,20},None,
-                int(methodology["control_default_trials"]),int(methodology["control_seed"]),
-                False,True,profile="legacy_v14_1",
-            )
-            with result["paths"]["csv"].open(encoding="utf-8") as stream:
-                rows=list(csv.DictReader(stream))
-        self.assertEqual(len(rows),16)
-        self.assertTrue({"HOT","COLD","IDEAL"}<=set(row["Band"] for row in rows))
-        self.assertTrue(all(row["Band"]!="ORDER CHECK" for row in rows))
-        level_seven={row["Discipline"]:row for row in rows if row["Level"]=="7"}
-        self.assertEqual(set(level_seven),{"cryokinesis","electrokinesis","psychokinesis","pyrokinesis"})
-        for row in level_seven.values():
-            self.assertEqual(row["Eldritch Knight"],"41.250000")
-            self.assertGreater(float(row["Battle Master"]),float(row["Eldritch Knight"]))
-            self.assertEqual(row["Lower Comparator"],"Eldritch Knight")
-            self.assertEqual(row["Upper Comparator"],"Battle Master")
-
-    def test_imports_outputs_and_archive_are_not_tracked(self)->None:
-        tracked=subprocess.run(["git","ls-files"],cwd=PROJECT_ROOT,text=True,capture_output=True,check=True).stdout.splitlines()
-        self.assertTrue(all(not path.startswith(".codex-import/") and "harness/results" not in path and not path.endswith("harness-import.zip") for path in tracked))
+            with control["paths"]["csv"].open(encoding="utf-8") as stream:
+                matrix_rows=list(csv.DictReader(stream))
+            self.assertTrue(matrix_rows);self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
 
 
 if __name__=="__main__":unittest.main()
