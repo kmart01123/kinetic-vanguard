@@ -11,6 +11,7 @@ from typing import Any
 
 from .authority import AuthorityModel,DEFAULT_AUTHORITY
 from .comparison_report import NOTICE_COLUMNS,matrix_row,write_matrix
+from .control_value import DEFAULT_PRIMITIVES,shadow_rows
 from .model import DEFAULT_CATALOG,DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_PROFILE,DEFAULT_ROSTERS,PROFILE_COUNTS,Target,attack_probabilities,file_sha256,level_config,load_comparators,load_config,load_targets,save_success_probability,target_is_eligible
 
 
@@ -87,13 +88,24 @@ def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipl
     mastery_single=reach if mastery_available else 0.0;rider=feature.get("damage_delivery")=="on_hit_rider" and feature.get("activation")=="on_hit"
     repeat=lambda value:_repeat_rider_probability(model,config,target.level,tier,int(feature["psi_cost"]),value) if rider else value
     named=repeat(named_single);mastery_value=repeat(mastery_single);whole=max(named,mastery_value);repeat_count=int(config["methodology"]["rounds"])-1 if control.get("repeat_save_trigger")=="start_of_affected_turn" else 0
-    after=[]
-    for effect in effects:
+    after=[];shadow_components=[]
+    for effect_index,effect in enumerate(effects):
         value=repeat(effect_probability(effect))
         if repeat_count and effect["gate"]=="on_failed_save":value*=repeat_failed**repeat_count
         after.append(value)
+        labels=[*(('condition',condition) for condition in effect.get("conditions",[]) if condition.lower() not in target.condition_immunities),*(('outcome',outcome) for outcome in effect.get("outcomes",[]))]
+        component={"source_effect":f"{entity_id}:T{tier}:effect{effect_index}","labels":labels,"duration":effect["duration"],"application_probability":repeat(effect_probability(effect)),"repeat_survival_probability":repeat_failed if repeat_count and effect["gate"]=="on_failed_save" else None,"magnitude_feet":effect.get("magnitude_feet"),"attack_scope":effect.get("attack_scope"),"reason":f"KineticVanguard.yaml calculator.harness_mechanics.feature_rules[{entity_id}].control_tiers[T{tier}]"}
+        if "failed_save_magnitude_feet" in effect or "successful_save_magnitude_feet" in effect:
+            failed_probability=repeat(reach*failed);reached_probability=repeat(reach);success_probability=max(0.0,reached_probability-failed_probability)
+            branch_labels=[item for item in labels if item[1]=="forced_movement"]
+            other_labels=[item for item in labels if item[1]!="forced_movement"]
+            if branch_labels:
+                shadow_components.append({**component,"source_effect":f"{component['source_effect']}:failed_save","labels":branch_labels,"application_probability":failed_probability,"magnitude_feet":effect.get("failed_save_magnitude_feet")})
+                shadow_components.append({**component,"source_effect":f"{component['source_effect']}:successful_save","labels":branch_labels,"application_probability":success_probability,"magnitude_feet":effect.get("successful_save_magnitude_feet")})
+            if other_labels:shadow_components.append({**component,"labels":other_labels})
+        else:shadow_components.append(component)
     repeat=max([mastery_value,*after]);suffix=f":{target_role}" if target_role!="primary" else ""
-    return {"build":discipline_id,"scenario":f"{entity_id}:T{tier}{suffix}","eligible":eligible,"reach":100*reach,"named":100*named,"mastery":100*mastery_value,"whole":100*whole,"after_repeats":100*repeat}
+    return {"build":discipline_id,"scenario":f"{entity_id}:T{tier}{suffix}","eligible":eligible,"reach":100*reach,"named":100*named,"mastery":100*mastery_value,"whole":100*whole,"after_repeats":100*repeat,"shadow_components":shadow_components}
 
 
 def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str)->dict[str,Any]:
@@ -101,7 +113,8 @@ def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,di
     bonus=model.kv_attack_bonus(target.level,int(profile["psionic_ability_modifier"]))+int(profile["archery_attack_bonus"]);probabilities=attack_probabilities(bonus,target.ac);reach=probabilities[1]+probabilities[2]
     eligible=not mastery.get("maximum_size") or target_is_eligible(target,mastery["maximum_size"])
     whole=reach if eligible and mastery["control_outcomes"] else 0.0
-    return {"build":discipline_id,"scenario":f"mastery:{mastery['kind']}","eligible":eligible,"reach":100*reach,"named":0.0,"mastery":100*whole,"whole":100*whole,"after_repeats":100*whole}
+    component={"source_effect":f"mastery:{mastery['kind']}","labels":[('outcome',outcome) for outcome in mastery["control_outcomes"]],"duration":mastery.get("control_duration"),"application_probability":whole,"repeat_survival_probability":None,"magnitude_feet":mastery.get("control_magnitude_feet"),"attack_scope":mastery.get("attack_scope"),"reason":f"KineticVanguard.yaml calculator.harness_mechanics.disciplines[{discipline_id}].mastery"}
+    return {"build":discipline_id,"scenario":f"mastery:{mastery['kind']}","eligible":eligible,"reach":100*reach,"named":0.0,"mastery":100*whole,"whole":100*whole,"after_repeats":100*whole,"shadow_components":[component] if component["labels"] else []}
 
 
 def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,build_id:str,scenario:dict[str,Any])->dict[str,Any]:
@@ -119,7 +132,8 @@ def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:d
         elif scenario.get("primer_hit_disadvantage"):
             attacks=int(level_config(config,target.level)["attacks_per_action"]);primer=attack_probabilities(bonus,target.ac);primer_mark=_eldritch_strike_primer_probability(attacks,primer[1]+primer[2]);disadvantaged_fail=1-save_success_probability(target,scenario["save"],dc,True,bool(row["magic_resistance_applies"]));value=primer_mark*disadvantaged_fail+(1-primer_mark)*normal_fail
         else:value=reach*normal_fail
-    return {"build":build_id,"scenario":scenario["id"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*value}
+    component={"source_effect":scenario["id"],"labels":[*(('condition',condition) for condition in scenario.get("conditions",[])),*(('outcome',outcome) for outcome in scenario.get("outcomes",[]))],"duration":None,"application_probability":value,"repeat_survival_probability":None,"magnitude_feet":None,"attack_scope":None,"reason":f"harness/comparators/fighter-subclasses.json control.{build_id}; timing, scope, or magnitude not present in current comparator config"}
+    return {"build":build_id,"scenario":scenario["id"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*value,"shadow_components":[component]}
 
 
 def _best(rows:list[dict[str,Any]])->dict[str,Any]:
@@ -127,14 +141,16 @@ def _best(rows:list[dict[str,Any]])->dict[str,Any]:
     return max(rows,key=lambda row:(float(row["whole"]),str(row["scenario"])))
 
 
-def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,trials:int,seed:int,write_detail:bool=True,write_headline:bool=True,profile:str=DEFAULT_PROFILE)->dict[str,Any]:
-    model=AuthorityModel.load(authority);config=load_config();comparators=load_comparators();targets=load_targets(profile=profile,levels=levels,limit=target_limit);detail=[];audit=[];envelopes=[]
+def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,trials:int,seed:int,write_detail:bool=True,write_headline:bool=True,profile:str=DEFAULT_PROFILE,write_shadow:bool=False)->dict[str,Any]:
+    model=AuthorityModel.load(authority);config=load_config();comparators=load_comparators();targets=load_targets(profile=profile,levels=levels,limit=target_limit);detail=[];audit=[];envelopes=[];shadow_detail=[]
     scenario_sets=config["control_matrix"]["kv_scenarios"]
     for target in targets:
         comparator_best={}
         for build in ("battle_master","eldritch_knight"):
             values=[_comparator_scenario(model,config,comparators,target,build,scenario) for scenario in comparators["control"][build]["scenarios"]]
             detail.extend({"Level":target.level,"Target":target.name,**value} for value in values);comparator_best[build]=_best(values)
+            if write_shadow:
+                for value in values:shadow_detail.extend(shadow_rows({"Build":build,"Discipline":"all","Level":target.level,"Target":target.name,"Scenario":value["scenario"]},value["shadow_components"],horizon=int(config["methodology"]["rounds"])))
             audit.append({"Level":target.level,"Target":target.name,"Discipline":"all","Build":build,"Selected Scenario":comparator_best[build]["scenario"],"Whole-package control stick %":f"{comparator_best[build]['whole']:.6f}","Eligible":comparator_best[build]["eligible"]})
         for discipline,configured in scenario_sets.items():
             values=[_mastery_scenario(model,config,target,discipline)]
@@ -147,6 +163,8 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,tri
                         except Exception as error:
                             if "unavailable" not in str(error):raise
             best=_best(values);detail.extend({"Level":target.level,"Target":target.name,**value} for value in values)
+            if write_shadow:
+                for value in values:shadow_detail.extend(shadow_rows({"Build":"kinetic_vanguard","Discipline":discipline,"Level":target.level,"Target":target.name,"Scenario":value["scenario"]},value["shadow_components"],horizon=int(config["methodology"]["rounds"])))
             audit.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"Build":"kinetic_vanguard","Selected Scenario":best["scenario"],"Whole-package control stick %":f"{best['whole']:.6f}","Eligible":best["eligible"]})
             envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":best["whole"],"Eldritch Knight":comparator_best["eldritch_knight"]["whole"],"Battle Master":comparator_best["battle_master"]["whole"]})
     slug=model.rules_version.replace(".","-");output_dir.mkdir(parents=True,exist_ok=True)
@@ -159,6 +177,12 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,tri
             writer=csv.DictWriter(stream,fieldnames=list(detail_rows[0]));writer.writeheader();writer.writerows(detail_rows)
         with (output_dir/f"kv-{slug}-control-selection-audit.csv").open("w",newline="",encoding="utf-8") as stream:
             writer=csv.DictWriter(stream,fieldnames=list(audit_rows[0]));writer.writeheader();writer.writerows(audit_rows)
+    shadow_path=None
+    if write_shadow:
+        shadow_path=output_dir/f"kv-{slug}-control-value-shadow-detail.csv";shadow_source={**source_columns,"Control Primitive Catalog SHA-256":file_sha256(DEFAULT_PRIMITIVES)};shadow_output=[{**row,**shadow_source} for row in shadow_detail]
+        with shadow_path.open("w",newline="",encoding="utf-8") as stream:
+            if shadow_output:
+                writer=csv.DictWriter(stream,fieldnames=list(shadow_output[0]));writer.writeheader();writer.writerows(shadow_output)
     groups:dict[tuple[int,str],list[dict[str,Any]]]=defaultdict(list)
     for row in envelopes:groups[(int(row["Level"]),str(row["Discipline"]))].append(row)
     rows=[]
@@ -167,16 +191,18 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,tri
         rows.append(matrix_row({"Level":level,"Discipline":discipline,"Metric":config["control_matrix"]["metric"],"Profile":config["kv_profile"]["id"]},mean("KV"),mean("Eldritch Knight"),mean("Battle Master"),"control"))
     provenance={"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"catalog_sha256":file_sha256(DEFAULT_CATALOG),"roster_sha256":file_sha256(DEFAULT_ROSTERS),"target_profile":profile,"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"trials":trials,"seed":seed,"evaluator":"exact_analytical_enumeration","trial_seed_role":"historical_compatibility_metadata","aggregation":config["control_matrix"]["aggregation"],"status":config["methodology"]["status"]}
     paths=write_matrix(output_dir,model.rules_version,"control",rows,provenance) if write_headline else {}
-    return {"rules_version":model.rules_version,"detail_rows":len(detail),"audit_rows":len(audit),"matrix_rows":len(rows),"paths":paths}
+    return {"rules_version":model.rules_version,"detail_rows":len(detail),"audit_rows":len(audit),"matrix_rows":len(rows),"paths":paths,"shadow_rows":len(shadow_detail),"shadow_path":shadow_path}
 
 
 def main()->None:
-    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--authority",type=Path,default=DEFAULT_AUTHORITY);parser.add_argument("--output-dir",type=Path,required=True);parser.add_argument("--profile",choices=tuple(PROFILE_COUNTS),default=DEFAULT_PROFILE);parser.add_argument("--levels",default="7,11,15,20");parser.add_argument("--target-limit",type=int);parser.add_argument("--trials",type=int);parser.add_argument("--seed",type=int);parser.add_argument("--validate-only",action="store_true");parser.add_argument("--matrix-only",action="store_true");parser.add_argument("--no-matrix",action="store_true");args=parser.parse_args()
+    parser=argparse.ArgumentParser(description=__doc__);parser.add_argument("--authority",type=Path,default=DEFAULT_AUTHORITY);parser.add_argument("--output-dir",type=Path,required=True);parser.add_argument("--profile",choices=tuple(PROFILE_COUNTS),default=DEFAULT_PROFILE);parser.add_argument("--levels",default="7,11,15,20");parser.add_argument("--target-limit",type=int);parser.add_argument("--trials",type=int);parser.add_argument("--seed",type=int);parser.add_argument("--validate-only",action="store_true");parser.add_argument("--matrix-only",action="store_true");parser.add_argument("--no-matrix",action="store_true");parser.add_argument("--shadow-detail",action="store_true",help="write non-default primitive exposure detail without changing selection");args=parser.parse_args()
     model=AuthorityModel.load(args.authority)
     if args.validate_only:load_config();load_comparators();load_targets(profile=args.profile);print(f"Validated Kinetic Vanguard {model.rules_version} authority {model.authority_sha256}, target profile {args.profile}, and isolated comparator config");return
     config=load_config();trials=args.trials if args.trials is not None else int(config["methodology"]["control_default_trials"]);seed=args.seed if args.seed is not None else int(config["methodology"]["control_seed"]);levels={int(value) for value in args.levels.split(",")}
     if trials<=0 or (args.target_limit is not None and args.target_limit<=0):parser.error("--trials and --target-limit must be positive")
-    result=run(args.authority,args.output_dir,levels,args.target_limit,trials,seed,not args.matrix_only,not args.no_matrix,args.profile);print(f"Control harness wrote {result['detail_rows']} detail rows, {result['audit_rows']} audit rows, and {result['matrix_rows']} matrix rows for rules {result['rules_version']}")
+    result=run(args.authority,args.output_dir,levels,args.target_limit,trials,seed,not args.matrix_only,not args.no_matrix,args.profile,args.shadow_detail)
+    if args.shadow_detail:print(f"Control harness wrote {result['detail_rows']} detail rows, {result['audit_rows']} audit rows, {result['matrix_rows']} matrix rows, and {result['shadow_rows']} optional shadow rows for rules {result['rules_version']}")
+    else:print(f"Control harness wrote {result['detail_rows']} detail rows, {result['audit_rows']} audit rows, and {result['matrix_rows']} matrix rows for rules {result['rules_version']}")
 
 
 if __name__=="__main__":main()

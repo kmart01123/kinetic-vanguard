@@ -10,7 +10,7 @@ The benchmark keeps four distinct input layers:
 
 1. **Kinetic Vanguard authority:** root `KineticVanguard.yaml`, projected by stable entity ID only after canonical schema and semantic validation.
 2. **Benchmark configuration:** project-authored seeds, profiles, aggregation, target clustering, and scenario policy, together with SRD-derived base Fighter progression/mechanics, in `config/benchmark.json`, plus the project-authored Python simulation/reporting code.
-3. **SRD target data:** one 330-creature SRD 5.2.1 catalog in `data/srd_creatures.json` and explicit ordered membership for `legacy_v14_1` (28), `headline` (47), and `eligible_census` (93) in `data/srd_creature_rosters.json`.
+3. **SRD data:** one 330-creature SRD 5.2.1 target catalog in `data/srd_creatures.json`, explicit ordered membership for `legacy_v14_1` (28), `headline` (47), and `eligible_census` (93) in `data/srd_creature_rosters.json`, and the condition-to-mechanical-primitive shadow catalog in `data/control_primitives.json`.
 4. **Third-party comparator assumptions:** minimal independently expressed Battle Master and Eldritch Knight numerical packages in `comparators/fighter-subclasses.json`.
 
 The runtime loads and hashes methodology and comparator assumptions separately. Neither file is Kinetic Vanguard rules authority.
@@ -22,7 +22,7 @@ Licensing follows the distinguishable components rather than assigning one blank
 - project-authored Python software, report structure, and technical configuration structure are licensed under BSD-3-Clause;
 - the project-authored methodology and structure in `config/benchmark.json` are BSD-3-Clause, while its SRD-derived base Fighter mechanics remain separately available under CC BY 4.0;
 - the project-authored structure, benchmark selection, and independently authored analytical/policy expression in `comparators/fighter-subclasses.json` are BSD-3-Clause; individual parameters retain SRD or third-party status as applicable, and Battle Master/Eldritch Knight identifiers and underlying third-party mechanics are not licensed by the project;
-- `data/srd_creatures.json` and `data/srd_creature_rosters.json` are SRD 5.2.1-derived material under CC BY 4.0; and
+- `data/srd_creatures.json`, `data/srd_creature_rosters.json`, and the condition semantics in `data/control_primitives.json` are SRD 5.2.1-derived material under CC BY 4.0; and
 - original Kinetic Vanguard rules, examples, explanatory and editorial prose, documentation, approved interface text, and project-authored benchmark explanation remain under CC BY-NC-SA 4.0.
 
 No configuration file or generated report relicenses SRD or third-party material. See the repository `LICENSE.md` and `NOTICE.md` for the complete component boundaries and attribution.
@@ -104,6 +104,16 @@ Control Reliability evaluates legal repeated attack-delivered opportunities with
 Published v14.1 Control Reliability used simpler one-shot scenario approximations. The v14.2-to-v14.1 control movement can therefore combine four sources: paid-rider repeatability from issue #58, correction of historical one-shot treatment for already-repeatable Signature Riders, Battle Master maneuver-retry fairness, and Eldritch Strike primer fairness. These effects interact, so the evidence does not claim an exact additive decomposition. The first PR #73 control output at `/tmp/kv-issue-58-final/control` has disposition `invalidated_comparator_retry_asymmetry`; it remains the historical record that exposed Signature Rider, Battle Master, and Eldritch Strike one-shot or one-primer under-modeling. The accepted damage output at `/tmp/kv-issue-58-final/damage` remains valid and was not rerun for this correction.
 
 The public headline is **Control Reliability**; the configured numerical metric remains `roster-adjusted whole-package control stick %`.
+
+### Control Value Slice-1 shadow detail
+
+The optional `--shadow-detail` path adds `kv-<version>-control-value-shadow-detail.csv` beside the ordinary Control Reliability outputs. It reuses the runner's existing target eligibility, hit/save, paid-rider retry, Battle Master retry, Eldritch Strike primer, and repeat-save probabilities, then expands each condition or bare outcome into inspectable mechanical primitives. The shadow rows report their exposure basis, feet magnitude where canonical structure supplies one, active probabilities, expected exposure, normalization or suppression disposition, and `candidate`, `context_required`, or `unsupported` status.
+
+The primitive layer has no weights and produces no Control Value scalar, winner selection, matrix cell, or README classification. `while_in_area` persistence and comparator timing, magnitude, or scope absent from the maintained comparator configuration fail closed as contextual or unsupported instead of invoking a battlefield or timeline model. Until a later reviewed slice authorizes analytical evidence, inspect this path only with focused sentinels such as:
+
+```text
+python3 -m harness.control_harness --output-dir /tmp/kv-control-shadow --levels 20 --target-limit 1 --trials 1 --no-matrix --shadow-detail
+```
 
 Control Reliability measures how often the configured control package takes effect. It does not measure the relative severity, duration, area, or strategic value of different control effects. A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.
 

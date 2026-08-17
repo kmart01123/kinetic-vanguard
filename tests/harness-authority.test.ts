@@ -15,6 +15,9 @@ test("harness projection reads the real authority and joins mechanics by stable 
   assert.ok(projection.features.every(item=>Number.isInteger(item.minimum_level)&&Number.isInteger(item.psi_cost)&&!Object.hasOwn(item,"title")));
   assert.ok(projection.features.every(item=>!Object.hasOwn(item,"repeatability")));
   const flare=projection.features.find(item=>item.entity_id==="flare")!;assert.equal(flare.minimum_level,15);assert.equal(flare.psi_cost,3);assert.equal(flare.damage_tiers.length,3);assert.equal(flare.control_tiers?.length,3);
+  const slow=projection.disciplines.find(item=>item.id==="cryokinesis")!.mastery;assert.equal(slow.control_magnitude_feet,10);assert.equal(slow.control_duration,"until_start_next_turn");
+  const shove=projection.features.find(item=>item.entity_id==="telekinetic_shove")!;assert.deepEqual(shove.control_tiers?.map(item=>item.effects[0]!.magnitude_feet),[10,15,20]);
+  const sap=projection.disciplines.find(item=>item.id==="electrokinesis")!.mastery;assert.equal(sap.attack_scope,"next_attack");
 });
 
 test("harness semantic mutations fail with focused diagnostics",async()=>{
@@ -35,6 +38,9 @@ test("harness semantic mutations fail with focused diagnostics",async()=>{
   expectCode("harness.control_save_required",candidate=>{delete candidate.calculator.harness_mechanics.feature_rules.find((item:any)=>item.entity_id==="flare").control_tiers[0].save;});
   expectCode("harness.control_save_forbidden",candidate=>{candidate.calculator.harness_mechanics.feature_rules.find((item:any)=>item.entity_id==="flare").control_tiers[1].save="dexterity";});
   expectCode("harness.control_outcome",candidate=>{const effect=candidate.calculator.harness_mechanics.feature_rules.find((item:any)=>item.entity_id==="flare").control_tiers[0].effects[0];delete effect.conditions;delete effect.outcomes;});
+  expectCode("harness.mastery_control_measurement",candidate=>{delete candidate.calculator.harness_mechanics.disciplines.find((item:any)=>item.id==="cryokinesis").mastery.control_magnitude_feet;});
+  expectCode("harness.control_magnitude",candidate=>{delete candidate.calculator.harness_mechanics.feature_rules.find((item:any)=>item.entity_id==="telekinetic_shove").control_tiers[0].effects[0].magnitude_feet;});
+  expectCode("harness.control_attack_scope",candidate=>{delete candidate.calculator.harness_mechanics.feature_rules.find((item:any)=>item.entity_id==="electron_burst").control_tiers[0].effects[0].attack_scope;});
 });
 
 test("official harness source is positive input while imports and generated outputs remain excluded",async()=>{

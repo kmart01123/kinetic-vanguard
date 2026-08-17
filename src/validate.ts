@@ -83,6 +83,12 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
   diagnostics.push(...duplicateDiagnostics(disciplineIds,"harness.discipline_duplicate","harness discipline ID"));
   const expectedDisciplines=["cryokinesis","electrokinesis","psychokinesis","pyrokinesis"];
   if(JSON.stringify([...disciplineIds].sort(codepointCompare))!==JSON.stringify(expectedDisciplines))diagnostics.push({severity:"error",code:"harness.discipline_coverage",message:"Harness mechanics must define exactly the four Kinetic Disciplines",path:"/calculator/harness_mechanics/disciplines"});
+  for(const [disciplineIndex,discipline] of harness.disciplines.entries()){
+    const mastery=discipline.mastery,path=`/calculator/harness_mechanics/disciplines/${disciplineIndex}/mastery`,outcomes=new Set(mastery.control_outcomes);
+    if((outcomes.has("speed_reduction")||outcomes.has("forced_movement"))&&(!mastery.control_duration||mastery.control_magnitude_feet===undefined))diagnostics.push({severity:"error",code:"harness.mastery_control_measurement",message:`${discipline.id} measured mastery control requires duration and feet magnitude`,path});
+    if(outcomes.has("attack_disadvantage")&&(!mastery.control_duration||!mastery.attack_scope))diagnostics.push({severity:"error",code:"harness.mastery_attack_scope",message:`${discipline.id} attack impairment requires duration and attack scope`,path});
+    if(!mastery.control_outcomes.length&&(mastery.control_duration||mastery.control_magnitude_feet!==undefined||mastery.attack_scope))diagnostics.push({severity:"error",code:"harness.mastery_control_extra",message:`${discipline.id} non-control mastery cannot define control measurement fields`,path});
+  }
   const featureRules=harness.feature_rules,featureRuleIds=featureRules.map(item=>item.entity_id);
   diagnostics.push(...duplicateDiagnostics(featureRuleIds,"harness.feature_duplicate","harness feature entity ID"));
   const missingShared=featureRuleIds.filter(id=>!calculatorFeatureIds.includes(id));
@@ -117,6 +123,12 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
         if(!(effect.conditions?.length||effect.outcomes?.length))diagnostics.push({severity:"error",code:"harness.control_outcome",message:`${rule.entity_id} Tier ${control.tier} effect must define a condition or non-condition outcome`,path:effectPath});
         if(effect.gate==="on_failed_save"&&control.application!=="failed_save")diagnostics.push({severity:"error",code:"harness.control_gate",message:`${rule.entity_id} Tier ${control.tier} failed-save effect requires failed-save application`,path:effectPath});
         if(effect.requires_condition&&!tierConditions.has(effect.requires_condition))diagnostics.push({severity:"error",code:"harness.control_dependency",message:`${rule.entity_id} Tier ${control.tier} effect depends on an unmodeled ${effect.requires_condition} condition`,path:effectPath});
+        const outcomes=new Set(effect.outcomes??[]),hasBranchMagnitude=effect.failed_save_magnitude_feet!==undefined||effect.successful_save_magnitude_feet!==undefined;
+        if(outcomes.has("forced_movement")&&!((effect.magnitude_feet!==undefined)!==hasBranchMagnitude))diagnostics.push({severity:"error",code:"harness.control_magnitude",message:`${rule.entity_id} Tier ${control.tier} forced movement requires either one feet magnitude or a save-result magnitude pair`,path:effectPath});
+        if(hasBranchMagnitude&&(effect.failed_save_magnitude_feet===undefined||effect.successful_save_magnitude_feet===undefined||control.application!=="failed_save"||effect.gate!=="on_reach"))diagnostics.push({severity:"error",code:"harness.control_branch_magnitude",message:`${rule.entity_id} Tier ${control.tier} branch magnitudes require both save results on an on-reach failed-save effect`,path:effectPath});
+        if((effect.magnitude_feet!==undefined||hasBranchMagnitude)&&!outcomes.has("forced_movement")&&!outcomes.has("speed_reduction"))diagnostics.push({severity:"error",code:"harness.control_magnitude_outcome",message:`${rule.entity_id} Tier ${control.tier} feet magnitude requires movement control`,path:effectPath});
+        if(outcomes.has("attack_disadvantage")&&!effect.attack_scope)diagnostics.push({severity:"error",code:"harness.control_attack_scope",message:`${rule.entity_id} Tier ${control.tier} attack Disadvantage requires explicit scope`,path:effectPath});
+        if(effect.attack_scope&&!outcomes.has("attack_disadvantage"))diagnostics.push({severity:"error",code:"harness.control_attack_scope_extra",message:`${rule.entity_id} Tier ${control.tier} attack scope requires attack Disadvantage`,path:effectPath});
       }
       if(control.repeat_save_trigger&&control.application!=="failed_save")diagnostics.push({severity:"error",code:"harness.repeat_save",message:`${rule.entity_id} Tier ${control.tier} repeat saves require failed-save application`,path:controlPath});
       if(control.repeat_save_disadvantage&&!control.repeat_save_trigger)diagnostics.push({severity:"error",code:"harness.repeat_save_disadvantage",message:`${rule.entity_id} Tier ${control.tier} repeat-save Disadvantage requires a repeat-save trigger`,path:controlPath});
