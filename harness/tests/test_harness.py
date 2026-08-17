@@ -154,7 +154,7 @@ class FrozenInputValidationTests(unittest.TestCase):
 class FighterNumericalTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls)->None:
-        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.targets=load_targets()
+        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.targets=load_targets(profile="legacy_v14_1")
 
     def test_exact_fighter_dpr_sentinels_cover_every_supported_level(self)->None:
         expected={
@@ -395,7 +395,7 @@ class DamagePlannerTests(unittest.TestCase):
         self.assertEqual(planner.selection().count("branching_bolt:T2"),2)
 
     def test_same_paid_rider_can_be_selected_on_all_three_manifested_strikes(self)->None:
-        target=replace(next(item for item in load_targets(levels={11}) if item.name=="Aboleth"),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",0,2,0);packages=(plain,rider)
+        target=replace(next(item for item in load_targets(profile="legacy_v14_1",levels={11}) if item.name=="Aboleth"),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",0,2,0);packages=(plain,rider)
         planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,3,(1,),False,False,6,0,self.mastery,0,1);self.addCleanup(planner.clear)
         self.assertAlmostEqual(planner.solve().aggregate,285.0,places=12)
         self.assertEqual(planner.selection().count("branching_bolt:T0"),3)
@@ -423,7 +423,7 @@ class DamagePlannerTests(unittest.TestCase):
         self.assertEqual(planner._roll_options(0,0,"hit",False,1)[0][3],1)
 
     def test_observed_state_policy_matches_reviewed_l20_sentinel(self)->None:
-        target=next(item for item in load_targets(levels={20}) if item.name=="Ancient Black Dragon")
+        target=next(item for item in load_targets(profile="legacy_v14_1",levels={20}) if item.name=="Ancient Black Dragon")
         primary,aggregate,selection=_kv_dpr(self.model,self.config,target,"electrokinesis",3)
         self.assertAlmostEqual(primary,108.31875949995589,places=10)
         self.assertAlmostEqual(aggregate,177.0645081943466,places=10)
@@ -522,7 +522,7 @@ class CanonicalControlTests(unittest.TestCase):
 class ControlComparatorRetryTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls)->None:
-        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.targets=load_targets()
+        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.targets=load_targets(profile="legacy_v14_1")
 
     def target(self,level:int)->Target:
         return next(item for item in self.targets if item.level==level and not item.condition_immunities)
@@ -791,7 +791,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             result=run_control(
                 DEFAULT_AUTHORITY,Path(directory),{7,11,15,20},None,
                 int(methodology["control_default_trials"]),int(methodology["control_seed"]),
-                False,True,
+                False,True,profile="legacy_v14_1",
             )
             with result["paths"]["csv"].open(encoding="utf-8") as stream:
                 rows=list(csv.DictReader(stream))

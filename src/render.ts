@@ -20,9 +20,10 @@ const CSS=`
 const jsonForScript=(value:unknown)=>JSON.stringify(value).replaceAll("<","\\u003c").replaceAll("\u2028","\\u2028").replaceAll("\u2029","\\u2029");
 
 export function renderHtml(input:{authority:Authority;ui:any;derived:any;policy:any;filterIndex:FilterIndex;runtimeSource:string;releaseStatus:"prototype"|"release";authorityHash:string}):string{
-  const token=(id:string)=>input.ui.tokens.find((item:any)=>item.id===id)?.text as string;
+  const ui=input.releaseStatus==="release"?{...input.ui,tokens:input.ui.tokens.filter((item:any)=>item.id!=="prototype_banner")}:input.ui;
+  const token=(id:string)=>ui.tokens.find((item:any)=>item.id===id)?.text as string;
   const prototype=input.releaseStatus==="prototype"?`<p class="prototype" role="status">${escapeHtml(token("prototype_banner"))}</p>`:"";
-  const model={authority:input.authority,ui:input.ui,derived:input.derived,policy:input.policy,filterIndex:input.filterIndex,releaseStatus:input.releaseStatus};
+  const model={authority:input.authority,ui,derived:input.derived,policy:input.policy,filterIndex:input.filterIndex,releaseStatus:input.releaseStatus};
   const provenance={release_status:input.releaseStatus,rules_version:input.authority.rules_version,schema_version:input.authority.schema_version,authority_sha256:input.authorityHash};
   const defaultCategory=input.authority.navigation.categories.find(category=>category.id===input.authority.navigation.default_category_id)!;
   const defaultParameters=new URLSearchParams({category:defaultCategory.id,topic:defaultCategory.default_topic_id});

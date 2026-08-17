@@ -45,9 +45,11 @@ class CreatureCatalogTests(unittest.TestCase):
             self.assertEqual(len(entries),PROFILE_COUNTS[profile]);self.assertEqual(Counter(row["benchmark_level"] for row in entries),Counter(PROFILE_LEVEL_COUNTS[profile]));self.assertEqual(hashlib.sha256(_canonical(entries)).hexdigest(),expected_hashes[profile])
         headline={(row["creature_id"],row["benchmark_level"]) for row in self.profiles["headline"]};census={(row["creature_id"],row["benchmark_level"]) for row in self.profiles["eligible_census"]};self.assertLess(headline,census)
 
-    def test_legacy_profile_is_default_and_exact_migration_oracle(self)->None:
-        self.assertEqual(DEFAULT_PROFILE,"legacy_v14_1");targets=load_targets();self.assertEqual(len(targets),28)
-        self.assertEqual(hashlib.sha256(_canonical(targets)).hexdigest(),"0e44ca5e57e619dde34a6a1ebf7dc81f7d2a85681542c8c81069db933bbb8659")
+    def test_headline_profile_is_default_and_legacy_remains_exact_migration_oracle(self)->None:
+        self.assertEqual(DEFAULT_PROFILE,"headline");targets=load_targets();self.assertEqual(len(targets),47)
+        self.assertEqual(hashlib.sha256(_canonical(targets)).hexdigest(),"92f949e612b29ab7dfe3254e936246a4ff1aaa654ff8aa6296ea8e766b15b799")
+        legacy_targets=load_targets(profile="legacy_v14_1");self.assertEqual(len(legacy_targets),28)
+        self.assertEqual(hashlib.sha256(_canonical(legacy_targets)).hexdigest(),"0e44ca5e57e619dde34a6a1ebf7dc81f7d2a85681542c8c81069db933bbb8659")
 
     def test_shared_target_projection_covers_damage_and_control_consumers(self)->None:
         targets=load_targets(profile="headline");self.assertEqual(len(targets),47)
