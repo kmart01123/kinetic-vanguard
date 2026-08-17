@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import csv
 from collections import defaultdict
+from copy import deepcopy
+from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
 from typing import Any
@@ -12,7 +14,7 @@ from typing import Any
 from .authority import AuthorityModel,DEFAULT_AUTHORITY
 from .comparison_report import NOTICE_COLUMNS,matrix_row,write_matrix
 from .control_value import DEFAULT_PRIMITIVES,shadow_rows
-from .model import DEFAULT_CATALOG,DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_PROFILE,DEFAULT_ROSTERS,PROFILE_COUNTS,Target,attack_probabilities,file_sha256,level_config,load_comparators,load_config,load_targets,save_success_probability,target_is_eligible
+from .model import DEFAULT_CATALOG,DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_PROFILE,DEFAULT_ROSTERS,PROFILE_COUNTS,Target,attack_probabilities,file_sha256,level_config,load_comparators,load_config,load_targets,modified_save_success_probability,save_success_probability,target_is_eligible
 
 
 def _effect_available(target:Target,effect:dict[str,Any],target_role:str)->bool:
@@ -45,11 +47,25 @@ def _automatic_save_success(target:Target,scenario:dict[str,Any])->bool:
 def _resolved_targeting(row:dict[str,Any],scenario:dict[str,Any],level:int)->dict[str,Any]|None:
     targeting=scenario.get("targeting")
     if targeting is None:return None
-    resolved={**targeting,"area":dict(targeting["area"])} if "area" in targeting else dict(targeting)
+    resolved=deepcopy(targeting)
     if targeting["mode"]=="capped_selectable":
         highest_slot=int(row["spell_access"]["highest_slot_level_by_fighter_level"][str(level)]);spell_level=int(scenario["spell_level"]);increments=max(0,highest_slot-spell_level)//int(targeting["higher_slot_levels_per_increment"])
         resolved["maximum_target_cap"]=int(targeting["base_target_cap"])+increments*int(targeting["higher_slot_target_increment"])
     return resolved
+
+
+def _finite_penalty_save_failure_probability(target:Target,ability:str,dc:int,die_sides:int,*,advantage:bool=False,disadvantage:bool=False,magic_resistance:bool=True)->float:
+    """Enumerate ``d20 - 1dN`` without replacing the die with an average."""
+    if die_sides<2:raise ValueError("Finite save-penalty die must have at least two sides")
+    return 1-modified_save_success_probability(target,ability,dc,advantage=advantage,disadvantage=disadvantage,magic_resistance=magic_resistance,penalty_die_sides=die_sides)
+
+
+def _finite_penalty_with_disadvantage_probability(target:Target,ability:str,dc:int,die_sides:int,disadvantage_probability:float,*,advantage:bool=False,magic_resistance:bool=True)->float:
+    """Combine an independent finite penalty and probabilistic Disadvantage exactly."""
+    if not 0.0<=disadvantage_probability<=1.0:raise ValueError("Disadvantage probability must be between zero and one")
+    ordinary=_finite_penalty_save_failure_probability(target,ability,dc,die_sides,advantage=advantage,magic_resistance=magic_resistance)
+    disadvantaged=_finite_penalty_save_failure_probability(target,ability,dc,die_sides,advantage=advantage,disadvantage=True,magic_resistance=magic_resistance)
+    return disadvantage_probability*disadvantaged+(1-disadvantage_probability)*ordinary
 
 
 def _repeat_rider_probability(model:AuthorityModel,config:dict[str,Any],level:int,tier:int,psi_cost:int,attempt_success:float)->float:
@@ -161,16 +177,16 @@ def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:d
         component={"source_effect":scenario["id"],"labels":labels,"duration":None,"application_probability":value,"repeat_survival_probability":None,"repeat_checkpoint":None,"magnitude_feet":None,"attack_scope":None,"reason":f"harness/comparators/fighter-subclasses.json control.{build_id}; timing, scope, or magnitude not present in current comparator config"}
         return {"build":build_id,"scenario":scenario["id"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*value,"shadow_components":[component] if labels else [],"targeting":None,"breaks":[]}
 
-    if not scenario.get("spell_attack") and "save" not in scenario:raise ValueError("Eldritch Knight scenario requires a spell attack or saving throw")
+    if not scenario.get("spell_attack") and "save" not in scenario and not scenario.get("automatic_effect"):raise ValueError("Eldritch Knight scenario requires a spell attack, saving throw, or automatic effect")
     highest_slot=int(row["spell_access"]["highest_slot_level_by_fighter_level"][str(target.level)]);access_legal=int(scenario["spell_level"])==0 or int(scenario["spell_level"])<=highest_slot;primer_legal=not scenario.get("primer_hit_disadvantage") or target.level>=int(row["eldritch_strike_minimum_level"])
-    eligible=target.level>=int(row["minimum_level"]) and access_legal and primer_legal and target_is_eligible(target,None,scenario.get("required_creature_type"));automatic_success=_automatic_save_success(target,scenario)
+    eligible=target.level>=int(row["minimum_level"]) and access_legal and primer_legal and target_is_eligible(target,scenario.get("maximum_size"),scenario.get("required_creature_type"));automatic_success=_automatic_save_success(target,scenario)
     if scenario.get("hit_gated"):
         attack_bonus=pb+_eldritch_knight_spellcasting_modifier(row,target.level) if scenario.get("spell_attack") else weapon_bonus_total;probabilities=attack_probabilities(attack_bonus,target.ac);reach=probabilities[1]+probabilities[2]
-    normal_fail=None;initial_probability=reach if scenario.get("spell_attack") else 0.0
+    normal_fail=None;normal_success=None;initial_probability=reach if scenario.get("spell_attack") else (1.0 if scenario.get("automatic_effect") else 0.0)
     if "save" in scenario:
-        dc=int(row["save_dc_base"])+pb+_eldritch_knight_spellcasting_modifier(row,target.level);normal_fail=1-save_success_probability(target,scenario["save"],dc,False,bool(row["magic_resistance_applies"]));initial_probability=normal_fail
+        dc=int(row["save_dc_base"])+pb+_eldritch_knight_spellcasting_modifier(row,target.level);normal_success=modified_save_success_probability(target,scenario["save"],dc,advantage=bool(scenario.get("initial_save_advantage")),magic_resistance=bool(row["magic_resistance_applies"]));normal_fail=1-normal_success;initial_probability=normal_fail
         if scenario.get("primer_hit_disadvantage"):
-            attacks=int(level_config(config,target.level)["attacks_per_action"]);primer=attack_probabilities(weapon_bonus_total,target.ac);primer_mark=_eldritch_strike_primer_probability(attacks,primer[1]+primer[2]);disadvantaged_fail=1-save_success_probability(target,scenario["save"],dc,True,bool(row["magic_resistance_applies"]));initial_probability=primer_mark*disadvantaged_fail+(1-primer_mark)*normal_fail
+            attacks=int(level_config(config,target.level)["attacks_per_action"]);primer=attack_probabilities(weapon_bonus_total,target.ac);primer_mark=_eldritch_strike_primer_probability(attacks,primer[1]+primer[2]);disadvantaged_fail=1-modified_save_success_probability(target,scenario["save"],dc,advantage=bool(scenario.get("initial_save_advantage")),disadvantage=True,magic_resistance=bool(row["magic_resistance_applies"]));initial_probability=primer_mark*disadvantaged_fail+(1-primer_mark)*normal_fail
     effective_conditions={condition.lower() for effect in scenario["effects"] for condition in effect.get("conditions",[]) if condition.lower() not in target.condition_immunities}
     components=[];applications=[];terminals=[];horizon=int(config["methodology"]["rounds"]);multi_effect=len(scenario["effects"])>1
     if eligible and not automatic_success:
@@ -181,18 +197,28 @@ def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:d
             if not labels:continue
             gate=effect["gate"]
             if gate in {"on_hit","on_failed_save"}:application=initial_probability
+            elif gate=="automatic":application=1.0
+            elif gate=="on_successful_save":application=float(normal_success or 0.0)
             elif gate=="after_failed_second_save":application=initial_probability*float(normal_fail or 0.0)
             else:raise ValueError(f"Unsupported comparator effect gate: {gate}")
+            if "secondary_save" in effect:
+                secondary=effect["secondary_save"];secondary_fail=1-modified_save_success_probability(target,str(secondary["ability"]),dc,magic_resistance=bool(row["magic_resistance_applies"]));application*=secondary_fail
+            if "branch_fraction" in effect:
+                fraction=effect["branch_fraction"];application*=float(Fraction(int(fraction["numerator"]),int(fraction["denominator"])))
+            if "branch_ids" in effect:
+                branches={str(item["id"]):Fraction(int(item["numerator"]),int(item["denominator"])) for item in scenario.get("turn_branches",[])};application*=float(sum((branches[str(branch_id)] for branch_id in effect["branch_ids"]),Fraction(0,1)))
             active_by_basis=None;pattern=effect.get("active_pattern")
             if pattern=="first_target_turn_only":active_by_basis={"target_turn_window":(application,*((0.0,)*(horizon-1)))};terminal=0.0
             elif pattern=="remaining_after_first_target_turn":active_by_basis={"target_turn_window":((0.0,)+((application,)*(horizon-1)))};terminal=application
             elif effect.get("repeat_save_trigger") and normal_fail is not None:terminal=application*normal_fail**(horizon-1)
             else:terminal=application
+            if scenario["disposition"]=="diagnostic_unpriced" or effect.get("unpriced"):active_by_basis={}
             applications.append(application);terminals.append(terminal);source_effect=f"{scenario['id']}:{effect['id']}" if multi_effect else scenario["id"]
-            metadata=", ".join(f"{key}={scenario[key]}" for key in ("spell_level","delivery","improved_war_magic_eligible") if key in scenario);effect_metadata=", ".join(f"{key}={effect[key]}" for key in ("id","gate","requires_condition_effective","active_pattern","transition_checkpoint","disjoint_stage_group","suppressed_recovery_options") if key in effect)
-            components.append({"source_effect":source_effect,"labels":labels,"duration":effect["duration"],"application_probability":application,"repeat_survival_probability":normal_fail if effect.get("repeat_save_trigger") else None,"repeat_checkpoint":effect.get("repeat_save_trigger"),"magnitude_feet":effect.get("magnitude_feet"),"attack_scope":effect.get("attack_scope"),"active_probabilities_by_basis":active_by_basis,"disjoint_stage_group":effect.get("disjoint_stage_group",""),"breaks":scenario.get("breaks",[]),"reason":f"harness/comparators/fighter-subclasses.json control.{build_id}; {metadata}"+(f"; {effect_metadata}" if effect_metadata else "")})
+            metadata=", ".join(f"{key}={scenario[key]}" for key in ("spell_id","audit_comment_id","source_scope","disposition","spell_level","delivery","improved_war_magic_eligible") if key in scenario);effect_metadata=", ".join(f"{key}={effect[key]}" for key in ("id","gate","requires_condition_effective","active_pattern","transition_checkpoint","disjoint_stage_group","suppressed_recovery_options","area_trigger","context_predicates","secondary_save","branch_fraction","branch_ids") if key in effect)
+            status=effect.get("pricing_status") or ("context_required" if scenario["disposition"]=="diagnostic_unpriced" else None)
+            components.append({"source_effect":source_effect,"labels":labels,"duration":effect["duration"],"application_probability":application,"repeat_survival_probability":normal_fail if effect.get("repeat_save_trigger") else None,"repeat_checkpoint":effect.get("repeat_save_trigger"),"magnitude_feet":effect.get("magnitude_feet"),"magnitude":effect.get("magnitude"),"attack_scope":effect.get("attack_scope"),"pricing_status":status,"qualifiers":effect.get("qualifiers"),"active_probabilities_by_basis":active_by_basis,"disjoint_stage_group":effect.get("disjoint_stage_group",""),"breaks":scenario.get("breaks",[]),"escapes":scenario.get("escapes",[]),"reason":f"harness/comparators/fighter-subclasses.json control.{build_id}; {metadata}"+(f"; {effect_metadata}" if effect_metadata else "")})
     value=max(applications,default=0.0);after_repeats=max(terminals,default=0.0)
-    return {"build":build_id,"scenario":scenario["id"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*after_repeats,"shadow_components":components,"targeting":_resolved_targeting(row,scenario,target.level),"breaks":list(scenario.get("breaks",[])),"automatic_save_success":automatic_success,"automatic_success_rules":list(scenario.get("automatic_success_if",[]))}
+    return {"build":build_id,"scenario":scenario["id"],"spell_id":scenario["spell_id"],"audit_comment_id":scenario["audit_comment_id"],"source_scope":scenario["source_scope"],"disposition":scenario["disposition"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*after_repeats,"shadow_components":components,"targeting":_resolved_targeting(row,scenario,target.level),"breaks":list(scenario.get("breaks",[])),"escapes":list(scenario.get("escapes",[])),"context_predicates":list(scenario.get("context_predicates",[])),"area_exit_policy":scenario.get("area_exit_policy"),"turn_branches":deepcopy(scenario.get("turn_branches",[])),"automatic_save_success":automatic_success,"automatic_success_rules":list(scenario.get("automatic_success_if",[]))}
 
 
 def _best(rows:list[dict[str,Any]])->dict[str,Any]:

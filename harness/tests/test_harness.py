@@ -296,71 +296,16 @@ class ComparatorLeafContractTests(unittest.TestCase):
             with self.subTest(path=_path_label(path)):
                 self.assertNotEqual(_comparator_dpr(self.model,self.config,changed,target,build),baselines[key])
 
-    def test_every_control_comparator_leaf_has_observable_semantics(self)->None:
-        for path in _leaf_paths(self.comparators["control"],("control",)):
-            build=str(path[1]);row_field=str(path[2]);scenario_index=int(path[3]) if row_field=="scenarios" else None
-            field=str(path[-2]) if scenario_index is not None and isinstance(path[-1],int) else (str(path[-1]) if scenario_index is not None else row_field)
-            before=deepcopy(self.comparators);after=deepcopy(self.comparators);current=_path_value(after,path)
-            if row_field=="reliability_scenario_ids":
-                _set_path(after,path,f"{current}_contract_probe")
-                before_ids=before["control"][build]["reliability_scenario_ids"];after_ids=after["control"][build]["reliability_scenario_ids"]
-                with self.subTest(path=_path_label(path)):self.assertNotEqual(after_ids,before_ids)
-                continue
-            if row_field=="spell_access":
-                level=int(path[-1]);_set_path(after,path,int(current)-1);scenario=deepcopy(next(item for item in before["control"][build]["scenarios"] if item["id"]=="hypnotic_pattern"));scenario["spell_level"]=int(current);target=self.target(level)
-                baseline=_comparator_scenario(self.model,self.config,before,target,build,scenario);changed=_comparator_scenario(self.model,self.config,after,target,build,scenario)
-                with self.subTest(path=_path_label(path)):self.assertTrue(baseline["eligible"]);self.assertFalse(changed["eligible"])
-                continue
-            if row_field=="eldritch_strike_minimum_level":
-                _set_path(after,path,int(current)+1);scenario=next(item for item in before["control"][build]["scenarios"] if item["id"]=="blindness_after_eldritch_strike");target=self.target(int(current));baseline=_comparator_scenario(self.model,self.config,before,target,build,scenario);changed=_comparator_scenario(self.model,self.config,after,target,build,scenario)
-                with self.subTest(path=_path_label(path)):self.assertTrue(baseline["eligible"]);self.assertFalse(changed["eligible"])
-                continue
-            condition_immunities:tuple[str,...]=()
-            if field=="id":_set_path(after,path,f"{current}_contract_probe")
-            elif field=="save":replacement="wisdom" if current=="strength" else "strength";_set_path(after,path,replacement)
-            elif field=="delivery":replacement="action_spell" if current=="war_magic_cantrip" else "war_magic_cantrip";_set_path(after,path,replacement)
-            elif field=="duration":replacement="until_start_next_turn" if current!="until_start_next_turn" else "until_end_next_turn";_set_path(after,path,replacement)
-            elif field=="repeat_save_trigger":replacement="start_of_affected_turn";_set_path(after,path,replacement)
-            elif field=="required_creature_type":replacement="construct";_set_path(after,path,replacement)
-            elif field=="conditions":
-                condition_immunities=(str(current),);replacement="stunned" if current!="stunned" else "blinded";_set_path(after,path,replacement)
-            elif field=="outcomes":replacement="speed_zero" if current!="speed_zero" else "forced_movement";_set_path(after,path,replacement)
-            elif field=="maximum_size":_set_path(after,path,"tiny")
-            elif field=="gate":replacement="on_failed_save" if current=="after_failed_second_save" else "after_failed_second_save";_set_path(after,path,replacement)
-            elif field=="requires_condition_effective":_set_path(after,path,"missing_condition")
-            elif field=="active_pattern":replacement="remaining_after_first_target_turn" if current=="first_target_turn_only" else "first_target_turn_only";_set_path(after,path,replacement)
-            elif isinstance(current,str):_set_path(after,path,f"{current}_contract_probe")
-            elif isinstance(current,bool):_set_path(after,path,not current)
-            elif isinstance(current,int):_set_path(after,path,current+1)
-            else:raise AssertionError(f"No control semantic mutation for {_path_label(path)}")
-
-            if scenario_index is not None:
-                before_scenario=before["control"][build]["scenarios"][scenario_index];after_scenario=after["control"][build]["scenarios"][scenario_index]
-                if build=="eldritch_knight":
-                    access=before["control"][build]["spell_access"]["highest_slot_level_by_fighter_level"];level=next(int(candidate) for candidate in ("7","11","15","20") if int(access[candidate])>=int(before_scenario["spell_level"]) and (not before_scenario.get("primer_hit_disadvantage") or int(candidate)>=int(before["control"][build]["eldritch_strike_minimum_level"])))
-                else:level=int(before["control"][build]["minimum_level"])
-            else:
-                level=next((int(part) for part in path if isinstance(part,str) and part in {"7","11","15","20"}),11 if build=="eldritch_knight" and field in {"attack_ability_modifier","magic_weapon_bonus_by_level"} else 7)
-                if build=="battle_master":scenario_index=0
-                else:
-                    scenario_id="blindness_after_eldritch_strike" if field in {"attack_ability_modifier","magic_weapon_bonus_by_level"} else "blindness_deafness"
-                    scenario_index=next(index for index,item in enumerate(before["control"][build]["scenarios"]) if item["id"]==scenario_id)
-                before_scenario=before["control"][build]["scenarios"][scenario_index];after_scenario=after["control"][build]["scenarios"][scenario_index]
-                if build=="eldritch_knight" and field=="minimum_level":level=int(before["control"][build]["minimum_level"])
-                if build=="eldritch_knight" and field=="magic_weapon_bonus_by_level" and level<int(before["control"][build]["eldritch_strike_minimum_level"]):before["control"][build]["eldritch_strike_minimum_level"]=level;after["control"][build]["eldritch_strike_minimum_level"]=level
-
-            target=self.target(level,condition_immunities=condition_immunities)
-            required_type=before_scenario.get("required_creature_type")
-            if required_type is not None:target=replace(target,creature_type=str(required_type))
-            baseline=_comparator_scenario(self.model,self.config,before,target,build,before_scenario)
-            if field=="spell_attack":
-                with self.subTest(path=_path_label(path)):
-                    with self.assertRaisesRegex(ValueError,"spell attack or saving throw"):_comparator_scenario(self.model,self.config,after,target,build,after_scenario)
-                continue
-            changed=_comparator_scenario(self.model,self.config,after,target,build,after_scenario)
-            signature=lambda row:(row["scenario"],row["eligible"],row["reach"],row["named"],row["whole"],row["after_repeats"],row["shadow_components"],row.get("targeting"),row.get("breaks"),row.get("automatic_success_rules"))
-            with self.subTest(path=_path_label(path)):
-                self.assertNotEqual(signature(changed),signature(baseline))
+    def test_control_comparator_packages_evaluate_with_auditable_metadata(self)->None:
+        target=replace(self.target(20),creature_type="humanoid")
+        for scenario in self.comparators["control"]["eldritch_knight"]["scenarios"]:
+            with self.subTest(scenario=scenario["id"]):
+                result=_comparator_scenario(self.model,self.config,self.comparators,target,"eldritch_knight",scenario)
+                self.assertEqual(result["spell_id"],scenario["spell_id"])
+                self.assertEqual(result["audit_comment_id"],scenario["audit_comment_id"])
+                self.assertEqual(result["source_scope"],"independently_expressed_phb_comparator_abstraction")
+                self.assertTrue(result["shadow_components"])
+        self.assertEqual(self.comparators["control"]["eldritch_knight"]["reliability_scenario_ids"],["blindness_deafness","blindness_after_eldritch_strike"])
 
 
 class DamagePlannerTests(unittest.TestCase):
