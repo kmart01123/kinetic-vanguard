@@ -13,7 +13,6 @@
     "validate": "tsx src/cli.ts validate",
     "build": "tsx src/cli.ts build --profile prototype",
     "build:release": "tsx src/cli.ts build --profile release",
-    "promote": "tsx src/promote.ts",
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:layout": "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 tsx --test tests/layout.browser.ts",

@@ -34,15 +34,14 @@ The pre-change tree contained 74 tracked files. This table covers every maintain
 | Canonical mixed authority | `KineticVanguard.yaml` | Project-authored technical structure is BSD-3-Clause; original rules, examples, and editorial expression are CC BY-NC-SA 4.0; SRD-derived components remain CC BY 4.0. No single SPDX identifier is accurate. |
 | Original documentation | root Markdown, `.github/pull_request_template.md`, `docs/*`, `policy/*`, `harness/*.md` | Original expression is CC BY-NC-SA 4.0. Embedded SRD and third-party components retain their source boundary. |
 | Application and harness source | `src/*.ts`, Python under `harness/`, Python/TypeScript tests | Project-authored software is BSD-3-Clause. Embedded fixtures retain the license or third-party status of their source expression/data. |
-| Schemas, technical policy, UI/build/review configuration | `schema/*`, `release/*`, `review/*`, `ui/*`, `build/*`, `.devcontainer/*`, `.github/workflows/*`, `tsconfig.json`, `.gitignore` | Project-authored technical structures are BSD-3-Clause. Original approved UI prose is CC BY-NC-SA; embedded source facts retain their source boundary. |
+| Schemas, technical policy, UI/build configuration | `schema/*`, `ui/*`, `.devcontainer/*`, `.github/workflows/*`, `tsconfig.json`, `.gitignore` | Project-authored technical structures are BSD-3-Clause. Original approved UI prose is CC BY-NC-SA; embedded source facts retain their source boundary. |
 | Benchmark methodology configuration | `harness/config/benchmark.json` | Project-authored benchmark structure, selection, aggregation, and methodology are BSD-3-Clause. SRD-derived Fighter progression/mechanics remain CC BY 4.0. |
 | Comparator configuration | `harness/comparators/fighter-subclasses.json` | Project-authored structure, benchmark selection, and independently authored analytical/policy expression are BSD-3-Clause. Individual parameters retain SRD or third-party status as applicable; Battle Master/Eldritch Knight identifiers and underlying non-SRD material are not licensed by the project. |
 | SRD catalog, profiles, and provenance | `harness/data/srd_creatures.json`, `harness/data/srd_creature_rosters.json`, SRD components in `harness/provenance/*` | SRD-derived data remain CC BY 4.0 with exact attribution and modification marking. Project-authored selection/technical structure is BSD-3-Clause where copyright applies. |
-| Generated publications | `KineticVanguard.html` / prototype output | Mixed: BSD presentation/runtime, CC BY-NC-SA original expression, and CC BY SRD components. The HTML embeds scoped notices; current release/deployable paths retain all four legal files. |
+| Generated publications | `KineticVanguard.html` / prototype output | Mixed: BSD presentation/runtime, CC BY-NC-SA original expression, and CC BY SRD components. The HTML embeds scoped notices; the release candidate includes all four legal files. |
 | Generated benchmark reports | damage/control CSV, Markdown, and HTML | Mixed technical/report structure, original explanation, SRD target data, and third-party comparator identifiers. Every format now carries structured legal notices. |
-| Manifests and ledgers | build manifest, integrity/coverage ledgers, harness provenance | Project-authored technical structure is BSD-3-Clause; embedded source data and text retain their component boundary. Legal assets are declared and hashed build inputs. |
+| Harness provenance | harness provenance and analytical reports | Project-authored technical structure is BSD-3-Clause; embedded source data and text retain their component boundary. |
 | Package/tool metadata | `package.json`, `package-lock.json` | The private root package points to `LICENSE.md`. All 85 locked packages retain their own metadata: 73 MIT, 4 Apache-2.0, 2 BSD-2-Clause, 2 BSD-3-Clause, 3 ISC, and 1 MIT-0. No dependency source is vendored or bundled into the browser runtime. |
-| Historical release workflows | `.github/workflows/publish-v13.*.yml`, `publish-v14.0.0.yml` | Frozen snapshots remain historical records. v13.2.0 and later bundles carry the four legal assets; earlier frozen releases are documented but not silently rewritten. |
 
 ## Copyright and attribution review
 
@@ -94,9 +93,8 @@ The official SRD contains some shared base elements used by the models but does 
 Confirmed corrections:
 
 - canonical footer metadata now includes scoped project copyright, exact SRD attribution, the supplied disclaimer reference, a modification notice, canonical license URLs, and repository notice URLs;
-- the current release build manifest hashes all four legal assets;
-- current promotion verifies those hashes and produces a five-file deployable bundle instead of silently dropping the legal files;
-- CI/GitHub release bundles continue to ship the same legal assets;
+- the current GitHub release-verification workflow assembles the publication and all four legal assets into one checksummed candidate;
+- GitHub release bundles continue to ship the same legal assets;
 - every harness detail, audit, and matrix CSV embeds structured notice columns; and
 - matrix Markdown and HTML include a visible licensing-and-notices section.
 
@@ -109,7 +107,7 @@ A blanket SPDX identifier would be false for the mixed repository, canonical YAM
 The audit prefers:
 
 - repository-level component mapping;
-- declared legal-asset hashes in the build manifest;
+- standard SHA-256 checksums for the exact release assets;
 - embedded notices for copied artifacts; and
 - targeted semantic tests for required boundaries and prohibited stale wording.
 

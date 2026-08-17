@@ -44,10 +44,7 @@ test("harness semantic mutations fail with focused diagnostics",async()=>{
   expectCode("harness.control_attack_scope",candidate=>{delete candidate.calculator.harness_mechanics.feature_rules.find((item:any)=>item.entity_id==="electron_burst").control_tiers[0].effects[0].attack_scope;});
 });
 
-test("official harness source is positive input while imports and generated outputs remain excluded",async()=>{
-  const inputs=JSON.parse(await readFile("build/inputs.json","utf8")).inputs as Array<{path:string;role:string}>;const paths=inputs.map(input=>input.path);
-  for(const required of ["src/harness-authority.ts","harness/authority.py","harness/damage_harness.py","harness/control_harness.py","harness/readme_matrices.py","harness/comparison_report.py","harness/config/benchmark.json","harness/comparators/fighter-subclasses.json","harness/data/srd_creatures.json","harness/data/srd_creature_rosters.json","harness/provenance/legacy-import.json","harness/tests/test_creature_catalog.py","harness/tests/test_harness.py","harness/tests/test_readme_matrices.py"])assert.ok(paths.includes(required),required);
-  assert.ok(paths.every(path=>!path.startsWith(".codex-import/")&&!path.endsWith(".zip")&&!path.includes("harness/results")));
+test("official harness validation remains in CI while local imports and outputs stay ignored",async()=>{
   const [ignore,workflow,packageJson]=await Promise.all([readFile(".gitignore","utf8"),readFile(".github/workflows/ci.yml","utf8"),readFile("package.json","utf8")]);
   assert.match(ignore,/^\.codex-import\/$/m);assert.match(ignore,/^harness\/results\/$/m);assert.match(workflow,/npm run test:harness/);assert.match(workflow,/npm run harness:validate/);assert.match(packageJson,/"test:harness"/);
 });

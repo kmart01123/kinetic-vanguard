@@ -26,7 +26,7 @@
 - Added pinned SRD 5.2.1 target data, separately declared frozen Battle Master and Eldritch Knight comparator assumptions, verified legacy provenance, and a legacy-to-current migration map.
 - Added versioned CSV, Markdown, and self-contained HTML damage/control matrices with a dynamic Battle Master/Eldritch Knight min/max envelope, COLD/IDEAL/HOT/N/A handling, explicit lower/upper boundary values and identities, signed `Boundary Delta %`, aggregate-derived ratios, and a per-target control selection-audit CSV.
 - Added fast authority, mutation, completeness, aggregation, classification, output-consistency, and fixed-input smoke tests to ordinary CI.
-- Added a repository-wide licensing audit, build-manifest legal-asset hashes, complete deployable legal bundles, and embedded licensing/attribution notices for standalone publications and benchmark reports.
+- Added a repository-wide licensing audit, complete release legal bundles, and embedded licensing/attribution notices for standalone publications and benchmark reports.
 - Added synchronized near-top level × discipline README heat matrices with result-only COLD/IDEAL/HOT/N/A cells for single-target damage and Control Reliability; full cluster and aggregate evidence remains in generated release reports, with canonical release-state labeling and deterministic full analytical regeneration and CI checking.
 
 ### Changed
@@ -46,7 +46,7 @@
 ### Changed
 
 - Made Barrier require Concentration for up to 1 minute at T0 and T1. T2 continues to increase the duration to 10 minutes. Added structured concentration metadata, aligned the feature reference, and separated the five Barrier modes into a bulleted list for readability.
-- Made the canonical rules version the publication's sole product version, removing the separate application-version label and identity from the interface, provenance, derived-output registry, and build manifest.
+- Made the canonical rules version the publication's sole product version, removing the separate application-version label and identity from the interface, provenance, and derived-output registry.
 - Broke six dense rules passages—Mass Levitation, Explosion/Implosion, Forked Lightning, Gravitic Press, and Manifested Strike’s Somatic Requirement and Holdout Option—into semantic ordered or bulleted lists while preserving their mechanics and tier scope.
 - Completed the readability pass by converting the remaining dense mechanical sequences, alternatives, and conditional outcomes—and every authored example—into semantic ordered or bulleted lists without changing their rules outcomes.
 - Migrated each Example Play phase from an inline-node array to an array of paragraph or list blocks so examples can express their steps semantically. This incompatible authority-shape change advances the schema version from 1.0.0 to 2.0.0 while leaving the rules version at 14.0.0.

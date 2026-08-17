@@ -850,12 +850,9 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             self.assertEqual(row["Lower Comparator"],"Eldritch Knight")
             self.assertEqual(row["Upper Comparator"],"Battle Master")
 
-    def test_imports_outputs_and_archive_are_not_positive_inputs_or_tracked(self)->None:
-        inputs=json.loads((PROJECT_ROOT/"build"/"inputs.json").read_text(encoding="utf-8"))["inputs"]
-        paths=[item["path"] for item in inputs]
-        self.assertTrue(all(not path.startswith(".codex-import/") and "results" not in path and not path.endswith(".zip") for path in paths))
+    def test_imports_outputs_and_archive_are_not_tracked(self)->None:
         tracked=subprocess.run(["git","ls-files"],cwd=PROJECT_ROOT,text=True,capture_output=True,check=True).stdout.splitlines()
-        self.assertTrue(all(not path.startswith(".codex-import/") and not path.endswith("harness-import.zip") for path in tracked))
+        self.assertTrue(all(not path.startswith(".codex-import/") and "harness/results" not in path and not path.endswith("harness-import.zip") for path in tracked))
 
 
 if __name__=="__main__":unittest.main()

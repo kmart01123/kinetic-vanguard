@@ -26,9 +26,9 @@ Battle Master and Eldritch Knight are referenced solely as unofficial third-part
 
 Project-authored comparator code, configuration structure, benchmark selection, and analytical implementation are covered by the project license map. Third-party names and underlying non-SRD game material are not.
 
-## Generated and deployable artifacts
+## Generated artifacts
 
-Generated Kinetic Vanguard HTML carries scoped project copyright, license boundaries, the exact SRD attribution, the SRD disclaimer reference, and a modification notice in its footer. Current release automation and deployment promotion also include `LICENSE.md`, `LICENSE-CODE`, `LICENSE-CONTENT`, and this notice beside the HTML.
+Generated Kinetic Vanguard HTML carries scoped project copyright, license boundaries, the exact SRD attribution, the SRD disclaimer reference, and a modification notice in its footer. The checksummed release candidate also includes `LICENSE.md`, `LICENSE-CODE`, `LICENSE-CONTENT`, and this notice beside the HTML.
 
 Generated harness CSV, Markdown, and HTML reports embed structured license, SRD, modification/disclaimer, and third-party comparator notices so that an individual report retains its boundary when copied.
 

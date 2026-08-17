@@ -1,23 +1,16 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import test from "node:test";
-import { access, mkdir, mkdtemp, readFile, readdir, rm, writeFile } from "node:fs/promises";
+import { access, mkdtemp, readFile, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { join } from "node:path";
 import { executeBuild } from "../src/build.js";
-import { sha256 } from "../src/canonical.js";
 import { loadAuthority } from "../src/load.js";
 
 const srdAttribution = "This work includes material from the System Reference Document 5.2.1 (“SRD 5.2.1”) by Wizards of the Coast LLC, available at https://www.dndbeyond.com/srd. The SRD 5.2.1 is licensed under the Creative Commons Attribution 4.0 International License, available at https://creativecommons.org/licenses/by/4.0/legalcode.";
 const srdDisclaimer = "Section 5 of CC-BY-4.0 includes a Disclaimer of Warranties and Limitation of Liability that limits our liability to you.";
 const srdModification = "Changes have been made to the SRD 5.2.1 material";
 const requiredLicenseFiles = ["LICENSE.md", "LICENSE-CODE", "LICENSE-CONTENT", "NOTICE.md"] as const;
-const requiredInputRoles = new Map([
-  ["LICENSE.md", "component_license_index"],
-  ["LICENSE-CODE", "software_license"],
-  ["LICENSE-CONTENT", "original_content_license_notice"],
-  ["NOTICE.md", "attribution_notice"]
-]);
 
 const escaped = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 const staleCustomGrant = "Commercial use requires " + "prior written permission";
@@ -26,21 +19,17 @@ const bsdReservation = "All rights " + "reserved.";
 
 test("repository and generated publication expose the approved component license boundaries", async () => {
   await Promise.all([...requiredLicenseFiles, "docs/licensing-audit.md"].map(path => access(path)));
-  const [{ authority }, licenseIndex, codeLicense, contentLicense, notice, yaml, promote, inputsText, audit, packageJsonText, packageLockText] = await Promise.all([
+  const [{ authority }, licenseIndex, codeLicense, contentLicense, notice, yaml, audit, packageJsonText, packageLockText] = await Promise.all([
     loadAuthority(),
     readFile("LICENSE.md", "utf8"),
     readFile("LICENSE-CODE", "utf8"),
     readFile("LICENSE-CONTENT", "utf8"),
     readFile("NOTICE.md", "utf8"),
     readFile("KineticVanguard.yaml", "utf8"),
-    readFile("src/promote.ts", "utf8"),
-    readFile("build/inputs.json", "utf8"),
     readFile("docs/licensing-audit.md", "utf8"),
     readFile("package.json", "utf8"),
     readFile("package-lock.json", "utf8")
   ]);
-  const inputs = JSON.parse(inputsText).inputs as Array<{path:string;role:string}>;
-  const inputRoles = new Map(inputs.map(input => [input.path, input.role]));
   const packageJson = JSON.parse(packageJsonText), packageLock = JSON.parse(packageLockText);
 
   assert.match(licenseIndex, /component-based licensing/i);
@@ -88,11 +77,6 @@ test("repository and generated publication expose the approved component license
   assert.match(authority.metadata.license, /github\.com\/kmart01123\/kinetic-vanguard\/blob\/main\/LICENSE\.md/);
   assert.doesNotMatch(yaml, staleCustomGrantPattern);
 
-  for (const [path, role] of requiredInputRoles) {
-    assert.equal(inputRoles.get(path), role);
-    assert.match(promote, new RegExp(escaped(path)));
-  }
-  assert.equal(inputRoles.get("tests/license-contract.test.ts"), "test_source");
   assert.equal(packageJson.license, "SEE LICENSE IN LICENSE.md");
   assert.equal(packageLock.packages[""].license, packageJson.license);
 
@@ -116,58 +100,7 @@ test("repository and generated publication expose the approved component license
       assert.match(html, /SRD 5\.2\.1-derived material remains licensed under CC BY 4\.0/);
       assert.match(html, /github\.com\/kmart01123\/kinetic-vanguard\/blob\/main\/NOTICE\.md/);
       assert.doesNotMatch(html, staleCustomGrantPattern);
-      const declared = new Map((result.manifest.declared_inputs as Array<{path:string;sha256:string}>).map(input => [input.path, input.sha256]));
-      for (const path of requiredLicenseFiles) assert.match(declared.get(path) ?? "", /^[0-9a-f]{64}$/);
     }
-  } finally {
-    if (previousApproval === undefined) delete process.env.KV_RELEASE_APPROVED;
-    else process.env.KV_RELEASE_APPROVED = previousApproval;
-    await rm(temporary, { recursive: true, force: true });
-  }
-});
-
-test("promotion emits the complete legal bundle and rejects a changed legal asset", async () => {
-  const temporary = await mkdtemp(join(tmpdir(), "kv-promote-contract-"));
-  const previousApproval = process.env.KV_RELEASE_APPROVED;
-  const promoteScript = resolve("src/promote.ts");
-  const tsxExecutable = resolve("node_modules/.bin/tsx");
-  try {
-    process.env.KV_RELEASE_APPROVED = "1";
-    const release = await executeBuild("release", join(temporary, "artifacts"));
-    const [manifestBytes, schemaBytes, ...legalBytes] = await Promise.all([
-      readFile(release.manifestPath),
-      readFile("release/release-evidence-schema.json"),
-      ...requiredLicenseFiles.map(path => readFile(path))
-    ]);
-    await mkdir(join(temporary, "release"), { recursive: true });
-    await Promise.all([
-      writeFile(join(temporary, "release", "release-evidence-schema.json"), schemaBytes),
-      ...requiredLicenseFiles.map((path, index) => writeFile(join(temporary, path), legalBytes[index]!))
-    ]);
-    const evidence = {
-      build_manifest_sha256: sha256(manifestBytes), evidence: [], approver: "license contract test",
-      decision: "approved", date: "2026-08-07"
-    };
-    await writeFile(join(temporary, "artifacts", "release-evidence.json"), `${JSON.stringify(evidence, null, 2)}\n`);
-
-    const runPromote = () => execFileSync(tsxExecutable, [promoteScript], { cwd: temporary, encoding: "utf8", stdio: ["ignore", "pipe", "pipe"] });
-    assert.match(runPromote(), /Promoted [0-9a-f]{64} with 4 legal assets/);
-    const expectedInventory = ["KineticVanguard.html", ...requiredLicenseFiles].sort();
-    assert.deepEqual((await readdir(join(temporary, "deployable"))).sort(), expectedInventory);
-    for (const [index, path] of requiredLicenseFiles.entries()) {
-      assert.deepEqual(await readFile(join(temporary, "deployable", path)), legalBytes[index]);
-    }
-
-    await writeFile(join(temporary, "deployable", "stale.txt"), "stale\n");
-    runPromote();
-    assert.deepEqual((await readdir(join(temporary, "deployable"))).sort(), expectedInventory);
-
-    await writeFile(join(temporary, "NOTICE.md"), "tampered\n");
-    let failure: (Error & { stderr?: Buffer }) | undefined;
-    try { runPromote(); } catch (error) { failure = error as Error & { stderr?: Buffer }; }
-    assert.ok(failure);
-    assert.match(failure.stderr?.toString("utf8") ?? failure.message, /Legal asset differs from the verified manifest: NOTICE\.md/);
-    assert.deepEqual(await readFile(join(temporary, "deployable", "NOTICE.md")), legalBytes[requiredLicenseFiles.indexOf("NOTICE.md")]);
   } finally {
     if (previousApproval === undefined) delete process.env.KV_RELEASE_APPROVED;
     else process.env.KV_RELEASE_APPROVED = previousApproval;

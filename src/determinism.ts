@@ -7,7 +7,7 @@ import { sha256 } from "./canonical.js";
 const first=await mkdtemp(join(tmpdir(),"kv-build-a-"));const second=await mkdtemp(join(tmpdir(),"kv-build-b-"));
 try{
   const a=await executeBuild("prototype",first);const b=await executeBuild("prototype",second);
-  const files=["filtered-search-integrity.json","coverage-ledger.json","KineticVanguard.prototype.html","build-manifest.json"];
+  const files=["KineticVanguard.prototype.html"];
   for(const file of files){const [left,right]=await Promise.all([readFile(join(first,file)),readFile(join(second,file))]);if(!left.equals(right))throw new Error(`Determinism failure: ${file} differs (${sha256(left)} != ${sha256(right)})`);}
-  process.stdout.write(`Determinism verified for ${files.length} staged prototype artifacts.\n`);
+  process.stdout.write("Determinism verified for the prototype publication.\n");
 }finally{await rm(first,{recursive:true,force:true});await rm(second,{recursive:true,force:true});}

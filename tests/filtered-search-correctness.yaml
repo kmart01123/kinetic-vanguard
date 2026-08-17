@@ -1,6 +1,4 @@
 version: 1
-review_status: accepted
-review_basis: "Accepted maintainer review recorded in Git history and the tagged v13 release."
 cases:
   - id: electrokinesis_rider
     selections:
