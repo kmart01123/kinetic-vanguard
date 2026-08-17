@@ -771,11 +771,20 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             with damage["paths"]["csv"].open(encoding="utf-8") as stream:
                 matrix_rows=list(csv.DictReader(stream))
             self.assertTrue(matrix_rows);self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
+            workers_root=root/"workers-2"
+            workers_damage=run_damage(DEFAULT_AUTHORITY,workers_root,{7},1,write_headline=False,workers=2,profile="headline")
+            self.assertEqual(workers_damage["paths"],{})
+            self.assertEqual(
+                (root/"kv-14-3-0-damage-detail.csv").read_bytes(),
+                (workers_root/"kv-14-3-0-damage-detail.csv").read_bytes(),
+            )
 
     def test_control_smoke_writes_current_detail_selection_and_matrix_outputs(self)->None:
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);control=run_control(DEFAULT_AUTHORITY,root,{7},1,profile="headline")
             self.assertEqual(control["matrix_rows"],4);self.assertEqual(set(control["paths"]),{"csv","markdown","html"})
+            self.assertEqual(control["shadow_rows"],0);self.assertIsNone(control["shadow_path"])
+            self.assertEqual(list(root.glob("*shadow*")),[])
             with (root/"kv-14-3-0-control-selection-audit.csv").open(encoding="utf-8") as stream:
                 audit_rows=list(csv.DictReader(stream))
             self.assertTrue(audit_rows);self.assertTrue(all(row["Selected Scenario"] for row in audit_rows))

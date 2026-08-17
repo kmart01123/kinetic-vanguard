@@ -6,6 +6,12 @@
 
 - Made Glacial Spike replace Slow mastery for its triggering Manifested Strike instead of stacking both 10-foot Speed reductions on the same hit.
 
+### Removed
+
+- Retired the superseded `legacy_v14_1` benchmark profile; maintained profiles are now `headline` and `eligible_census`.
+- Removed the obsolete `--trials` and `--seed` damage and control CLI options now that maintained evaluation uses exact analytical enumeration.
+- Removed sampling and historical-review provenance columns and state from maintained benchmark matrices.
+
 ## 14.2.0 — 2026-08-16
 
 ### Changed
