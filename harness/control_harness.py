@@ -278,7 +278,9 @@ def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:d
             elif effect.get("repeat_save_trigger") and normal_fail is not None:terminal=application*normal_fail**(horizon-1)
             else:terminal=application
             if scenario["disposition"]=="diagnostic_unpriced" or effect.get("unpriced"):active_by_basis={}
-            applications.append(application);terminals.append(terminal);source_effect=f"{scenario['id']}:{effect['id']}" if multi_effect else scenario["id"]
+            if active_by_basis!={}:
+                applications.append(application);terminals.append(terminal)
+            source_effect=f"{scenario['id']}:{effect['id']}" if multi_effect else scenario["id"]
             metadata=", ".join(f"{key}={scenario[key]}" for key in ("spell_id","audit_comment_id","source_scope","disposition","spell_level","delivery","improved_war_magic_eligible") if key in scenario);effect_metadata=", ".join(f"{key}={effect[key]}" for key in ("id","gate","requires_condition_effective","active_pattern","transition_checkpoint","disjoint_stage_group","suppressed_recovery_options","area_trigger","context_predicates","secondary_save","branch_fraction","branch_ids") if key in effect)
             status=effect.get("pricing_status") or ("context_required" if scenario["disposition"]=="diagnostic_unpriced" else None)
             components.append({"source_effect":source_effect,"labels":labels,"duration":effect["duration"],"application_probability":application,"repeat_survival_probability":normal_fail if effect.get("repeat_save_trigger") else None,"repeat_checkpoint":effect.get("repeat_save_trigger"),"magnitude_feet":effect.get("magnitude_feet"),"magnitude":effect.get("magnitude"),"attack_scope":effect.get("attack_scope"),"pricing_status":status,"qualifiers":effect.get("qualifiers"),"active_probabilities_by_basis":active_by_basis,"disjoint_stage_group":effect.get("disjoint_stage_group",""),"breaks":scenario.get("breaks",[]),"escapes":scenario.get("escapes",[]),"reason":f"harness/comparators/fighter-subclasses.json control.{build_id}; {metadata}"+(f"; {effect_metadata}" if effect_metadata else "")})

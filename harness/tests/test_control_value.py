@@ -104,6 +104,16 @@ class NormalizationTests(unittest.TestCase):
         rows=self.normalized(expose_label("stun","stunned",0.5,"until_end_next_turn"),expose_label("sap","attack_disadvantage",0.5,"until_end_next_turn",attack_scope="all_attacks"))
         offense=next(item for item in rows if item.source_effect=="sap");self.assertEqual(offense.normalization_disposition,"suppressed");self.assertEqual(offense.expected_exposure,0)
 
+    def test_turn_denial_suppresses_overlapping_specified_action_windows(self)->None:
+        for denial_active,action_active,expected,disposition in (((0.5,0.25,0.125),(0.5,0.25,0.125),(0.0,0.0,0.0),"suppressed"),((0.25,0.1,0.0),(0.5,0.25,0.125),(0.25,0.15,0.125),"partially_suppressed")):
+            with self.subTest(disposition=disposition):
+                denial=expose_label("denial","active_turn_denial",denial_active[0],"one_minute_concentration",active_probabilities_by_basis={"target_turn_window":denial_active})
+                action=expose_label("action","escape_action",action_active[0],"one_minute_concentration",active_probabilities_by_basis={"target_turn_window":action_active})
+                movement=expose_label("movement","speed_reduction",0.4,"one_minute_concentration",magnitude_feet=10,active_probabilities_by_basis={"target_turn_window":(0.4,0.2,0.1)})
+                rows=self.normalized(denial,action,movement);requirement=next(item for item in rows if item.source_effect=="action");unrelated=next(item for item in rows if item.source_effect=="movement")
+                self.assertEqual(requirement.active_probabilities,expected);self.assertEqual(requirement.normalization_disposition,disposition);self.assertIn("denial:active_turn_denial",requirement.suppressed_by)
+                self.assertEqual(unrelated.active_probabilities,(0.4,0.2,0.1));self.assertEqual(unrelated.normalization_disposition,"retained")
+
     def test_specified_action_suppresses_only_overlapping_all_attacks_impairment(self)->None:
         action=expose_label("escape","escape_action",0.5,"one_minute_concentration",active_probabilities_by_basis={"target_turn_window":(0.5,0.25,0.125)})
         restrained=expose_label("restrained","restrained",0.7,"one_minute_concentration",active_probabilities_by_basis={"target_turn_window":(0.7,0.4,0.2),"attack_opportunity":(0.7,0.4,0.2),"incoming_attack_opportunity":(0.7,0.4,0.2),"save_opportunity":(0.7,0.4,0.2)})
@@ -381,6 +391,18 @@ class CurrentScenarioShadowTests(unittest.TestCase):
             if scenario["disposition"]!="diagnostic_unpriced":continue
             result=_comparator_scenario(self.model,self.config,self.comparators,replace(self.target,creature_type="humanoid",size="medium"),"eldritch_knight",scenario);rows=self.rows(result,"all")
             self.assertTrue(rows);self.assertTrue(all(row["Pricing Status"]=="context_required" and row["Expected Exposure"]=="" for row in rows))
+
+    def test_unpriced_effects_do_not_create_scenario_reliability(self)->None:
+        probe=replace(self.target,creature_type="humanoid",size="medium");row=self.comparators["control"]["eldritch_knight"];pb=self.model.progression("proficiency_bonus",20);dc=int(row["save_dc_base"])+pb+int(row["spellcasting_ability_modifier_by_level"]["20"])
+        for scenario_id in ("fog_cloud","darkness"):
+            value=_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",self.scenario(scenario_id))
+            self.assertEqual((value["named"],value["whole"],value["after_repeats"]),(0.0,0.0,0.0));self.assertTrue(value["shadow_components"]);self.assertTrue(all(component["active_probabilities_by_basis"]=={} for component in value["shadow_components"]))
+        grease=_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",self.scenario("grease"));priced=[component for component in grease["shadow_components"] if component["active_probabilities_by_basis"]!={}]
+        self.assertTrue(priced);self.assertTrue(any(component["active_probabilities_by_basis"]=={} and component["application_probability"]==1.0 for component in grease["shadow_components"]));self.assertAlmostEqual(grease["whole"],100*max(float(component["application_probability"]) for component in priced));self.assertLess(grease["whole"],100)
+        normal_failure=1-save_success_probability(probe,"constitution",dc,False,True)
+        blindness=_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",self.scenario("blindness_deafness"));self.assertAlmostEqual(blindness["whole"],100*normal_failure);self.assertAlmostEqual(blindness["after_repeats"],100*normal_failure**3)
+        published={scenario_id:_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",self.scenario(scenario_id)) for scenario_id in row["reliability_scenario_ids"]}
+        self.assertEqual(set(published),{"blindness_deafness","blindness_after_eldritch_strike"});self.assertAlmostEqual(published["blindness_deafness"]["whole"],blindness["whole"]);self.assertGreater(published["blindness_after_eldritch_strike"]["whole"],blindness["whole"])
 
     def test_configured_inventory_maps_or_fails_closed_explicitly(self)->None:
         catalog=load_primitive_catalog();known=set(catalog["conditions"])|set(catalog["outcomes"])

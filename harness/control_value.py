@@ -439,6 +439,13 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
 
     denials = retained(lambda item: item.primitive_id == "active_turn_denial")
     specified_actions = retained(lambda item: item.primitive_id == "specified_action_requirement")
+    effective_specified_actions: list[PrimitiveExposure] = []
+    for action in specified_actions:
+        effective = action
+        for denial in denials:
+            if effective.exposure_basis == denial.exposure_basis == "target_turn_window":
+                effective = _subtract(effective, denial, "turn denial dominates a specified Action requirement")
+        effective_specified_actions.append(effective)
     all_attack_impairments = retained(lambda item: item.primitive_id == "offensive_impairment_all_attacks")
     auto_failures = retained(lambda item: item.primitive_id == "save_auto_failure")
     speed_zeroes = retained(lambda item: item.primitive_id == "mobility_loss_feet" and _qualifier(item, "mobility_effect") == "speed_zero")
@@ -448,11 +455,15 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
         if current.normalization_disposition != "suppressed" and current.primitive_id == "bonus_action_denial":
             for stronger in denials:
                 current = _subtract(current, stronger, "turn denial includes and dominates Bonus Action denial")
+        if current.normalization_disposition != "suppressed" and current.primitive_id == "specified_action_requirement":
+            for stronger in denials:
+                if current.exposure_basis == stronger.exposure_basis == "target_turn_window":
+                    current = _subtract(current, stronger, "turn denial dominates a specified Action requirement")
         if current.normalization_disposition != "suppressed" and current.primitive_id in {"offensive_impairment_next_attack", "offensive_impairment_all_attacks"}:
             for stronger in denials:
                 current = _subtract(current, stronger, "turn denial dominates offensive impairment")
         if current.normalization_disposition != "suppressed" and current.primitive_id == "offensive_impairment_all_attacks":
-            for stronger in specified_actions:
+            for stronger in effective_specified_actions:
                 if current.exposure_basis == stronger.exposure_basis == "target_turn_window":
                     current = _subtract(current, stronger, "specified Action requirement consumes the overlapping attack opportunity")
         if current.normalization_disposition != "suppressed" and current.primitive_id == "offensive_impairment_next_attack":

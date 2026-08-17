@@ -296,16 +296,81 @@ class ComparatorLeafContractTests(unittest.TestCase):
             with self.subTest(path=_path_label(path)):
                 self.assertNotEqual(_comparator_dpr(self.model,self.config,changed,target,build),baselines[key])
 
-    def test_control_comparator_packages_evaluate_with_auditable_metadata(self)->None:
-        target=replace(self.target(20),creature_type="humanoid")
-        for scenario in self.comparators["control"]["eldritch_knight"]["scenarios"]:
-            with self.subTest(scenario=scenario["id"]):
-                result=_comparator_scenario(self.model,self.config,self.comparators,target,"eldritch_knight",scenario)
-                self.assertEqual(result["spell_id"],scenario["spell_id"])
-                self.assertEqual(result["audit_comment_id"],scenario["audit_comment_id"])
-                self.assertEqual(result["source_scope"],"independently_expressed_phb_comparator_abstraction")
-                self.assertTrue(result["shadow_components"])
-        self.assertEqual(self.comparators["control"]["eldritch_knight"]["reliability_scenario_ids"],["blindness_deafness","blindness_after_eldritch_strike"])
+    def control_mutation(self,path:tuple[object,...],current:object)->object:
+        build=str(path[1]);row_field=str(path[2]);field=str(path[-2]) if isinstance(path[-1],int) else str(path[-1])
+        if row_field=="reliability_scenario_ids":
+            selected=set(self.comparators["control"][build]["reliability_scenario_ids"])
+            return next(scenario["id"] for scenario in self.comparators["control"][build]["scenarios"] if scenario["id"] not in selected)
+        if row_field=="spell_access":return int(current)-1
+        if field=="save" or field=="ability" or field=="save_ability":return "wisdom" if current=="strength" else "strength"
+        if field=="delivery":return "action_spell" if current=="war_magic_cantrip" else "war_magic_cantrip"
+        if field=="duration":return "until_start_next_turn" if current!="until_start_next_turn" else "until_end_next_turn"
+        if field=="repeat_save_trigger":return "start_of_affected_turn"
+        if field=="required_creature_type":return "construct"
+        if field=="conditions":return "stunned" if current!="stunned" else "blinded"
+        if field=="outcomes":return "speed_zero" if current!="speed_zero" else "forced_movement"
+        if field=="maximum_size":return "tiny"
+        if field=="gate":return "on_failed_save" if current=="after_failed_second_save" else "after_failed_second_save"
+        if field=="requires_condition_effective":return "missing_condition"
+        if field=="active_pattern":return "remaining_after_first_target_turn" if current=="first_target_turn_only" else "first_target_turn_only"
+        if isinstance(current,str):return f"{current}_contract_probe"
+        if isinstance(current,bool):return not current
+        if isinstance(current,int):return current+1
+        if isinstance(current,float):return current+0.25
+        raise AssertionError(f"No control semantic mutation for {_path_label(path)}")
+
+    def control_result_signature(self,result:dict[str,object])->str:
+        keys=("scenario","spell_id","audit_comment_id","source_scope","disposition","eligible","reach","named","whole","after_repeats","shadow_components","targeting","breaks","escapes","escape_resolution","context_predicates","area_exit_policy","turn_branches","save_composition","automatic_save_success","automatic_success_rules")
+        return json.dumps({key:result.get(key) for key in keys},sort_keys=True)
+
+    def scenario_level(self,row:dict[str,object],scenario:dict[str,object])->int:
+        levels=sorted(int(level) for level in row["magic_weapon_bonus_by_level"])  # type: ignore[union-attr]
+        if "spell_level" not in scenario:return next(level for level in levels if level>=int(row["minimum_level"]))
+        access=row["spell_access"]["highest_slot_level_by_fighter_level"]  # type: ignore[index]
+        return next(level for level in levels if level>=int(row["minimum_level"]) and int(access[str(level)])>=int(scenario["spell_level"]) and (not scenario.get("primer_hit_disadvantage") or level>=int(row["eldritch_strike_minimum_level"])))
+
+    def scenario_signature(self,comparators:dict[str,object],build:str,scenario:dict[str,object],level:int,field:str,current:object)->str:
+        target=replace(self.target(level),magic_resistance=False)
+        if field=="required_creature_type":target=replace(target,creature_type=str(current))
+        elif scenario.get("required_creature_type"):target=replace(target,creature_type=str(scenario["required_creature_type"]))
+        if field=="maximum_size":target=replace(target,size=str(current))
+        elif scenario.get("maximum_size"):target=replace(target,size=str(scenario["maximum_size"]))
+        if field=="conditions":target=replace(target,condition_immunities=frozenset({str(current).lower()}))
+        return self.control_result_signature(_comparator_scenario(self.model,self.config,comparators,target,build,scenario))
+
+    def row_signature(self,comparators:dict[str,object],build:str)->str:
+        row=comparators["control"][build]  # type: ignore[index]
+        levels=sorted(int(level) for level in row["magic_weapon_bonus_by_level"])
+        results=[]
+        for level in levels:
+            for scenario in row["scenarios"]:
+                target=self.target(level)
+                if scenario.get("required_creature_type"):target=replace(target,creature_type=str(scenario["required_creature_type"]))
+                if scenario.get("maximum_size"):target=replace(target,size=str(scenario["maximum_size"]))
+                results.append(self.control_result_signature(_comparator_scenario(self.model,self.config,comparators,target,build,scenario)))
+        reliability=[]
+        for scenario_id in row.get("reliability_scenario_ids",[]):
+            scenario=next(item for item in row["scenarios"] if item["id"]==scenario_id);level=self.scenario_level(row,scenario);reliability.append((scenario_id,self.scenario_signature(comparators,build,scenario,level,"",None)))
+        return json.dumps({"evaluations":results,"reliability":reliability},sort_keys=True)
+
+    def test_every_control_comparator_leaf_has_observable_semantics(self)->None:
+        with tempfile.TemporaryDirectory() as directory:
+            comparator_path=Path(directory)/"comparators.json"
+            for path in _leaf_paths(self.comparators["control"],("control",)):
+                build=str(path[1]);row_field=str(path[2]);scenario_index=int(path[3]) if row_field=="scenarios" else None;field=str(path[-2]) if isinstance(path[-1],int) else str(path[-1]);current=_path_value(self.comparators,path)
+                before=deepcopy(self.comparators);after=deepcopy(self.comparators);_set_path(after,path,self.control_mutation(path,current));comparator_path.write_text(json.dumps(after),encoding="utf-8")
+                try:validated=load_comparators(comparator_path)
+                except ValueError:continue
+                try:
+                    if scenario_index is not None:
+                        before_scenario=before["control"][build]["scenarios"][scenario_index];after_scenario=validated["control"][build]["scenarios"][scenario_index];level=self.scenario_level(before["control"][build],before_scenario)
+                        baseline=self.scenario_signature(before,build,before_scenario,level,field,current);changed=self.scenario_signature(validated,build,after_scenario,level,field,current)
+                    else:
+                        if build=="eldritch_knight" and row_field=="magic_weapon_bonus_by_level" and int(path[-1])<int(before["control"][build]["eldritch_strike_minimum_level"]):
+                            before["control"][build]["eldritch_strike_minimum_level"]=int(path[-1]);validated["control"][build]["eldritch_strike_minimum_level"]=int(path[-1])
+                        baseline=self.row_signature(before,build);changed=self.row_signature(validated,build)
+                except (KeyError,ValueError):continue
+                with self.subTest(path=_path_label(path)):self.assertNotEqual(changed,baseline)
 
 
 class DamagePlannerTests(unittest.TestCase):
