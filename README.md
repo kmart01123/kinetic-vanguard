@@ -7,7 +7,8 @@ Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighte
 ## Release status
 
 - Current published release: **v14.2.0**
-- Current development line: **None**
+- Current development line: **v14.3.0**
+- Implementation status: Active v14.3 development
 - Canonical rules authority: `KineticVanguard.yaml`
 
 Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v14.2.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.2.0).
@@ -20,6 +21,8 @@ Version 14.1.0 restores maintained damage and control benchmark harness source. 
 ## Balance benchmark snapshot
 
 **Published snapshot** — canonical rules **v14.2.0**.
+
+The current v14.3.0 development line contains rule changes not yet reflected in this published benchmark snapshot.
 
 Target profile: `headline`. Numerical review status: `REVIEWED_WITH_DOCUMENTED_DIFFERENCES`. These are exact analytical full-roster results, not Monte Carlo estimates.
 

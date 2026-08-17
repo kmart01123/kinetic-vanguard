@@ -30,6 +30,48 @@ const readReleaseStatus = (source: string): { published: string; development: st
   return { published: published[0]!, development: development[0]! };
 };
 
+type BalanceSnapshot =
+  | { kind: "published"; rulesVersion: string }
+  | { kind: "development"; rulesVersion: string; publishedVersion: string };
+
+const readBalanceSnapshot = (region: string): BalanceSnapshot => {
+  const identityLines = [
+    ...region.matchAll(/^\*\*(?:Published|Unreleased development) snapshot\*\*.*$/gm)
+  ].map((match) => match[0]);
+  assert.equal(identityLines.length, 1, "balance region has exactly one evidence-identity line");
+  const line = identityLines[0]!;
+  const published = line.match(/^\*\*Published snapshot\*\* — canonical rules \*\*v(\d+\.\d+\.\d+)\*\*\.$/);
+  if (published) return { kind: "published", rulesVersion: published[1]! };
+  const development = line.match(
+    /^\*\*Unreleased development snapshot\*\* — canonical rules \*\*v(\d+\.\d+\.\d+)\*\*; current published release \*\*v(\d+\.\d+\.\d+)\*\*\.$/
+  );
+  assert.ok(development, "balance evidence identity is well formed");
+  return { kind: "development", rulesVersion: development[1]!, publishedVersion: development[2]! };
+};
+
+const assertBalanceSnapshotState = (
+  snapshot: BalanceSnapshot,
+  release: { published: string; development: string },
+  authorityVersion: string
+): void => {
+  if (snapshot.kind === "published") {
+    assert.equal(snapshot.rulesVersion, release.published, "published evidence matches the published release");
+    if (release.development === "None") assert.equal(snapshot.rulesVersion, authorityVersion);
+    else {
+      assert.equal(release.development, `v${authorityVersion}`);
+      assert.ok(
+        compareVersions(snapshot.rulesVersion, authorityVersion) < 0,
+        "retained published evidence must not claim to represent newer development authority"
+      );
+    }
+    return;
+  }
+  assert.notEqual(release.development, "None", "development evidence requires an active development line");
+  assert.equal(release.development, `v${authorityVersion}`);
+  assert.equal(snapshot.rulesVersion, authorityVersion, "development evidence matches canonical authority");
+  assert.equal(snapshot.publishedVersion, release.published, "development evidence identifies the published release");
+};
+
 test("README and release process stay synchronized with canonical development status", async () => {
   const [{ authority }, readme, checklist, pullRequestTemplate] = await Promise.all([
     loadAuthority(),
@@ -43,11 +85,10 @@ test("README and release process stay synchronized with canonical development st
 
   if (development !== "None") {
     assert.equal(development, `v${authority.rules_version}`);
-    assert.ok(readme.split("\n").includes(`- Development branch: \`${authority.rules_version}\``));
-    assert.match(readme, /^- Release candidate branch: `release-prep\/14\.2\.0`$/m);
-    assert.match(readme, /^- Release candidate status: Feature-complete; final release verification in progress\.$/m);
-    assert.doesNotMatch(readme, /^- Implementation status:/m);
+    assert.ok(readme.split("\n").includes(`- Implementation status: Active v${authority.rules_version.replace(/\.0$/u, "")} development`));
+    assert.doesNotMatch(readme, /^- Release candidate (?:branch|status):/m);
   }
+  assert.doesNotMatch(readme, /^- Development branch:/m);
 
   for (const heading of ["Release status", "Publication interface", "Commands", "Architecture", "Licensing", "Development and release discipline"]) {
     assert.match(readme, new RegExp(`^## ${heading}$`, "m"));
@@ -86,6 +127,33 @@ test("README and release process stay synchronized with canonical development st
   assert.match(pullRequestTemplate, /actual release and publication work/);
 });
 
+test("balance snapshot identity separates development rules from benchmark evidence", () => {
+  assertBalanceSnapshotState(
+    readBalanceSnapshot("**Published snapshot** — canonical rules **v14.2.0**."),
+    { published: "14.2.0", development: "v14.3.0" },
+    "14.3.0"
+  );
+  assertBalanceSnapshotState(
+    readBalanceSnapshot("**Unreleased development snapshot** — canonical rules **v14.3.0**; current published release **v14.2.0**."),
+    { published: "14.2.0", development: "v14.3.0" },
+    "14.3.0"
+  );
+  assert.throws(() =>
+    assertBalanceSnapshotState(
+      readBalanceSnapshot("**Published snapshot** — canonical rules **v14.3.0**."),
+      { published: "14.2.0", development: "v14.3.0" },
+      "14.3.0"
+    )
+  );
+  assert.throws(() =>
+    assertBalanceSnapshotState(
+      readBalanceSnapshot("**Unreleased development snapshot** — canonical rules **v14.2.0**; current published release **v14.2.0**."),
+      { published: "14.2.0", development: "v14.3.0" },
+      "14.3.0"
+    )
+  );
+});
+
 test("README exposes one synchronized headline balance snapshot", async () => {
   const [{ authority }, readme, packageJsonSource, benchmarkConfigSource] = await Promise.all([
     loadAuthority(),
@@ -122,15 +190,15 @@ test("README exposes one synchronized headline balance snapshot", async () => {
   );
 
   const region = readme.slice(begin, end + endMarker.length);
-  const { published, development } = readReleaseStatus(readme);
-  assert.ok(region.includes(`canonical rules **v${authority.rules_version}**`));
-  if (development === "None") {
-    assert.ok(region.includes("**Published snapshot**"));
-    assert.equal(published, authority.rules_version);
-  } else {
-    assert.equal(development, `v${authority.rules_version}`);
-    assert.ok(region.includes("**Unreleased development snapshot**"));
-    assert.ok(region.includes(`current published release **v${published}**`));
+  const release = readReleaseStatus(readme);
+  const snapshot = readBalanceSnapshot(region);
+  assertBalanceSnapshotState(snapshot, release, authority.rules_version);
+  if (snapshot.kind === "published" && release.development !== "None") {
+    assert.ok(
+      region.includes(
+        `The current ${release.development} development line contains rule changes not yet reflected in this published benchmark snapshot.`
+      )
+    );
   }
   assert.ok(region.includes("Target profile: `headline`."));
   assert.ok(region.includes(`Numerical review status: \`${benchmarkConfig.methodology.status}\`.`));

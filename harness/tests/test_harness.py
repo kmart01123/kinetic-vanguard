@@ -13,7 +13,7 @@ from unittest.mock import patch
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
 from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_repeat_rider_probability,run as run_control
-from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,run as run_damage
+from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,_rider_values,run as run_damage
 from harness.model import DEFAULT_CATALOG,DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_PROFILE,DEFAULT_ROSTERS,Target,attack_probabilities,file_sha256,load_comparators,load_config,load_targets,save_success_probability
 
 
@@ -46,7 +46,7 @@ class AuthorityProjectionTests(unittest.TestCase):
 
     def test_real_root_authority_and_complete_stable_id_inventory(self)->None:
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
-        self.assertEqual(self.model.rules_version,"14.2.0")
+        self.assertEqual(self.model.rules_version,"14.3.0")
         self.assertEqual(self.model.projection["schema_version"],"2.2.0")
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":1,"action_surge_allows_additional_standalone_psionic_action":False})
         feature_ids=list(self.model.features)
@@ -430,6 +430,12 @@ class DamagePlannerTests(unittest.TestCase):
         self.assertIn("electron_burst:T2",selection)
         self.assertTrue(selection.endswith("|representative=locally-modal-path|policy=observed-state-adaptive"))
 
+    def test_glacial_spike_damage_ignores_the_control_replacement_flag(self)->None:
+        target=replace(self.base,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());package=Package("glacial_spike",0,0,0);pb=self.model.progression("proficiency_bonus",target.level);strike_die=self.model.progression("manifested_strike_die",target.level)
+        with_replacement=_rider_values(self.model,target,"cryokinesis",1,target.level,pb,5,strike_die,package)
+        projection=deepcopy(self.model.projection);next(item for item in projection["features"] if item["entity_id"]=="glacial_spike").pop("replaces_mastery");without_replacement=_rider_values(AuthorityModel(projection),target,"cryokinesis",1,target.level,pb,5,strike_die,package)
+        self.assertEqual(with_replacement,(2.0,2.0));self.assertEqual(without_replacement,with_replacement)
+
 
 class CanonicalControlTests(unittest.TestCase):
     @classmethod
@@ -512,6 +518,13 @@ class CanonicalControlTests(unittest.TestCase):
                     save=control["save"];save=self.model.disciplines[discipline]["signature_save"] if save=="discipline_signature" else save
                     one=reach*(1-save_success_probability(target,save,self.model.kv_save_dc(target.level,5)))
                 self.assertGreater(row["named"],100*one)
+
+    def test_glacial_spike_replaces_slow_reliability_without_weakening_other_cryo_scenarios(self)->None:
+        target=self.target()
+        for tier in (0,1,2):
+            with self.subTest(tier=tier):
+                row=_kv_scenario(self.model,self.config,target,"cryokinesis","glacial_spike",tier);self.assertEqual(row["mastery"],0.0);self.assertFalse(any(component["source_effect"]=="mastery:slow" for component in row["shadow_components"]))
+        ordinary=_kv_scenario(self.model,self.config,target,"cryokinesis","snow_chains",2);self.assertGreater(ordinary["mastery"],0.0);self.assertTrue(any(component["source_effect"]=="mastery:slow" for component in ordinary["shadow_components"]))
 
     def test_static_discharge_tier_two_signature_control_cannot_retry(self)->None:
         feature=self.model.features["static_discharge"]
@@ -730,36 +743,36 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             self.assertEqual(damage["matrix_rows"],24);self.assertEqual(control["matrix_rows"],4)
             for result in (damage,control,parallel_damage,repeated_control):
                 self.assertEqual(set(result["paths"]),{"csv","markdown","html"})
-                self.assertTrue(all("14-2-0" in path.name and path.is_file() for path in result["paths"].values()))
-            audit=root/"control"/"kv-14-2-0-control-selection-audit.csv"
+                self.assertTrue(all("14-3-0" in path.name and path.is_file() for path in result["paths"].values()))
+            audit=root/"control"/"kv-14-3-0-control-selection-audit.csv"
             with audit.open(encoding="utf-8") as stream:
                 rows=list(csv.DictReader(stream))
             self.assertTrue(rows);self.assertTrue(all(row["Selected Scenario"] for row in rows))
-            self.assertTrue(all(row["Rules Version"]=="14.2.0" and row["Authority SHA-256"] and row["Catalog SHA-256"]==file_sha256(DEFAULT_CATALOG) and row["Roster SHA-256"]==file_sha256(DEFAULT_ROSTERS) and row["Target Profile"]==DEFAULT_PROFILE for row in rows))
+            self.assertTrue(all(row["Rules Version"]=="14.3.0" and row["Authority SHA-256"] and row["Catalog SHA-256"]==file_sha256(DEFAULT_CATALOG) and row["Roster SHA-256"]==file_sha256(DEFAULT_ROSTERS) and row["Target Profile"]==DEFAULT_PROFILE for row in rows))
             self.assertTrue(all(row["Comparator Config SHA-256"] for row in rows))
             self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in rows))
-            with (root/"damage"/"kv-14-2-0-damage-detail.csv").open(encoding="utf-8") as stream:
+            with (root/"damage"/"kv-14-3-0-damage-detail.csv").open(encoding="utf-8") as stream:
                 damage_row=next(csv.DictReader(stream))
             self.assertAlmostEqual(float(damage_row["Eldritch Knight DPR"]),13.900000000000018,places=12)
             self.assertAlmostEqual(float(damage_row["Battle Master DPR"]),24.57556956900116,places=12);self.assertTrue(damage_row["Comparator Config SHA-256"])
             self.assertEqual({key:damage_row[key] for key in NOTICE_COLUMNS},NOTICE_COLUMNS)
-            with (root/"control"/"kv-14-2-0-control-detail.csv").open(encoding="utf-8") as stream:
+            with (root/"control"/"kv-14-3-0-control-detail.csv").open(encoding="utf-8") as stream:
                 control_rows=list(csv.DictReader(stream))
             keyed={(row["Build"],row["Scenario"]):row for row in control_rows}
             self.assertEqual(keyed[("battle_master","menacing_attack")]["Whole-package control stick %"],"80.859375")
             self.assertEqual(keyed[("eldritch_knight","blindness_deafness")]["Whole-package control stick %"],"55.000000")
             self.assertTrue(all(row["Comparator Config SHA-256"] for row in control_rows))
             self.assertTrue(all({key:row[key] for key in NOTICE_COLUMNS}==NOTICE_COLUMNS for row in control_rows))
-            with (root/"headline-damage"/"kv-14-2-0-damage-detail.csv").open(encoding="utf-8") as stream:headline_damage_row=next(csv.DictReader(stream))
-            with (root/"headline-control"/"kv-14-2-0-control-detail.csv").open(encoding="utf-8") as stream:headline_control_row=next(csv.DictReader(stream))
+            with (root/"headline-damage"/"kv-14-3-0-damage-detail.csv").open(encoding="utf-8") as stream:headline_damage_row=next(csv.DictReader(stream))
+            with (root/"headline-control"/"kv-14-3-0-control-detail.csv").open(encoding="utf-8") as stream:headline_control_row=next(csv.DictReader(stream))
             for row in (damage_row,control_rows[0],headline_damage_row,headline_control_row):
                 self.assertEqual(row["Catalog SHA-256"],file_sha256(DEFAULT_CATALOG));self.assertEqual(row["Roster SHA-256"],file_sha256(DEFAULT_ROSTERS))
             self.assertEqual(damage_row["Target Profile"],DEFAULT_PROFILE);self.assertEqual(control_rows[0]["Target Profile"],DEFAULT_PROFILE);self.assertEqual(headline_damage_row["Target Profile"],"headline");self.assertEqual(headline_control_row["Target Profile"],"headline")
-            self.assertEqual((root/"damage"/"kv-14-2-0-damage-detail.csv").read_bytes(),(root/"damage-parallel"/"kv-14-2-0-damage-detail.csv").read_bytes())
+            self.assertEqual((root/"damage"/"kv-14-3-0-damage-detail.csv").read_bytes(),(root/"damage-parallel"/"kv-14-3-0-damage-detail.csv").read_bytes())
             for format_name in damage["paths"]:
                 self.assertEqual(damage["paths"][format_name].read_bytes(),parallel_damage["paths"][format_name].read_bytes())
-            self.assertEqual((root/"control"/"kv-14-2-0-control-detail.csv").read_bytes(),(root/"control-repeated"/"kv-14-2-0-control-detail.csv").read_bytes())
-            self.assertEqual((root/"control"/"kv-14-2-0-control-selection-audit.csv").read_bytes(),(root/"control-repeated"/"kv-14-2-0-control-selection-audit.csv").read_bytes())
+            self.assertEqual((root/"control"/"kv-14-3-0-control-detail.csv").read_bytes(),(root/"control-repeated"/"kv-14-3-0-control-detail.csv").read_bytes())
+            self.assertEqual((root/"control"/"kv-14-3-0-control-selection-audit.csv").read_bytes(),(root/"control-repeated"/"kv-14-3-0-control-selection-audit.csv").read_bytes())
             status=load_config()["methodology"]["status"]
             for result in (damage,control,parallel_damage,repeated_control):
                 matrix_path=result["paths"]["csv"]

@@ -13,15 +13,15 @@ const assertAsciiTableAddition=(values:string[],source:string)=>{for(const value
 
 test("prototype is self-contained, offline, and unmistakably non-release",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  assert.match(html,/NON-RELEASE PROTOTYPE/);assert.match(html,/"release_status":"prototype"/);assert.match(html,/<div class="versions"><span>Rules version: 14\.2\.0<\/span><\/div>/);
+  assert.match(html,/NON-RELEASE PROTOTYPE/);assert.match(html,/"release_status":"prototype"/);assert.match(html,/<div class="versions"><span>Rules version: 14\.3\.0<\/span><\/div>/);
   assert.doesNotMatch(html,/<(?:script|link|img)[^>]+(?:src|href)=["']https?:/i);assert.doesNotMatch(html,/(?:fetch|XMLHttpRequest|localStorage|sessionStorage|indexedDB|serviceWorker)/);
   assert.doesNotMatch(html,/<input[^>]+type=["'](?:text|search|number)["']/i);assert.doesNotMatch(html,/<textarea|contenteditable|aria-autocomplete/i);
   assert.doesNotMatch(html,/Application version|application_version|0\.1\.0/);
   const provenanceSource=html.match(/<script type="application\/json" id="publication-provenance">([^<]+)<\/script>/)?.[1];assert.ok(provenanceSource);
   const provenance=JSON.parse(provenanceSource);
   assert.deepEqual(Object.keys(provenance).sort(),["authority_sha256","release_status","rules_version","schema_version"]);
-  assert.equal(provenance.rules_version,"14.2.0");
-  assert.equal(result.manifest.build_identity.rules_version,"14.2.0");assert.equal("application_version" in result.manifest.build_identity,false);
+  assert.equal(provenance.rules_version,"14.3.0");
+  assert.equal(result.manifest.build_identity.rules_version,"14.3.0");assert.equal("application_version" in result.manifest.build_identity,false);
 });
 
 test("rendered rules use Tn shorthand headings and preserve cumulative tier order",async()=>{
