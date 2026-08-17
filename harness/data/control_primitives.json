@@ -40,7 +40,8 @@
     {"id":"persistent_elevation","family":"mobility","exposure_basis":"target_turn_window","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Requires explicit elevation and movement-mode context."},
     {"id":"fall_transition","family":"displacement","exposure_basis":"instantaneous_occurrence","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Requires airborne state and lack of hover or fall prevention."},
     {"id":"nonsight_location_awareness","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"omit_current_unproduced","reason":"No current maintained condition or configured outcome produces this primitive."},
-    {"id":"prone_incoming_attack_context","family":"defense_enablement","exposure_basis":"incoming_attack_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Incoming attack effect depends on attacker distance."}
+    {"id":"prone_incoming_attack_context","family":"defense_enablement","exposure_basis":"incoming_attack_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Incoming attack effect depends on attacker distance."},
+    {"id":"melee_hit_auto_critical_context","family":"defense_enablement","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Automatic critical hits require a hit from an attacker within 5 feet."}
   ],
   "conditions": {
     "blinded": {
@@ -89,6 +90,25 @@
         {"id":"defensive_attack_advantage","status":"context_required","qualifiers":{"attacker_distance":"within_5_feet"}},
         {"id":"prone_incoming_attack_context","qualifiers":{"attacker_distance":"farther_than_5_feet","incoming_attack_effect":"disadvantage"}},
         {"id":"fall_transition"}
+      ]
+    },
+    "poisoned": {
+      "source_page": 185,
+      "includes": [],
+      "primitives": [
+        {"id":"offensive_impairment_all_attacks","qualifiers":{"attack_scope":"all_attacks"}},
+        {"id":"ability_check_impairment","qualifiers":{"ability_check_effect":"disadvantage"}}
+      ]
+    },
+    "paralyzed": {
+      "source_page": 184,
+      "includes": ["incapacitated"],
+      "primitives": [
+        {"id":"mobility_loss_feet","qualifiers":{"mobility_effect":"speed_zero"}},
+        {"id":"save_auto_failure","qualifiers":{"save_ability":"strength"}},
+        {"id":"save_auto_failure","qualifiers":{"save_ability":"dexterity"}},
+        {"id":"defensive_attack_advantage"},
+        {"id":"melee_hit_auto_critical_context","qualifiers":{"attacker_distance":"within_5_feet","trigger":"hit"}}
       ]
     },
     "restrained": {

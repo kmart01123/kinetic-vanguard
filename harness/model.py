@@ -161,17 +161,30 @@ def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
     expected_ek_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","true_strike_choice_timing":"before_attack_roll","decision_information":"observed_state_only","true_strike_use_count":"exactly_configured_per_attack_action"}
     if ek_policy!=expected_ek_policy:raise ValueError("Unsupported Eldritch Knight tactical policy")
     for build_id,row_value in control.items():
-        row=_object(row_value,f"control.{build_id}");common={"minimum_level","attack_ability_modifier","magic_weapon_bonus_by_level","save_dc_base","magic_resistance_applies","scenarios"};ability={"save_ability_modifier"} if build_id=="battle_master" else {"save_ability_modifier_by_level"};_exact_keys(row,common|ability,f"control.{build_id}")
+        row=_object(row_value,f"control.{build_id}");common={"minimum_level","attack_ability_modifier","magic_weapon_bonus_by_level","save_dc_base","magic_resistance_applies","scenarios"};ability={"save_ability_modifier"} if build_id=="battle_master" else {"spellcasting_ability_modifier_by_level","reliability_scenario_ids"};_exact_keys(row,common|ability,f"control.{build_id}")
         for key in ("minimum_level","attack_ability_modifier","save_dc_base"):_integer(row[key],f"control.{build_id}.{key}",0)
         _level_map(row["magic_weapon_bonus_by_level"],f"control.{build_id}.magic_weapon_bonus_by_level");_boolean(row["magic_resistance_applies"],f"control.{build_id}.magic_resistance_applies")
         if build_id=="battle_master":_integer(row["save_ability_modifier"],"control.battle_master.save_ability_modifier",0)
-        else:_level_map(row["save_ability_modifier_by_level"],"control.eldritch_knight.save_ability_modifier_by_level")
+        else:_level_map(row["spellcasting_ability_modifier_by_level"],"control.eldritch_knight.spellcasting_ability_modifier_by_level")
         if not isinstance(row["scenarios"],list) or not row["scenarios"]:raise ValueError(f"control.{build_id}.scenarios must be non-empty")
         for index,scenario_value in enumerate(row["scenarios"]):
-            scenario=_object(scenario_value,f"control.{build_id}.scenarios[{index}]");required={"id","save"};allowed=required|{"minimum_level","hit_gated","conditions","outcomes","maximum_size","primer_hit_disadvantage"}
+            scenario=_object(scenario_value,f"control.{build_id}.scenarios[{index}]");required={"id"}|({"save"} if build_id=="battle_master" else {"spell_level","delivery"});allowed=required|{"save","minimum_level","hit_gated","spell_attack","conditions","outcomes","maximum_size","primer_hit_disadvantage","duration","repeat_save_trigger","required_creature_type","magnitude_feet","improved_war_magic_eligible"}
             if not required<=scenario.keys() or not scenario.keys()<=allowed:raise ValueError(f"control.{build_id}.scenarios[{index}] keys are invalid")
-            for key in ("hit_gated","primer_hit_disadvantage"):
+            if build_id=="eldritch_knight" and ("save" in scenario)==bool(scenario.get("spell_attack")):raise ValueError(f"control.{build_id}.scenarios[{index}] must use exactly one of save or spell_attack")
+            for key in ("hit_gated","spell_attack","primer_hit_disadvantage","improved_war_magic_eligible"):
                 if key in scenario:_boolean(scenario[key],f"control.{build_id}.scenarios[{index}].{key}")
+            for key in ("id","save","delivery","duration","repeat_save_trigger","required_creature_type"):
+                if key in scenario:_string(scenario[key],f"control.{build_id}.scenarios[{index}].{key}")
+            for key in ("minimum_level","spell_level","magnitude_feet"):
+                if key in scenario:_integer(scenario[key],f"control.{build_id}.scenarios[{index}].{key}",0)
+            if scenario.get("delivery") not in {None,"war_magic_cantrip","action_spell"}:raise ValueError(f"control.{build_id}.scenarios[{index}] has unsupported delivery")
+            if scenario.get("repeat_save_trigger") not in {None,"end_of_affected_turn"}:raise ValueError(f"control.{build_id}.scenarios[{index}] has unsupported repeat-save trigger")
+            for key in ("conditions","outcomes"):
+                if key in scenario and (not isinstance(scenario[key],list) or not scenario[key] or any(not isinstance(item,str) or not item for item in scenario[key])):raise ValueError(f"control.{build_id}.scenarios[{index}].{key} must be a non-empty string list")
+        if build_id=="eldritch_knight":
+            scenario_ids=[scenario["id"] for scenario in row["scenarios"]];reliability_ids=row["reliability_scenario_ids"]
+            if not isinstance(reliability_ids,list) or not reliability_ids or any(not isinstance(item,str) for item in reliability_ids) or len(reliability_ids)!=len(set(reliability_ids)):raise ValueError("control.eldritch_knight.reliability_scenario_ids must be a unique non-empty string list")
+            if not set(reliability_ids)<=set(scenario_ids):raise ValueError("control.eldritch_knight reliability scenarios must reference configured scenario IDs")
     return data
 
 

@@ -29,6 +29,11 @@ def _comparator_effect_available(target:Target,scenario:dict[str,Any])->bool:
     return bool(outcomes) or any(condition.lower() not in target.condition_immunities for condition in conditions)
 
 
+def _eldritch_knight_spellcasting_modifier(row:dict[str,Any],level:int)->int:
+    """Return the one maintained EK ability modifier used by attacks and save DCs."""
+    return int(row["spellcasting_ability_modifier_by_level"][str(level)])
+
+
 def _repeat_rider_probability(model:AuthorityModel,config:dict[str,Any],level:int,tier:int,psi_cost:int,attempt_success:float)->float:
     """Optimize retry legality for one fixed rider tier without target identity state."""
     if model.projection["core"]["manifested_strike"]["rider_repeatability"]!="per_manifested_strike":raise ValueError("Unsupported canonical rider repeatability")
@@ -125,22 +130,29 @@ def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,di
 
 
 def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,build_id:str,scenario:dict[str,Any])->dict[str,Any]:
-    row=comparators["control"][build_id];minimum=int(scenario.get("minimum_level",row["minimum_level"]));eligible=target.level>=minimum and target_is_eligible(target,scenario.get("maximum_size"))
+    if build_id=="eldritch_knight" and not scenario.get("spell_attack") and "save" not in scenario:raise ValueError("Eldritch Knight scenario requires a spell attack or saving throw")
+    row=comparators["control"][build_id];minimum=int(scenario.get("minimum_level",row["minimum_level"]));eligible=target.level>=minimum and target_is_eligible(target,scenario.get("maximum_size"),scenario.get("required_creature_type"))
     available=_comparator_effect_available(target,scenario)
-    pb=model.progression("proficiency_bonus",target.level);weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(target.level)]);bonus=pb+int(row["attack_ability_modifier"])+weapon_bonus;reach=1.0
+    pb=model.progression("proficiency_bonus",target.level);weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(target.level)]);weapon_bonus_total=pb+int(row["attack_ability_modifier"])+weapon_bonus;reach=1.0
     if scenario.get("hit_gated"):
-        probabilities=attack_probabilities(bonus,target.ac);reach=probabilities[1]+probabilities[2]
+        attack_bonus=pb+_eldritch_knight_spellcasting_modifier(row,target.level) if scenario.get("spell_attack") else weapon_bonus_total
+        probabilities=attack_probabilities(attack_bonus,target.ac);reach=probabilities[1]+probabilities[2]
+    repeat_failed=None
     if not eligible or not available:value=0.0
+    elif scenario.get("spell_attack"):value=reach
     else:
-        save_modifier=int(row["save_ability_modifier_by_level"][str(target.level)]) if "save_ability_modifier_by_level" in row else int(row["save_ability_modifier"]);dc=int(row["save_dc_base"])+pb+save_modifier;normal_fail=1-save_success_probability(target,scenario["save"],dc,False,bool(row["magic_resistance_applies"]))
+        save_modifier=_eldritch_knight_spellcasting_modifier(row,target.level) if build_id=="eldritch_knight" else int(row["save_ability_modifier"]);dc=int(row["save_dc_base"])+pb+save_modifier;normal_fail=1-save_success_probability(target,scenario["save"],dc,False,bool(row["magic_resistance_applies"]));repeat_failed=normal_fail
         if build_id=="battle_master" and scenario.get("hit_gated"):
             attacks=int(level_config(config,target.level)["attacks_per_action"]);superiority_dice=int(comparators["damage"]["battle_master"]["superiority_pool_by_level"][str(target.level)])
             value=_battle_master_retry_probability(attacks,superiority_dice,reach,normal_fail)
         elif scenario.get("primer_hit_disadvantage"):
-            attacks=int(level_config(config,target.level)["attacks_per_action"]);primer=attack_probabilities(bonus,target.ac);primer_mark=_eldritch_strike_primer_probability(attacks,primer[1]+primer[2]);disadvantaged_fail=1-save_success_probability(target,scenario["save"],dc,True,bool(row["magic_resistance_applies"]));value=primer_mark*disadvantaged_fail+(1-primer_mark)*normal_fail
+            attacks=int(level_config(config,target.level)["attacks_per_action"]);primer=attack_probabilities(weapon_bonus_total,target.ac);primer_mark=_eldritch_strike_primer_probability(attacks,primer[1]+primer[2]);disadvantaged_fail=1-save_success_probability(target,scenario["save"],dc,True,bool(row["magic_resistance_applies"]));value=primer_mark*disadvantaged_fail+(1-primer_mark)*normal_fail
         else:value=reach*normal_fail
-    component={"source_effect":scenario["id"],"labels":[*(('condition',condition) for condition in scenario.get("conditions",[])),*(('outcome',outcome) for outcome in scenario.get("outcomes",[]))],"duration":None,"application_probability":value,"repeat_survival_probability":None,"magnitude_feet":None,"attack_scope":None,"reason":f"harness/comparators/fighter-subclasses.json control.{build_id}; timing, scope, or magnitude not present in current comparator config"}
-    return {"build":build_id,"scenario":scenario["id"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*value,"shadow_components":[component]}
+    labels=[*(('condition',condition) for condition in scenario.get("conditions",[]) if condition.lower() not in target.condition_immunities),*(('outcome',outcome) for outcome in scenario.get("outcomes",[]))]
+    repeat_checkpoint=scenario.get("repeat_save_trigger");repeat_count=int(config["methodology"]["rounds"])-1 if repeat_checkpoint and repeat_failed is not None else 0;after_repeats=value*(repeat_failed**repeat_count) if repeat_count else value
+    metadata=", ".join(f"{key}={scenario[key]}" for key in ("spell_level","delivery","improved_war_magic_eligible") if key in scenario)
+    component={"source_effect":scenario["id"],"labels":labels,"duration":scenario.get("duration"),"application_probability":value,"repeat_survival_probability":repeat_failed if repeat_checkpoint else None,"repeat_checkpoint":repeat_checkpoint,"magnitude_feet":scenario.get("magnitude_feet"),"attack_scope":scenario.get("attack_scope"),"reason":f"harness/comparators/fighter-subclasses.json control.{build_id}"+(f"; {metadata}" if metadata else "")}
+    return {"build":build_id,"scenario":scenario["id"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*after_repeats,"shadow_components":[component] if labels else []}
 
 
 def _best(rows:list[dict[str,Any]])->dict[str,Any]:
@@ -154,10 +166,12 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,tri
     for target in targets:
         comparator_best={}
         for build in ("battle_master","eldritch_knight"):
-            values=[_comparator_scenario(model,config,comparators,target,build,scenario) for scenario in comparators["control"][build]["scenarios"]]
+            all_values=[_comparator_scenario(model,config,comparators,target,build,scenario) for scenario in comparators["control"][build]["scenarios"]]
+            reliability_ids=set(comparators["control"][build].get("reliability_scenario_ids",(scenario["id"] for scenario in comparators["control"][build]["scenarios"])))
+            values=[value for value in all_values if value["scenario"] in reliability_ids]
             detail.extend({"Level":target.level,"Target":target.name,**value} for value in values);comparator_best[build]=_best(values)
             if write_shadow:
-                for value in values:shadow_detail.extend(shadow_rows({"Build":build,"Discipline":"all","Level":target.level,"Target":target.name,"Scenario":value["scenario"]},value["shadow_components"],horizon=int(config["methodology"]["rounds"])))
+                for value in all_values:shadow_detail.extend(shadow_rows({"Build":build,"Discipline":"all","Level":target.level,"Target":target.name,"Scenario":value["scenario"]},value["shadow_components"],horizon=int(config["methodology"]["rounds"])))
             audit.append({"Level":target.level,"Target":target.name,"Discipline":"all","Build":build,"Selected Scenario":comparator_best[build]["scenario"],"Whole-package control stick %":f"{comparator_best[build]['whole']:.6f}","Eligible":comparator_best[build]["eligible"]})
         for discipline,configured in scenario_sets.items():
             values=[_mastery_scenario(model,config,target,discipline)]
