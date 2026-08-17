@@ -41,7 +41,8 @@
     {"id":"fall_transition","family":"displacement","exposure_basis":"instantaneous_occurrence","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Requires airborne state and lack of hover or fall prevention."},
     {"id":"nonsight_location_awareness","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"omit_current_unproduced","reason":"No current maintained condition or configured outcome produces this primitive."},
     {"id":"prone_incoming_attack_context","family":"defense_enablement","exposure_basis":"incoming_attack_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Incoming attack effect depends on attacker distance."},
-    {"id":"melee_hit_auto_critical_context","family":"defense_enablement","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Automatic critical hits require a hit from an attacker within 5 feet."}
+    {"id":"melee_hit_auto_critical_context","family":"defense_enablement","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Automatic critical hits require a hit from an attacker within 5 feet."},
+    {"id":"awareness_denial","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","historical_disposition":"retain_but_context_required","reason":"Value depends on encounter information and awareness-sensitive opportunities."}
   ],
   "conditions": {
     "blinded": {
@@ -128,6 +129,18 @@
         {"id":"save_auto_failure","qualifiers":{"save_ability":"strength"}},
         {"id":"save_auto_failure","qualifiers":{"save_ability":"dexterity"}},
         {"id":"defensive_attack_advantage"}
+      ]
+    },
+    "unconscious": {
+      "source_page": 191,
+      "includes": ["incapacitated", "prone"],
+      "primitives": [
+        {"id":"mobility_loss_feet","qualifiers":{"mobility_effect":"speed_zero"}},
+        {"id":"defensive_attack_advantage"},
+        {"id":"save_auto_failure","qualifiers":{"save_ability":"strength"}},
+        {"id":"save_auto_failure","qualifiers":{"save_ability":"dexterity"}},
+        {"id":"melee_hit_auto_critical_context","qualifiers":{"attacker_distance":"within_5_feet","trigger":"hit"}},
+        {"id":"awareness_denial","qualifiers":{"awareness_effect":"unaware_of_surroundings"}}
       ]
     }
   },
