@@ -28,7 +28,6 @@ from harness.readme_matrices import (
     _public_result,
     atomic_replace_text,
     generated_region_span,
-    require_unchanged_inputs,
     release_state_line,
     render_balance_region,
     render_control_table,
@@ -412,30 +411,6 @@ class ReadmeMatrixAtomicWriteTests(unittest.TestCase):
                     atomic_replace_text(path, "before", "replacement")
             self.assertEqual(path.read_text(encoding="utf-8"), "before")
             self.assertEqual([item.name for item in root.iterdir()], ["README.md"])
-
-
-class ReadmeMatrixInputStabilityTests(unittest.TestCase):
-    def test_unchanged_input_comparison_accepts_equal_fingerprints(self) -> None:
-        before = {"README.md": "same", "harness/model.py": "also-same"}
-        with patch.object(
-            readme_matrices,
-            "synchronization_input_fingerprints",
-            return_value=dict(before),
-        ):
-            require_unchanged_inputs(before)
-
-    def test_input_comparison_reports_changed_added_and_removed_paths(self) -> None:
-        before = {"changed": "old", "removed": "digest"}
-        after = {"added": "digest", "changed": "new"}
-        with patch.object(
-            readme_matrices,
-            "synchronization_input_fingerprints",
-            return_value=after,
-        ):
-            with self.assertRaisesRegex(
-                MatrixSyncError, "added, changed, removed"
-            ):
-                require_unchanged_inputs(before)
 
 
 class AuthoritativeRowValidationTests(unittest.TestCase):

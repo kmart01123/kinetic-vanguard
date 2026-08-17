@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import argparse
 import csv
-import json
 import os
 import re
 import stat
@@ -34,7 +33,6 @@ from .model import (
 BEGIN_MARKER = "<!-- BEGIN GENERATED BALANCE MATRICES -->"
 END_MARKER = "<!-- END GENERATED BALANCE MATRICES -->"
 README_PATH = PROJECT_ROOT / "README.md"
-BUILD_INPUTS_PATH = PROJECT_ROOT / "build" / "inputs.json"
 DAMAGE_SCOPES = ("primary-target DPR", "aggregate cluster DPR")
 README_DISCIPLINES = (
     "cryokinesis",
@@ -63,52 +61,6 @@ MatrixRow = dict[str, str]
 
 class MatrixSyncError(ValueError):
     pass
-
-
-def synchronization_input_fingerprints() -> dict[str, str]:
-    try:
-        manifest = json.loads(BUILD_INPUTS_PATH.read_text(encoding="utf-8"))
-        declared = manifest["inputs"]
-    except (OSError, json.JSONDecodeError, KeyError, TypeError) as error:
-        raise MatrixSyncError("Cannot read the maintained build-input manifest") from error
-    if not isinstance(declared, list):
-        raise MatrixSyncError("Build-input manifest inputs must be a list")
-
-    root = PROJECT_ROOT.resolve()
-    paths = {README_PATH.resolve(), BUILD_INPUTS_PATH.resolve()}
-    for index, entry in enumerate(declared):
-        if not isinstance(entry, dict) or not isinstance(entry.get("path"), str):
-            raise MatrixSyncError(f"Build-input entry {index} has no string path")
-        relative = Path(entry["path"])
-        if relative.is_absolute():
-            raise MatrixSyncError(f"Build-input entry {index} must be repository-relative")
-        candidate = (root / relative).resolve()
-        try:
-            candidate.relative_to(root)
-        except ValueError as error:
-            raise MatrixSyncError(f"Build-input entry {index} escapes the repository") from error
-        if not candidate.is_file():
-            raise MatrixSyncError(f"Maintained synchronization input is missing: {relative}")
-        paths.add(candidate)
-
-    return {
-        path.relative_to(root).as_posix(): file_sha256(path)
-        for path in sorted(paths, key=lambda candidate: candidate.as_posix())
-    }
-
-
-def require_unchanged_inputs(before: dict[str, str]) -> None:
-    after = synchronization_input_fingerprints()
-    changed = sorted(
-        path
-        for path in before.keys() | after.keys()
-        if before.get(path) != after.get(path)
-    )
-    if changed:
-        raise MatrixSyncError(
-            "Synchronization inputs changed during analytical evaluation: "
-            + ", ".join(changed)
-        )
 
 
 def atomic_replace_text(path: Path, expected: str, replacement: str) -> None:
@@ -598,7 +550,6 @@ def main() -> None:
     if args.workers <= 0:
         parser.error("--workers must be positive")
 
-    input_fingerprints = synchronization_input_fingerprints()
     readme = README_PATH.read_text(encoding="utf-8")
     generated_region_span(readme)
     damage_rows, control_rows = generate_authoritative_rows(args.workers)
@@ -616,7 +567,6 @@ def main() -> None:
         disciplines,
     )
     synchronized = replace_generated_region(readme, region)
-    require_unchanged_inputs(input_fingerprints)
     if README_PATH.read_text(encoding="utf-8") != readme:
         raise MatrixSyncError("README changed during analytical evaluation; retry synchronization")
 

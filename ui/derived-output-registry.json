@@ -4,7 +4,7 @@
     {"id":"match_count","inputs":["filtered_entity_ids"],"implementation":"src/runtime.ts#renderResults","placements":["status","facet_count"],"output_type":"nonnegative_integer","format":"base10","announce":true},
     {"id":"reference_visible_count","inputs":["reference_row_ids","reference_group","reference_level"],"implementation":"src/runtime.ts#updateReferenceFilter","placements":["status"],"output_type":"nonnegative_integer","format":"base10","announce":true},
     {"id":"reference_total_count","inputs":["reference_row_ids"],"implementation":"src/runtime.ts#appendReferenceFilters","placements":["status"],"output_type":"nonnegative_integer","format":"base10","announce":false},
-    {"id":"release_status","inputs":["build/profiles.json#/profiles/*/release_status"],"implementation":"src/build.ts#releaseStatus","placements":["banner","metadata"],"output_type":"enum","format":"verbatim","announce":false},
+    {"id":"release_status","inputs":["build_mode"],"implementation":"src/build.ts#buildModes","placements":["banner","metadata"],"output_type":"enum","format":"verbatim","announce":false},
     {"id":"calculator_proficiency_bonus","inputs":["fighter_level"],"implementation":"src/runtime.ts#updateCalculator","placements":["body"],"output_type":"nonnegative_integer","format":"signed_base10","announce":false},
     {"id":"calculator_psionic_focus","inputs":["fighter_level"],"implementation":"src/runtime.ts#updateCalculator","placements":["body"],"output_type":"nonnegative_integer","format":"signed_base10","announce":false},
     {"id":"calculator_attack_bonus","inputs":["fighter_level","psi_modifier"],"implementation":"src/runtime.ts#updateCalculator","placements":["body"],"output_type":"integer","format":"signed_base10","announce":false},

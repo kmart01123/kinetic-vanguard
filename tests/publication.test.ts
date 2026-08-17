@@ -21,7 +21,6 @@ test("prototype is self-contained, offline, and unmistakably non-release",async(
   const provenance=JSON.parse(provenanceSource);
   assert.deepEqual(Object.keys(provenance).sort(),["authority_sha256","release_status","rules_version","schema_version"]);
   assert.equal(provenance.rules_version,"14.3.0");
-  assert.equal(result.manifest.build_identity.rules_version,"14.3.0");assert.equal("application_version" in result.manifest.build_identity,false);
 });
 
 test("rendered rules use Tn shorthand headings and preserve cumulative tier order",async()=>{
@@ -312,7 +311,7 @@ test("paragraph text beginning with Example is not classified heuristically",asy
 });
 
 
-test("release build fails closed before emitting deployable output",async()=>{await assert.rejects(()=>executeBuild("release"),/Build blocked/);});
+test("release build requires explicit authorization",async()=>{await assert.rejects(()=>executeBuild("release"),/release\.approval_required/);});
 
 
 test("Any classifications expose the complete canonical result set in a compact disclosure",async()=>{

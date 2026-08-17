@@ -1,6 +1,6 @@
 # Accessibility manual script
 
-This script is evidence guidance. A completed report must bind results to a verified release build-manifest hash.
+This script is evidence guidance. A completed report must identify the exact release-verification workflow run, approved SHA, candidate artifact name, and GitHub artifact digest.
 
 | ID | Profile | Action | Expected result | Pass criteria |
 |---|---|---|---|---|

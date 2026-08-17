@@ -6,7 +6,6 @@ node_modules/
 # Generated publications and test output
 artifacts/*
 !artifacts/.gitkeep
-deployable/
 coverage/
 test-results/
 playwright-report/

@@ -104,24 +104,27 @@ test("README and release process stay synchronized with canonical development st
   assert.doesNotMatch(readme, /Forked Lightning needs explicit failed-save wording/);
   assert.doesNotMatch(readme, /Kinetic Vanguard \*\*v13\.0\.1\*\* is the current/);
 
-  for (const heading of ["Before release", "Publication", "Required release assets"]) {
+  for (const heading of ["Prepare and freeze the candidate", "Verify on GitHub", "Independent review", "Publish deliberately"]) {
     assert.match(checklist, new RegExp(`^## ${heading}$`, "m"));
   }
-  assert.match(checklist, /README\.md/);
   assert.match(checklist, /rules_version/);
   assert.match(checklist, /CHANGELOG\.md/);
-  assert.match(checklist, /npm run typecheck/);
-  assert.match(checklist, /damage and control benchmarks once when rules, comparator behavior, roster, methodology, or benchmark code changed/);
-  assert.match(checklist, /generated release identity/);
-  assert.match(checklist, /GitHub CI passes/);
+  assert.match(checklist, /fresh analytical evidence only when that input-aware policy requires it/);
+  assert.match(checklist, /Main branch gate/);
   assert.match(checklist, /Squash-merge/);
-  assert.match(checklist, /exact merged release commit/);
+  assert.match(checklist, /merged commit SHA/);
   assert.match(checklist, /release\/X\.Y\.Z/);
   assert.match(checklist, /vX\.Y\.Z/);
+  assert.match(checklist, /release-verify\.yml/);
+  assert.match(checklist, /workflow run ID/);
+  assert.match(checklist, /artifact digest/);
+  assert.match(checklist, /sha256sum -c SHA256SUMS/);
+  assert.match(checklist, /gh release create/);
   assert.match(checklist, /GitHub Release/);
   assert.match(checklist, /README published status/);
   assert.match(checklist, /LICENSE\.md/);
   assert.match(checklist, /NOTICE\.md/);
+  assert.doesNotMatch(checklist, /build-manifest|filtered-search-integrity|coverage-ledger|release-evidence/i);
 
   assert.match(pullRequestTemplate, /RELEASE_CHECKLIST\.md/);
   assert.match(pullRequestTemplate, /actual release and publication work/);

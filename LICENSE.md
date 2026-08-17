@@ -46,9 +46,7 @@ Battle Master and Eldritch Knight are used only as unofficial comparative benchm
 
 Harness configuration and output are also mixed. Project-authored technical structure and methodology are BSD-3-Clause; original explanatory prose is CC BY-NC-SA 4.0; SRD-derived target data and base rules components remain CC BY 4.0; and non-SRD comparator names or underlying material are not licensed by the project.
 
-Build manifests, integrity ledgers, and coverage ledgers use project-authored technical structures under BSD-3-Clause. Any embedded source text, identifiers, or data retain their source component's license or third-party status.
-
-Each component retains its own license. A recipient may continue to use SRD-derived material under CC BY 4.0 even when it appears beside original Kinetic Vanguard content. Current release automation and deployment promotion include this index, both license notices, and `NOTICE.md` beside the generated HTML.
+Each component retains its own license. A recipient may continue to use SRD-derived material under CC BY 4.0 even when it appears beside original Kinetic Vanguard content. The checksummed release candidate includes this index, both license notices, and `NOTICE.md` beside the generated HTML.
 
 ## Third-party packages and services
 

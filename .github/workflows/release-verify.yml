@@ -1,0 +1,109 @@
+name: Release verification
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Canonical release version without the v prefix
+        required: true
+        type: string
+      approved_sha:
+        description: Full approved release commit SHA
+        required: true
+        type: string
+
+permissions:
+  actions: read
+  contents: read
+
+jobs:
+  release_verification:
+    name: Verify release candidate
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+
+    steps:
+      - name: Check out selected release branch
+        uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Verify frozen ref, commit, and annotated tag
+        env:
+          VERSION: ${{ inputs.version }}
+          APPROVED_SHA: ${{ inputs.approved_sha }}
+        run: |
+          set -euo pipefail
+          [[ "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]
+          [[ "$APPROVED_SHA" =~ ^[0-9a-f]{40}$ ]]
+          test "$GITHUB_REF" = "refs/heads/release/$VERSION"
+          test "$GITHUB_SHA" = "$APPROVED_SHA"
+          test "$(git rev-parse HEAD)" = "$APPROVED_SHA"
+          test "$(git cat-file -t "refs/tags/v$VERSION")" = tag
+          test "$(git rev-parse "refs/tags/v$VERSION^{}")" = "$APPROVED_SHA"
+
+      - name: Require successful ordinary CI for the approved SHA
+        env:
+          GH_TOKEN: ${{ github.token }}
+          APPROVED_SHA: ${{ inputs.approved_sha }}
+        run: |
+          set -euo pipefail
+          runs="$(gh api "repos/$GITHUB_REPOSITORY/actions/workflows/ci.yml/runs?head_sha=$APPROVED_SHA&status=success&per_page=100")"
+          run_id="$(jq -r --arg sha "$APPROVED_SHA" 'first(.workflow_runs[] | select(.head_sha == $sha and .head_branch == "main" and .event == "push" and .conclusion == "success") | .id) // empty' <<<"$runs")"
+          test -n "$run_id"
+          jobs="$(gh api "repos/$GITHUB_REPOSITORY/actions/runs/$run_id/jobs?per_page=100")"
+          jq -e '.jobs[] | select(.name == "Main branch gate" and .conclusion == "success")' <<<"$jobs" >/dev/null
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.1
+          cache: npm
+
+      - name: Use repository npm version
+        run: npm install --global npm@11.16.0
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build authorized release
+        env:
+          KV_RELEASE_APPROVED: "1"
+        run: npm run build:release
+
+      - name: Verify release identity and legal assets
+        env:
+          VERSION: ${{ inputs.version }}
+        run: |
+          set -euo pipefail
+          rules_version="$(node --input-type=module -e 'import {readFileSync} from "node:fs"; import YAML from "yaml"; process.stdout.write(String(YAML.parse(readFileSync("KineticVanguard.yaml","utf8")).rules_version))')"
+          test "$rules_version" = "$VERSION"
+          test -s artifacts/KineticVanguard.html
+          grep -Fq '"release_status":"release"' artifacts/KineticVanguard.html
+          grep -Fq "\"rules_version\":\"$VERSION\"" artifacts/KineticVanguard.html
+          ! grep -Fq 'NON-RELEASE PROTOTYPE' artifacts/KineticVanguard.html
+          ! grep -Fq 'Application version' artifacts/KineticVanguard.html
+          ! grep -Fq '"application_version"' artifacts/KineticVanguard.html
+          application_version="$(node -p "require('./package.json').version")"
+          ! grep -Fq "$application_version" artifacts/KineticVanguard.html
+          for asset in LICENSE.md LICENSE-CODE LICENSE-CONTENT NOTICE.md; do
+            test -s "$asset"
+          done
+
+      - name: Assemble checksummed candidate
+        run: |
+          set -euo pipefail
+          mkdir release-candidate
+          install -m 0644 artifacts/KineticVanguard.html LICENSE.md LICENSE-CODE LICENSE-CONTENT NOTICE.md release-candidate/
+          cd release-candidate
+          sha256sum KineticVanguard.html LICENSE.md LICENSE-CODE LICENSE-CONTENT NOTICE.md > SHA256SUMS
+          sha256sum -c SHA256SUMS
+
+      - name: Upload release candidate
+        uses: actions/upload-artifact@v7
+        with:
+          name: kinetic-vanguard-${{ inputs.version }}-candidate
+          path: release-candidate/
+          if-no-files-found: error
+          retention-days: 90
