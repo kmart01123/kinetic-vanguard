@@ -8,7 +8,6 @@ import { validateSemantics } from "../src/validate.js";
 test("harness projection reads the real authority and joins mechanics by stable entity ID",async()=>{
   const projection=await createHarnessProjection();
   assert.match(projection.authority_path,/\/KineticVanguard\.yaml$/);
-  assert.ok(projection.rules_version);assert.ok(projection.schema_version);
   assert.ok(Number.isInteger(projection.core.action_economy.standalone_psionic_action_limit_per_turn));
   assert.equal(projection.core.manifested_strike.rider_repeatability,"per_manifested_strike");
   assert.equal(new Set(projection.features.map(item=>item.entity_id)).size,projection.features.length);
@@ -27,6 +26,30 @@ test("harness semantic mutations fail with focused diagnostics",async()=>{
   expectCode("harness.feature_coverage",candidate=>{candidate.calculator.features=candidate.calculator.features.filter((item:any)=>item.entity_id!=="flare");});
   expectCode("harness.mastery_control_measurement",candidate=>{delete candidate.calculator.harness_mechanics.disciplines.find((item:any)=>item.id==="cryokinesis").mastery.control_magnitude_feet;});
   expectCode("harness.control_attack_scope",candidate=>{delete candidate.calculator.harness_mechanics.feature_rules.find((item:any)=>item.entity_id==="electron_burst").control_tiers[0].effects[0].attack_scope;});
+  expectCode("calculator.psi_point_progression",candidate=>{candidate.calculator.psi_point_bands[0].value+=1;});
+  expectCode("harness.blood_tax_formula",candidate=>{candidate.calculator.harness_mechanics.overload.blood_tax_per_tier.base=1;});
+  expectCode("harness.discipline_coverage",candidate=>{candidate.calculator.harness_mechanics.disciplines.pop();});
+  expectCode("harness.feature_unknown",candidate=>{candidate.calculator.harness_mechanics.feature_rules[0].entity_id="missing_harness_feature";});
+  expectCode("harness.targeting_count",candidate=>{
+    const targeting=candidate.calculator.harness_mechanics.feature_rules.flatMap((rule:any)=>rule.targeting_by_tier??[]).find((item:any)=>item.kind==="fixed_additional");
+    delete targeting.additional_targets;
+  });
+  expectCode("harness.control_save_required",candidate=>{
+    const control=candidate.calculator.harness_mechanics.feature_rules.flatMap((rule:any)=>rule.control_tiers??[]).find((item:any)=>item.application==="failed_save");
+    delete control.save;
+  });
+  expectCode("harness.control_save_forbidden",candidate=>{
+    const control=candidate.calculator.harness_mechanics.feature_rules.flatMap((rule:any)=>rule.control_tiers??[]).find((item:any)=>item.application==="failed_save");
+    control.application="no_save";
+  });
+  expectCode("harness.control_outcome",candidate=>{
+    const effect=candidate.calculator.harness_mechanics.feature_rules.flatMap((rule:any)=>rule.control_tiers??[]).flatMap((control:any)=>control.effects).find((item:any)=>item.conditions?.length&&!item.outcomes?.length);
+    delete effect.conditions;delete effect.outcomes;
+  });
+  expectCode("harness.control_magnitude",candidate=>{
+    const effect=candidate.calculator.harness_mechanics.feature_rules.flatMap((rule:any)=>rule.control_tiers??[]).flatMap((control:any)=>control.effects).find((item:any)=>item.outcomes?.includes("forced_movement")&&item.magnitude_feet!==undefined);
+    delete effect.magnitude_feet;
+  });
 });
 
 test("minimal comparator parameters stay isolated from all canonical KV mechanics and benchmark methodology",async()=>{

@@ -68,6 +68,8 @@ Damage matrices retain primary-target and aggregate-cluster DPR. For each row, B
 
 Control Reliability measures how often the configured control package takes effect; it does not compare condition severity, duration, area, or strategic value. For each level and target, the harness selects the highest legal named-feature-plus-mastery reliability for each configured build. An ineligible scenario contributes zero, and the selection audit records the per-target winner.
 
+Published comparator winner selection uses only each build's configured `reliability_scenario_ids`; the broader configured scenario inventory may still be evaluated for optional Control Value shadow detail and does not automatically enter the published Control Reliability winner set.
+
 Kinetic Vanguard and Battle Master use legal repeated attack-delivered opportunities within one ordinary Attack action when their configured packages permit them. Eldritch Knight retains one configured cast; an Eldritch Strike package uses every ordinary primer attack to determine whether at least one hit established Disadvantage. Action Surge and repeated spell casts are not credited to Control Reliability.
 
 Control Reliability uses the same dynamic comparator envelope as damage and keeps raw comparator values and boundary identities in generated matrices.
