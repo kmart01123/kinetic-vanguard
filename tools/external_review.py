@@ -34,6 +34,7 @@ GITHUB_SECRET_VARIABLES = (
     "GITHUB_ENTERPRISE_TOKEN",
 )
 VERDICTS = frozenset(("PASS", "FINDINGS"))
+FINDING_SEVERITIES = frozenset(("BLOCKER", "HIGH", "MEDIUM", "LOW"))
 REVIEW_SCHEMA = {
     "type": "object",
     "properties": {
@@ -41,11 +42,27 @@ REVIEW_SCHEMA = {
         "head_sha": {"type": "string", "pattern": "^[0-9a-fA-F]{40}$"},
         "verdict": {"type": "string", "enum": sorted(VERDICTS)},
         "body_markdown": {"type": "string", "minLength": 1},
+        "findings": {
+            "type": "array",
+            "items": {
+                "type": "object",
+                "properties": {
+                    "severity": {
+                        "type": "string",
+                        "enum": sorted(FINDING_SEVERITIES),
+                    },
+                    "title": {"type": "string", "minLength": 1},
+                    "detail": {"type": "string", "minLength": 1},
+                },
+                "required": ["severity", "title", "detail"],
+                "additionalProperties": False,
+            },
+        },
         "provider": {"type": "string"},
         "reviewer": {"type": "string"},
         "model": {"type": "string"},
     },
-    "required": ["pr_number", "head_sha", "verdict", "body_markdown"],
+    "required": ["pr_number", "head_sha", "verdict", "body_markdown", "findings"],
     "additionalProperties": False,
 }
 REVIEW_SCHEMA_JSON = json.dumps(REVIEW_SCHEMA, separators=(",", ":"))
@@ -106,11 +123,19 @@ class PRMetadata:
 
 
 @dataclass(frozen=True)
+class ReviewFinding:
+    severity: str
+    title: str
+    detail: str
+
+
+@dataclass(frozen=True)
 class ReviewResult:
     pr_number: int
     head_sha: str
     verdict: str
     body_markdown: str
+    findings: tuple[ReviewFinding, ...]
     provider_claim: str | None = None
     reviewer_claim: str | None = None
     model_claim: str | None = None
@@ -153,6 +178,32 @@ PROVIDER_SPECS = {
     ),
 }
 
+REQUIRED_CLI_CAPABILITIES = {
+    "claude": (
+        ("structured JSON schema output", ("--json-schema",)),
+        ("machine-readable output", ("--output-format",)),
+        ("noninteractive permission mode", ("--permission-mode",)),
+        ("tool allow list", ("--allowedTools", "--allowed-tools")),
+        ("tool deny list", ("--disallowedTools", "--disallowed-tools")),
+        ("tool surface restriction", ("--tools",)),
+        ("customization isolation", ("--safe-mode",)),
+        ("slash-command disabling", ("--disable-slash-commands",)),
+        ("session persistence disabling", ("--no-session-persistence",)),
+    ),
+    "grok": (
+        ("structured JSON schema output", ("--json-schema",)),
+        ("machine-readable output", ("--output-format",)),
+        ("noninteractive permission mode", ("--permission-mode",)),
+        ("read-only sandbox", ("--sandbox",)),
+        ("tool allow rules", ("--allow",)),
+        ("tool deny rules", ("--deny",)),
+        ("tool surface restriction", ("--tools",)),
+        ("web disabling", ("--disable-web-search",)),
+        ("subagent disabling", ("--no-subagents",)),
+        ("prompt-file input", ("--prompt-file",)),
+    ),
+}
+
 
 def redact_sensitive(text: str) -> str:
     redacted = ANSI_PATTERN.sub("", text)
@@ -162,6 +213,21 @@ def redact_sensitive(text: str) -> str:
         else:
             redacted = pattern.sub("[REDACTED]", redacted)
     return redacted
+
+
+def validate_cli_capabilities(provider_key: str, help_output: str) -> None:
+    normalized = ANSI_PATTERN.sub("", help_output)
+    missing = [
+        label
+        for label, spellings in REQUIRED_CLI_CAPABILITIES[provider_key]
+        if not any(spelling in normalized for spelling in spellings)
+    ]
+    if missing:
+        display_name = PROVIDER_SPECS[provider_key].display_name
+        raise ReviewBridgeError(
+            f"{display_name} CLI lacks required safety capabilities: "
+            f"{', '.join(missing)}"
+        )
 
 
 def safe_failure_detail(completed: subprocess.CompletedProcess[str]) -> str:
@@ -312,6 +378,25 @@ class GitRepository:
             f"local commit verification for {sha}",
         )
 
+    def base_to_head_diff(self, base_sha: str, head_sha: str) -> str:
+        completed = require_success(
+            self.runner.run(
+                (
+                    "git",
+                    "diff",
+                    "--no-ext-diff",
+                    "--no-color",
+                    "--binary",
+                    "--find-renames",
+                    f"{base_sha}...{head_sha}",
+                    "--",
+                ),
+                cwd=self.cwd,
+            ),
+            "base-to-head diff generation",
+        )
+        return completed.stdout
+
     def assert_clean(self, worktree: Path, provider_name: str) -> None:
         completed = require_success(
             self.runner.run(("git", "status", "--porcelain"), cwd=worktree),
@@ -397,7 +482,7 @@ def extract_contract(output: str, provider_name: str) -> tuple[dict[str, object]
             if isinstance(only_model, str) and only_model:
                 model_metadata = only_model[:160]
 
-    required = {"pr_number", "head_sha", "verdict", "body_markdown"}
+    required = {"pr_number", "head_sha", "verdict", "body_markdown", "findings"}
     if required.issubset(outer):
         return outer, None
 
@@ -422,6 +507,7 @@ def review_result_from_contract(contract: Mapping[str, object]) -> ReviewResult:
         "head_sha",
         "verdict",
         "body_markdown",
+        "findings",
         "provider",
         "reviewer",
         "model",
@@ -435,6 +521,7 @@ def review_result_from_contract(contract: Mapping[str, object]) -> ReviewResult:
     head_sha = contract.get("head_sha")
     verdict = contract.get("verdict")
     body = contract.get("body_markdown")
+    raw_findings = contract.get("findings")
     if isinstance(pr_number, bool) or not isinstance(pr_number, int) or pr_number < 1:
         raise ReviewBridgeError("provider review output contained a malformed PR number")
     if not isinstance(head_sha, str) or not SHA_PATTERN.fullmatch(head_sha):
@@ -443,6 +530,42 @@ def review_result_from_contract(contract: Mapping[str, object]) -> ReviewResult:
         raise ReviewBridgeError("provider review output contained a malformed verdict")
     if not isinstance(body, str) or not body.strip():
         raise ReviewBridgeError("provider review output contained an empty review body")
+    if not isinstance(raw_findings, list):
+        raise ReviewBridgeError("provider review output contained malformed findings")
+    findings: list[ReviewFinding] = []
+    for raw_finding in raw_findings:
+        if not isinstance(raw_finding, dict):
+            raise ReviewBridgeError("provider review output contained malformed findings")
+        unexpected_finding_fields = sorted(
+            set(raw_finding) - {"severity", "title", "detail"}
+        )
+        if unexpected_finding_fields:
+            raise ReviewBridgeError(
+                "provider review finding contained unsupported fields: "
+                f"{', '.join(unexpected_finding_fields)}"
+            )
+        severity = raw_finding.get("severity")
+        title = raw_finding.get("title")
+        detail = raw_finding.get("detail")
+        if not isinstance(severity, str) or severity not in FINDING_SEVERITIES:
+            raise ReviewBridgeError(
+                "provider review finding contained a malformed severity"
+            )
+        if not isinstance(title, str) or not title.strip():
+            raise ReviewBridgeError("provider review finding contained an empty title")
+        if not isinstance(detail, str) or not detail.strip():
+            raise ReviewBridgeError("provider review finding contained an empty detail")
+        findings.append(
+            ReviewFinding(
+                severity=severity,
+                title=re.sub(r"\s+", " ", title).strip(),
+                detail=detail.strip(),
+            )
+        )
+    if verdict == "PASS" and findings:
+        raise ReviewBridgeError("PASS provider review output contained findings")
+    if verdict == "FINDINGS" and not findings:
+        raise ReviewBridgeError("FINDINGS provider review output contained no findings")
     optional: dict[str, str | None] = {}
     for key in ("provider", "reviewer", "model"):
         value = contract.get(key)
@@ -454,6 +577,7 @@ def review_result_from_contract(contract: Mapping[str, object]) -> ReviewResult:
         head_sha=head_sha.lower(),
         verdict=verdict,
         body_markdown=body.strip(),
+        findings=tuple(findings),
         provider_claim=optional["provider"],
         reviewer_claim=optional["reviewer"],
         model_claim=optional["model"],
@@ -490,9 +614,14 @@ class ProviderAdapter:
                 )
                 child_env["GROK_SESSION_REGISTRY"] = "0"
                 child_env["GROK_SESSION_SEARCH"] = "0"
+            version_command = (
+                ("grok", "--no-auto-update", "--no-memory", "--version")
+                if self.spec.key == "grok"
+                else ("claude", "--version")
+            )
             version = require_success(
                 self.runner.run(
-                    (self.spec.executable, "--version"),
+                    version_command,
                     cwd=worktree,
                     env=child_env,
                     timeout=30,
@@ -500,8 +629,20 @@ class ProviderAdapter:
                 f"{self.spec.display_name} version lookup",
             )
             cli_version = first_output_line(version.stdout or version.stderr, "unknown")
+            help_result = require_success(
+                self.runner.run(
+                    (self.spec.executable, "--help"),
+                    cwd=worktree,
+                    env=child_env,
+                    timeout=30,
+                ),
+                f"{self.spec.display_name} capability lookup",
+            )
+            validate_cli_capabilities(
+                self.spec.key, help_result.stdout + "\n" + help_result.stderr
+            )
             if self.spec.key == "claude":
-                command = self._claude_command()
+                command = self._claude_command(worktree)
                 completed = self.runner.run(
                     command,
                     cwd=worktree,
@@ -575,20 +716,11 @@ class ProviderAdapter:
             )
 
     @staticmethod
-    def _claude_command() -> tuple[str, ...]:
-        allowed = ",".join(
-            (
-                "Read",
-                "Grep",
-                "Glob",
-                "Bash(git diff *)",
-                "Bash(git show *)",
-                "Bash(git log *)",
-                "Bash(git status *)",
-                "Bash(git rev-parse *)",
-                "Bash(git grep *)",
-            )
-        )
+    def _claude_command(worktree: Path) -> tuple[str, ...]:
+        worktree_path = worktree.resolve().as_posix()
+        if not worktree_path.startswith("/"):
+            raise ReviewBridgeError("Claude review worktree path is not absolute")
+        scoped_read = f"Read(//{worktree_path.lstrip('/')}/**)"
         return (
             "claude",
             "-p",
@@ -599,11 +731,11 @@ class ProviderAdapter:
             "--permission-mode",
             "dontAsk",
             "--tools",
-            "Read,Grep,Glob,Bash",
+            "Read,Grep,Glob",
             "--allowedTools",
-            allowed,
+            scoped_read,
             "--disallowedTools",
-            "Edit,Write,NotebookEdit,WebFetch,WebSearch,Agent",
+            "Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch,Agent",
             "--safe-mode",
             "--disable-slash-commands",
             "--no-chrome",
@@ -628,6 +760,8 @@ class ProviderAdapter:
             REVIEW_SCHEMA_JSON,
             "--permission-mode",
             "dontAsk",
+            "--tools",
+            "Read,Grep",
             "--sandbox",
             "read-only",
             "--no-subagents",
@@ -635,35 +769,14 @@ class ProviderAdapter:
             "--max-turns",
             "30",
         ]
-        for rule in (
-            "Read",
-            "Grep",
-            "Bash(git diff *)",
-            "Bash(git show *)",
-            "Bash(git log *)",
-            "Bash(git status *)",
-            "Bash(git rev-parse *)",
-            "Bash(git grep *)",
-        ):
+        for rule in ("Read", "Grep"):
             command.extend(("--allow", rule))
         for rule in (
+            "Bash",
             "Edit",
             "MCPTool",
             "WebFetch",
             "WebSearch",
-            "Bash(gh *)",
-            "Bash(git push *)",
-            "Bash(git fetch *)",
-            "Bash(git checkout *)",
-            "Bash(git switch *)",
-            "Bash(git branch *)",
-            "Bash(git tag *)",
-            "Bash(git reset *)",
-            "Bash(git clean *)",
-            "Bash(git commit *)",
-            "Bash(git merge *)",
-            "Bash(git rebase *)",
-            "Bash(git worktree *)",
         ):
             command.extend(("--deny", rule))
         return tuple(command)
@@ -693,10 +806,18 @@ def clean_claim_value(value: str) -> str:
     return value.strip().strip("`*_ ")
 
 
-def validate_identity_claim(value: str, selected_provider: str, label: str) -> None:
-    identities = {
+def detected_identities(value: str) -> set[str]:
+    return {
         key for key, pattern in KNOWN_IDENTITIES.items() if pattern.search(value)
     }
+
+
+def validate_identity_claim(
+    value: str,
+    selected_provider: str,
+    label: str,
+) -> None:
+    identities = detected_identities(value)
     if identities != {selected_provider}:
         raise ReviewBridgeError(
             f"{label} identity conflicts with invoked provider {selected_provider}"
@@ -704,9 +825,7 @@ def validate_identity_claim(value: str, selected_provider: str, label: str) -> N
 
 
 def validate_model_claim(value: str, selected_provider: str) -> None:
-    identities = {
-        key for key, pattern in KNOWN_IDENTITIES.items() if pattern.search(value)
-    }
+    identities = detected_identities(value)
     if identities and identities != {selected_provider}:
         raise ReviewBridgeError(
             f"model identity conflicts with invoked provider {selected_provider}"
@@ -735,8 +854,14 @@ def validate_and_strip_body_claims(
         label = re.sub(r"\s+", " ", field.group(1).lower()).strip()
         value = clean_claim_value(field.group(2))
         if label in ("reviewer", "provider"):
+            if not detected_identities(value):
+                kept.append(line)
+                continue
             validate_identity_claim(value, provider.key, label)
         elif label == "model":
+            if not detected_identities(value):
+                kept.append(line)
+                continue
             validate_model_claim(value, provider.key)
         elif label.startswith("pr"):
             if not re.fullmatch(rf"#?{pr_number}", value):
@@ -774,6 +899,12 @@ def validate_execution(
         )
     if result.verdict not in VERDICTS:
         raise ReviewBridgeError(f"{provider.display_name} returned an invalid verdict")
+    if result.verdict == "PASS" and result.findings:
+        raise ReviewBridgeError(f"{provider.display_name} returned PASS with findings")
+    if result.verdict == "FINDINGS" and not result.findings:
+        raise ReviewBridgeError(
+            f"{provider.display_name} returned FINDINGS without structured findings"
+        )
     if result.provider_claim:
         validate_identity_claim(result.provider_claim, provider.key, "provider")
     if result.reviewer_claim:
@@ -789,10 +920,46 @@ def validate_execution(
         head_sha=expected_head,
         verdict=result.verdict,
     )
-    return replace(execution, result=replace(result, body_markdown=body))
+    sanitized_findings: list[ReviewFinding] = []
+    for finding in result.findings:
+        title = validate_and_strip_body_claims(
+            finding.title,
+            provider=provider,
+            pr_number=expected_pr,
+            head_sha=expected_head,
+            verdict=result.verdict,
+        )
+        detail = validate_and_strip_body_claims(
+            finding.detail,
+            provider=provider,
+            pr_number=expected_pr,
+            head_sha=expected_head,
+            verdict=result.verdict,
+        )
+        sanitized_findings.append(
+            replace(
+                finding,
+                title=redact_sensitive(title),
+                detail=redact_sensitive(detail),
+            )
+        )
+    return replace(
+        execution,
+        cli_version=redact_sensitive(execution.cli_version),
+        model_metadata=(
+            redact_sensitive(execution.model_metadata)
+            if execution.model_metadata is not None
+            else None
+        ),
+        result=replace(
+            result,
+            body_markdown=redact_sensitive(body),
+            findings=tuple(sanitized_findings),
+        ),
+    )
 
 
-def wrapped_prompt(prompt: str, metadata: PRMetadata) -> str:
+def wrapped_prompt(prompt: str, metadata: PRMetadata, base_to_head_diff: str) -> str:
     return f"""Perform an independent review of the exact detached pull-request head in your current working directory.
 
 Caller-owned review coordinates:
@@ -802,7 +969,11 @@ Caller-owned review coordinates:
 - Base ref: {metadata.base_ref}
 - Head ref: {metadata.head_ref}
 
-The working directory is detached at the exact head SHA. Inspect repository files and `git diff {metadata.base_sha}...{metadata.head_sha}` as needed. Do not modify files or repository state. Do not use GitHub write operations.
+The working directory is detached at the exact head SHA. Repository reads are confined to that checkout. The wrapper-generated complete base-to-head diff is included below because shell access is unavailable to the provider. Inspect repository files and that diff as needed. Do not modify files or repository state. Do not use GitHub operations.
+
+<base-to-head-diff>
+{base_to_head_diff}
+</base-to-head-diff>
 
 Apply the following provider-neutral review request:
 
@@ -810,7 +981,7 @@ Apply the following provider-neutral review request:
 {prompt.strip()}
 </review-request>
 
-Return only the requested machine-readable result. `pr_number` must be {metadata.number}; `head_sha` must be {metadata.head_sha}; `verdict` must be exactly PASS or FINDINGS; `body_markdown` must contain only the substantive review. Do not emit provider, reviewer, exact-head, verdict, or review-role headers in `body_markdown`. Provider identity is caller-owned metadata and must not be claimed or inferred in model prose.
+Return only the requested machine-readable result. `pr_number` must be {metadata.number}; `head_sha` must be {metadata.head_sha}; `verdict` must be exactly PASS or FINDINGS; `body_markdown` must contain only the substantive review; `findings` must be an array of objects with `severity`, `title`, and `detail`. Use only BLOCKER, HIGH, MEDIUM, or LOW for `severity`. PASS requires an empty `findings` array. FINDINGS requires at least one substantive structured finding. Do not infer or manufacture structured findings from prose. Do not emit provider, reviewer, exact-head, verdict, or review-role headers in `body_markdown`. Provider identity is caller-owned metadata and must not be claimed or inferred in model prose.
 """
 
 
@@ -836,13 +1007,26 @@ def render_comment(
         )
     )
     table = "\n".join(f"| {label} | {value} |" for label, value in rows)
+    findings = ""
+    if execution.result.findings:
+        rendered_findings: list[str] = []
+        for finding in execution.result.findings:
+            detail = "\n".join(
+                f"  {line}" if line else ""
+                for line in finding.detail.splitlines()
+            )
+            rendered_findings.append(
+                f"- **{finding.severity}: {finding.title}**\n\n{detail}"
+            )
+        findings = "\n\n### Structured findings\n\n" + "\n\n".join(rendered_findings)
     return (
         f"## External exact-head review — {provider.display_name}\n\n"
         "<!-- kv-external-review:v1 -->\n"
         "| Field | Value |\n|---|---|\n"
         f"{table}\n\n"
         "### Review body\n\n"
-        f"{execution.result.body_markdown.strip()}\n"
+        f"{execution.result.body_markdown.strip()}"
+        f"{findings}\n"
     )
 
 
@@ -852,6 +1036,7 @@ class Adapter(Protocol):
 
 class Repository(Protocol):
     def ensure_commit(self, sha: str, *, pr_number: int | None = None) -> None: ...
+    def base_to_head_diff(self, base_sha: str, head_sha: str) -> str: ...
     def assert_clean(self, worktree: Path, provider_name: str) -> None: ...
     def detached_worktree(self, pr_number: int, head_sha: str) -> contextlib.AbstractContextManager[Path]: ...
 
@@ -890,7 +1075,10 @@ class ReviewBridge:
         self.emit(f"Exact head: {metadata.head_sha}")
         self.repository.ensure_commit(metadata.base_sha)
         self.repository.ensure_commit(metadata.head_sha, pr_number=pr_number)
-        prompt_text = wrapped_prompt(prompt, metadata)
+        base_to_head_diff = self.repository.base_to_head_diff(
+            metadata.base_sha, metadata.head_sha
+        )
+        prompt_text = wrapped_prompt(prompt, metadata, base_to_head_diff)
         validated: list[tuple[ProviderSpec, ProviderExecution]] = []
         with self.repository.detached_worktree(pr_number, metadata.head_sha) as worktree:
             for provider_name in provider_names:
@@ -957,6 +1145,27 @@ def doctor(runner: Runner, cwd: Path) -> tuple[bool, list[str]]:
         )
         return True
 
+    def capability_check(provider_key: str, available: bool) -> bool:
+        nonlocal healthy
+        display_name = PROVIDER_SPECS[provider_key].display_name
+        if not available:
+            return False
+        completed = safe_run((PROVIDER_SPECS[provider_key].executable, "--help"))
+        if completed.returncode != 0:
+            lines.append(f"FAIL {display_name} safety capabilities: help unavailable")
+            healthy = False
+            return False
+        try:
+            validate_cli_capabilities(
+                provider_key, completed.stdout + "\n" + completed.stderr
+            )
+        except ReviewBridgeError as error:
+            lines.append(f"FAIL {display_name} safety capabilities: {error}")
+            healthy = False
+            return False
+        lines.append(f"OK   {display_name} safety capabilities: compatible")
+        return True
+
     git_available = version_check("git", "git")
     gh_available = version_check("gh", "gh")
     gh_auth = (
@@ -999,6 +1208,7 @@ def doctor(runner: Runner, cwd: Path) -> tuple[bool, list[str]]:
         healthy = False
 
     claude_available = version_check("claude", "Claude Code")
+    capability_check("claude", claude_available)
     claude_auth = (
         safe_run(("claude", "auth", "status"))
         if claude_available
@@ -1019,6 +1229,17 @@ def doctor(runner: Runner, cwd: Path) -> tuple[bool, list[str]]:
         healthy = False
 
     grok_available = version_check("grok", "Grok Build")
+    grok_session_controls = (
+        safe_run(("grok", "--no-auto-update", "--no-memory", "--version"))
+        if grok_available
+        else subprocess.CompletedProcess(("grok",), 127, "", "")
+    )
+    if grok_available and grok_session_controls.returncode == 0:
+        lines.append("OK   Grok session controls: compatible")
+    else:
+        lines.append("FAIL Grok session controls: `--no-auto-update --no-memory` unsupported")
+        healthy = False
+    capability_check("grok", grok_available)
     grok_auth = (
         safe_run(("grok", "--no-auto-update", "models"))
         if grok_available

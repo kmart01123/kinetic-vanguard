@@ -13,6 +13,16 @@ HEAD = "1" * 40
 MOVED_HEAD = "2" * 40
 BASE = "a" * 40
 PR_NUMBER = 104
+CLAUDE_HELP = " ".join(
+    spelling
+    for _label, spellings in bridge.REQUIRED_CLI_CAPABILITIES["claude"]
+    for spelling in spellings[:1]
+)
+GROK_HELP = " ".join(
+    spelling
+    for _label, spellings in bridge.REQUIRED_CLI_CAPABILITIES["grok"]
+    for spelling in spellings[:1]
+)
 
 
 def completed(
@@ -44,13 +54,27 @@ def execution(
     body: str = "No material findings.",
     pr_number: int = PR_NUMBER,
     head: str = HEAD,
+    findings: tuple[bridge.ReviewFinding, ...] | None = None,
 ) -> bridge.ProviderExecution:
+    if findings is None:
+        findings = (
+            (
+                bridge.ReviewFinding(
+                    severity="MEDIUM",
+                    title="Material finding",
+                    detail="The implementation needs a focused correction.",
+                ),
+            )
+            if verdict == "FINDINGS"
+            else ()
+        )
     return bridge.ProviderExecution(
         result=bridge.ReviewResult(
             pr_number=pr_number,
             head_sha=head,
             verdict=verdict,
             body_markdown=body,
+            findings=findings,
         ),
         cli_version=f"{provider} 1.0",
         model_metadata=f"{provider}-model",
@@ -91,6 +115,11 @@ class FakeRepository:
 
     def assert_clean(self, worktree: Path, provider_name: str) -> None:
         self.clean_checks.append(provider_name)
+
+    def base_to_head_diff(self, base_sha: str, head_sha: str) -> str:
+        if (base_sha, head_sha) != (BASE, HEAD):
+            raise AssertionError("unexpected diff coordinates")
+        return "diff --git a/tool.py b/tool.py\n"
 
     @contextlib.contextmanager
     def detached_worktree(self, pr_number: int, head_sha: str):
@@ -331,6 +360,193 @@ class ReviewBridgeTests(unittest.TestCase):
         self.assertEqual(comment.count("Issue #98 external second-pair review"), 1)
         self.assertIn("Substantive review remains.", comment)
 
+    def test_provider_content_is_redacted_in_final_posted_comment(self) -> None:
+        secrets = (
+            "ghp_1234567890",
+            "gho_abcdefghij",
+            "sk-abcdefghijkl",
+            "xai-abcdefghijkl",
+            "token=visible-value",
+            "password: visible-value",
+            "api_key=visible-value",
+        )
+        body = "Provider evidence: " + " ".join(secrets)
+        findings = (
+            bridge.ReviewFinding(
+                severity="HIGH",
+                title="Leaked ghp_zzzzzzzzzz",
+                detail="Remove secret=structured-value before publication.",
+            ),
+        )
+        leaky = execution(
+            "claude", verdict="FINDINGS", body=body, findings=findings
+        )
+        leaky = bridge.ProviderExecution(
+            result=leaky.result,
+            cli_version="claude ghp_cliversion123",
+            model_metadata="claude-sk-modelmetadata123",
+        )
+        _posted, github, _repository = self.run_bridge(
+            ("claude",),
+            {"claude": leaky},
+        )
+        comment = github.comments[0]
+        for secret in secrets:
+            self.assertNotIn(secret, comment)
+        self.assertNotIn("ghp_zzzzzzzzzz", comment)
+        self.assertNotIn("structured-value", comment)
+        self.assertNotIn("ghp_cliversion123", comment)
+        self.assertNotIn("sk-modelmetadata123", comment)
+        self.assertGreaterEqual(comment.count("[REDACTED]"), 11)
+        self.assertIn(f"`{HEAD}`", comment)
+
+    def test_neutral_metadata_shaped_prose_is_tolerated_and_retained(self) -> None:
+        body = (
+            "Provider: <string>\n"
+            "Model: custom-review-engine\n\n"
+            "These are schema examples, not identity claims."
+        )
+        _posted, github, _repository = self.run_bridge(
+            ("claude",), {"claude": execution("claude", body=body)}
+        )
+        self.assertIn("Provider: <string>", github.comments[0])
+        self.assertIn("Model: custom-review-engine", github.comments[0])
+
+    def test_mismatched_wrapper_header_is_rejected_without_post(self) -> None:
+        github = FakeGitHub([metadata()])
+        body = "## External exact-head review — Grok\n\nSubstantive review."
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "identity conflicts"):
+            bridge.ReviewBridge(
+                github,
+                FakeRepository(),
+                {"claude": FakeAdapter(execution("claude", body=body))},
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("claude",), "Review.")
+        self.assertEqual(github.comments, [])
+
+    def test_findings_verdict_without_structured_findings_is_rejected(self) -> None:
+        github = FakeGitHub([metadata()])
+        progress_only = execution(
+            "grok",
+            verdict="FINDINGS",
+            body="Starting an independent exact-head review.",
+            findings=(),
+        )
+        with self.assertRaisesRegex(
+            bridge.ReviewBridgeError, "FINDINGS without structured findings"
+        ):
+            bridge.ReviewBridge(
+                github,
+                FakeRepository(),
+                {"grok": FakeAdapter(progress_only)},
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("grok",), "Review.")
+        self.assertEqual(github.comments, [])
+
+    def test_pass_with_structured_findings_is_rejected(self) -> None:
+        github = FakeGitHub([metadata()])
+        inconsistent = execution(
+            "claude",
+            findings=(
+                bridge.ReviewFinding("LOW", "Unexpected finding", "Detail."),
+            ),
+        )
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "PASS with findings"):
+            bridge.ReviewBridge(
+                github,
+                FakeRepository(),
+                {"claude": FakeAdapter(inconsistent)},
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("claude",), "Review.")
+        self.assertEqual(github.comments, [])
+
+    def test_all_mode_semantic_failure_is_atomic(self) -> None:
+        github = FakeGitHub([metadata()])
+        invalid_grok = execution(
+            "grok", verdict="FINDINGS", body="Review starting.", findings=()
+        )
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "structured findings"):
+            bridge.ReviewBridge(
+                github,
+                FakeRepository(),
+                {
+                    "claude": FakeAdapter(execution("claude")),
+                    "grok": FakeAdapter(invalid_grok),
+                },
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("claude", "grok"), "Review.")
+        self.assertEqual(github.comments, [])
+
+    def test_contract_requires_well_formed_findings(self) -> None:
+        base_contract: dict[str, object] = {
+            "pr_number": PR_NUMBER,
+            "head_sha": HEAD,
+            "verdict": "PASS",
+            "body_markdown": "No material findings.",
+        }
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "malformed findings"):
+            bridge.review_result_from_contract(base_contract)
+        malformed = dict(base_contract, findings=[{"severity": "MEDIUM"}])
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "empty title"):
+            bridge.review_result_from_contract(malformed)
+
+    def test_contract_enforces_verdict_findings_consistency(self) -> None:
+        base_contract: dict[str, object] = {
+            "pr_number": PR_NUMBER,
+            "head_sha": HEAD,
+            "body_markdown": "Substantive review.",
+        }
+        passed = bridge.review_result_from_contract(
+            dict(base_contract, verdict="PASS", findings=[])
+        )
+        self.assertEqual(passed.findings, ())
+        one_finding = [
+            {
+                "severity": "HIGH",
+                "title": "Credential boundary",
+                "detail": "The boundary is not enforced.",
+            }
+        ]
+        found = bridge.review_result_from_contract(
+            dict(base_contract, verdict="FINDINGS", findings=one_finding)
+        )
+        self.assertEqual(found.findings[0].severity, "HIGH")
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "contained no findings"):
+            bridge.review_result_from_contract(
+                dict(base_contract, verdict="FINDINGS", findings=[])
+            )
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "PASS.*findings"):
+            bridge.review_result_from_contract(
+                dict(base_contract, verdict="PASS", findings=one_finding)
+            )
+        malformed_severity = [
+            {
+                "severity": "URGENT",
+                "title": "Bad severity",
+                "detail": "Not in the contract enum.",
+            }
+        ]
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "malformed severity"):
+            bridge.review_result_from_contract(
+                dict(
+                    base_contract,
+                    verdict="FINDINGS",
+                    findings=malformed_severity,
+                )
+            )
+
+    def test_wrapper_prompt_contains_exact_diff_and_findings_invariants(self) -> None:
+        _posted, _github, _repository = self.run_bridge(
+            ("claude",), {"claude": execution("claude")}
+        )
+        github = FakeGitHub([metadata(), metadata()])
+        adapter = FakeAdapter(execution("claude"))
+        bridge.ReviewBridge(
+            github, FakeRepository(), {"claude": adapter}, emit=lambda _message: None
+        ).review(PR_NUMBER, ("claude",), "Review.")
+        self.assertIn("diff --git a/tool.py b/tool.py", adapter.prompts[0])
+        self.assertIn("PASS requires an empty `findings` array", adapter.prompts[0])
+
 
 class ProviderAdapterTests(unittest.TestCase):
     def test_provider_child_environment_scrubs_github_credentials(self) -> None:
@@ -340,12 +556,14 @@ class ProviderAdapterTests(unittest.TestCase):
                 "head_sha": HEAD,
                 "verdict": "PASS",
                 "body_markdown": "No findings.",
+                "findings": [],
             },
             "model": "claude-test",
         }
         runner = QueueRunner(
             [
                 completed(stdout="2.1.0 (Claude Code)\n"),
+                completed(stdout=CLAUDE_HELP),
                 completed(stdout=bridge.json.dumps(provider_payload)),
             ]
         )
@@ -369,11 +587,20 @@ class ProviderAdapterTests(unittest.TestCase):
             self.assertNotIn("GITHUB_TOKEN", environment)
             self.assertNotEqual(environment["GH_CONFIG_DIR"], "/real/gh/config")
             self.assertEqual(environment["ANTHROPIC_API_KEY"], "anthropic-local-auth")
+        provider_command = runner.calls[-1]["args"]
+        assert isinstance(provider_command, tuple)
+        self.assertNotIn("Bash", provider_command[provider_command.index("--tools") + 1])
+        self.assertIn("Bash", provider_command[provider_command.index("--disallowedTools") + 1])
+        self.assertIn(
+            "Read(//detached/**)",
+            provider_command[provider_command.index("--allowedTools") + 1],
+        )
 
     def test_grok_rejects_discovered_mcp_configuration(self) -> None:
         runner = QueueRunner(
             [
                 completed(stdout="grok 1.0.5\n"),
+                completed(stdout=GROK_HELP),
                 completed(stdout='{"mcpServers":[{"name":"unsafe"}]}'),
             ]
         )
@@ -384,7 +611,7 @@ class ProviderAdapterTests(unittest.TestCase):
             bridge.ReviewBridgeError, "active review customizations"
         ):
             adapter.run(Path("/detached"), "Review.")
-        self.assertEqual(len(runner.calls), 2)
+        self.assertEqual(len(runner.calls), 3)
 
     def test_grok_uses_ephemeral_home_with_existing_auth_path(self) -> None:
         provider_payload = {
@@ -393,11 +620,13 @@ class ProviderAdapterTests(unittest.TestCase):
                 "head_sha": HEAD,
                 "verdict": "PASS",
                 "body_markdown": "No findings.",
+                "findings": [],
             }
         }
         runner = QueueRunner(
             [
                 completed(stdout="grok 1.0.5\n"),
+                completed(stdout=GROK_HELP),
                 completed(stdout="{}"),
                 completed(stdout=bridge.json.dumps(provider_payload)),
             ]
@@ -419,9 +648,52 @@ class ProviderAdapterTests(unittest.TestCase):
             self.assertEqual(environment["GROK_AUTH_PATH"], "/user/grok/auth.json")
             self.assertEqual(environment["GROK_SESSION_REGISTRY"], "0")
             self.assertEqual(environment["GROK_SESSION_SEARCH"], "0")
+        provider_command = runner.calls[-1]["args"]
+        assert isinstance(provider_command, tuple)
+        self.assertEqual(
+            provider_command[provider_command.index("--tools") + 1], "Read,Grep"
+        )
+        self.assertIn("Bash", provider_command)
+        self.assertFalse(any("Bash(git" in argument for argument in provider_command))
+
+    def test_missing_cli_safety_capability_fails_before_provider_execution(self) -> None:
+        runner = QueueRunner(
+            [
+                completed(stdout="2.1.0 (Claude Code)\n"),
+                completed(stdout="--json-schema --output-format"),
+            ]
+        )
+        adapter = bridge.ProviderAdapter(
+            bridge.PROVIDER_SPECS["claude"],
+            runner,
+            source_environment={"PATH": "/usr/bin"},
+        )
+        with self.assertRaisesRegex(
+            bridge.ReviewBridgeError, "lacks required safety capabilities"
+        ):
+            adapter.run(Path("/detached"), "Review.")
+        self.assertEqual(len(runner.calls), 2)
 
 
 class WorktreeCleanupTests(unittest.TestCase):
+    def test_wrapper_generates_exact_base_to_head_diff(self) -> None:
+        runner = QueueRunner([completed(stdout="exact patch")])
+        repository = bridge.GitRepository(runner, Path("/repo"))
+        self.assertEqual(repository.base_to_head_diff(BASE, HEAD), "exact patch")
+        self.assertEqual(
+            runner.calls[0]["args"],
+            (
+                "git",
+                "diff",
+                "--no-ext-diff",
+                "--no-color",
+                "--binary",
+                "--find-renames",
+                f"{BASE}...{HEAD}",
+                "--",
+            ),
+        )
+
     def test_detached_worktree_cleanup_happens_on_success(self) -> None:
         runner = QueueRunner([completed(), completed()])
         with tempfile.TemporaryDirectory() as parent:
@@ -458,8 +730,11 @@ class DoctorTests(unittest.TestCase):
                 completed(stdout="/repository\n"),
                 completed(stdout='{"nameWithOwner":"owner/repository"}'),
                 completed(stdout="2.1.0 (Claude Code)\n"),
+                completed(stdout=CLAUDE_HELP),
                 completed(stdout=f'{{"loggedIn":true,"token":"{secret}"}}'),
                 completed(stdout="grok 1.0.5\n"),
+                completed(stdout="grok 1.0.5\n"),
+                completed(stdout=GROK_HELP),
                 completed(stdout="Available models: grok-4.6\n", stderr=secret),
             ]
         )
@@ -468,6 +743,33 @@ class DoctorTests(unittest.TestCase):
         output = "\n".join(lines)
         self.assertNotIn(secret, output)
         self.assertNotIn("super_secret", output)
+        self.assertIn("Claude safety capabilities: compatible", output)
+        self.assertIn("Grok safety capabilities: compatible", output)
+        self.assertIn("Grok session controls: compatible", output)
+
+    def test_doctor_fails_for_incompatible_provider_cli(self) -> None:
+        runner = QueueRunner(
+            [
+                completed(stdout="git version 2.50.0\n"),
+                completed(stdout="gh version 2.97.0\n"),
+                completed(),
+                completed(stdout="/repository\n"),
+                completed(stdout='{"nameWithOwner":"owner/repository"}'),
+                completed(stdout="2.1.0 (Claude Code)\n"),
+                completed(stdout="--json-schema --output-format"),
+                completed(stdout='{"loggedIn":true}'),
+                completed(stdout="grok 1.0.5\n"),
+                completed(stdout="grok 1.0.5\n"),
+                completed(stdout=GROK_HELP),
+                completed(stdout="Available models: grok-4.6\n"),
+            ]
+        )
+        healthy, lines = bridge.doctor(runner, Path("/repository"))
+        self.assertFalse(healthy)
+        self.assertIn(
+            "FAIL Claude safety capabilities: Claude CLI lacks required safety capabilities",
+            "\n".join(lines),
+        )
 
 
 if __name__ == "__main__":
