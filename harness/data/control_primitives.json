@@ -114,6 +114,7 @@
       "source_page": 185,
       "includes": [],
       "primitives": [
+        {"id":"standing_movement_cost","qualifiers":{"movement_cost":"half_speed","recovery_method":"stand","recovery_timing":"target_turn"}},
         {"id":"offensive_impairment_all_attacks","status":"context_required","qualifiers":{"reason":"standing_and_timing_not_established"}},
         {"id":"defensive_attack_advantage","status":"context_required","qualifiers":{"attacker_distance":"within_5_feet"}},
         {"id":"prone_incoming_attack_context","qualifiers":{"attacker_distance":"farther_than_5_feet","incoming_attack_effect":"disadvantage"}},
@@ -207,7 +208,7 @@
     "open_ended_behavior": {"primitive":"open_ended_behavior"},
     "held_item_drop": {"primitive":"held_item_loss"},
     "target_choice_restriction": {"primitive":"target_choice_restriction"},
-    "standing_movement_cost": {"primitive":"standing_movement_cost","qualifiers":{"movement_cost":"half_speed","recovery_method":"stand"}},
+    "standing_movement_cost": {"primitive":"standing_movement_cost","qualifiers":{"movement_cost":"half_speed","recovery_method":"stand","recovery_timing":"target_turn"}},
     "damage_output_change": {"primitive":"damage_output_change"},
     "hearing_option_denial": {"primitive":"hearing_option_denial"},
     "size_reduction": {"primitive":"size_change","qualifiers":{"direction":"reduction"}},
