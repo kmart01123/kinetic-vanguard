@@ -23,6 +23,14 @@ GROK_HELP = " ".join(
     for _label, spellings in bridge.REQUIRED_CLI_CAPABILITIES["grok"]
     for spelling in spellings[:1]
 )
+GROK_MODELS = """You are logged in with grok.com.
+
+Default model: grok-4.6
+
+Available models:
+  * grok-4.6 (default)
+  - grok-4.5
+"""
 
 
 def completed(
@@ -77,7 +85,7 @@ def execution(
             findings=findings,
         ),
         cli_version=f"{provider} 1.0",
-        model_metadata=f"{provider}-model",
+        model_metadata="grok-build" if provider == "grok" else "claude-model",
     )
 
 
@@ -105,16 +113,23 @@ class FakeGitHub:
 
 
 class FakeRepository:
-    def __init__(self) -> None:
+    def __init__(self, symlink_error: Exception | None = None) -> None:
         self.ensured: list[tuple[str, int | None]] = []
         self.cleaned = False
         self.clean_checks: list[str] = []
+        self.symlink_checks = 0
+        self.symlink_error = symlink_error
 
     def ensure_commit(self, sha: str, *, pr_number: int | None = None) -> None:
         self.ensured.append((sha, pr_number))
 
     def assert_clean(self, worktree: Path, provider_name: str) -> None:
         self.clean_checks.append(provider_name)
+
+    def validate_worktree_symlinks(self, worktree: Path) -> None:
+        self.symlink_checks += 1
+        if self.symlink_error is not None:
+            raise self.symlink_error
 
     def base_to_head_diff(self, base_sha: str, head_sha: str) -> str:
         if (base_sha, head_sha) != (BASE, HEAD):
@@ -269,6 +284,56 @@ class ReviewBridgeTests(unittest.TestCase):
         with self.assertRaisesRegex(bridge.ReviewBridgeError, "malformed JSON"):
             bridge.extract_contract("not json", "Claude")
 
+    def test_grok_camel_case_structured_output_precedes_malformed_text(self) -> None:
+        envelope = {
+            "modelUsage": {"grok-4.6-build": {}},
+            "stopReason": "end_turn",
+            "structuredOutput": {
+                "pr_number": PR_NUMBER,
+                "head_sha": HEAD,
+                "verdict": "PASS",
+                "body_markdown": "No material findings.",
+                "findings": [],
+            },
+            "text": '{"first": true}\n{"extra": true}',
+        }
+        contract, model = bridge.extract_contract(
+            bridge.json.dumps(envelope), "Grok"
+        )
+        self.assertEqual(contract, envelope["structuredOutput"])
+        self.assertEqual(model, "grok-4.6-build")
+
+    def test_live_grok_envelope_shape_allows_all_provider_validation(self) -> None:
+        envelope = {
+            "modelUsage": {"grok-4.6-build": {}},
+            "stopReason": "end_turn",
+            "structuredOutput": {
+                "pr_number": PR_NUMBER,
+                "head_sha": HEAD,
+                "verdict": "PASS",
+                "body_markdown": "No material findings.",
+                "findings": [],
+            },
+            "text": '{"valid": true}\ntrailing data',
+        }
+        contract, model = bridge.extract_contract(
+            bridge.json.dumps(envelope), "Grok"
+        )
+        grok_execution = bridge.ProviderExecution(
+            result=bridge.review_result_from_contract(contract),
+            cli_version="grok 1.0.5",
+            model_metadata=model,
+        )
+        posted, github, _repository = self.run_bridge(
+            ("claude", "grok"),
+            {
+                "claude": execution("claude"),
+                "grok": grok_execution,
+            },
+        )
+        self.assertEqual(len(posted), 2)
+        self.assertEqual(len(github.comments), 2)
+
     def test_model_identity_claiming_other_provider_is_rejected(self) -> None:
         github = FakeGitHub([metadata()])
         wrong_model = bridge.ProviderExecution(
@@ -281,6 +346,54 @@ class ReviewBridgeTests(unittest.TestCase):
                 github,
                 FakeRepository(),
                 {"grok": FakeAdapter(wrong_model)},
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("grok",), "Review.")
+        self.assertEqual(github.comments, [])
+
+    def test_grok_build_model_identities_are_accepted(self) -> None:
+        for model in ("grok-build", "grok-4.6-build"):
+            with self.subTest(model=model):
+                valid = execution("grok")
+                valid = bridge.ProviderExecution(
+                    result=valid.result,
+                    cli_version=valid.cli_version,
+                    model_metadata=model,
+                )
+                posted, _github, _repository = self.run_bridge(
+                    ("grok",), {"grok": valid}
+                )
+                self.assertEqual(len(posted), 1)
+
+    def test_non_build_grok_model_is_rejected_without_post(self) -> None:
+        github = FakeGitHub([metadata()])
+        invalid = execution("grok")
+        invalid = bridge.ProviderExecution(
+            result=invalid.result,
+            cli_version=invalid.cli_version,
+            model_metadata="grok-4.5",
+        )
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "non-Build model"):
+            bridge.ReviewBridge(
+                github,
+                FakeRepository(),
+                {"grok": FakeAdapter(invalid)},
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("grok",), "Review.")
+        self.assertEqual(github.comments, [])
+
+    def test_missing_grok_model_is_rejected_without_post(self) -> None:
+        github = FakeGitHub([metadata()])
+        invalid = execution("grok")
+        invalid = bridge.ProviderExecution(
+            result=invalid.result,
+            cli_version=invalid.cli_version,
+            model_metadata=None,
+        )
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "missing or non-Build"):
+            bridge.ReviewBridge(
+                github,
+                FakeRepository(),
+                {"grok": FakeAdapter(invalid)},
                 emit=lambda _message: None,
             ).review(PR_NUMBER, ("grok",), "Review.")
         self.assertEqual(github.comments, [])
@@ -362,6 +475,7 @@ class ReviewBridgeTests(unittest.TestCase):
 
     def test_provider_content_is_redacted_in_final_posted_comment(self) -> None:
         secrets = (
+            "github_pat_synthetic_secret_1234567890",
             "ghp_1234567890",
             "gho_abcdefghij",
             "sk-abcdefghijkl",
@@ -397,7 +511,7 @@ class ReviewBridgeTests(unittest.TestCase):
         self.assertNotIn("structured-value", comment)
         self.assertNotIn("ghp_cliversion123", comment)
         self.assertNotIn("sk-modelmetadata123", comment)
-        self.assertGreaterEqual(comment.count("[REDACTED]"), 11)
+        self.assertGreaterEqual(comment.count("[REDACTED]"), 12)
         self.assertIn(f"`{HEAD}`", comment)
 
     def test_neutral_metadata_shaped_prose_is_tolerated_and_retained(self) -> None:
@@ -476,6 +590,24 @@ class ReviewBridgeTests(unittest.TestCase):
                 emit=lambda _message: None,
             ).review(PR_NUMBER, ("claude", "grok"), "Review.")
         self.assertEqual(github.comments, [])
+
+    def test_symlink_validation_failure_starts_no_provider_and_posts_nothing(self) -> None:
+        github = FakeGitHub([metadata()])
+        repository = FakeRepository(
+            bridge.ReviewBridgeError("repository symlink escapes detached worktree")
+        )
+        adapter = FakeAdapter(execution("claude"))
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "symlink escapes"):
+            bridge.ReviewBridge(
+                github,
+                repository,
+                {"claude": adapter},
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("claude",), "Review.")
+        self.assertEqual(adapter.prompts, [])
+        self.assertEqual(github.comments, [])
+        self.assertEqual(repository.symlink_checks, 1)
+        self.assertTrue(repository.cleaned)
 
     def test_contract_requires_well_formed_findings(self) -> None:
         base_contract: dict[str, object] = {
@@ -601,6 +733,7 @@ class ProviderAdapterTests(unittest.TestCase):
             [
                 completed(stdout="grok 1.0.5\n"),
                 completed(stdout=GROK_HELP),
+                completed(stdout=GROK_MODELS),
                 completed(stdout='{"mcpServers":[{"name":"unsafe"}]}'),
             ]
         )
@@ -611,7 +744,7 @@ class ProviderAdapterTests(unittest.TestCase):
             bridge.ReviewBridgeError, "active review customizations"
         ):
             adapter.run(Path("/detached"), "Review.")
-        self.assertEqual(len(runner.calls), 3)
+        self.assertEqual(len(runner.calls), 4)
 
     def test_grok_uses_ephemeral_home_with_existing_auth_path(self) -> None:
         provider_payload = {
@@ -627,6 +760,7 @@ class ProviderAdapterTests(unittest.TestCase):
             [
                 completed(stdout="grok 1.0.5\n"),
                 completed(stdout=GROK_HELP),
+                completed(stdout=GROK_MODELS),
                 completed(stdout="{}"),
                 completed(stdout=bridge.json.dumps(provider_payload)),
             ]
@@ -650,11 +784,48 @@ class ProviderAdapterTests(unittest.TestCase):
             self.assertEqual(environment["GROK_SESSION_SEARCH"], "0")
         provider_command = runner.calls[-1]["args"]
         assert isinstance(provider_command, tuple)
+        inspect_command = runner.calls[-2]["args"]
+        assert isinstance(inspect_command, tuple)
+        for command in (inspect_command, provider_command):
+            self.assertEqual(command[command.index("-m") + 1], "grok-4.6")
+            self.assertEqual(command[command.index("--sandbox") + 1], "strict")
+            self.assertIn("Read(./**)", command)
+            self.assertIn("Grep(./**)", command)
+            self.assertNotIn("Read", command)
+            self.assertNotIn("Grep", command)
         self.assertEqual(
             provider_command[provider_command.index("--tools") + 1], "Read,Grep"
         )
         self.assertIn("Bash", provider_command)
         self.assertFalse(any("Bash(git" in argument for argument in provider_command))
+
+    def test_grok_build_alias_is_preferred_and_explicit_when_available(self) -> None:
+        listing = """Default model: grok-4.7
+Available models:
+  * grok-4.7 (default)
+  - grok-build
+"""
+        selected = bridge.select_grok_request_model(listing)
+        self.assertEqual(selected, "grok-build")
+        command = bridge.ProviderAdapter._grok_command(
+            Path("/detached"), Path("/prompt.md"), selected
+        )
+        self.assertEqual(command[command.index("-m") + 1], "grok-build")
+
+    def test_grok_model_listing_requires_available_default(self) -> None:
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "omitted a default"):
+            bridge.select_grok_request_model("Available models:\n  - grok-4.6\n")
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "absent from available"):
+            bridge.select_grok_request_model(
+                "Default model: grok-4.6\nAvailable models:\n  - grok-4.5\n"
+            )
+
+    def test_grok_model_selector_capability_is_required(self) -> None:
+        help_without_model_selector = GROK_HELP.replace("--model", "")
+        with self.assertRaisesRegex(
+            bridge.ReviewBridgeError, "explicit model selection"
+        ):
+            bridge.validate_cli_capabilities("grok", help_without_model_selector)
 
     def test_missing_cli_safety_capability_fails_before_provider_execution(self) -> None:
         runner = QueueRunner(
@@ -673,6 +844,71 @@ class ProviderAdapterTests(unittest.TestCase):
         ):
             adapter.run(Path("/detached"), "Review.")
         self.assertEqual(len(runner.calls), 2)
+
+
+class WorktreeSymlinkTests(unittest.TestCase):
+    def test_no_symlinks_are_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / ".git").write_text("gitdir: /outside/admin\n", encoding="utf-8")
+            (root / "file.txt").write_text("regular\n", encoding="utf-8")
+            bridge.validate_worktree_symlinks(root)
+
+    def test_symlink_to_internal_file_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "target.txt").write_text("inside\n", encoding="utf-8")
+            (root / "link.txt").symlink_to("target.txt")
+            bridge.validate_worktree_symlinks(root)
+
+    def test_symlink_to_internal_directory_is_accepted(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "target").mkdir()
+            (root / "target" / "file.txt").write_text("inside\n", encoding="utf-8")
+            (root / "link").symlink_to("target", target_is_directory=True)
+            bridge.validate_worktree_symlinks(root)
+
+    def test_symlink_to_outside_file_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root = parent / "checkout"
+            root.mkdir()
+            outside = parent / "outside.txt"
+            outside.write_text("synthetic\n", encoding="utf-8")
+            (root / "escape.txt").symlink_to(outside)
+            with self.assertRaisesRegex(bridge.ReviewBridgeError, "symlink escapes"):
+                bridge.validate_worktree_symlinks(root)
+
+    def test_symlink_to_outside_directory_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root = parent / "checkout"
+            root.mkdir()
+            outside = parent / "outside"
+            outside.mkdir()
+            (root / "escape").symlink_to(outside, target_is_directory=True)
+            with self.assertRaisesRegex(bridge.ReviewBridgeError, "symlink escapes"):
+                bridge.validate_worktree_symlinks(root)
+
+    def test_broken_symlink_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / "broken").symlink_to("missing-target")
+            with self.assertRaisesRegex(bridge.ReviewBridgeError, "broken or unresolvable"):
+                bridge.validate_worktree_symlinks(root)
+
+    def test_chained_symlink_escape_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            parent = Path(directory)
+            root = parent / "checkout"
+            root.mkdir()
+            outside = parent / "outside.txt"
+            outside.write_text("synthetic\n", encoding="utf-8")
+            (root / "second").symlink_to(outside)
+            (root / "first").symlink_to("second")
+            with self.assertRaisesRegex(bridge.ReviewBridgeError, "symlink escapes"):
+                bridge.validate_worktree_symlinks(root)
 
 
 class WorktreeCleanupTests(unittest.TestCase):
@@ -735,7 +971,7 @@ class DoctorTests(unittest.TestCase):
                 completed(stdout="grok 1.0.5\n"),
                 completed(stdout="grok 1.0.5\n"),
                 completed(stdout=GROK_HELP),
-                completed(stdout="Available models: grok-4.6\n", stderr=secret),
+                completed(stdout=GROK_MODELS, stderr=secret),
             ]
         )
         healthy, lines = bridge.doctor(runner, Path("/repository"))
@@ -746,6 +982,9 @@ class DoctorTests(unittest.TestCase):
         self.assertIn("Claude safety capabilities: compatible", output)
         self.assertIn("Grok safety capabilities: compatible", output)
         self.assertIn("Grok session controls: compatible", output)
+        self.assertIn(
+            "Grok Build model selection: explicit `grok-4.6` request", output
+        )
 
     def test_doctor_fails_for_incompatible_provider_cli(self) -> None:
         runner = QueueRunner(
@@ -761,7 +1000,7 @@ class DoctorTests(unittest.TestCase):
                 completed(stdout="grok 1.0.5\n"),
                 completed(stdout="grok 1.0.5\n"),
                 completed(stdout=GROK_HELP),
-                completed(stdout="Available models: grok-4.6\n"),
+                completed(stdout=GROK_MODELS),
             ]
         )
         healthy, lines = bridge.doctor(runner, Path("/repository"))

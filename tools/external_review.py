@@ -20,6 +20,7 @@ from typing import Callable, Iterator, Mapping, Protocol, Sequence
 SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 ANSI_PATTERN = re.compile(r"\x1b\[[0-?]*[ -/]*[@-~]")
 SENSITIVE_PATTERNS = (
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{8,}\b"),
     re.compile(r"\bgh[oprsu]_[A-Za-z0-9_]{8,}\b"),
     re.compile(r"\bsk-[A-Za-z0-9_-]{8,}\b"),
     re.compile(r"\bxai-[A-Za-z0-9_-]{8,}\b"),
@@ -35,6 +36,15 @@ GITHUB_SECRET_VARIABLES = (
 )
 VERDICTS = frozenset(("PASS", "FINDINGS"))
 FINDING_SEVERITIES = frozenset(("BLOCKER", "HIGH", "MEDIUM", "LOW"))
+GROK_BUILD_MODEL_PATTERN = re.compile(
+    r"^grok(?:-[0-9]+(?:\.[0-9]+)*)?-build$", re.IGNORECASE
+)
+GROK_DEFAULT_MODEL_PATTERN = re.compile(
+    r"^Default model:\s*([A-Za-z0-9._-]+)\s*$", re.MULTILINE
+)
+GROK_AVAILABLE_MODEL_PATTERN = re.compile(
+    r"^\s*[*-]\s+([A-Za-z0-9._-]+)(?:\s+\(default\))?\s*$", re.MULTILINE
+)
 REVIEW_SCHEMA = {
     "type": "object",
     "properties": {
@@ -201,6 +211,7 @@ REQUIRED_CLI_CAPABILITIES = {
         ("web disabling", ("--disable-web-search",)),
         ("subagent disabling", ("--no-subagents",)),
         ("prompt-file input", ("--prompt-file",)),
+        ("explicit model selection", ("--model",)),
     ),
 }
 
@@ -228,6 +239,27 @@ def validate_cli_capabilities(provider_key: str, help_output: str) -> None:
             f"{display_name} CLI lacks required safety capabilities: "
             f"{', '.join(missing)}"
         )
+
+
+def validate_grok_build_model(model: str | None) -> None:
+    if model is None or not GROK_BUILD_MODEL_PATTERN.fullmatch(model.strip()):
+        raise ReviewBridgeError(
+            "Grok Build adapter returned a missing or non-Build model identity"
+        )
+
+
+def select_grok_request_model(models_output: str) -> str:
+    normalized = ANSI_PATTERN.sub("", models_output)
+    available = set(GROK_AVAILABLE_MODEL_PATTERN.findall(normalized))
+    if "grok-build" in available:
+        return "grok-build"
+    default_match = GROK_DEFAULT_MODEL_PATTERN.search(normalized)
+    if default_match is None:
+        raise ReviewBridgeError("Grok model listing omitted a default model")
+    default_model = default_match.group(1)
+    if default_model not in available:
+        raise ReviewBridgeError("Grok default model was absent from available models")
+    return default_model
 
 
 def safe_failure_detail(completed: subprocess.CompletedProcess[str]) -> str:
@@ -407,6 +439,9 @@ class GitRepository:
                 f"{provider_name} modified the detached review worktree; posting was blocked"
             )
 
+    def validate_worktree_symlinks(self, worktree: Path) -> None:
+        validate_worktree_symlinks(worktree)
+
     @contextlib.contextmanager
     def detached_worktree(self, pr_number: int, head_sha: str) -> Iterator[Path]:
         self.temporary_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
@@ -450,6 +485,27 @@ class GitRepository:
                 raise cleanup_error
 
 
+def validate_worktree_symlinks(worktree: Path) -> None:
+    root = worktree.resolve(strict=True)
+    for directory, directory_names, file_names in os.walk(root, followlinks=False):
+        for name in (*directory_names, *file_names):
+            candidate = Path(directory) / name
+            if not candidate.is_symlink():
+                continue
+            try:
+                target = candidate.resolve(strict=True)
+            except (OSError, RuntimeError) as error:
+                relative = candidate.relative_to(root)
+                raise ReviewBridgeError(
+                    f"repository symlink is broken or unresolvable: {relative}"
+                ) from error
+            if not target.is_relative_to(root):
+                relative = candidate.relative_to(root)
+                raise ReviewBridgeError(
+                    f"repository symlink escapes detached worktree: {relative}"
+                )
+
+
 def scrub_github_environment(
     source: Mapping[str, str], gh_config_dir: Path
 ) -> dict[str, str]:
@@ -486,7 +542,7 @@ def extract_contract(output: str, provider_name: str) -> tuple[dict[str, object]
     if required.issubset(outer):
         return outer, None
 
-    for key in ("structured_output", "output"):
+    for key in ("structured_output", "structuredOutput", "output"):
         candidate = outer.get(key)
         if isinstance(candidate, dict):
             return candidate, model_metadata
@@ -651,10 +707,26 @@ class ProviderAdapter:
                     timeout=3600,
                 )
             else:
-                self._validate_grok_configuration(worktree, child_env)
+                models = require_success(
+                    self.runner.run(
+                        ("grok", "--no-auto-update", "models"),
+                        cwd=temp_path,
+                        env=child_env,
+                        timeout=30,
+                    ),
+                    "Grok model lookup",
+                )
+                requested_model = select_grok_request_model(
+                    models.stdout + "\n" + models.stderr
+                )
+                self._validate_grok_configuration(
+                    worktree, child_env, requested_model
+                )
                 prompt_file = temp_path / "review-prompt.md"
                 prompt_file.write_text(prompt, encoding="utf-8")
-                command = self._grok_command(worktree, prompt_file)
+                command = self._grok_command(
+                    worktree, prompt_file, requested_model
+                )
                 completed = self.runner.run(
                     command,
                     cwd=worktree,
@@ -676,7 +748,10 @@ class ProviderAdapter:
             )
 
     def _validate_grok_configuration(
-        self, worktree: Path, child_env: Mapping[str, str]
+        self,
+        worktree: Path,
+        child_env: Mapping[str, str],
+        requested_model: str,
     ) -> None:
         inspected = require_success(
             self.runner.run(
@@ -684,8 +759,7 @@ class ProviderAdapter:
                     "grok",
                     "--no-auto-update",
                     "--no-memory",
-                    "--cwd",
-                    str(worktree),
+                    *self._grok_safety_options(worktree, requested_model),
                     "inspect",
                     "--json",
                 ),
@@ -745,32 +819,25 @@ class ProviderAdapter:
         )
 
     @staticmethod
-    def _grok_command(worktree: Path, prompt_file: Path) -> tuple[str, ...]:
-        command = [
-            "grok",
-            "--no-auto-update",
-            "--no-memory",
+    def _grok_safety_options(
+        worktree: Path, requested_model: str
+    ) -> tuple[str, ...]:
+        options = [
+            "-m",
+            requested_model,
             "--cwd",
             str(worktree),
-            "--prompt-file",
-            str(prompt_file),
-            "--output-format",
-            "json",
-            "--json-schema",
-            REVIEW_SCHEMA_JSON,
             "--permission-mode",
             "dontAsk",
             "--tools",
             "Read,Grep",
             "--sandbox",
-            "read-only",
+            "strict",
             "--no-subagents",
             "--disable-web-search",
-            "--max-turns",
-            "30",
         ]
-        for rule in ("Read", "Grep"):
-            command.extend(("--allow", rule))
+        for rule in ("Read(./**)", "Grep(./**)"):
+            options.extend(("--allow", rule))
         for rule in (
             "Bash",
             "Edit",
@@ -778,7 +845,27 @@ class ProviderAdapter:
             "WebFetch",
             "WebSearch",
         ):
-            command.extend(("--deny", rule))
+            options.extend(("--deny", rule))
+        return tuple(options)
+
+    @classmethod
+    def _grok_command(
+        cls, worktree: Path, prompt_file: Path, requested_model: str
+    ) -> tuple[str, ...]:
+        command = [
+            "grok",
+            "--no-auto-update",
+            "--no-memory",
+            *cls._grok_safety_options(worktree, requested_model),
+            "--prompt-file",
+            str(prompt_file),
+            "--output-format",
+            "json",
+            "--json-schema",
+            REVIEW_SCHEMA_JSON,
+            "--max-turns",
+            "30",
+        ]
         return tuple(command)
 
 
@@ -911,8 +998,12 @@ def validate_execution(
         validate_identity_claim(result.reviewer_claim, provider.key, "reviewer")
     if result.model_claim:
         validate_model_claim(result.model_claim, provider.key)
+        if provider.key == "grok":
+            validate_grok_build_model(result.model_claim)
     if execution.model_metadata:
         validate_model_claim(execution.model_metadata, provider.key)
+    if provider.key == "grok":
+        validate_grok_build_model(execution.model_metadata)
     body = validate_and_strip_body_claims(
         result.body_markdown,
         provider=provider,
@@ -1037,6 +1128,7 @@ class Adapter(Protocol):
 class Repository(Protocol):
     def ensure_commit(self, sha: str, *, pr_number: int | None = None) -> None: ...
     def base_to_head_diff(self, base_sha: str, head_sha: str) -> str: ...
+    def validate_worktree_symlinks(self, worktree: Path) -> None: ...
     def assert_clean(self, worktree: Path, provider_name: str) -> None: ...
     def detached_worktree(self, pr_number: int, head_sha: str) -> contextlib.AbstractContextManager[Path]: ...
 
@@ -1081,6 +1173,7 @@ class ReviewBridge:
         prompt_text = wrapped_prompt(prompt, metadata, base_to_head_diff)
         validated: list[tuple[ProviderSpec, ProviderExecution]] = []
         with self.repository.detached_worktree(pr_number, metadata.head_sha) as worktree:
+            self.repository.validate_worktree_symlinks(worktree)
             for provider_name in provider_names:
                 spec = PROVIDER_SPECS[provider_name]
                 adapter = self.adapters[provider_name]
@@ -1259,6 +1352,15 @@ def doctor(runner: Runner, cwd: Path) -> tuple[bool, list[str]]:
         healthy = False
     else:
         lines.append("OK   Grok authentication: authenticated model access")
+        try:
+            requested_model = select_grok_request_model(grok_probe)
+        except ReviewBridgeError as error:
+            lines.append(f"FAIL Grok Build model selection: {error}")
+            healthy = False
+        else:
+            lines.append(
+                f"OK   Grok Build model selection: explicit `{requested_model}` request"
+            )
 
     return healthy, [redact_sensitive(line) for line in lines]
 
