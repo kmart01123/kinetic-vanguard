@@ -14,6 +14,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import unicodedata
 from dataclasses import dataclass, replace
 from typing import Callable, Iterator, Mapping, Protocol, Sequence
 
@@ -198,6 +199,12 @@ class GrokSandboxProfile:
 
 
 @dataclass(frozen=True)
+class ClaudeIsolationConfig:
+    settings_file: Path
+    mcp_config_file: Path
+
+
+@dataclass(frozen=True)
 class PostedComment:
     provider: str
     comment_id: int
@@ -238,6 +245,10 @@ REQUIRED_CLI_CAPABILITIES = {
         ("customization isolation", ("--safe-mode",)),
         ("slash-command disabling", ("--disable-slash-commands",)),
         ("browser integration disabling", ("--no-chrome",)),
+        ("setting-source isolation", ("--setting-sources",)),
+        ("wrapper-owned settings", ("--settings",)),
+        ("strict MCP isolation", ("--strict-mcp-config",)),
+        ("wrapper-owned MCP configuration", ("--mcp-config",)),
         ("session persistence disabling", ("--no-session-persistence",)),
         ("explicit model selection", ("--model",)),
     ),
@@ -269,10 +280,17 @@ def redact_sensitive(text: str) -> str:
 
 def validate_cli_capabilities(provider_key: str, help_output: str) -> None:
     normalized = ANSI_PATTERN.sub("", help_output)
+
+    def has_exact_option(spelling: str) -> bool:
+        return re.search(
+            rf"(?<![A-Za-z0-9_-]){re.escape(spelling)}(?![A-Za-z0-9_-])",
+            normalized,
+        ) is not None
+
     missing = [
         label
         for label, spellings in REQUIRED_CLI_CAPABILITIES[provider_key]
-        if not any(spelling in normalized for spelling in spellings)
+        if not any(has_exact_option(spelling) for spelling in spellings)
     ]
     if missing:
         display_name = PROVIDER_SPECS[provider_key].display_name
@@ -616,6 +634,37 @@ def validate_grok_auth_directory(
     return auth_directory
 
 
+def write_claude_isolation_config(root: Path) -> ClaudeIsolationConfig:
+    settings_file = root / "claude-review-settings.json"
+    mcp_config_file = root / "claude-review-mcp.json"
+    try:
+        settings_file.write_text(
+            json.dumps(
+                {
+                    "disableAllHooks": True,
+                    "autoMemoryEnabled": False,
+                },
+                separators=(",", ":"),
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        settings_file.chmod(0o600)
+        mcp_config_file.write_text(
+            json.dumps({"mcpServers": {}}, separators=(",", ":")) + "\n",
+            encoding="utf-8",
+        )
+        mcp_config_file.chmod(0o600)
+    except OSError as error:
+        raise ReviewBridgeError(
+            "could not create temporary Claude isolation configuration"
+        ) from error
+    return ClaudeIsolationConfig(
+        settings_file=settings_file,
+        mcp_config_file=mcp_config_file,
+    )
+
+
 def write_grok_sandbox_profile(
     grok_home: Path, auth_file: Path, read_only_directory: Path
 ) -> GrokSandboxProfile:
@@ -684,8 +733,12 @@ def scrub_github_environment(
 def first_output_line(text: str, fallback: str) -> str:
     for line in redact_sensitive(text).splitlines():
         if line.strip():
-            return line.strip()[:160]
+            return normalize_metadata_value(line)
     return fallback
+
+
+def normalize_metadata_value(value: str) -> str:
+    return re.sub(r"\s+", " ", value).strip()[:160]
 
 
 def model_usage_score(usage: object) -> tuple[float, float, float]:
@@ -753,26 +806,26 @@ def select_model_usage(model_usage: object, provider_name: str) -> str | None:
         ranked,
         key=lambda model: (model_usage_score(ranked[model]), model.casefold()),
     )
-    return selected.strip()[:160]
+    return normalize_metadata_value(selected)
 
 
 def extract_contract(output: str, provider_name: str) -> tuple[dict[str, object], str | None]:
     outer = parse_json_object(output, f"{provider_name} provider")
-    model_metadata: str | None = None
-    for key in ("model", "model_id", "modelId"):
-        value = outer.get(key)
-        if isinstance(value, str) and value.strip():
-            model_metadata = value.strip()[:160]
-            break
-    if model_metadata is None:
-        model_metadata = select_model_usage(outer.get("modelUsage"), provider_name)
-
     required = {"pr_number", "head_sha", "verdict", "body_markdown", "findings"}
     if required.issubset(outer):
         contract = dict(outer)
         for envelope_key in ("modelUsage", "model_id", "modelId"):
             contract.pop(envelope_key, None)
-        return contract, model_metadata
+        return contract, None
+
+    model_metadata: str | None = None
+    for key in ("model", "model_id", "modelId"):
+        value = outer.get(key)
+        if isinstance(value, str) and value.strip():
+            model_metadata = normalize_metadata_value(value)
+            break
+    if model_metadata is None:
+        model_metadata = select_model_usage(outer.get("modelUsage"), provider_name)
 
     for key in ("structured_output", "structuredOutput", "output"):
         candidate = outer.get(key)
@@ -904,8 +957,12 @@ class ProviderAdapter:
                 ) from error
             source = self.source_environment if self.source_environment is not None else os.environ
             child_env = scrub_github_environment(source, gh_config)
+            claude_isolation: ClaudeIsolationConfig | None = None
             grok_sandbox: GrokSandboxProfile | None = None
-            if self.spec.key == "grok":
+            if self.spec.key == "claude":
+                claude_isolation = write_claude_isolation_config(temp_path)
+                child_env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
+            elif self.spec.key == "grok":
                 auth_file = resolve_grok_auth_file(source)
                 auth_directory = validate_grok_auth_directory(
                     auth_file, source, worktree
@@ -945,7 +1002,11 @@ class ProviderAdapter:
                 self.spec.key, help_result.stdout + "\n" + help_result.stderr
             )
             if self.spec.key == "claude":
-                command = self._claude_command(worktree)
+                if claude_isolation is None:
+                    raise ReviewBridgeError(
+                        "Claude isolation configuration was not initialized"
+                    )
+                command = self._claude_command(worktree, claude_isolation)
                 completed = self.runner.run(
                     command,
                     cwd=worktree,
@@ -1055,10 +1116,21 @@ class ProviderAdapter:
             )
 
     @staticmethod
-    def _claude_command(worktree: Path) -> tuple[str, ...]:
-        worktree_path = worktree.resolve().as_posix()
+    def _claude_command(
+        worktree: Path, isolation: ClaudeIsolationConfig
+    ) -> tuple[str, ...]:
+        resolved_worktree = worktree.resolve()
+        worktree_path = resolved_worktree.as_posix()
         if not worktree_path.startswith("/"):
             raise ReviewBridgeError("Claude review worktree path is not absolute")
+        settings_file = isolation.settings_file.resolve()
+        mcp_config_file = isolation.mcp_config_file.resolve()
+        if settings_file.is_relative_to(
+            resolved_worktree
+        ) or mcp_config_file.is_relative_to(resolved_worktree):
+            raise ReviewBridgeError(
+                "Claude isolation configuration must be outside the review worktree"
+            )
         scoped_read = f"Read(//{worktree_path.lstrip('/')}/**)"
         return (
             "claude",
@@ -1078,6 +1150,13 @@ class ProviderAdapter:
             "--disallowedTools",
             "Bash,Edit,Write,NotebookEdit,WebFetch,WebSearch,Agent",
             "--safe-mode",
+            "--setting-sources",
+            "user",
+            "--settings",
+            str(settings_file),
+            "--strict-mcp-config",
+            "--mcp-config",
+            str(mcp_config_file),
             "--disable-slash-commands",
             "--no-chrome",
             "--no-session-persistence",
@@ -1108,7 +1187,13 @@ class ProviderAdapter:
         for rule in ("Read(./**)", "Grep(./**)"):
             options.extend(("--allow", rule))
         auth_path = sandbox.auth_file.as_posix()
-        for rule in (f"Read({auth_path})", f"Grep({auth_path})"):
+        auth_directory = sandbox.read_only_directory.as_posix()
+        for rule in (
+            f"Read({auth_directory}/**)",
+            f"Grep({auth_directory}/**)",
+            f"Read({auth_path})",
+            f"Grep({auth_path})",
+        ):
             options.extend(("--deny", rule))
         for rule in (
             "Bash",
@@ -1149,15 +1234,22 @@ KNOWN_IDENTITIES = {
     "claude": re.compile(r"(?i)(?:\bclaude\b|\banthropic\b)"),
     "grok": re.compile(r"(?i)(?:\bgrok\b|\bxai\b|\bx\.ai\b|\bspacexai\b)"),
 }
-ATX_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
 TRUSTED_HEADER_PREFIX = re.compile(
     r"^External\s+exact-head\s+review\b(.*)$", re.IGNORECASE
 )
 FIELD_CLAIM = re.compile(
-    r"^\s*(?:[-*]\s*)?(?:\*\*|__)?"
+    r"^\s*(?:\*\*|__)?"
     r"(reviewer|provider|model|pr(?:\s+number)?|head(?:\s+sha)?|exact\s+reviewed\s+head|verdict|review\s+role)"
     r"(?:\*\*|__)?\s*:\s*(.+?)\s*$",
     re.IGNORECASE,
+)
+MARKDOWN_FENCE = re.compile(r"^\s{0,3}(?:>\s*)*(`{3,}|~{3,})(.*)$")
+SETEXT_UNDERLINE = re.compile(r"^\s{0,3}(?:=+|-+)\s*$")
+HTML_HEADING = re.compile(
+    r"^\s*<h([12])(?:\s[^>]*)?>(.*?)</h\1>\s*$", re.IGNORECASE
+)
+MARKDOWN_DASH_TRANSLATION = str.maketrans(
+    {character: "-" for character in "\u00ad\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"}
 )
 TABLE_CLAIM = re.compile(
     r"^\s*\|\s*(reviewer|provider|model|pr(?:\s+number)?|head(?:\s+sha)?|exact\s+reviewed\s+head|verdict|review\s+role)\s*\|\s*(.*?)\s*\|\s*$",
@@ -1167,6 +1259,39 @@ TABLE_CLAIM = re.compile(
 
 def clean_claim_value(value: str) -> str:
     return value.strip().strip("`*_ ")
+
+
+def normalize_markdown_claim_line(line: str) -> tuple[str, bool]:
+    """Return visible claim text and whether Markdown presents it as a heading."""
+
+    visible = unicodedata.normalize("NFKC", line).translate(
+        MARKDOWN_DASH_TRANSLATION
+    )
+    heading_shaped = False
+    while True:
+        original = visible
+        visible = re.sub(r"^\s*>\s?", "", visible, count=1)
+        visible = re.sub(
+            r"^\s*(?:[-+*]|\d+[.)])\s+", "", visible, count=1
+        )
+        atx = re.match(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$", visible)
+        if atx:
+            visible = atx.group(1)
+            heading_shaped = True
+        if visible == original:
+            break
+
+    html_heading = HTML_HEADING.match(visible)
+    if html_heading:
+        visible = html_heading.group(2)
+        heading_shaped = True
+
+    bold_only = re.match(r"^\s*(\*\*|__)(.+)\1\s*$", visible)
+    if bold_only:
+        visible = bold_only.group(2)
+        heading_shaped = True
+
+    return re.sub(r"\s+", " ", visible).strip(), heading_shaped
 
 
 def detected_identities(value: str) -> set[str]:
@@ -1204,10 +1329,37 @@ def validate_and_strip_body_claims(
     verdict: str,
 ) -> str:
     kept: list[str] = []
-    for line in body.splitlines():
-        heading = ATX_HEADING.match(line)
-        if heading:
-            wrapper_heading = TRUSTED_HEADER_PREFIX.match(heading.group(1).strip())
+    lines = body.splitlines()
+    active_fence: tuple[str, int] | None = None
+    index = 0
+    while index < len(lines):
+        line = lines[index]
+        fence = MARKDOWN_FENCE.match(line)
+        if active_fence is not None:
+            kept.append(line)
+            if (
+                fence
+                and fence.group(1)[0] == active_fence[0]
+                and len(fence.group(1)) >= active_fence[1]
+                and not fence.group(2).strip()
+            ):
+                active_fence = None
+            index += 1
+            continue
+        if fence:
+            active_fence = (fence.group(1)[0], len(fence.group(1)))
+            kept.append(line)
+            index += 1
+            continue
+
+        claim_line, heading_shaped = normalize_markdown_claim_line(line)
+        setext_heading = (
+            index + 1 < len(lines)
+            and SETEXT_UNDERLINE.fullmatch(lines[index + 1]) is not None
+            and bool(claim_line)
+        )
+        if heading_shaped or setext_heading:
+            wrapper_heading = TRUSTED_HEADER_PREFIX.match(claim_line)
             if wrapper_heading:
                 remainder = wrapper_heading.group(1).strip()
                 if not detected_identities(remainder):
@@ -1215,39 +1367,45 @@ def validate_and_strip_body_claims(
                         "review body contained an ambiguous wrapper-like heading"
                     )
                 validate_identity_claim(remainder, provider.key, "reviewer")
+                index += 2 if setext_heading else 1
                 continue
-        claim_line = line.replace("**", "").replace("__", "")
         field = FIELD_CLAIM.match(claim_line) or TABLE_CLAIM.match(claim_line)
         if not field:
             kept.append(line)
+            index += 1
             continue
         label = re.sub(r"\s+", " ", field.group(1).lower()).strip()
         value = clean_claim_value(field.group(2))
         if label in ("reviewer", "provider"):
             if not detected_identities(value):
                 kept.append(line)
+                index += 1
                 continue
             validate_identity_claim(value, provider.key, label)
         elif label == "model":
             if not detected_identities(value):
                 kept.append(line)
+                index += 1
                 continue
             validate_model_claim(value, provider.key)
         elif label.startswith("pr"):
             if not re.fullmatch(r"#?\d+", value):
                 kept.append(line)
+                index += 1
                 continue
             if not re.fullmatch(rf"#?{pr_number}", value):
                 raise ReviewBridgeError("review body PR identity conflicts with invoked PR")
         elif label in ("head", "head sha", "exact reviewed head"):
             if not SHA_PATTERN.fullmatch(value):
                 kept.append(line)
+                index += 1
                 continue
             if value.lower() != head_sha:
                 raise ReviewBridgeError("review body head SHA conflicts with exact PR head")
         elif label == "verdict":
             if value.upper() not in VERDICTS:
                 kept.append(line)
+                index += 1
                 continue
             if value.upper() != verdict:
                 raise ReviewBridgeError("review body verdict conflicts with structured verdict")
@@ -1255,10 +1413,11 @@ def validate_and_strip_body_claims(
             known_roles = {spec.review_role for spec in PROVIDER_SPECS.values()}
             if value not in known_roles:
                 kept.append(line)
+                index += 1
                 continue
             if value != provider.review_role:
                 raise ReviewBridgeError("review body role conflicts with bridge-owned role")
-        continue
+        index += 1
     stripped = "\n".join(kept).strip()
     if not stripped:
         raise ReviewBridgeError("review body was empty after removing redundant metadata")
@@ -1332,9 +1491,11 @@ def validate_execution(
         )
     return replace(
         execution,
-        cli_version=redact_sensitive(execution.cli_version),
+        cli_version=normalize_metadata_value(
+            redact_sensitive(execution.cli_version)
+        ),
         model_metadata=(
-            redact_sensitive(execution.model_metadata)
+            normalize_metadata_value(redact_sensitive(execution.model_metadata))
             if execution.model_metadata is not None
             else None
         ),

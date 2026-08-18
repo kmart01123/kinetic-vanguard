@@ -171,6 +171,10 @@ class QueueRunner:
         self.responses = responses
         self.calls: list[dict[str, object]] = []
         self.grok_sandbox_profiles: list[str] = []
+        self.claude_settings_payloads: list[dict[str, object]] = []
+        self.claude_mcp_payloads: list[dict[str, object]] = []
+        self.claude_config_paths: list[Path] = []
+        self.claude_config_modes: list[int] = []
 
     def run(
         self,
@@ -196,6 +200,23 @@ class QueueRunner:
                 self.grok_sandbox_profiles.append(
                     sandbox_file.read_text(encoding="utf-8")
                 )
+        arguments = tuple(args)
+        if "--settings" in arguments and "--mcp-config" in arguments:
+            settings_file = Path(arguments[arguments.index("--settings") + 1])
+            mcp_config_file = Path(arguments[arguments.index("--mcp-config") + 1])
+            self.claude_config_paths.extend((settings_file, mcp_config_file))
+            self.claude_config_modes.extend(
+                (
+                    settings_file.stat().st_mode & 0o777,
+                    mcp_config_file.stat().st_mode & 0o777,
+                )
+            )
+            self.claude_settings_payloads.append(
+                bridge.json.loads(settings_file.read_text(encoding="utf-8"))
+            )
+            self.claude_mcp_payloads.append(
+                bridge.json.loads(mcp_config_file.read_text(encoding="utf-8"))
+            )
         if not self.responses:
             raise AssertionError(f"no queued response for {tuple(args)}")
         return self.responses.pop(0)
@@ -384,13 +405,14 @@ class ReviewBridgeTests(unittest.TestCase):
         )
         self.assertEqual(len(posted), 1)
 
-    def test_flat_contract_preserves_extracted_model_metadata(self) -> None:
+    def test_flat_contract_model_claim_is_not_trusted_model_metadata(self) -> None:
         flat_contract = {
             "pr_number": PR_NUMBER,
             "head_sha": HEAD,
             "verdict": "PASS",
             "body_markdown": "No material findings.",
             "findings": [],
+            "model": "claude-opus-self-claimed",
             "modelUsage": {
                 "claude-opus-4-6": {"modelCalls": 1, "outputTokens": 1000}
             },
@@ -398,11 +420,39 @@ class ReviewBridgeTests(unittest.TestCase):
         contract, model = bridge.extract_contract(
             bridge.json.dumps(flat_contract), "Claude"
         )
-        self.assertEqual(model, "claude-opus-4-6")
+        self.assertIsNone(model)
         self.assertNotIn("modelUsage", contract)
-        self.assertEqual(
-            bridge.review_result_from_contract(contract).verdict, "PASS"
+        result = bridge.review_result_from_contract(contract)
+        self.assertEqual(result.verdict, "PASS")
+        self.assertEqual(result.model_claim, "claude-opus-self-claimed")
+
+    def test_grok_flat_contract_self_claim_cannot_establish_build_provenance(self) -> None:
+        flat_contract = {
+            "pr_number": PR_NUMBER,
+            "head_sha": HEAD,
+            "verdict": "PASS",
+            "body_markdown": "No material findings.",
+            "findings": [],
+            "model": "grok-4.6-build",
+        }
+        contract, model = bridge.extract_contract(
+            bridge.json.dumps(flat_contract), "Grok"
         )
+        self.assertIsNone(model)
+        untrusted = bridge.ProviderExecution(
+            result=bridge.review_result_from_contract(contract),
+            cli_version="grok 1.0.5",
+            model_metadata=model,
+        )
+        github = FakeGitHub([metadata()])
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "missing or non-Build"):
+            bridge.ReviewBridge(
+                github,
+                FakeRepository(),
+                {"grok": FakeAdapter(untrusted)},
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("grok",), "Review.")
+        self.assertEqual(github.comments, [])
 
     def test_explicit_outer_model_precedes_model_usage(self) -> None:
         envelope = {
@@ -425,6 +475,33 @@ class ReviewBridgeTests(unittest.TestCase):
             bridge.json.dumps(envelope), "Claude"
         )
         self.assertEqual(model, "claude-opus-explicit")
+
+    def test_published_cli_and_model_metadata_are_single_line_table_values(self) -> None:
+        hostile = bridge.ProviderExecution(
+            result=execution("claude").result,
+            cli_version="claude 2.1.234\n| Verdict | FINDINGS |",
+            model_metadata="claude-opus-5\r\n| PR | #999 | pipe | data",
+        )
+        _posted, github, _repository = self.run_bridge(
+            ("claude",), {"claude": hostile}
+        )
+        comment = github.comments[0]
+        self.assertEqual(comment.count("| PR | #104 |"), 1)
+        self.assertEqual(
+            comment.count(f"| Exact reviewed head | `{HEAD}` |"), 1
+        )
+        self.assertEqual(comment.count("| Verdict | **PASS** |"), 1)
+        self.assertEqual(
+            comment.count(
+                "| Review role | Issue #98 external second-pair review |"
+            ),
+            1,
+        )
+        self.assertIn(
+            "| Model | `claude-opus-5 \\| PR \\| #999 \\| pipe \\| data` |",
+            comment,
+        )
+        self.assertNotIn("\r", comment)
 
     def test_live_grok_envelope_shape_allows_all_provider_validation(self) -> None:
         envelope = {
@@ -781,6 +858,66 @@ class ReviewBridgeTests(unittest.TestCase):
                         emit=lambda _message: None,
                     ).review(PR_NUMBER, ("claude",), "Review.")
                 self.assertEqual(github.comments, [])
+
+    def test_github_rendered_wrapper_header_forms_reject_wrong_provider(self) -> None:
+        bodies = (
+            "> ## External exact-head review — Grok\n\nSubstantive review.",
+            "External exact-head review — Grok\n===\n\nSubstantive review.",
+            "**External exact-head review — Grok**\n\nSubstantive review.",
+            "<h1>External exact-head review — Grok</h1>\n\nSubstantive review.",
+            "<h2>External exact-head review — Grok</h2>\n\nSubstantive review.",
+            "## External exact‑head review – Grok\n\nSubstantive review.",
+        )
+        for body in bodies:
+            with self.subTest(body=body.splitlines()[0]):
+                github = FakeGitHub([metadata()])
+                with self.assertRaisesRegex(
+                    bridge.ReviewBridgeError, "identity conflicts"
+                ):
+                    bridge.ReviewBridge(
+                        github,
+                        FakeRepository(),
+                        {"claude": FakeAdapter(execution("claude", body=body))},
+                        emit=lambda _message: None,
+                    ).review(PR_NUMBER, ("claude",), "Review.")
+                self.assertEqual(github.comments, [])
+
+    def test_list_prefixed_identity_claims_reject_wrong_provider(self) -> None:
+        for claim in ("1. Provider: Grok", "- Provider: Grok", "* Provider: Grok"):
+            with self.subTest(claim=claim):
+                github = FakeGitHub([metadata()])
+                with self.assertRaisesRegex(
+                    bridge.ReviewBridgeError, "identity conflicts"
+                ):
+                    bridge.ReviewBridge(
+                        github,
+                        FakeRepository(),
+                        {
+                            "claude": FakeAdapter(
+                                execution(
+                                    "claude",
+                                    body=f"{claim}\n\nSubstantive review.",
+                                )
+                            )
+                        },
+                        emit=lambda _message: None,
+                    ).review(PR_NUMBER, ("claude",), "Review.")
+                self.assertEqual(github.comments, [])
+
+    def test_fenced_markdown_examples_are_not_live_metadata_claims(self) -> None:
+        body = (
+            "A quoted-format example follows.\n\n"
+            "```text\n"
+            "Provider: Grok\n"
+            "## External exact-head review — Grok\n"
+            "```\n\n"
+            "The example is not a live identity claim."
+        )
+        _posted, github, _repository = self.run_bridge(
+            ("claude",), {"claude": execution("claude", body=body)}
+        )
+        self.assertIn("Provider: Grok", github.comments[0])
+        self.assertIn("## External exact-head review — Grok", github.comments[0])
 
     def test_structured_provider_and_reviewer_conflicts_post_nothing(self) -> None:
         for field in ("provider", "reviewer"):
@@ -1203,6 +1340,7 @@ class ProviderAdapterTests(unittest.TestCase):
             self.assertNotIn("GITHUB_TOKEN", environment)
             self.assertNotEqual(environment["GH_CONFIG_DIR"], "/real/gh/config")
             self.assertEqual(environment["ANTHROPIC_API_KEY"], "anthropic-local-auth")
+            self.assertEqual(environment["CLAUDE_CODE_DISABLE_AUTO_MEMORY"], "1")
         provider_command = runner.calls[-1]["args"]
         assert isinstance(provider_command, tuple)
         self.assertEqual(
@@ -1240,6 +1378,72 @@ class ProviderAdapterTests(unittest.TestCase):
             "Read(//detached/**)",
             provider_command[provider_command.index("--allowedTools") + 1],
         )
+        self.assertEqual(
+            provider_command[provider_command.index("--setting-sources") + 1],
+            "user",
+        )
+        self.assertIn("--strict-mcp-config", provider_command)
+        settings_file = Path(
+            provider_command[provider_command.index("--settings") + 1]
+        )
+        mcp_config_file = Path(
+            provider_command[provider_command.index("--mcp-config") + 1]
+        )
+        self.assertFalse(settings_file.is_relative_to(Path("/detached")))
+        self.assertFalse(mcp_config_file.is_relative_to(Path("/detached")))
+        self.assertEqual(
+            runner.claude_settings_payloads,
+            [{"disableAllHooks": True, "autoMemoryEnabled": False}],
+        )
+        self.assertEqual(runner.claude_mcp_payloads, [{"mcpServers": {}}])
+        self.assertEqual(runner.claude_config_modes, [0o600, 0o600])
+        self.assertNotIn("--bare", provider_command)
+        self.assertFalse(settings_file.exists())
+        self.assertFalse(mcp_config_file.exists())
+
+    def test_claude_isolation_files_are_cleaned_after_provider_failure(self) -> None:
+        runner = QueueRunner(
+            [
+                completed(stdout="2.1.234 (Claude Code)\n"),
+                completed(stdout=CLAUDE_HELP),
+                completed(returncode=1, stderr="synthetic provider failure\n"),
+            ]
+        )
+        adapter = bridge.ProviderAdapter(
+            bridge.PROVIDER_SPECS["claude"],
+            runner,
+            source_environment={"PATH": "/usr/bin"},
+        )
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "provider failed"):
+            adapter.run(Path("/detached"), "Review.")
+        self.assertEqual(len(runner.claude_config_paths), 2)
+        self.assertTrue(all(not path.exists() for path in runner.claude_config_paths))
+
+    def test_claude_isolation_setup_failure_is_normalized(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            blocked_root = Path(directory) / "not-a-directory"
+            blocked_root.write_text("synthetic\n", encoding="utf-8")
+            with self.assertRaisesRegex(
+                bridge.ReviewBridgeError,
+                "could not create temporary Claude isolation configuration",
+            ):
+                bridge.write_claude_isolation_config(blocked_root)
+
+    def test_claude_isolation_config_inside_worktree_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory)
+            settings = worktree / "settings.json"
+            mcp = worktree / "mcp.json"
+            settings.write_text("{}\n", encoding="utf-8")
+            mcp.write_text('{"mcpServers":{}}\n', encoding="utf-8")
+            with self.assertRaisesRegex(
+                bridge.ReviewBridgeError,
+                "must be outside the review worktree",
+            ):
+                bridge.ProviderAdapter._claude_command(
+                    worktree,
+                    bridge.ClaudeIsolationConfig(settings, mcp),
+                )
 
     def test_missing_grok_auth_fails_before_any_cli_execution(self) -> None:
         runner = QueueRunner([])
@@ -1451,6 +1655,12 @@ class ProviderAdapterTests(unittest.TestCase):
             self.assertNotIn("Grep", command)
             self.assertIn(f"Read({auth_file.resolve().as_posix()})", command)
             self.assertIn(f"Grep({auth_file.resolve().as_posix()})", command)
+            self.assertIn(
+                f"Read({original_grok_home.resolve().as_posix()}/**)", command
+            )
+            self.assertIn(
+                f"Grep({original_grok_home.resolve().as_posix()}/**)", command
+            )
         self.assertEqual(
             provider_command[provider_command.index("--tools") + 1], "Read,Grep"
         )
@@ -1526,6 +1736,49 @@ Available models:
                     bridge.ReviewBridgeError, "lacks required safety capabilities"
                 ):
                     bridge.validate_cli_capabilities("claude", alias_only_help)
+
+    def test_claude_isolation_capabilities_block_before_provider_call(self) -> None:
+        for option in (
+            "--setting-sources",
+            "--settings",
+            "--strict-mcp-config",
+            "--mcp-config",
+        ):
+            with self.subTest(option=option):
+                help_without_option = " ".join(
+                    token for token in CLAUDE_HELP.split() if token != option
+                )
+                runner = QueueRunner(
+                    [
+                        completed(stdout="2.1.234 (Claude Code)\n"),
+                        completed(stdout=help_without_option),
+                    ]
+                )
+                adapter = bridge.ProviderAdapter(
+                    bridge.PROVIDER_SPECS["claude"],
+                    runner,
+                    source_environment={"PATH": "/usr/bin"},
+                )
+                with self.assertRaisesRegex(
+                    bridge.ReviewBridgeError, "lacks required safety capabilities"
+                ):
+                    adapter.run(Path("/detached"), "Review.")
+                self.assertEqual(len(runner.calls), 2)
+                self.assertTrue(
+                    all(not path.exists() for path in runner.claude_config_paths)
+                )
+
+    def test_cli_capability_checks_reject_prefix_collisions(self) -> None:
+        cases = (
+            ("grok", GROK_HELP.replace("--allow", "--allowedTools")),
+            ("claude", CLAUDE_HELP.replace("--model", "--model-name")),
+        )
+        for provider, help_output in cases:
+            with self.subTest(provider=provider):
+                with self.assertRaisesRegex(
+                    bridge.ReviewBridgeError, "lacks required safety capabilities"
+                ):
+                    bridge.validate_cli_capabilities(provider, help_output)
 
     def test_missing_cli_safety_capability_fails_before_provider_execution(self) -> None:
         runner = QueueRunner(
