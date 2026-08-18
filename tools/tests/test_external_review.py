@@ -1,11 +1,13 @@
 from __future__ import annotations
 
 import contextlib
+import os
 from pathlib import Path
 import subprocess
 import tempfile
 import tomllib
 import unittest
+from unittest import mock
 
 from tools import external_review as bridge
 
@@ -691,6 +693,36 @@ class ReviewBridgeTests(unittest.TestCase):
         self.assertEqual(comment.count("Issue #98 external second-pair review"), 1)
         self.assertIn("Substantive review remains.", comment)
 
+    def test_html_identity_wrappers_strip_matching_metadata(self) -> None:
+        body = (
+            "<h3>External exact-head review — Claude</h3>\n"
+            "<h4 class=\"identity\">Provider: Claude</h4>\n"
+            "<strong>Reviewer: Claude</strong>\n"
+            "<b>Model: Claude Opus</b>\n\n"
+            "Substantive review remains."
+        )
+        _posted, github, _repository = self.run_bridge(
+            ("claude",), {"claude": execution("claude", body=body)}
+        )
+        comment = github.comments[0]
+        self.assertEqual(comment.count("External exact-head review — Claude"), 1)
+        for wrapper in ("<h3>", "<h4", "<strong>", "<b>"):
+            self.assertNotIn(wrapper, comment)
+        self.assertIn("Substantive review remains.", comment)
+
+    def test_unrelated_html_is_preserved(self) -> None:
+        body = (
+            "<h4>Architecture notes</h4>\n"
+            "<strong>Important context</strong>\n"
+            "<b>Read-only behavior</b>\n"
+            "<div class=\"detail\">Ordinary unrelated HTML.</div>"
+        )
+        _posted, github, _repository = self.run_bridge(
+            ("claude",), {"claude": execution("claude", body=body)}
+        )
+        for line in body.splitlines():
+            self.assertIn(line, github.comments[0])
+
     def test_provider_content_is_redacted_in_final_posted_comment(self) -> None:
         secrets = (
             "github_pat_synthetic_secret_1234567890",
@@ -866,6 +898,12 @@ class ReviewBridgeTests(unittest.TestCase):
             "**External exact-head review — Grok**\n\nSubstantive review.",
             "<h1>External exact-head review — Grok</h1>\n\nSubstantive review.",
             "<h2>External exact-head review — Grok</h2>\n\nSubstantive review.",
+            "<h3>External exact-head review — Grok</h3>\n\nSubstantive review.",
+            "<h4 data-review=\"external\">External exact-head review — Grok</h4>\n\nSubstantive review.",
+            "<h5>External exact-head review — Grok</h5>\n\nSubstantive review.",
+            "<h6>External exact-head review — Grok</h6>\n\nSubstantive review.",
+            "<strong>External exact-head review — Grok</strong>\n\nSubstantive review.",
+            "<b>External exact-head review — Grok</b>\n\nSubstantive review.",
             "## External exact‑head review – Grok\n\nSubstantive review.",
         )
         for body in bodies:
@@ -878,6 +916,34 @@ class ReviewBridgeTests(unittest.TestCase):
                         github,
                         FakeRepository(),
                         {"claude": FakeAdapter(execution("claude", body=body))},
+                        emit=lambda _message: None,
+                    ).review(PR_NUMBER, ("claude",), "Review.")
+                self.assertEqual(github.comments, [])
+
+    def test_html_identity_fields_reject_wrong_provider(self) -> None:
+        claims = (
+            "<strong>Provider: Grok</strong>",
+            "<b>Reviewer: Grok</b>",
+            "<h3>Provider: Grok</h3>",
+            "<h6>Model: Grok Build</h6>",
+        )
+        for claim in claims:
+            with self.subTest(claim=claim):
+                github = FakeGitHub([metadata()])
+                with self.assertRaisesRegex(
+                    bridge.ReviewBridgeError, "identity conflicts"
+                ):
+                    bridge.ReviewBridge(
+                        github,
+                        FakeRepository(),
+                        {
+                            "claude": FakeAdapter(
+                                execution(
+                                    "claude",
+                                    body=f"{claim}\n\nSubstantive review.",
+                                )
+                            )
+                        },
                         emit=lambda _message: None,
                     ).review(PR_NUMBER, ("claude",), "Review.")
                 self.assertEqual(github.comments, [])
@@ -910,6 +976,8 @@ class ReviewBridgeTests(unittest.TestCase):
             "```text\n"
             "Provider: Grok\n"
             "## External exact-head review — Grok\n"
+            "<h6>Provider: Grok</h6>\n"
+            "<strong>Reviewer: Grok</strong>\n"
             "```\n\n"
             "The example is not a live identity claim."
         )
@@ -918,6 +986,8 @@ class ReviewBridgeTests(unittest.TestCase):
         )
         self.assertIn("Provider: Grok", github.comments[0])
         self.assertIn("## External exact-head review — Grok", github.comments[0])
+        self.assertIn("<h6>Provider: Grok</h6>", github.comments[0])
+        self.assertIn("<strong>Reviewer: Grok</strong>", github.comments[0])
 
     def test_structured_provider_and_reviewer_conflicts_post_nothing(self) -> None:
         for field in ("provider", "reviewer"):
@@ -1301,7 +1371,164 @@ class GrokAuthSandboxTests(unittest.TestCase):
             )
 
 
+class ProviderExecutableResolutionTests(unittest.TestCase):
+    @staticmethod
+    def make_executable(directory: Path, name: str) -> Path:
+        directory.mkdir(parents=True, exist_ok=True)
+        executable = directory / name
+        executable.write_text("#!/bin/sh\nexit 99\n", encoding="utf-8")
+        executable.chmod(0o700)
+        return executable
+
+    def test_unsafe_path_entries_cannot_select_worktree_provider(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            worktree = root / "checkout"
+            trusted = root / "trusted-bin"
+            fake = self.make_executable(worktree, "claude")
+            real = self.make_executable(trusted, "claude")
+            for unsafe in (".", "", "relative-bin"):
+                with self.subTest(unsafe=repr(unsafe)):
+                    source_path = os.pathsep.join((unsafe, str(trusted)))
+                    resolved, safe_path = bridge.resolve_provider_executable(
+                        bridge.PROVIDER_SPECS["claude"],
+                        {"PATH": source_path},
+                        review_worktree=worktree,
+                    )
+                    self.assertEqual(resolved, real.resolve())
+                    self.assertEqual(safe_path, str(trusted))
+                    self.assertNotEqual(resolved, fake.resolve())
+
+    def test_absolute_worktree_provider_is_rejected(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            worktree = Path(directory) / "checkout"
+            self.make_executable(worktree, "claude")
+            with self.assertRaisesRegex(
+                bridge.ReviewBridgeError, "inside the review worktree"
+            ):
+                bridge.resolve_provider_executable(
+                    bridge.PROVIDER_SPECS["claude"],
+                    {"PATH": str(worktree)},
+                    review_worktree=worktree,
+                )
+
+    def test_missing_safe_provider_fails_before_any_provider_call(self) -> None:
+        for provider in ("claude", "grok"):
+            with self.subTest(provider=provider):
+                runner = QueueRunner([])
+                adapter = bridge.ProviderAdapter(
+                    bridge.PROVIDER_SPECS[provider],
+                    runner,
+                    source_environment={"PATH": f".{os.pathsep}{os.pathsep}relative"},
+                )
+                with self.assertRaisesRegex(
+                    bridge.ReviewBridgeError, "executable is unavailable"
+                ):
+                    adapter.run(Path("/detached"), "Review.")
+                self.assertEqual(runner.calls, [])
+
+    def test_claude_uses_one_trusted_absolute_executable(self) -> None:
+        provider_payload = {
+            "structured_output": {
+                "pr_number": PR_NUMBER,
+                "head_sha": HEAD,
+                "verdict": "PASS",
+                "body_markdown": "No findings.",
+                "findings": [],
+            },
+            "model": "claude-test",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            worktree = root / "checkout"
+            worktree.mkdir()
+            trusted = root / "trusted-bin"
+            executable = self.make_executable(trusted, "claude").resolve()
+            runner = QueueRunner(
+                [
+                    completed(stdout="2.1.234 (Claude Code)\n"),
+                    completed(stdout=CLAUDE_HELP),
+                    completed(stdout=bridge.json.dumps(provider_payload)),
+                ]
+            )
+            adapter = bridge.ProviderAdapter(
+                bridge.PROVIDER_SPECS["claude"],
+                runner,
+                source_environment={
+                    "PATH": f".{os.pathsep}{os.pathsep}relative{os.pathsep}{trusted}"
+                },
+            )
+            adapter.run(worktree, "Review.")
+            self.assertEqual(
+                [call["args"][0] for call in runner.calls],
+                [str(executable)] * 3,
+            )
+            self.assertNotEqual(runner.calls[0]["cwd"], worktree)
+            self.assertNotEqual(runner.calls[1]["cwd"], worktree)
+            self.assertEqual(runner.calls[2]["cwd"], worktree)
+            for call in runner.calls:
+                self.assertEqual(call["env"]["PATH"], str(trusted))
+
+    def test_grok_uses_one_trusted_absolute_executable(self) -> None:
+        provider_payload = {
+            "structured_output": {
+                "pr_number": PR_NUMBER,
+                "head_sha": HEAD,
+                "verdict": "PASS",
+                "body_markdown": "No findings.",
+                "findings": [],
+            },
+            "model": "grok-4.6-build",
+        }
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            worktree = root / "checkout"
+            worktree.mkdir()
+            trusted = root / "trusted-bin"
+            executable = self.make_executable(trusted, "grok").resolve()
+            auth_directory = root / "credentials"
+            auth_directory.mkdir()
+            auth_file = auth_directory / "auth.json"
+            auth_file.write_text("synthetic-only\n", encoding="utf-8")
+            runner = QueueRunner(
+                [
+                    completed(stdout="grok 1.0.5\n"),
+                    completed(stdout=GROK_HELP),
+                    completed(stdout=GROK_MODELS),
+                    completed(stdout="{}"),
+                    completed(stdout=bridge.json.dumps(provider_payload)),
+                ]
+            )
+            adapter = bridge.ProviderAdapter(
+                bridge.PROVIDER_SPECS["grok"],
+                runner,
+                source_environment={
+                    "PATH": f"relative{os.pathsep}{trusted}{os.pathsep}",
+                    "GROK_AUTH_PATH": str(auth_file),
+                },
+            )
+            adapter.run(worktree, "Review.")
+            self.assertEqual(
+                [call["args"][0] for call in runner.calls],
+                [str(executable)] * 5,
+            )
+            self.assertNotEqual(runner.calls[0]["cwd"], worktree)
+            self.assertNotEqual(runner.calls[1]["cwd"], worktree)
+            self.assertNotEqual(runner.calls[2]["cwd"], worktree)
+            self.assertEqual(runner.calls[3]["cwd"], worktree)
+            self.assertEqual(runner.calls[4]["cwd"], worktree)
+            for call in runner.calls:
+                self.assertEqual(call["env"]["PATH"], str(trusted))
+
+
 class ProviderAdapterTests(unittest.TestCase):
+    def setUp(self) -> None:
+        executable_patch = mock.patch.object(
+            bridge.shutil, "which", return_value="/usr/bin/true"
+        )
+        executable_patch.start()
+        self.addCleanup(executable_patch.stop)
+
     def test_provider_child_environment_scrubs_github_credentials(self) -> None:
         provider_payload = {
             "structured_output": {
@@ -1441,6 +1668,7 @@ class ProviderAdapterTests(unittest.TestCase):
                 "must be outside the review worktree",
             ):
                 bridge.ProviderAdapter._claude_command(
+                    Path("/usr/bin/true"),
                     worktree,
                     bridge.ClaudeIsolationConfig(settings, mcp),
                 )
@@ -1697,7 +1925,11 @@ Available models:
             config_file=Path("/ephemeral/grok-home/sandbox.toml"),
         )
         command = bridge.ProviderAdapter._grok_command(
-            Path("/detached"), Path("/prompt.md"), selected, sandbox
+            Path("/usr/bin/true"),
+            Path("/detached"),
+            Path("/prompt.md"),
+            selected,
+            sandbox,
         )
         self.assertEqual(command[command.index("-m") + 1], "grok-build")
 
@@ -1909,6 +2141,13 @@ class WorktreeCleanupTests(unittest.TestCase):
 
 
 class DoctorTests(unittest.TestCase):
+    def setUp(self) -> None:
+        executable_patch = mock.patch.object(
+            bridge.shutil, "which", return_value="/usr/bin/true"
+        )
+        executable_patch.start()
+        self.addCleanup(executable_patch.stop)
+
     def test_doctor_does_not_expose_secret_material(self) -> None:
         secret = "ghp_super_secret_value"
         runner = QueueRunner(

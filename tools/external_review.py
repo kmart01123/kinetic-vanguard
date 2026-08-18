@@ -300,6 +300,51 @@ def validate_cli_capabilities(provider_key: str, help_output: str) -> None:
         )
 
 
+def resolve_provider_executable(
+    spec: ProviderSpec,
+    source_environment: Mapping[str, str],
+    *,
+    review_worktree: Path | None = None,
+) -> tuple[Path, str]:
+    safe_directories = [
+        entry
+        for entry in source_environment.get("PATH", "").split(os.pathsep)
+        if entry and Path(entry).is_absolute()
+    ]
+    if not safe_directories:
+        raise ReviewBridgeError(
+            f"safe {spec.display_name} executable is unavailable"
+        )
+    safe_path = os.pathsep.join(safe_directories)
+    located = shutil.which(spec.executable, path=safe_path)
+    if located is None:
+        raise ReviewBridgeError(
+            f"safe {spec.display_name} executable is unavailable"
+        )
+    candidate = Path(located)
+    if not candidate.is_absolute():
+        raise ReviewBridgeError(
+            f"safe {spec.display_name} executable did not resolve absolutely"
+        )
+    try:
+        resolved = candidate.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise ReviewBridgeError(
+            f"safe {spec.display_name} executable is unavailable"
+        ) from error
+    if not resolved.is_file() or not os.access(resolved, os.X_OK):
+        raise ReviewBridgeError(
+            f"safe {spec.display_name} executable is not executable"
+        )
+    if review_worktree is not None:
+        worktree = review_worktree.resolve(strict=False)
+        if resolved.is_relative_to(worktree):
+            raise ReviewBridgeError(
+                f"{spec.display_name} executable resolves inside the review worktree"
+            )
+    return resolved, safe_path
+
+
 def validate_grok_build_model(model: str | None) -> None:
     if model is None or not GROK_BUILD_MODEL_PATTERN.fullmatch(model.strip()):
         raise ReviewBridgeError(
@@ -938,6 +983,14 @@ class ProviderAdapter:
         self.source_environment = source_environment
 
     def run(self, worktree: Path, prompt: str) -> ProviderExecution:
+        source = (
+            self.source_environment
+            if self.source_environment is not None
+            else os.environ
+        )
+        executable, safe_path = resolve_provider_executable(
+            self.spec, source, review_worktree=worktree
+        )
         try:
             temporary = tempfile.TemporaryDirectory(
                 prefix=f"kv-{self.spec.key}-review-"
@@ -955,8 +1008,8 @@ class ProviderAdapter:
                 raise ReviewBridgeError(
                     "could not create temporary provider GitHub isolation"
                 ) from error
-            source = self.source_environment if self.source_environment is not None else os.environ
             child_env = scrub_github_environment(source, gh_config)
+            child_env["PATH"] = safe_path
             claude_isolation: ClaudeIsolationConfig | None = None
             grok_sandbox: GrokSandboxProfile | None = None
             if self.spec.key == "claude":
@@ -975,14 +1028,14 @@ class ProviderAdapter:
                 child_env["GROK_SESSION_REGISTRY"] = "0"
                 child_env["GROK_SESSION_SEARCH"] = "0"
             version_command = (
-                ("grok", "--no-auto-update", "--no-memory", "--version")
+                (str(executable), "--no-auto-update", "--no-memory", "--version")
                 if self.spec.key == "grok"
-                else ("claude", "--version")
+                else (str(executable), "--version")
             )
             version = require_success(
                 self.runner.run(
                     version_command,
-                    cwd=worktree,
+                    cwd=temp_path,
                     env=child_env,
                     timeout=30,
                 ),
@@ -991,8 +1044,8 @@ class ProviderAdapter:
             cli_version = first_output_line(version.stdout or version.stderr, "unknown")
             help_result = require_success(
                 self.runner.run(
-                    (self.spec.executable, "--help"),
-                    cwd=worktree,
+                    (str(executable), "--help"),
+                    cwd=temp_path,
                     env=child_env,
                     timeout=30,
                 ),
@@ -1006,7 +1059,9 @@ class ProviderAdapter:
                     raise ReviewBridgeError(
                         "Claude isolation configuration was not initialized"
                     )
-                command = self._claude_command(worktree, claude_isolation)
+                command = self._claude_command(
+                    executable, worktree, claude_isolation
+                )
                 completed = self.runner.run(
                     command,
                     cwd=worktree,
@@ -1019,7 +1074,7 @@ class ProviderAdapter:
                     raise ReviewBridgeError("Grok sandbox profile was not initialized")
                 models = require_success(
                     self.runner.run(
-                        ("grok", "--no-auto-update", "models"),
+                        (str(executable), "--no-auto-update", "models"),
                         cwd=temp_path,
                         env=child_env,
                         timeout=30,
@@ -1030,7 +1085,11 @@ class ProviderAdapter:
                     models.stdout + "\n" + models.stderr
                 )
                 self._validate_grok_configuration(
-                    worktree, child_env, requested_model, grok_sandbox
+                    executable,
+                    worktree,
+                    child_env,
+                    requested_model,
+                    grok_sandbox,
                 )
                 prompt_file = temp_path / "review-prompt.md"
                 try:
@@ -1040,7 +1099,11 @@ class ProviderAdapter:
                         "could not create the temporary Grok review prompt"
                     ) from error
                 command = self._grok_command(
-                    worktree, prompt_file, requested_model, grok_sandbox
+                    executable,
+                    worktree,
+                    prompt_file,
+                    requested_model,
+                    grok_sandbox,
                 )
                 completed = self.runner.run(
                     command,
@@ -1071,6 +1134,7 @@ class ProviderAdapter:
 
     def _validate_grok_configuration(
         self,
+        executable: Path,
         worktree: Path,
         child_env: Mapping[str, str],
         requested_model: str,
@@ -1079,7 +1143,7 @@ class ProviderAdapter:
         inspected = require_success(
             self.runner.run(
                 (
-                    "grok",
+                    str(executable),
                     "--no-auto-update",
                     "--no-memory",
                     *self._grok_safety_options(
@@ -1117,7 +1181,9 @@ class ProviderAdapter:
 
     @staticmethod
     def _claude_command(
-        worktree: Path, isolation: ClaudeIsolationConfig
+        executable: Path,
+        worktree: Path,
+        isolation: ClaudeIsolationConfig,
     ) -> tuple[str, ...]:
         resolved_worktree = worktree.resolve()
         worktree_path = resolved_worktree.as_posix()
@@ -1133,7 +1199,7 @@ class ProviderAdapter:
             )
         scoped_read = f"Read(//{worktree_path.lstrip('/')}/**)"
         return (
-            "claude",
+            str(executable),
             "-p",
             "--model",
             "opus",
@@ -1208,13 +1274,14 @@ class ProviderAdapter:
     @classmethod
     def _grok_command(
         cls,
+        executable: Path,
         worktree: Path,
         prompt_file: Path,
         requested_model: str,
         sandbox: GrokSandboxProfile,
     ) -> tuple[str, ...]:
         command = [
-            "grok",
+            str(executable),
             "--no-auto-update",
             "--no-memory",
             *cls._grok_safety_options(worktree, requested_model, sandbox),
@@ -1246,7 +1313,10 @@ FIELD_CLAIM = re.compile(
 MARKDOWN_FENCE = re.compile(r"^\s{0,3}(?:>\s*)*(`{3,}|~{3,})(.*)$")
 SETEXT_UNDERLINE = re.compile(r"^\s{0,3}(?:=+|-+)\s*$")
 HTML_HEADING = re.compile(
-    r"^\s*<h([12])(?:\s[^>]*)?>(.*?)</h\1>\s*$", re.IGNORECASE
+    r"^\s*<h([1-6])(?:\s[^>]*)?>(.*?)</h\1>\s*$", re.IGNORECASE
+)
+HTML_STRONG = re.compile(
+    r"^\s*<(strong|b)(?:\s[^>]*)?>(.*?)</\1>\s*$", re.IGNORECASE
 )
 MARKDOWN_DASH_TRANSLATION = str.maketrans(
     {character: "-" for character in "\u00ad\u2010\u2011\u2012\u2013\u2014\u2015\u2212\ufe58\ufe63\uff0d"}
@@ -1281,15 +1351,23 @@ def normalize_markdown_claim_line(line: str) -> tuple[str, bool]:
         if visible == original:
             break
 
-    html_heading = HTML_HEADING.match(visible)
-    if html_heading:
-        visible = html_heading.group(2)
-        heading_shaped = True
-
-    bold_only = re.match(r"^\s*(\*\*|__)(.+)\1\s*$", visible)
-    if bold_only:
-        visible = bold_only.group(2)
-        heading_shaped = True
+    while True:
+        html_heading = HTML_HEADING.match(visible)
+        if html_heading:
+            visible = html_heading.group(2)
+            heading_shaped = True
+            continue
+        html_strong = HTML_STRONG.match(visible)
+        if html_strong:
+            visible = html_strong.group(2)
+            heading_shaped = True
+            continue
+        bold_only = re.match(r"^\s*(\*\*|__)(.+)\1\s*$", visible)
+        if bold_only:
+            visible = bold_only.group(2)
+            heading_shaped = True
+            continue
+        break
 
     return re.sub(r"\s+", " ", visible).strip(), heading_shaped
 
@@ -1677,15 +1755,24 @@ def doctor(runner: Runner, cwd: Path) -> tuple[bool, list[str]]:
     lines: list[str] = []
     healthy = True
 
-    def safe_run(args: Sequence[str]) -> subprocess.CompletedProcess[str]:
+    def safe_run(
+        args: Sequence[str],
+        *,
+        env: Mapping[str, str] | None = None,
+    ) -> subprocess.CompletedProcess[str]:
         try:
-            return runner.run(args, cwd=cwd, timeout=30)
+            return runner.run(args, cwd=cwd, env=env, timeout=30)
         except ReviewBridgeError:
             return subprocess.CompletedProcess(tuple(args), 127, "", "")
 
-    def version_check(command: str, label: str) -> bool:
+    def version_check(
+        command: str,
+        label: str,
+        *,
+        env: Mapping[str, str] | None = None,
+    ) -> bool:
         nonlocal healthy
-        completed = safe_run((command, "--version"))
+        completed = safe_run((command, "--version"), env=env)
         if completed.returncode != 0:
             lines.append(f"FAIL {label}: unavailable")
             healthy = False
@@ -1695,12 +1782,16 @@ def doctor(runner: Runner, cwd: Path) -> tuple[bool, list[str]]:
         )
         return True
 
-    def capability_check(provider_key: str, available: bool) -> bool:
+    def capability_check(
+        provider_key: str,
+        executable: Path | None,
+        env: Mapping[str, str] | None,
+    ) -> bool:
         nonlocal healthy
         display_name = PROVIDER_SPECS[provider_key].display_name
-        if not available:
+        if executable is None:
             return False
-        completed = safe_run((PROVIDER_SPECS[provider_key].executable, "--help"))
+        completed = safe_run((str(executable), "--help"), env=env)
         if completed.returncode != 0:
             lines.append(f"FAIL {display_name} safety capabilities: help unavailable")
             healthy = False
@@ -1757,10 +1848,29 @@ def doctor(runner: Runner, cwd: Path) -> tuple[bool, list[str]]:
         lines.append("FAIL repository context: run inside a GitHub repository")
         healthy = False
 
-    claude_available = version_check("claude", "Claude Code")
-    capability_check("claude", claude_available)
+    provider_source = os.environ
+    try:
+        claude_executable, claude_path = resolve_provider_executable(
+            PROVIDER_SPECS["claude"],
+            provider_source,
+            review_worktree=cwd,
+        )
+    except ReviewBridgeError as error:
+        lines.append(f"FAIL Claude Code: {error}")
+        healthy = False
+        claude_executable = None
+        claude_env = None
+    else:
+        claude_env = dict(provider_source)
+        claude_env["PATH"] = claude_path
+    claude_available = (
+        version_check(str(claude_executable), "Claude Code", env=claude_env)
+        if claude_executable is not None
+        else False
+    )
+    capability_check("claude", claude_executable if claude_available else None, claude_env)
     claude_auth = (
-        safe_run(("claude", "auth", "status"))
+        safe_run((str(claude_executable), "auth", "status"), env=claude_env)
         if claude_available
         else subprocess.CompletedProcess(("claude",), 127, "", "")
     )
@@ -1778,9 +1888,30 @@ def doctor(runner: Runner, cwd: Path) -> tuple[bool, list[str]]:
         lines.append("FAIL Claude authentication: run `claude auth login`")
         healthy = False
 
-    grok_available = version_check("grok", "Grok Build")
+    try:
+        grok_executable, grok_path = resolve_provider_executable(
+            PROVIDER_SPECS["grok"],
+            provider_source,
+            review_worktree=cwd,
+        )
+    except ReviewBridgeError as error:
+        lines.append(f"FAIL Grok Build: {error}")
+        healthy = False
+        grok_executable = None
+        grok_env = None
+    else:
+        grok_env = dict(provider_source)
+        grok_env["PATH"] = grok_path
+    grok_available = (
+        version_check(str(grok_executable), "Grok Build", env=grok_env)
+        if grok_executable is not None
+        else False
+    )
     grok_session_controls = (
-        safe_run(("grok", "--no-auto-update", "--no-memory", "--version"))
+        safe_run(
+            (str(grok_executable), "--no-auto-update", "--no-memory", "--version"),
+            env=grok_env,
+        )
         if grok_available
         else subprocess.CompletedProcess(("grok",), 127, "", "")
     )
@@ -1789,9 +1920,9 @@ def doctor(runner: Runner, cwd: Path) -> tuple[bool, list[str]]:
     else:
         lines.append("FAIL Grok session controls: `--no-auto-update --no-memory` unsupported")
         healthy = False
-    capability_check("grok", grok_available)
+    capability_check("grok", grok_executable if grok_available else None, grok_env)
     grok_auth = (
-        safe_run(("grok", "--no-auto-update", "models"))
+        safe_run((str(grok_executable), "--no-auto-update", "models"), env=grok_env)
         if grok_available
         else subprocess.CompletedProcess(("grok",), 127, "", "")
     )
