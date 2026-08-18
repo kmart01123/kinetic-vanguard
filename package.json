@@ -16,7 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:tools": "python3 -m unittest tools.tests.test_external_review",
-    "test:layout": "PLAYWRIGHT_HOST_PLATFORM_OVERRIDE=ubuntu24.04-x64 tsx --test tests/layout.browser.ts",
+    "test:layout": "tsx --test tests/layout.browser.ts",
     "test:determinism": "tsx src/determinism.ts",
     "harness:validate": "python3 -m harness.damage_harness --output-dir /tmp/kv-harness-validation --validate-only",
     "test:harness": "python3 -m unittest discover -s harness/tests -p 'test_*.py'",
@@ -34,7 +34,7 @@
     "@types/jsdom": "21.1.7",
     "@types/node": "24.1.0",
     "jsdom": "26.1.0",
-    "playwright": "1.55.1",
+    "playwright": "1.62.1",
     "tsx": "4.20.3",
     "typescript": "5.9.2"
   }

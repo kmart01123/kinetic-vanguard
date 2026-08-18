@@ -1,16 +1,17 @@
 {
-	"name": "Kinetic Vanguard v13",
+	"name": "Kinetic Vanguard",
 
 	"image": "mcr.microsoft.com/devcontainers/base:resolute",
 
 	"features": {
 		"ghcr.io/devcontainers/features/python:1": {
-			"version": "os-provided",
+			"version": "3.13",
 			"installTools": false,
 			"installJupyterlab": false
 		},
 		"ghcr.io/devcontainers/features/node:1": {
-			"version": "24.18.1"
+			"version": "24.18.1",
+			"npmVersion": "11.16.0"
 		},
 		"ghcr.io/devcontainers/features/github-cli:1": {
 			"version": "2.97.0"
@@ -24,7 +25,10 @@
 
 	"mounts": [
 		"source=kinetic-vanguard-codex,target=/home/vscode/.codex,type=volume",
-		"source=kinetic-vanguard-gh,target=/home/vscode/.config/gh,type=volume"
+		"source=kinetic-vanguard-gh,target=/home/vscode/.config/gh,type=volume",
+		"source=kinetic-vanguard-claude,target=/home/vscode/.claude,type=volume",
+		"source=kinetic-vanguard-grok,target=/home/vscode/.grok,type=volume",
+		"source=kinetic-vanguard-playwright,target=/home/vscode/.cache/ms-playwright,type=volume"
 	],
 
 	"customizations": {
@@ -33,7 +37,9 @@
 				"openai.chatgpt",
 				"redhat.vscode-yaml",
 				"DavidAnson.vscode-markdownlint",
-				"ms-vscode.live-server"
+				"ms-vscode.live-server",
+				"eamodio.gitlens",
+				"ms-playwright.playwright"
 			],
 			"settings": {
 				"livePreview.portNumber": 3000,
@@ -54,7 +60,7 @@
 		}
 	},
 
-	"postCreateCommand": "sudo install -d -o vscode -g vscode -m 0700 /home/vscode/.codex /home/vscode/.config/gh",
+	"postCreateCommand": "bash .devcontainer/post-create.sh",
 
 	"remoteUser": "vscode"
 }
