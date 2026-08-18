@@ -519,6 +519,7 @@ def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, A
                 "Mechanical Primitive": item.primitive_id,
                 "Exposure Basis": item.exposure_basis,
                 "Magnitude": "" if item.magnitude is None else f"{item.magnitude:g}",
+                "Qualifiers": ";".join(f"{key}={value}" for key,value in item.qualifiers),
                 "Application Probability": f"{item.application_probability:.12f}",
                 "Active Probabilities": ";".join(f"{probability_label}_{index}={value:.12f}" for index,value in enumerate(item.active_probabilities,1)),
                 "Expected Exposure": "" if item.expected_exposure is None else f"{item.expected_exposure:.12f}",

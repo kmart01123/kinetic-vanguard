@@ -193,14 +193,19 @@ class CurrentScenarioShadowTests(unittest.TestCase):
         successful_save_branch=float(sap["Application Probability"])-float(all_attacks["Application Probability"]);residual=float(str(sap["Active Probabilities"]).split("=")[1]);self.assertGreater(successful_save_branch,0);self.assertAlmostEqual(residual,successful_save_branch,places=10);self.assertAlmostEqual(float(sap["Expected Exposure"]),residual,places=10)
         self.assertIn("electron_burst:T2:effect0:offensive_impairment_all_attacks",str(sap["Suppressed By"]))
 
-    def test_battle_master_gaps_remain_explicit_while_eldritch_knight_packages_are_structured(self)->None:
-        for scenario in self.comparators["control"]["battle_master"]["scenarios"]:
-            value=_comparator_scenario(self.model,self.config,self.comparators,self.target,"battle_master",scenario);rows=self.rows(value,"all");self.assertTrue(rows);self.assertTrue(all(row["Pricing Status"]=="unsupported" for row in rows))
+    def test_battle_master_packages_use_structured_primitives_and_fail_closed_diagnostics(self)->None:
+        battle_master={scenario["id"]:scenario for scenario in self.comparators["control"]["battle_master"]["scenarios"]}
+        for scenario_id in ("menacing_attack","pushing_attack","trip_attack"):
+            value=_comparator_scenario(self.model,self.config,self.comparators,replace(self.target,size="medium"),"battle_master",battle_master[scenario_id]);self.assertGreater(value["whole"],0);self.assertTrue(self.rows(value,"all"))
+        for scenario_id in ("goading_attack","disarming_attack"):
+            value=_comparator_scenario(self.model,self.config,self.comparators,self.target,"battle_master",battle_master[scenario_id]);rows=self.rows(value,"all");self.assertEqual(value["whole"],0);self.assertTrue(rows);self.assertTrue(all(row["Pricing Status"]=="context_required" for row in rows))
         target=replace(self.target,creature_type="humanoid",size="medium")
         for scenario in self.comparators["control"]["eldritch_knight"]["scenarios"]:
             value=_comparator_scenario(self.model,self.config,self.comparators,target,"eldritch_knight",scenario);rows=self.rows(value,"all")
             self.assertTrue(rows);self.assertFalse(any(row["Pricing Status"]=="unsupported" for row in rows))
-        push=next(item for item in self.comparators["control"]["battle_master"]["scenarios"] if item["id"]=="pushing_attack");rows=self.rows(_comparator_scenario(self.model,self.config,self.comparators,self.target,"battle_master",push),"all");self.assertEqual(rows[0]["Mechanical Primitive"],"forced_displacement");self.assertEqual(rows[0]["Magnitude"],"")
+        push=battle_master["pushing_attack"];value=_comparator_scenario(self.model,self.config,self.comparators,target,"battle_master",push);rows=self.rows(value,"all");movement=next(row for row in rows if row["Mechanical Primitive"]=="forced_displacement");self.assertEqual(movement["Magnitude"],"15");self.assertIn("direction=directly_away_from_source",movement["Qualifiers"])
+        trip=battle_master["trip_attack"];value=_comparator_scenario(self.model,self.config,self.comparators,target,"battle_master",trip);rows=self.rows(value,"all");standing=next(row for row in rows if row["Mechanical Primitive"]=="standing_movement_cost");active=self.active(standing);self.assertAlmostEqual(active[0],value["whole"]/100,places=12);self.assertEqual(active[1:],(0.0,0.0));self.assertIn("recovery_movement_cost=half_speed",standing["Qualifiers"])
+        goading=battle_master["goading_attack"];value=_comparator_scenario(self.model,self.config,self.comparators,target,"battle_master",goading);goading_rows=self.rows(value,"all");self.assertFalse(any(row["Mechanical Primitive"].startswith("offensive_impairment") for row in goading_rows));self.assertIn("restricted_attack_target_relation=other_than_source",goading_rows[0]["Qualifiers"])
 
     def scenario(self,scenario_id:str)->dict[str,object]:
         return next(item for item in self.comparators["control"]["eldritch_knight"]["scenarios"] if item["id"]==scenario_id)
@@ -261,7 +266,7 @@ class CurrentScenarioShadowTests(unittest.TestCase):
 
     def test_reliability_boundary_battle_master_inventory_and_no_scalar(self)->None:
         self.assertEqual(self.comparators["control"]["eldritch_knight"]["reliability_scenario_ids"],["blindness_deafness","blindness_after_eldritch_strike"])
-        self.assertEqual(self.comparators["control"]["battle_master"]["scenarios"],[{"id":"menacing_attack","save":"wisdom","hit_gated":True,"conditions":["frightened"]},{"id":"pushing_attack","save":"strength","hit_gated":True,"outcomes":["forced_movement"],"maximum_size":"large"},{"id":"trip_attack","save":"strength","hit_gated":True,"conditions":["prone"],"maximum_size":"large"},{"id":"goading_attack","save":"wisdom","hit_gated":True,"outcomes":["attack_disadvantage"]}])
+        battle_master=self.comparators["control"]["battle_master"];self.assertEqual([scenario["id"] for scenario in battle_master["scenarios"]],["menacing_attack","pushing_attack","trip_attack","goading_attack","disarming_attack"]);self.assertEqual({level:len(maneuvers) for level,maneuvers in battle_master["known_maneuvers_by_level"].items()},{"7":5,"11":7,"15":9,"20":9})
         def keys(value:object)->set[str]:
             if isinstance(value,dict):return set(value)|set().union(*(keys(item) for item in value.values()))
             if isinstance(value,list):return set().union(*(keys(item) for item in value))

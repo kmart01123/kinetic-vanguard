@@ -26,11 +26,6 @@ def _effect_available(target:Target,effect:dict[str,Any],target_role:str)->bool:
     return bool(outcomes) or any(condition.lower() not in target.condition_immunities for condition in conditions)
 
 
-def _comparator_effect_available(target:Target,scenario:dict[str,Any])->bool:
-    conditions=list(scenario.get("conditions",[]));outcomes=list(scenario.get("outcomes",[]))
-    return bool(outcomes) or any(condition.lower() not in target.condition_immunities for condition in conditions)
-
-
 def _eldritch_knight_spellcasting_modifier(row:dict[str,Any],level:int)->int:
     """Return the one maintained EK ability modifier used by attacks and save DCs."""
     return int(row["spellcasting_ability_modifier_by_level"][str(level)])
@@ -231,16 +226,25 @@ def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,di
 def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,build_id:str,scenario:dict[str,Any])->dict[str,Any]:
     row=comparators["control"][build_id];pb=model.progression("proficiency_bonus",target.level);weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(target.level)]);weapon_bonus_total=pb+int(row["attack_ability_modifier"])+weapon_bonus;reach=1.0
     if build_id=="battle_master":
-        eligible=target.level>=int(row["minimum_level"]) and target_is_eligible(target,scenario.get("maximum_size"));available=_comparator_effect_available(target,scenario)
+        known=set(row["known_maneuvers_by_level"][str(target.level)]);legal=scenario["id"] in known;eligible=target.level>=int(row["minimum_level"]) and legal and target_is_eligible(target,scenario.get("maximum_size"))
         if scenario.get("hit_gated"):probabilities=attack_probabilities(weapon_bonus_total,target.ac);reach=probabilities[1]+probabilities[2]
         dc=int(row["save_dc_base"])+pb+int(row["save_ability_modifier"]);normal_fail=1-save_success_probability(target,scenario["save"],dc,False,bool(row["magic_resistance_applies"]))
-        if not eligible or not available:value=0.0
-        elif scenario.get("hit_gated"):
-            attacks=int(level_config(config,target.level)["attacks_per_action"]);superiority_dice=int(comparators["damage"]["battle_master"]["superiority_pool_by_level"][str(target.level)]);value=_battle_master_retry_probability(attacks,superiority_dice,reach,normal_fail)
-        else:value=normal_fail
-        labels=[*(('condition',condition) for condition in scenario.get("conditions",[]) if condition.lower() not in target.condition_immunities),*(('outcome',outcome) for outcome in scenario.get("outcomes",[]))]
-        component={"source_effect":scenario["id"],"labels":labels,"duration":None,"application_probability":value,"repeat_survival_probability":None,"repeat_checkpoint":None,"magnitude_feet":None,"attack_scope":None,"reason":f"harness/comparators/fighter-subclasses.json control.{build_id}; timing, scope, or magnitude not present in current comparator config"}
-        return {"build":build_id,"scenario":scenario["id"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*value,"shadow_components":[component] if labels else [],"targeting":None,"breaks":[]}
+        attacks=int(level_config(config,target.level)["attacks_per_action"]);superiority_dice=int(comparators["damage"]["battle_master"]["superiority_pool_by_level"][str(target.level)]);application=_battle_master_retry_probability(attacks,superiority_dice,reach,normal_fail) if eligible else 0.0
+        components=[];applications=[];horizon=int(config["methodology"]["rounds"])
+        for effect in scenario["effects"]:
+            declared_conditions=[str(condition) for condition in effect.get("conditions",[])];effective_conditions=[condition for condition in declared_conditions if condition.lower() not in target.condition_immunities]
+            if declared_conditions and not effective_conditions:continue
+            labels=[*(('condition',condition) for condition in effective_conditions),*(('outcome',outcome) for outcome in effect.get("outcomes",[]))]
+            if not labels:continue
+            recovery=effect.get("recovery");qualifiers=dict(effect.get("qualifiers",{}));active_by_basis=None
+            if recovery:
+                qualifiers.update({f"recovery_{key}":value for key,value in recovery.items()});active_by_basis={"target_turn_window":(application,*((0.0,)*(horizon-1)))}
+            if scenario["disposition"]=="diagnostic_unpriced":active_by_basis={}
+            else:applications.append(application)
+            metadata=", ".join(f"{key}={scenario[key]}" for key in ("audit_comment_id","source_scope","disposition"))
+            components.append({"source_effect":f"{scenario['id']}:{effect['id']}","labels":labels,"duration":effect["duration"],"application_probability":application,"repeat_survival_probability":None,"repeat_checkpoint":None,"magnitude_feet":effect.get("magnitude_feet"),"magnitude":None,"attack_scope":None,"pricing_status":effect.get("pricing_status") or ("context_required" if scenario["disposition"]=="diagnostic_unpriced" else None),"qualifiers":qualifiers or None,"active_probabilities_by_basis":active_by_basis,"disjoint_stage_group":"","breaks":[],"escapes":[],"reason":f"harness/comparators/fighter-subclasses.json control.{build_id}; {metadata}; effect={effect['id']}, gate={effect['gate']}"})
+        value=max(applications,default=0.0)
+        return {"build":build_id,"scenario":scenario["id"],"spell_id":None,"audit_comment_id":scenario["audit_comment_id"],"source_scope":scenario["source_scope"],"disposition":scenario["disposition"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*value,"shadow_components":components,"targeting":None,"breaks":[],"escapes":[],"escape_resolution":None,"context_predicates":list(scenario.get("context_predicates",[])),"area_exit_policy":None,"turn_branches":[],"save_composition":{"primers":[],"initial_failure_probability":application,"repeat_failure_probability":None},"automatic_save_success":False,"automatic_success_rules":[]}
 
     if not scenario.get("spell_attack") and "save" not in scenario and not scenario.get("automatic_effect"):raise ValueError("Eldritch Knight scenario requires a spell attack, saving throw, or automatic effect")
     composed_primers=set(str(item) for item in scenario.get("_composed_save_primers",[]));uses_eldritch_strike=bool(scenario.get("primer_hit_disadvantage")) or "eldritch_strike" in composed_primers

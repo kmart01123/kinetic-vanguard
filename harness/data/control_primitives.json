@@ -67,6 +67,7 @@
     {"id":"size_change","family":"state_change","exposure_basis":"contextual_opportunity","default_status":"context_required","reason":"Size change has value only when another established mechanic depends on size."},
     {"id":"open_ended_behavior","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","reason":"Behavioral consequences depend on an encounter-specific choice that the benchmark does not invent."},
     {"id":"held_item_loss","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","reason":"Value depends on whether the target holds relevant items and can recover or replace them."},
+    {"id":"standing_movement_cost","family":"mobility","exposure_basis":"target_turn_window","default_status":"candidate","reason":"Standing from Prone consumes half the target's Speed on its turn when standing is legal."},
     {"id":"damage_output_change","family":"offense","exposure_basis":"contextual_opportunity","default_status":"context_required","reason":"Damage-output changes remain visible but outside the current Control Value scalar boundary."},
     {"id":"hearing_option_denial","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","reason":"Value requires a hearing-dependent option or communication opportunity."}
   ],
@@ -205,6 +206,8 @@
     "attitude_change": {"primitive":"attitude_change"},
     "open_ended_behavior": {"primitive":"open_ended_behavior"},
     "held_item_drop": {"primitive":"held_item_loss"},
+    "target_choice_restriction": {"primitive":"target_choice_restriction"},
+    "standing_movement_cost": {"primitive":"standing_movement_cost","qualifiers":{"movement_cost":"half_speed","recovery_method":"stand"}},
     "damage_output_change": {"primitive":"damage_output_change"},
     "hearing_option_denial": {"primitive":"hearing_option_denial"},
     "size_reduction": {"primitive":"size_change","qualifiers":{"direction":"reduction"}},
