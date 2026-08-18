@@ -43,6 +43,9 @@ jobs:
         with:
           python-version: "3.13"
 
+      - name: Test developer tools
+        run: npm run test:tools
+
       - name: Typecheck
         run: npm run typecheck
 
