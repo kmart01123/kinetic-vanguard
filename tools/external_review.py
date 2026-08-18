@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import contextlib
 import json
+import math
 import os
 from pathlib import Path
 import re
@@ -49,6 +50,31 @@ GROK_SANDBOX_PROFILE = "kv-external-review"
 GROK_SANDBOX_FAILURE_PATTERN = re.compile(
     r"(?:sandbox could not be applied|failed to apply sandbox|unknown sandbox profile)",
     re.IGNORECASE,
+)
+BROAD_GROK_AUTH_DIRECTORIES = frozenset(
+    Path(path)
+    for path in (
+        "/",
+        "/bin",
+        "/boot",
+        "/dev",
+        "/etc",
+        "/home",
+        "/lib",
+        "/lib64",
+        "/media",
+        "/mnt",
+        "/opt",
+        "/proc",
+        "/run",
+        "/sbin",
+        "/srv",
+        "/sys",
+        "/tmp",
+        "/usr",
+        "/var",
+        "/var/tmp",
+    )
 )
 REVIEW_SCHEMA = {
     "type": "object",
@@ -206,11 +232,12 @@ REQUIRED_CLI_CAPABILITIES = {
         ("structured JSON schema output", ("--json-schema",)),
         ("machine-readable output", ("--output-format",)),
         ("noninteractive permission mode", ("--permission-mode",)),
-        ("tool allow list", ("--allowedTools", "--allowed-tools")),
-        ("tool deny list", ("--disallowedTools", "--disallowed-tools")),
+        ("tool allow list", ("--allowedTools",)),
+        ("tool deny list", ("--disallowedTools",)),
         ("tool surface restriction", ("--tools",)),
         ("customization isolation", ("--safe-mode",)),
         ("slash-command disabling", ("--disable-slash-commands",)),
+        ("browser integration disabling", ("--no-chrome",)),
         ("session persistence disabling", ("--no-session-persistence",)),
         ("explicit model selection", ("--model",)),
     ),
@@ -458,12 +485,18 @@ class GitRepository:
 
     @contextlib.contextmanager
     def detached_worktree(self, pr_number: int, head_sha: str) -> Iterator[Path]:
-        self.temporary_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
-        root = Path(
-            tempfile.mkdtemp(
-                prefix=f"pr-{pr_number}-{head_sha[:12]}-", dir=self.temporary_parent
+        try:
+            self.temporary_parent.mkdir(mode=0o700, parents=True, exist_ok=True)
+            root = Path(
+                tempfile.mkdtemp(
+                    prefix=f"pr-{pr_number}-{head_sha[:12]}-",
+                    dir=self.temporary_parent,
+                )
             )
-        )
+        except OSError as error:
+            raise ReviewBridgeError(
+                "could not create the temporary detached review worktree"
+            ) from error
         checkout = root / "checkout"
         added = False
         active_error: BaseException | None = None
@@ -500,8 +533,19 @@ class GitRepository:
 
 
 def validate_worktree_symlinks(worktree: Path) -> None:
-    root = worktree.resolve(strict=True)
-    for directory, directory_names, file_names in os.walk(root, followlinks=False):
+    try:
+        root = worktree.resolve(strict=True)
+    except OSError as error:
+        raise ReviewBridgeError("detached review worktree is unavailable") from error
+
+    def fail_walk(error: OSError) -> None:
+        raise ReviewBridgeError(
+            "detached review worktree could not be inspected safely"
+        ) from error
+
+    for directory, directory_names, file_names in os.walk(
+        root, followlinks=False, onerror=fail_walk
+    ):
         for name in (*directory_names, *file_names):
             candidate = Path(directory) / name
             if not candidate.is_symlink():
@@ -550,19 +594,45 @@ def resolve_grok_auth_file(source: Mapping[str, str]) -> Path:
     return resolved
 
 
+def validate_grok_auth_directory(
+    auth_file: Path,
+    source: Mapping[str, str],
+    worktree: Path,
+) -> Path:
+    auth_directory = auth_file.parent.resolve(strict=False)
+    configured_home = Path(source.get("HOME", str(Path.home()))).expanduser()
+    home = configured_home.resolve(strict=False)
+    review_worktree = worktree.resolve(strict=False)
+    if auth_directory in BROAD_GROK_AUTH_DIRECTORIES or auth_directory == home:
+        raise ReviewBridgeError(
+            "Grok authentication file must use a bounded credential directory"
+        )
+    if auth_directory.is_relative_to(review_worktree) or review_worktree.is_relative_to(
+        auth_directory
+    ):
+        raise ReviewBridgeError(
+            "Grok authentication directory must be separate from the review worktree"
+        )
+    return auth_directory
+
+
 def write_grok_sandbox_profile(
-    grok_home: Path, auth_file: Path
+    grok_home: Path, auth_file: Path, read_only_directory: Path
 ) -> GrokSandboxProfile:
-    read_only_directory = auth_file.parent
-    grok_home.mkdir(mode=0o700)
-    config_file = grok_home / "sandbox.toml"
-    config_file.write_text(
-        f"[profiles.{GROK_SANDBOX_PROFILE}]\n"
-        'extends = "strict"\n'
-        f"read_only = [{json.dumps(read_only_directory.as_posix())}]\n",
-        encoding="utf-8",
-    )
-    config_file.chmod(0o600)
+    try:
+        grok_home.mkdir(mode=0o700)
+        config_file = grok_home / "sandbox.toml"
+        config_file.write_text(
+            f"[profiles.{GROK_SANDBOX_PROFILE}]\n"
+            'extends = "strict"\n'
+            f"read_only = [{json.dumps(read_only_directory.as_posix())}]\n",
+            encoding="utf-8",
+        )
+        config_file.chmod(0o600)
+    except OSError as error:
+        raise ReviewBridgeError(
+            "could not create the temporary Grok sandbox profile"
+        ) from error
     return GrokSandboxProfile(
         name=GROK_SANDBOX_PROFILE,
         auth_file=auth_file,
@@ -618,6 +688,74 @@ def first_output_line(text: str, fallback: str) -> str:
     return fallback
 
 
+def model_usage_score(usage: object) -> tuple[float, float, float]:
+    if not isinstance(usage, dict):
+        return (0.0, 0.0, 0.0)
+    numeric: dict[str, float] = {}
+    for key, value in usage.items():
+        if (
+            isinstance(key, str)
+            and isinstance(value, (int, float))
+            and not isinstance(value, bool)
+            and math.isfinite(float(value))
+        ):
+            numeric[re.sub(r"[^a-z]", "", key.lower())] = float(value)
+    calls = numeric.get("modelcalls", numeric.get("calls", 0.0))
+    output = numeric.get("outputtokens", 0.0)
+    total = numeric.get("totaltokens")
+    if total is None:
+        total = sum(
+            value
+            for key, value in numeric.items()
+            if key.endswith("tokens") and key != "outputtokens"
+        ) + output
+    return (calls, output, total)
+
+
+def select_model_usage(model_usage: object, provider_name: str) -> str | None:
+    if not isinstance(model_usage, dict):
+        return None
+    candidates = {
+        model: usage
+        for model, usage in model_usage.items()
+        if isinstance(model, str) and model.strip()
+    }
+    if not candidates:
+        return None
+    provider_key = provider_name.strip().lower()
+    preferred: dict[str, object] = {}
+    if provider_key == "claude":
+        preferred = {
+            model: usage
+            for model, usage in candidates.items()
+            if "opus" in model.lower()
+        }
+        if not preferred:
+            preferred = {
+                model: usage
+                for model, usage in candidates.items()
+                if detected_identities(model) == {"claude"}
+            }
+    elif provider_key == "grok":
+        preferred = {
+            model: usage
+            for model, usage in candidates.items()
+            if GROK_BUILD_MODEL_PATTERN.fullmatch(model.strip())
+        }
+        if not preferred:
+            preferred = {
+                model: usage
+                for model, usage in candidates.items()
+                if detected_identities(model) == {"grok"}
+            }
+    ranked = preferred or candidates
+    selected = max(
+        ranked,
+        key=lambda model: (model_usage_score(ranked[model]), model.casefold()),
+    )
+    return selected.strip()[:160]
+
+
 def extract_contract(output: str, provider_name: str) -> tuple[dict[str, object], str | None]:
     outer = parse_json_object(output, f"{provider_name} provider")
     model_metadata: str | None = None
@@ -627,15 +765,14 @@ def extract_contract(output: str, provider_name: str) -> tuple[dict[str, object]
             model_metadata = value.strip()[:160]
             break
     if model_metadata is None:
-        model_usage = outer.get("modelUsage")
-        if isinstance(model_usage, dict) and len(model_usage) == 1:
-            only_model = next(iter(model_usage))
-            if isinstance(only_model, str) and only_model:
-                model_metadata = only_model[:160]
+        model_metadata = select_model_usage(outer.get("modelUsage"), provider_name)
 
     required = {"pr_number", "head_sha", "verdict", "body_markdown", "findings"}
     if required.issubset(outer):
-        return outer, None
+        contract = dict(outer)
+        for envelope_key in ("modelUsage", "model_id", "modelId"):
+            contract.pop(envelope_key, None)
+        return contract, model_metadata
 
     for key in ("structured_output", "structuredOutput", "output"):
         candidate = outer.get(key)
@@ -748,17 +885,33 @@ class ProviderAdapter:
         self.source_environment = source_environment
 
     def run(self, worktree: Path, prompt: str) -> ProviderExecution:
-        with tempfile.TemporaryDirectory(prefix=f"kv-{self.spec.key}-review-") as temp:
+        try:
+            temporary = tempfile.TemporaryDirectory(
+                prefix=f"kv-{self.spec.key}-review-"
+            )
+        except OSError as error:
+            raise ReviewBridgeError(
+                f"could not create temporary {self.spec.display_name} review state"
+            ) from error
+        with temporary as temp:
             temp_path = Path(temp)
             gh_config = temp_path / "empty-gh-config"
-            gh_config.mkdir(mode=0o700)
+            try:
+                gh_config.mkdir(mode=0o700)
+            except OSError as error:
+                raise ReviewBridgeError(
+                    "could not create temporary provider GitHub isolation"
+                ) from error
             source = self.source_environment if self.source_environment is not None else os.environ
             child_env = scrub_github_environment(source, gh_config)
             grok_sandbox: GrokSandboxProfile | None = None
             if self.spec.key == "grok":
                 auth_file = resolve_grok_auth_file(source)
+                auth_directory = validate_grok_auth_directory(
+                    auth_file, source, worktree
+                )
                 grok_sandbox = write_grok_sandbox_profile(
-                    temp_path / "grok-home", auth_file
+                    temp_path / "grok-home", auth_file, auth_directory
                 )
                 child_env["GROK_HOME"] = str(grok_sandbox.config_file.parent)
                 child_env["GROK_AUTH_PATH"] = str(auth_file)
@@ -819,7 +972,12 @@ class ProviderAdapter:
                     worktree, child_env, requested_model, grok_sandbox
                 )
                 prompt_file = temp_path / "review-prompt.md"
-                prompt_file.write_text(prompt, encoding="utf-8")
+                try:
+                    prompt_file.write_text(prompt, encoding="utf-8")
+                except OSError as error:
+                    raise ReviewBridgeError(
+                        "could not create the temporary Grok review prompt"
+                    ) from error
                 command = self._grok_command(
                     worktree, prompt_file, requested_model, grok_sandbox
                 )
@@ -914,7 +1072,7 @@ class ProviderAdapter:
             "--permission-mode",
             "dontAsk",
             "--tools",
-            "Read,Grep,Glob",
+            "Read",
             "--allowedTools",
             scoped_read,
             "--disallowedTools",
@@ -991,9 +1149,9 @@ KNOWN_IDENTITIES = {
     "claude": re.compile(r"(?i)(?:\bclaude\b|\banthropic\b)"),
     "grok": re.compile(r"(?i)(?:\bgrok\b|\bxai\b|\bx\.ai\b|\bspacexai\b)"),
 }
-HEADER_CLAIM = re.compile(
-    r"^\s{0,3}#{1,6}\s+External exact-head review\s+[—-]\s+(.+?)\s*$",
-    re.IGNORECASE,
+ATX_HEADING = re.compile(r"^\s{0,3}#{1,6}\s+(.+?)\s*#*\s*$")
+TRUSTED_HEADER_PREFIX = re.compile(
+    r"^External\s+exact-head\s+review\b(.*)$", re.IGNORECASE
 )
 FIELD_CLAIM = re.compile(
     r"^\s*(?:[-*]\s*)?(?:\*\*|__)?"
@@ -1047,10 +1205,17 @@ def validate_and_strip_body_claims(
 ) -> str:
     kept: list[str] = []
     for line in body.splitlines():
-        header = HEADER_CLAIM.match(line)
-        if header:
-            validate_identity_claim(header.group(1), provider.key, "reviewer")
-            continue
+        heading = ATX_HEADING.match(line)
+        if heading:
+            wrapper_heading = TRUSTED_HEADER_PREFIX.match(heading.group(1).strip())
+            if wrapper_heading:
+                remainder = wrapper_heading.group(1).strip()
+                if not detected_identities(remainder):
+                    raise ReviewBridgeError(
+                        "review body contained an ambiguous wrapper-like heading"
+                    )
+                validate_identity_claim(remainder, provider.key, "reviewer")
+                continue
         claim_line = line.replace("**", "").replace("__", "")
         field = FIELD_CLAIM.match(claim_line) or TABLE_CLAIM.match(claim_line)
         if not field:
@@ -1069,15 +1234,28 @@ def validate_and_strip_body_claims(
                 continue
             validate_model_claim(value, provider.key)
         elif label.startswith("pr"):
+            if not re.fullmatch(r"#?\d+", value):
+                kept.append(line)
+                continue
             if not re.fullmatch(rf"#?{pr_number}", value):
                 raise ReviewBridgeError("review body PR identity conflicts with invoked PR")
         elif label in ("head", "head sha", "exact reviewed head"):
+            if not SHA_PATTERN.fullmatch(value):
+                kept.append(line)
+                continue
             if value.lower() != head_sha:
                 raise ReviewBridgeError("review body head SHA conflicts with exact PR head")
         elif label == "verdict":
+            if value.upper() not in VERDICTS:
+                kept.append(line)
+                continue
             if value.upper() != verdict:
                 raise ReviewBridgeError("review body verdict conflicts with structured verdict")
         elif label == "review role":
+            known_roles = {spec.review_role for spec in PROVIDER_SPECS.values()}
+            if value not in known_roles:
+                kept.append(line)
+                continue
             if value != provider.review_role:
                 raise ReviewBridgeError("review body role conflicts with bridge-owned role")
         continue
