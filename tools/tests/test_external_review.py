@@ -4,6 +4,7 @@ import contextlib
 from pathlib import Path
 import subprocess
 import tempfile
+import tomllib
 import unittest
 
 from tools import external_review as bridge
@@ -160,6 +161,7 @@ class QueueRunner:
     def __init__(self, responses: list[subprocess.CompletedProcess[str]]) -> None:
         self.responses = responses
         self.calls: list[dict[str, object]] = []
+        self.grok_sandbox_profiles: list[str] = []
 
     def run(
         self,
@@ -179,6 +181,12 @@ class QueueRunner:
                 "timeout": timeout,
             }
         )
+        if env is not None and "GROK_HOME" in env:
+            sandbox_file = Path(env["GROK_HOME"]) / "sandbox.toml"
+            if sandbox_file.is_file():
+                self.grok_sandbox_profiles.append(
+                    sandbox_file.read_text(encoding="utf-8")
+                )
         if not self.responses:
             raise AssertionError(f"no queued response for {tuple(args)}")
         return self.responses.pop(0)
@@ -444,6 +452,24 @@ class ReviewBridgeTests(unittest.TestCase):
             ).review(PR_NUMBER, ("claude", "grok"), "Review.")
         self.assertEqual(github.comments, [])
 
+    def test_all_mode_grok_sandbox_setup_failure_posts_neither(self) -> None:
+        github = FakeGitHub([metadata()])
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "custom Grok sandbox"):
+            bridge.ReviewBridge(
+                github,
+                FakeRepository(),
+                {
+                    "claude": FakeAdapter(execution("claude")),
+                    "grok": FakeAdapter(
+                        bridge.ReviewBridgeError(
+                            "Grok review could not enforce the custom Grok sandbox"
+                        )
+                    ),
+                },
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("claude", "grok"), "Review.")
+        self.assertEqual(github.comments, [])
+
     def test_all_mode_pass_and_findings_are_both_valid(self) -> None:
         _posted, github, _repository = self.run_bridge(
             ("claude", "grok"),
@@ -680,6 +706,73 @@ class ReviewBridgeTests(unittest.TestCase):
         self.assertIn("PASS requires an empty `findings` array", adapter.prompts[0])
 
 
+class GrokAuthSandboxTests(unittest.TestCase):
+    def test_regular_auth_file_uses_canonical_parent_directory_grant(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            credentials = root / "credentials"
+            credentials.mkdir()
+            auth_file = credentials / "auth.json"
+            auth_file.write_text("synthetic-only\n", encoding="utf-8")
+            resolved = bridge.resolve_grok_auth_file(
+                {"GROK_AUTH_PATH": str(auth_file)}
+            )
+            sandbox = bridge.write_grok_sandbox_profile(
+                root / "ephemeral-grok-home", resolved
+            )
+            payload = tomllib.loads(sandbox.config_file.read_text(encoding="utf-8"))
+            profile = payload["profiles"][bridge.GROK_SANDBOX_PROFILE]
+            self.assertEqual(resolved, auth_file.resolve())
+            self.assertEqual(sandbox.auth_file, auth_file.resolve())
+            self.assertEqual(sandbox.read_only_directory, credentials.resolve())
+            self.assertEqual(
+                profile,
+                {"extends": "strict", "read_only": [str(credentials.resolve())]},
+            )
+            self.assertNotIn(str(root.resolve()), profile["read_only"])
+            self.assertNotIn(str(auth_file.resolve()), profile["read_only"])
+
+    def test_missing_auth_file_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            missing = Path(directory) / "missing-auth.json"
+            with self.assertRaisesRegex(
+                bridge.ReviewBridgeError, "missing or unresolvable"
+            ):
+                bridge.resolve_grok_auth_file({"GROK_AUTH_PATH": str(missing)})
+
+    def test_broken_auth_symlink_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            broken = Path(directory) / "auth.json"
+            broken.symlink_to("missing-target")
+            with self.assertRaisesRegex(
+                bridge.ReviewBridgeError, "missing or unresolvable"
+            ):
+                bridge.resolve_grok_auth_file({"GROK_AUTH_PATH": str(broken)})
+
+    def test_auth_directory_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            auth_directory = Path(directory) / "auth.json"
+            auth_directory.mkdir()
+            with self.assertRaisesRegex(
+                bridge.ReviewBridgeError, "not a regular file"
+            ):
+                bridge.resolve_grok_auth_file(
+                    {"GROK_AUTH_PATH": str(auth_directory)}
+                )
+
+    def test_resolvable_auth_symlink_uses_canonical_regular_file(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            target = root / "real-auth.json"
+            target.write_text("synthetic-only\n", encoding="utf-8")
+            link = root / "auth.json"
+            link.symlink_to(target.name)
+            self.assertEqual(
+                bridge.resolve_grok_auth_file({"GROK_AUTH_PATH": str(link)}),
+                target.resolve(),
+            )
+
+
 class ProviderAdapterTests(unittest.TestCase):
     def test_provider_child_environment_scrubs_github_credentials(self) -> None:
         provider_payload = {
@@ -721,6 +814,15 @@ class ProviderAdapterTests(unittest.TestCase):
             self.assertEqual(environment["ANTHROPIC_API_KEY"], "anthropic-local-auth")
         provider_command = runner.calls[-1]["args"]
         assert isinstance(provider_command, tuple)
+        self.assertEqual(
+            provider_command[provider_command.index("--model") + 1], "opus"
+        )
+        self.assertFalse(
+            any(
+                argument.startswith("claude-opus-")
+                for argument in provider_command
+            )
+        )
         self.assertNotIn("Bash", provider_command[provider_command.index("--tools") + 1])
         self.assertIn("Bash", provider_command[provider_command.index("--disallowedTools") + 1])
         self.assertIn(
@@ -728,23 +830,112 @@ class ProviderAdapterTests(unittest.TestCase):
             provider_command[provider_command.index("--allowedTools") + 1],
         )
 
-    def test_grok_rejects_discovered_mcp_configuration(self) -> None:
-        runner = QueueRunner(
-            [
-                completed(stdout="grok 1.0.5\n"),
-                completed(stdout=GROK_HELP),
-                completed(stdout=GROK_MODELS),
-                completed(stdout='{"mcpServers":[{"name":"unsafe"}]}'),
-            ]
-        )
+    def test_missing_grok_auth_fails_before_any_cli_execution(self) -> None:
+        runner = QueueRunner([])
         adapter = bridge.ProviderAdapter(
-            bridge.PROVIDER_SPECS["grok"], runner, source_environment={"PATH": "/usr/bin"}
+            bridge.PROVIDER_SPECS["grok"],
+            runner,
+            source_environment={
+                "PATH": "/usr/bin",
+                "GROK_AUTH_PATH": "/missing/synthetic-grok-auth.json",
+            },
         )
         with self.assertRaisesRegex(
-            bridge.ReviewBridgeError, "active review customizations"
+            bridge.ReviewBridgeError, "missing or unresolvable"
         ):
             adapter.run(Path("/detached"), "Review.")
+        self.assertEqual(runner.calls, [])
+
+    def test_grok_sandbox_application_warning_fails_closed(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            auth_file = Path(directory) / "auth.json"
+            auth_file.write_text("synthetic-only\n", encoding="utf-8")
+            runner = QueueRunner(
+                [
+                    completed(stdout="grok 1.0.5\n"),
+                    completed(stdout=GROK_HELP),
+                    completed(stdout=GROK_MODELS),
+                    completed(
+                        stdout="{}",
+                        stderr="warning: sandbox could not be applied: synthetic",
+                    ),
+                ]
+            )
+            adapter = bridge.ProviderAdapter(
+                bridge.PROVIDER_SPECS["grok"],
+                runner,
+                source_environment={
+                    "PATH": "/usr/bin",
+                    "GROK_AUTH_PATH": str(auth_file),
+                },
+            )
+            with self.assertRaisesRegex(
+                bridge.ReviewBridgeError, "could not enforce the custom Grok sandbox"
+            ):
+                adapter.run(Path("/detached"), "Review.")
+        environment = runner.calls[-1]["env"]
+        assert isinstance(environment, dict)
+        self.assertFalse(Path(environment["GROK_HOME"]).exists())
+
+    def test_grok_review_sandbox_warning_fails_closed_after_clean_inspection(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            auth_file = Path(directory) / "auth.json"
+            auth_file.write_text("synthetic-only\n", encoding="utf-8")
+            runner = QueueRunner(
+                [
+                    completed(stdout="grok 1.0.5\n"),
+                    completed(stdout=GROK_HELP),
+                    completed(stdout=GROK_MODELS),
+                    completed(stdout="{}"),
+                    completed(
+                        stderr="warning: sandbox could not be applied: synthetic"
+                    ),
+                ]
+            )
+            adapter = bridge.ProviderAdapter(
+                bridge.PROVIDER_SPECS["grok"],
+                runner,
+                source_environment={
+                    "PATH": "/usr/bin",
+                    "GROK_AUTH_PATH": str(auth_file),
+                },
+            )
+            with self.assertRaisesRegex(
+                bridge.ReviewBridgeError, "could not enforce the custom Grok sandbox"
+            ):
+                adapter.run(Path("/detached"), "Review.")
+        environment = runner.calls[-1]["env"]
+        assert isinstance(environment, dict)
+        self.assertFalse(Path(environment["GROK_HOME"]).exists())
+
+    def test_grok_rejects_discovered_mcp_configuration(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            auth_file = Path(directory) / "auth.json"
+            auth_file.write_text("synthetic-only\n", encoding="utf-8")
+            runner = QueueRunner(
+                [
+                    completed(stdout="grok 1.0.5\n"),
+                    completed(stdout=GROK_HELP),
+                    completed(stdout=GROK_MODELS),
+                    completed(stdout='{"mcpServers":[{"name":"unsafe"}]}'),
+                ]
+            )
+            adapter = bridge.ProviderAdapter(
+                bridge.PROVIDER_SPECS["grok"],
+                runner,
+                source_environment={
+                    "PATH": "/usr/bin",
+                    "GROK_AUTH_PATH": str(auth_file),
+                },
+            )
+            with self.assertRaisesRegex(
+                bridge.ReviewBridgeError, "active review customizations"
+            ):
+                adapter.run(Path("/detached"), "Review.")
         self.assertEqual(len(runner.calls), 4)
+        environment = runner.calls[-1]["env"]
+        assert isinstance(environment, dict)
+        self.assertFalse(Path(environment["GROK_HOME"]).exists())
 
     def test_grok_uses_ephemeral_home_with_existing_auth_path(self) -> None:
         provider_payload = {
@@ -756,48 +947,97 @@ class ProviderAdapterTests(unittest.TestCase):
                 "findings": [],
             }
         }
-        runner = QueueRunner(
-            [
-                completed(stdout="grok 1.0.5\n"),
-                completed(stdout=GROK_HELP),
-                completed(stdout=GROK_MODELS),
-                completed(stdout="{}"),
-                completed(stdout=bridge.json.dumps(provider_payload)),
-            ]
-        )
-        adapter = bridge.ProviderAdapter(
-            bridge.PROVIDER_SPECS["grok"],
-            runner,
-            source_environment={
-                "PATH": "/usr/bin",
-                "HOME": "/user/home",
-                "GROK_HOME": "/user/grok",
-            },
-        )
-        adapter.run(Path("/detached"), "Private review prompt.")
+        with tempfile.TemporaryDirectory() as directory:
+            original_grok_home = Path(directory) / "user-grok"
+            original_grok_home.mkdir()
+            auth_file = original_grok_home / "auth.json"
+            auth_file.write_text("synthetic-only\n", encoding="utf-8")
+            provider_payload["structured_output"]["body_markdown"] = (
+                f"Auth path must not publish: {auth_file.resolve()}"
+            )
+            runner = QueueRunner(
+                [
+                    completed(stdout="grok 1.0.5\n"),
+                    completed(stdout=GROK_HELP),
+                    completed(stdout=GROK_MODELS),
+                    completed(stdout="{}"),
+                    completed(stdout=bridge.json.dumps(provider_payload)),
+                ]
+            )
+            adapter = bridge.ProviderAdapter(
+                bridge.PROVIDER_SPECS["grok"],
+                runner,
+                source_environment={
+                    "PATH": "/usr/bin",
+                    "HOME": "/user/home",
+                    "GROK_HOME": str(original_grok_home),
+                    "GH_TOKEN": "ghp_synthetic-secret",
+                    "GITHUB_TOKEN": "synthetic-secret",
+                    "GH_ENTERPRISE_TOKEN": "synthetic-secret",
+                    "GITHUB_ENTERPRISE_TOKEN": "synthetic-secret",
+                    "GH_CONFIG_DIR": "/real/gh/config",
+                },
+            )
+            provider_execution = adapter.run(
+                Path("/detached"), "Private review prompt."
+            )
         for call in runner.calls:
             environment = call["env"]
             assert isinstance(environment, dict)
-            self.assertNotEqual(environment["GROK_HOME"], "/user/grok")
-            self.assertEqual(environment["GROK_AUTH_PATH"], "/user/grok/auth.json")
+            self.assertNotEqual(environment["GROK_HOME"], str(original_grok_home))
+            self.assertEqual(environment["GROK_AUTH_PATH"], str(auth_file.resolve()))
             self.assertEqual(environment["GROK_SESSION_REGISTRY"], "0")
             self.assertEqual(environment["GROK_SESSION_SEARCH"], "0")
+            for variable in bridge.GITHUB_SECRET_VARIABLES:
+                self.assertNotIn(variable, environment)
+            self.assertNotEqual(environment["GH_CONFIG_DIR"], "/real/gh/config")
         provider_command = runner.calls[-1]["args"]
         assert isinstance(provider_command, tuple)
         inspect_command = runner.calls[-2]["args"]
         assert isinstance(inspect_command, tuple)
+        inspect_environment = runner.calls[-2]["env"]
+        provider_environment = runner.calls[-1]["env"]
+        assert isinstance(inspect_environment, dict)
+        assert isinstance(provider_environment, dict)
+        self.assertEqual(
+            inspect_environment["GROK_HOME"], provider_environment["GROK_HOME"]
+        )
+        self.assertEqual(
+            inspect_environment["GROK_AUTH_PATH"],
+            provider_environment["GROK_AUTH_PATH"],
+        )
         for command in (inspect_command, provider_command):
             self.assertEqual(command[command.index("-m") + 1], "grok-4.6")
-            self.assertEqual(command[command.index("--sandbox") + 1], "strict")
+            self.assertEqual(
+                command[command.index("--sandbox") + 1],
+                bridge.GROK_SANDBOX_PROFILE,
+            )
             self.assertIn("Read(./**)", command)
             self.assertIn("Grep(./**)", command)
             self.assertNotIn("Read", command)
             self.assertNotIn("Grep", command)
+            self.assertIn(f"Read({auth_file.resolve().as_posix()})", command)
+            self.assertIn(f"Grep({auth_file.resolve().as_posix()})", command)
         self.assertEqual(
             provider_command[provider_command.index("--tools") + 1], "Read,Grep"
         )
         self.assertIn("Bash", provider_command)
         self.assertFalse(any("Bash(git" in argument for argument in provider_command))
+        profile_payload = tomllib.loads(runner.grok_sandbox_profiles[-1])
+        self.assertEqual(
+            profile_payload["profiles"][bridge.GROK_SANDBOX_PROFILE],
+            {
+                "extends": "strict",
+                "read_only": [str(original_grok_home.resolve())],
+            },
+        )
+        environment = runner.calls[-1]["env"]
+        assert isinstance(environment, dict)
+        self.assertFalse(Path(environment["GROK_HOME"]).exists())
+        self.assertNotIn(
+            str(auth_file.resolve()), provider_execution.result.body_markdown
+        )
+        self.assertIn("[REDACTED]", provider_execution.result.body_markdown)
 
     def test_grok_build_alias_is_preferred_and_explicit_when_available(self) -> None:
         listing = """Default model: grok-4.7
@@ -807,8 +1047,14 @@ Available models:
 """
         selected = bridge.select_grok_request_model(listing)
         self.assertEqual(selected, "grok-build")
+        sandbox = bridge.GrokSandboxProfile(
+            name=bridge.GROK_SANDBOX_PROFILE,
+            auth_file=Path("/credentials/auth.json"),
+            read_only_directory=Path("/credentials"),
+            config_file=Path("/ephemeral/grok-home/sandbox.toml"),
+        )
         command = bridge.ProviderAdapter._grok_command(
-            Path("/detached"), Path("/prompt.md"), selected
+            Path("/detached"), Path("/prompt.md"), selected, sandbox
         )
         self.assertEqual(command[command.index("-m") + 1], "grok-build")
 
@@ -826,6 +1072,15 @@ Available models:
             bridge.ReviewBridgeError, "explicit model selection"
         ):
             bridge.validate_cli_capabilities("grok", help_without_model_selector)
+
+    def test_claude_model_selector_capability_is_required(self) -> None:
+        help_without_model_selector = CLAUDE_HELP.replace("--model", "")
+        with self.assertRaisesRegex(
+            bridge.ReviewBridgeError, "explicit model selection"
+        ):
+            bridge.validate_cli_capabilities(
+                "claude", help_without_model_selector
+            )
 
     def test_missing_cli_safety_capability_fails_before_provider_execution(self) -> None:
         runner = QueueRunner(

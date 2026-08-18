@@ -45,6 +45,11 @@ GROK_DEFAULT_MODEL_PATTERN = re.compile(
 GROK_AVAILABLE_MODEL_PATTERN = re.compile(
     r"^\s*[*-]\s+([A-Za-z0-9._-]+)(?:\s+\(default\))?\s*$", re.MULTILINE
 )
+GROK_SANDBOX_PROFILE = "kv-external-review"
+GROK_SANDBOX_FAILURE_PATTERN = re.compile(
+    r"(?:sandbox could not be applied|failed to apply sandbox|unknown sandbox profile)",
+    re.IGNORECASE,
+)
 REVIEW_SCHEMA = {
     "type": "object",
     "properties": {
@@ -159,6 +164,14 @@ class ProviderExecution:
 
 
 @dataclass(frozen=True)
+class GrokSandboxProfile:
+    name: str
+    auth_file: Path
+    read_only_directory: Path
+    config_file: Path
+
+
+@dataclass(frozen=True)
 class PostedComment:
     provider: str
     comment_id: int
@@ -199,6 +212,7 @@ REQUIRED_CLI_CAPABILITIES = {
         ("customization isolation", ("--safe-mode",)),
         ("slash-command disabling", ("--disable-slash-commands",)),
         ("session persistence disabling", ("--no-session-persistence",)),
+        ("explicit model selection", ("--model",)),
     ),
     "grok": (
         ("structured JSON schema output", ("--json-schema",)),
@@ -506,6 +520,87 @@ def validate_worktree_symlinks(worktree: Path) -> None:
                 )
 
 
+def resolve_grok_auth_file(source: Mapping[str, str]) -> Path:
+    original_home = Path(source.get("HOME", str(Path.home())))
+    original_grok_home = Path(
+        source.get("GROK_HOME", str(original_home / ".grok"))
+    )
+    configured = Path(
+        source.get("GROK_AUTH_PATH", str(original_grok_home / "auth.json"))
+    ).expanduser()
+    try:
+        resolved = configured.resolve(strict=True)
+    except (OSError, RuntimeError) as error:
+        raise ReviewBridgeError(
+            "Grok authentication file is missing or unresolvable"
+        ) from error
+    if not resolved.is_file():
+        raise ReviewBridgeError("Grok authentication path is not a regular file")
+    if not os.access(resolved, os.R_OK):
+        raise ReviewBridgeError("Grok authentication file is not readable")
+    path_text = resolved.as_posix()
+    if (
+        path_text.strip() != path_text
+        or any(character in path_text for character in "\r\n\x00)")
+        or any(character in path_text for character in "*?[")
+    ):
+        raise ReviewBridgeError(
+            "Grok authentication path cannot be represented safely in sandbox rules"
+        )
+    return resolved
+
+
+def write_grok_sandbox_profile(
+    grok_home: Path, auth_file: Path
+) -> GrokSandboxProfile:
+    read_only_directory = auth_file.parent
+    grok_home.mkdir(mode=0o700)
+    config_file = grok_home / "sandbox.toml"
+    config_file.write_text(
+        f"[profiles.{GROK_SANDBOX_PROFILE}]\n"
+        'extends = "strict"\n'
+        f"read_only = [{json.dumps(read_only_directory.as_posix())}]\n",
+        encoding="utf-8",
+    )
+    config_file.chmod(0o600)
+    return GrokSandboxProfile(
+        name=GROK_SANDBOX_PROFILE,
+        auth_file=auth_file,
+        read_only_directory=read_only_directory,
+        config_file=config_file,
+    )
+
+
+def require_grok_sandbox_applied(
+    completed: subprocess.CompletedProcess[str], operation: str
+) -> None:
+    if GROK_SANDBOX_FAILURE_PATTERN.search(ANSI_PATTERN.sub("", completed.stderr)):
+        raise ReviewBridgeError(
+            f"{operation} could not enforce the custom Grok sandbox"
+        )
+
+
+def redact_review_result_value(result: ReviewResult, value: str) -> ReviewResult:
+    def scrub(text: str | None) -> str | None:
+        return text.replace(value, "[REDACTED]") if text is not None else None
+
+    return replace(
+        result,
+        body_markdown=scrub(result.body_markdown) or "[REDACTED]",
+        findings=tuple(
+            replace(
+                finding,
+                title=scrub(finding.title) or "[REDACTED]",
+                detail=scrub(finding.detail) or "[REDACTED]",
+            )
+            for finding in result.findings
+        ),
+        provider_claim=scrub(result.provider_claim),
+        reviewer_claim=scrub(result.reviewer_claim),
+        model_claim=scrub(result.model_claim),
+    )
+
+
 def scrub_github_environment(
     source: Mapping[str, str], gh_config_dir: Path
 ) -> dict[str, str]:
@@ -659,15 +754,14 @@ class ProviderAdapter:
             gh_config.mkdir(mode=0o700)
             source = self.source_environment if self.source_environment is not None else os.environ
             child_env = scrub_github_environment(source, gh_config)
+            grok_sandbox: GrokSandboxProfile | None = None
             if self.spec.key == "grok":
-                original_home = Path(source.get("HOME", str(Path.home())))
-                original_grok_home = Path(
-                    source.get("GROK_HOME", str(original_home / ".grok"))
+                auth_file = resolve_grok_auth_file(source)
+                grok_sandbox = write_grok_sandbox_profile(
+                    temp_path / "grok-home", auth_file
                 )
-                child_env["GROK_HOME"] = str(temp_path / "grok-home")
-                child_env["GROK_AUTH_PATH"] = source.get(
-                    "GROK_AUTH_PATH", str(original_grok_home / "auth.json")
-                )
+                child_env["GROK_HOME"] = str(grok_sandbox.config_file.parent)
+                child_env["GROK_AUTH_PATH"] = str(auth_file)
                 child_env["GROK_SESSION_REGISTRY"] = "0"
                 child_env["GROK_SESSION_SEARCH"] = "0"
             version_command = (
@@ -707,6 +801,8 @@ class ProviderAdapter:
                     timeout=3600,
                 )
             else:
+                if grok_sandbox is None:
+                    raise ReviewBridgeError("Grok sandbox profile was not initialized")
                 models = require_success(
                     self.runner.run(
                         ("grok", "--no-auto-update", "models"),
@@ -720,12 +816,12 @@ class ProviderAdapter:
                     models.stdout + "\n" + models.stderr
                 )
                 self._validate_grok_configuration(
-                    worktree, child_env, requested_model
+                    worktree, child_env, requested_model, grok_sandbox
                 )
                 prompt_file = temp_path / "review-prompt.md"
                 prompt_file.write_text(prompt, encoding="utf-8")
                 command = self._grok_command(
-                    worktree, prompt_file, requested_model
+                    worktree, prompt_file, requested_model, grok_sandbox
                 )
                 completed = self.runner.run(
                     command,
@@ -733,6 +829,7 @@ class ProviderAdapter:
                     env=child_env,
                     timeout=3600,
                 )
+                require_grok_sandbox_applied(completed, "Grok review")
             if completed.returncode != 0:
                 raise ReviewBridgeError(
                     f"{self.spec.display_name} provider failed with exit code "
@@ -741,8 +838,14 @@ class ProviderAdapter:
             contract, model_metadata = extract_contract(
                 completed.stdout, self.spec.display_name
             )
+            result = review_result_from_contract(contract)
+            if grok_sandbox is not None:
+                auth_path = grok_sandbox.auth_file.as_posix()
+                result = redact_review_result_value(result, auth_path)
+                if model_metadata is not None:
+                    model_metadata = model_metadata.replace(auth_path, "[REDACTED]")
             return ProviderExecution(
-                result=review_result_from_contract(contract),
+                result=result,
                 cli_version=cli_version,
                 model_metadata=model_metadata,
             )
@@ -752,6 +855,7 @@ class ProviderAdapter:
         worktree: Path,
         child_env: Mapping[str, str],
         requested_model: str,
+        sandbox: GrokSandboxProfile,
     ) -> None:
         inspected = require_success(
             self.runner.run(
@@ -759,7 +863,9 @@ class ProviderAdapter:
                     "grok",
                     "--no-auto-update",
                     "--no-memory",
-                    *self._grok_safety_options(worktree, requested_model),
+                    *self._grok_safety_options(
+                        worktree, requested_model, sandbox
+                    ),
                     "inspect",
                     "--json",
                 ),
@@ -769,6 +875,7 @@ class ProviderAdapter:
             ),
             "Grok configuration inspection",
         )
+        require_grok_sandbox_applied(inspected, "Grok configuration inspection")
         payload = parse_json_object(inspected.stdout, "Grok configuration inspection")
         active: list[str] = []
         for key in (
@@ -798,6 +905,8 @@ class ProviderAdapter:
         return (
             "claude",
             "-p",
+            "--model",
+            "opus",
             "--output-format",
             "json",
             "--json-schema",
@@ -820,7 +929,9 @@ class ProviderAdapter:
 
     @staticmethod
     def _grok_safety_options(
-        worktree: Path, requested_model: str
+        worktree: Path,
+        requested_model: str,
+        sandbox: GrokSandboxProfile,
     ) -> tuple[str, ...]:
         options = [
             "-m",
@@ -832,12 +943,15 @@ class ProviderAdapter:
             "--tools",
             "Read,Grep",
             "--sandbox",
-            "strict",
+            sandbox.name,
             "--no-subagents",
             "--disable-web-search",
         ]
         for rule in ("Read(./**)", "Grep(./**)"):
             options.extend(("--allow", rule))
+        auth_path = sandbox.auth_file.as_posix()
+        for rule in (f"Read({auth_path})", f"Grep({auth_path})"):
+            options.extend(("--deny", rule))
         for rule in (
             "Bash",
             "Edit",
@@ -850,13 +964,17 @@ class ProviderAdapter:
 
     @classmethod
     def _grok_command(
-        cls, worktree: Path, prompt_file: Path, requested_model: str
+        cls,
+        worktree: Path,
+        prompt_file: Path,
+        requested_model: str,
+        sandbox: GrokSandboxProfile,
     ) -> tuple[str, ...]:
         command = [
             "grok",
             "--no-auto-update",
             "--no-memory",
-            *cls._grok_safety_options(worktree, requested_model),
+            *cls._grok_safety_options(worktree, requested_model, sandbox),
             "--prompt-file",
             str(prompt_file),
             "--output-format",
