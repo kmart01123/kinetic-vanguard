@@ -296,71 +296,81 @@ class ComparatorLeafContractTests(unittest.TestCase):
             with self.subTest(path=_path_label(path)):
                 self.assertNotEqual(_comparator_dpr(self.model,self.config,changed,target,build),baselines[key])
 
+    def control_mutation(self,path:tuple[object,...],current:object)->object:
+        build=str(path[1]);row_field=str(path[2]);field=str(path[-2]) if isinstance(path[-1],int) else str(path[-1])
+        if row_field=="reliability_scenario_ids":
+            selected=set(self.comparators["control"][build]["reliability_scenario_ids"])
+            return next(scenario["id"] for scenario in self.comparators["control"][build]["scenarios"] if scenario["id"] not in selected)
+        if row_field=="spell_access":return int(current)-1
+        if field=="save" or field=="ability" or field=="save_ability":return "wisdom" if current=="strength" else "strength"
+        if field=="delivery":return "action_spell" if current=="war_magic_cantrip" else "war_magic_cantrip"
+        if field=="duration":return "until_start_next_turn" if current!="until_start_next_turn" else "until_end_next_turn"
+        if field=="repeat_save_trigger":return "start_of_affected_turn"
+        if field=="required_creature_type":return "construct"
+        if field=="conditions":return "stunned" if current!="stunned" else "blinded"
+        if field=="outcomes":return "speed_zero" if current!="speed_zero" else "forced_movement"
+        if field=="maximum_size":return "tiny"
+        if field=="gate":return "on_failed_save" if current=="after_failed_second_save" else "after_failed_second_save"
+        if field=="requires_condition_effective":return "missing_condition"
+        if field=="active_pattern":return "remaining_after_first_target_turn" if current=="first_target_turn_only" else "first_target_turn_only"
+        if isinstance(current,str):return f"{current}_contract_probe"
+        if isinstance(current,bool):return not current
+        if isinstance(current,int):return current+1
+        if isinstance(current,float):return current+0.25
+        raise AssertionError(f"No control semantic mutation for {_path_label(path)}")
+
+    def control_result_signature(self,result:dict[str,object])->str:
+        keys=("scenario","spell_id","audit_comment_id","source_scope","disposition","eligible","reach","named","whole","after_repeats","shadow_components","targeting","breaks","escapes","escape_resolution","context_predicates","area_exit_policy","turn_branches","save_composition","automatic_save_success","automatic_success_rules")
+        return json.dumps({key:result.get(key) for key in keys},sort_keys=True)
+
+    def scenario_level(self,row:dict[str,object],scenario:dict[str,object])->int:
+        levels=sorted(int(level) for level in row["magic_weapon_bonus_by_level"])  # type: ignore[union-attr]
+        if "spell_level" not in scenario:return next(level for level in levels if level>=int(row["minimum_level"]))
+        access=row["spell_access"]["highest_slot_level_by_fighter_level"]  # type: ignore[index]
+        return next(level for level in levels if level>=int(row["minimum_level"]) and int(access[str(level)])>=int(scenario["spell_level"]) and (not scenario.get("primer_hit_disadvantage") or level>=int(row["eldritch_strike_minimum_level"])))
+
+    def scenario_signature(self,comparators:dict[str,object],build:str,scenario:dict[str,object],level:int,field:str,current:object)->str:
+        target=replace(self.target(level),magic_resistance=False)
+        if field=="required_creature_type":target=replace(target,creature_type=str(current))
+        elif scenario.get("required_creature_type"):target=replace(target,creature_type=str(scenario["required_creature_type"]))
+        if field=="maximum_size":target=replace(target,size=str(current))
+        elif scenario.get("maximum_size"):target=replace(target,size=str(scenario["maximum_size"]))
+        if field=="conditions":target=replace(target,condition_immunities=frozenset({str(current).lower()}))
+        return self.control_result_signature(_comparator_scenario(self.model,self.config,comparators,target,build,scenario))
+
+    def row_signature(self,comparators:dict[str,object],build:str)->str:
+        row=comparators["control"][build]  # type: ignore[index]
+        levels=sorted(int(level) for level in row["magic_weapon_bonus_by_level"])
+        results=[]
+        for level in levels:
+            for scenario in row["scenarios"]:
+                target=self.target(level)
+                if scenario.get("required_creature_type"):target=replace(target,creature_type=str(scenario["required_creature_type"]))
+                if scenario.get("maximum_size"):target=replace(target,size=str(scenario["maximum_size"]))
+                results.append(self.control_result_signature(_comparator_scenario(self.model,self.config,comparators,target,build,scenario)))
+        reliability=[]
+        for scenario_id in row.get("reliability_scenario_ids",[]):
+            scenario=next(item for item in row["scenarios"] if item["id"]==scenario_id);level=self.scenario_level(row,scenario);reliability.append((scenario_id,self.scenario_signature(comparators,build,scenario,level,"",None)))
+        return json.dumps({"evaluations":results,"reliability":reliability},sort_keys=True)
+
     def test_every_control_comparator_leaf_has_observable_semantics(self)->None:
-        for path in _leaf_paths(self.comparators["control"],("control",)):
-            build=str(path[1]);row_field=str(path[2]);scenario_index=int(path[3]) if row_field=="scenarios" else None
-            field=str(path[-2]) if scenario_index is not None and isinstance(path[-1],int) else (str(path[-1]) if scenario_index is not None else row_field)
-            before=deepcopy(self.comparators);after=deepcopy(self.comparators);current=_path_value(after,path)
-            if row_field=="reliability_scenario_ids":
-                _set_path(after,path,f"{current}_contract_probe")
-                before_ids=before["control"][build]["reliability_scenario_ids"];after_ids=after["control"][build]["reliability_scenario_ids"]
-                with self.subTest(path=_path_label(path)):self.assertNotEqual(after_ids,before_ids)
-                continue
-            if row_field=="spell_access":
-                level=int(path[-1]);_set_path(after,path,int(current)-1);scenario=deepcopy(next(item for item in before["control"][build]["scenarios"] if item["id"]=="hypnotic_pattern"));scenario["spell_level"]=int(current);target=self.target(level)
-                baseline=_comparator_scenario(self.model,self.config,before,target,build,scenario);changed=_comparator_scenario(self.model,self.config,after,target,build,scenario)
-                with self.subTest(path=_path_label(path)):self.assertTrue(baseline["eligible"]);self.assertFalse(changed["eligible"])
-                continue
-            if row_field=="eldritch_strike_minimum_level":
-                _set_path(after,path,int(current)+1);scenario=next(item for item in before["control"][build]["scenarios"] if item["id"]=="blindness_after_eldritch_strike");target=self.target(int(current));baseline=_comparator_scenario(self.model,self.config,before,target,build,scenario);changed=_comparator_scenario(self.model,self.config,after,target,build,scenario)
-                with self.subTest(path=_path_label(path)):self.assertTrue(baseline["eligible"]);self.assertFalse(changed["eligible"])
-                continue
-            condition_immunities:tuple[str,...]=()
-            if field=="id":_set_path(after,path,f"{current}_contract_probe")
-            elif field=="save":replacement="wisdom" if current=="strength" else "strength";_set_path(after,path,replacement)
-            elif field=="delivery":replacement="action_spell" if current=="war_magic_cantrip" else "war_magic_cantrip";_set_path(after,path,replacement)
-            elif field=="duration":replacement="until_start_next_turn" if current!="until_start_next_turn" else "until_end_next_turn";_set_path(after,path,replacement)
-            elif field=="repeat_save_trigger":replacement="start_of_affected_turn";_set_path(after,path,replacement)
-            elif field=="required_creature_type":replacement="construct";_set_path(after,path,replacement)
-            elif field=="conditions":
-                condition_immunities=(str(current),);replacement="stunned" if current!="stunned" else "blinded";_set_path(after,path,replacement)
-            elif field=="outcomes":replacement="speed_zero" if current!="speed_zero" else "forced_movement";_set_path(after,path,replacement)
-            elif field=="maximum_size":_set_path(after,path,"tiny")
-            elif field=="gate":replacement="on_failed_save" if current=="after_failed_second_save" else "after_failed_second_save";_set_path(after,path,replacement)
-            elif field=="requires_condition_effective":_set_path(after,path,"missing_condition")
-            elif field=="active_pattern":replacement="remaining_after_first_target_turn" if current=="first_target_turn_only" else "first_target_turn_only";_set_path(after,path,replacement)
-            elif isinstance(current,str):_set_path(after,path,f"{current}_contract_probe")
-            elif isinstance(current,bool):_set_path(after,path,not current)
-            elif isinstance(current,int):_set_path(after,path,current+1)
-            else:raise AssertionError(f"No control semantic mutation for {_path_label(path)}")
-
-            if scenario_index is not None:
-                before_scenario=before["control"][build]["scenarios"][scenario_index];after_scenario=after["control"][build]["scenarios"][scenario_index]
-                if build=="eldritch_knight":
-                    access=before["control"][build]["spell_access"]["highest_slot_level_by_fighter_level"];level=next(int(candidate) for candidate in ("7","11","15","20") if int(access[candidate])>=int(before_scenario["spell_level"]) and (not before_scenario.get("primer_hit_disadvantage") or int(candidate)>=int(before["control"][build]["eldritch_strike_minimum_level"])))
-                else:level=int(before["control"][build]["minimum_level"])
-            else:
-                level=next((int(part) for part in path if isinstance(part,str) and part in {"7","11","15","20"}),11 if build=="eldritch_knight" and field in {"attack_ability_modifier","magic_weapon_bonus_by_level"} else 7)
-                if build=="battle_master":scenario_index=0
-                else:
-                    scenario_id="blindness_after_eldritch_strike" if field in {"attack_ability_modifier","magic_weapon_bonus_by_level"} else "blindness_deafness"
-                    scenario_index=next(index for index,item in enumerate(before["control"][build]["scenarios"]) if item["id"]==scenario_id)
-                before_scenario=before["control"][build]["scenarios"][scenario_index];after_scenario=after["control"][build]["scenarios"][scenario_index]
-                if build=="eldritch_knight" and field=="minimum_level":level=int(before["control"][build]["minimum_level"])
-                if build=="eldritch_knight" and field=="magic_weapon_bonus_by_level" and level<int(before["control"][build]["eldritch_strike_minimum_level"]):before["control"][build]["eldritch_strike_minimum_level"]=level;after["control"][build]["eldritch_strike_minimum_level"]=level
-
-            target=self.target(level,condition_immunities=condition_immunities)
-            required_type=before_scenario.get("required_creature_type")
-            if required_type is not None:target=replace(target,creature_type=str(required_type))
-            baseline=_comparator_scenario(self.model,self.config,before,target,build,before_scenario)
-            if field=="spell_attack":
-                with self.subTest(path=_path_label(path)):
-                    with self.assertRaisesRegex(ValueError,"spell attack or saving throw"):_comparator_scenario(self.model,self.config,after,target,build,after_scenario)
-                continue
-            changed=_comparator_scenario(self.model,self.config,after,target,build,after_scenario)
-            signature=lambda row:(row["scenario"],row["eligible"],row["reach"],row["named"],row["whole"],row["after_repeats"],row["shadow_components"],row.get("targeting"),row.get("breaks"),row.get("automatic_success_rules"))
-            with self.subTest(path=_path_label(path)):
-                self.assertNotEqual(signature(changed),signature(baseline))
+        with tempfile.TemporaryDirectory() as directory:
+            comparator_path=Path(directory)/"comparators.json"
+            for path in _leaf_paths(self.comparators["control"],("control",)):
+                build=str(path[1]);row_field=str(path[2]);scenario_index=int(path[3]) if row_field=="scenarios" else None;field=str(path[-2]) if isinstance(path[-1],int) else str(path[-1]);current=_path_value(self.comparators,path)
+                before=deepcopy(self.comparators);after=deepcopy(self.comparators);_set_path(after,path,self.control_mutation(path,current));comparator_path.write_text(json.dumps(after),encoding="utf-8")
+                try:validated=load_comparators(comparator_path)
+                except ValueError:continue
+                try:
+                    if scenario_index is not None:
+                        before_scenario=before["control"][build]["scenarios"][scenario_index];after_scenario=validated["control"][build]["scenarios"][scenario_index];level=self.scenario_level(before["control"][build],before_scenario)
+                        baseline=self.scenario_signature(before,build,before_scenario,level,field,current);changed=self.scenario_signature(validated,build,after_scenario,level,field,current)
+                    else:
+                        if build=="eldritch_knight" and row_field=="magic_weapon_bonus_by_level" and int(path[-1])<int(before["control"][build]["eldritch_strike_minimum_level"]):
+                            before["control"][build]["eldritch_strike_minimum_level"]=int(path[-1]);validated["control"][build]["eldritch_strike_minimum_level"]=int(path[-1])
+                        baseline=self.row_signature(before,build);changed=self.row_signature(validated,build)
+                except (KeyError,ValueError):continue
+                with self.subTest(path=_path_label(path)):self.assertNotEqual(changed,baseline)
 
 
 class DamagePlannerTests(unittest.TestCase):

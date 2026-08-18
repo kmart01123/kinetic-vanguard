@@ -5,6 +5,8 @@
 ### Changed
 
 - Made Glacial Spike replace Slow mastery for its triggering Manifested Strike instead of stacking both 10-foot Speed reductions on the same hit.
+- Expanded the Eldritch Knight benchmark comparator to the 41 control-relevant spells retained by the completed current-PHB audit, using independently expressed mechanical abstractions, reusable analytical primitives, and explicit fail-closed diagnostic packages without changing published Control Reliability selection or Control Value weights.
+- Corrected the expanded Eldritch Knight shadow evaluation with production Mind Sliver and Eldritch Strike save composition, closed-form Web and Black Tentacles escape exposure, overlapping Action-denial normalization, and immunity-safe condition dependencies.
 
 ### Removed
 

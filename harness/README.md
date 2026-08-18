@@ -8,8 +8,8 @@ The harness keeps four input layers separate:
 
 1. Root `KineticVanguard.yaml` supplies Kinetic Vanguard mechanics through `src/harness-authority.ts`.
 2. `config/benchmark.json` supplies current benchmark levels, horizon, aggregation, target clustering, scenario policy, and SRD-derived base Fighter progression.
-3. `data/srd_creatures.json` supplies the 330-creature SRD 5.2.1 source-fact catalog; `data/srd_creature_rosters.json` supplies the `headline` and `eligible_census` memberships; and `data/control_primitives.json` supplies the current condition-to-primitive shadow model.
-4. `comparators/fighter-subclasses.json` supplies the minimal Battle Master and Eldritch Knight numerical packages used by the comparators.
+3. `data/srd_creatures.json` supplies the 330-creature SRD 5.2.1 source-fact catalog; `data/srd_creature_rosters.json` supplies the `headline` and `eligible_census` memberships; and `data/control_primitives.json` keeps SRD condition definitions separate from project-authored generic analytical primitives.
+4. `comparators/fighter-subclasses.json` supplies the minimal Battle Master and Eldritch Knight packages used by the comparators. Eldritch Knight spell packages are independently expressed mechanical abstractions from the sanitized Issue #92 rulings; they are not labeled as SRD or CC content.
 
 The CLIs default to the maintained 47-target `headline` profile. The 93-target `eligible_census` is the validation and sensitivity inventory and should not be run analytically without explicit authorization. Both profiles contain only SRD 5.2.1 creatures, and both damage and control consume the same `Target` projection.
 
@@ -79,6 +79,8 @@ Control Reliability uses the same dynamic comparator envelope as damage and keep
 `--shadow-detail` adds `kv-<version>-control-value-shadow-detail.csv`. It reuses current target eligibility and hit/save/retry probabilities, decomposes conditions and outcomes into current mechanical primitives, and reports exposure bases, magnitudes, active probabilities, expected exposure, normalization, and `candidate`, `context_required`, or `unsupported` pricing state.
 
 The shadow layer preserves current condition decomposition, repeat-save timing, overlap normalization, dependencies, and fail-closed behavior. It defines no weights, scalar, winner selection, matrix cell, or README classification. Unknown timing, magnitude, scope, or battlefield context remains contextual or unsupported.
+
+The Eldritch Knight shadow inventory accounts for the 41 retained audited spells without duplicating the 110 exclusions in runtime data. Exact finite save penalties and deterministic turn branches are analytically enumerated. Reusable production composition evaluates legal prior-Attack-action Eldritch Strike and cross-turn Mind Sliver primers without changing the published Reliability IDs; only the initial qualifying save consumes either primer. Web and Evard's Black Tentacles use a three-window closed-form adversarial escape convention from explicit target Athletics facts with Strength fallback, preserving each escape Action and immediate legal exit without a combat timeline or pathfinding. Other area occupancy, two-sided visibility or isolation, transformations, and context-dependent packages remain explicitly unpriced where the maintained benchmark lacks the required geometry, opportunity, environment, behavior, or replacement-form data.
 
 A focused shadow inspection is:
 

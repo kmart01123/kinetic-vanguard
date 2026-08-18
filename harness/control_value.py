@@ -58,6 +58,18 @@ def load_primitive_catalog(path: str | Path = DEFAULT_PRIMITIVES) -> dict[str, A
         data = _object(json.load(stream), "control primitive catalog")
     if data.get("format_version") != 1:
         raise ValueError("Unsupported control primitive catalog format version")
+    source = _object(data.get("source"), "control primitive source")
+    if set(source) != {"condition_definitions", "analytical_primitives", "comparator_packages", "note"}:
+        raise ValueError("Control primitive source scopes are incomplete")
+    conditions_source = _object(source["condition_definitions"], "condition definition source")
+    if conditions_source != {
+        "ruleset": "SRD 5.2.1",
+        "pdf_sha256": "8974902d109d6e63672d7c490bde9ccf052410503d9cfa768237154fbc5e3d87",
+        "url": "https://media.dndbeyond.com/compendium-images/srd/5.2.1/SRD_CC_v5.2.1.pdf",
+    }:
+        raise ValueError("Condition definitions must remain pinned to SRD 5.2.1")
+    if source["analytical_primitives"] != "project-authored generic benchmark semantics" or source["comparator_packages"] != "independently expressed mechanical abstractions from sanitized GitHub rulings":
+        raise ValueError("Control primitive source scopes are invalid")
     statuses = data.get("pricing_statuses")
     if statuses != ["candidate", "context_required", "unsupported"]:
         raise ValueError("Unsupported control primitive pricing statuses")
@@ -107,7 +119,10 @@ def decompose_label(
     label: str,
     *,
     magnitude_feet: float | None = None,
+    magnitude: float | None = None,
     attack_scope: str | None = None,
+    pricing_status: str | None = None,
+    qualifiers: Mapping[str, Any] | None = None,
     path: str | Path = DEFAULT_PRIMITIVES,
 ) -> tuple[PrimitiveSpec, ...]:
     """Expand one canonical condition/outcome label into inspectable primitives."""
@@ -117,19 +132,23 @@ def decompose_label(
     normalized = {"speed_0": "speed_zero"}.get(normalized, normalized)
     specs: list[PrimitiveSpec] = []
 
-    def add(primitive_id: str, status: str | None, qualifiers: Mapping[str, Any] | None, magnitude: float | None, reason: str = "") -> None:
+    if magnitude_feet is not None and magnitude is not None:
+        raise ValueError("A control label cannot declare both feet and generic magnitude")
+
+    def add(primitive_id: str, status: str | None, item_qualifiers: Mapping[str, Any] | None, item_magnitude: float | None, reason: str = "") -> None:
         contract = contracts[primitive_id]
-        resolved_status = status or str(contract["default_status"])
+        resolved_status = pricing_status or status or str(contract["default_status"])
         if resolved_status not in _STATUS_ORDER:
             raise ValueError(f"Unsupported pricing status: {resolved_status}")
+        merged_qualifiers = {**(item_qualifiers or {}), **(qualifiers or {})}
         specs.append(
             PrimitiveSpec(
                 primitive_id=primitive_id,
                 exposure_basis=str(contract["exposure_basis"]),
-                magnitude=magnitude,
+                magnitude=item_magnitude,
                 pricing_status=resolved_status,
                 reason=reason or str(contract["reason"]),
-                qualifiers=_qualifiers(qualifiers),
+                qualifiers=_qualifiers(merged_qualifiers),
             )
         )
 
@@ -162,13 +181,16 @@ def decompose_label(
             else:
                 add(primitive_id, None, {"attack_scope": attack_scope}, None)
         else:
-            magnitude = float(magnitude_feet) if magnitude_feet is not None else None
+            resolved_magnitude = float(magnitude_feet if magnitude_feet is not None else magnitude) if magnitude_feet is not None or magnitude is not None else None
             status = None
             reason = ""
-            if definition.get("requires_magnitude_feet") and magnitude is None:
+            if definition.get("requires_magnitude_feet") and magnitude_feet is None:
                 status = "unsupported"
                 reason = f"{normalized} lacks a trustworthy feet magnitude in the maintained source."
-            add(str(definition["primitive"]), status, definition.get("qualifiers"), magnitude, reason)
+            if definition.get("requires_magnitude") and resolved_magnitude is None:
+                status = "unsupported"
+                reason = f"{normalized} lacks a trustworthy magnitude in the maintained source."
+            add(str(definition["primitive"]), status, definition.get("qualifiers"), resolved_magnitude, reason)
     else:
         raise ValueError(f"Unknown control condition/outcome: {label}")
     deduplicated: list[PrimitiveSpec] = []
@@ -223,7 +245,10 @@ def expose_label(
     repeat_survival_probability: float | None = None,
     repeat_checkpoint: str | None = None,
     magnitude_feet: float | None = None,
+    magnitude: float | None = None,
     attack_scope: str | None = None,
+    pricing_status: str | None = None,
+    qualifiers: Mapping[str, Any] | None = None,
     overlapping_attack_impairment_sources: Sequence[str] = (),
     active_probabilities_by_basis: Mapping[str, Sequence[float]] | None = None,
     disjoint_stage_group: str = "",
@@ -233,7 +258,14 @@ def expose_label(
         raise ValueError("Application probability must be between zero and one")
     if horizon < 1:
         raise ValueError("Exposure horizon must be positive")
-    specs = decompose_label(label, magnitude_feet=magnitude_feet, attack_scope=attack_scope)
+    specs = decompose_label(
+        label,
+        magnitude_feet=magnitude_feet,
+        magnitude=magnitude,
+        attack_scope=attack_scope,
+        pricing_status=pricing_status,
+        qualifiers=qualifiers,
+    )
     attack_overlap_sources = tuple(sorted(set(overlapping_attack_impairment_sources)))
     result: list[PrimitiveExposure] = []
     for spec in specs:
@@ -278,7 +310,7 @@ def expose_label(
         else:
             if duration in {"until_end_current_turn", "until_start_next_turn", "until_end_next_turn"}:
                 active = fixed_exposure(application_probability, 1)
-            elif duration in {"one_minute", "one_minute_concentration", "one_hour", "eight_hours"}:
+            elif duration in {"one_minute", "one_minute_concentration", "ten_minutes_concentration", "one_hour", "one_hour_concentration", "eight_hours"}:
                 if repeat_survival_probability is None:
                     active = fixed_exposure(application_probability, horizon)
                 elif repeat_checkpoint == "start_of_affected_turn" and spec.exposure_basis == "target_turn_window":
@@ -406,15 +438,34 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
         return [item for item in normalized if item.normalization_disposition != "suppressed" and predicate(item)]
 
     denials = retained(lambda item: item.primitive_id == "active_turn_denial")
+    specified_actions = retained(lambda item: item.primitive_id == "specified_action_requirement")
+    effective_specified_actions: list[PrimitiveExposure] = []
+    for action in specified_actions:
+        effective = action
+        for denial in denials:
+            if effective.exposure_basis == denial.exposure_basis == "target_turn_window":
+                effective = _subtract(effective, denial, "turn denial dominates a specified Action requirement")
+        effective_specified_actions.append(effective)
     all_attack_impairments = retained(lambda item: item.primitive_id == "offensive_impairment_all_attacks")
     auto_failures = retained(lambda item: item.primitive_id == "save_auto_failure")
     speed_zeroes = retained(lambda item: item.primitive_id == "mobility_loss_feet" and _qualifier(item, "mobility_effect") == "speed_zero")
     revised: list[PrimitiveExposure] = []
     for item in normalized:
         current = item
+        if current.normalization_disposition != "suppressed" and current.primitive_id == "bonus_action_denial":
+            for stronger in denials:
+                current = _subtract(current, stronger, "turn denial includes and dominates Bonus Action denial")
+        if current.normalization_disposition != "suppressed" and current.primitive_id == "specified_action_requirement":
+            for stronger in denials:
+                if current.exposure_basis == stronger.exposure_basis == "target_turn_window":
+                    current = _subtract(current, stronger, "turn denial dominates a specified Action requirement")
         if current.normalization_disposition != "suppressed" and current.primitive_id in {"offensive_impairment_next_attack", "offensive_impairment_all_attacks"}:
             for stronger in denials:
                 current = _subtract(current, stronger, "turn denial dominates offensive impairment")
+        if current.normalization_disposition != "suppressed" and current.primitive_id == "offensive_impairment_all_attacks":
+            for stronger in effective_specified_actions:
+                if current.exposure_basis == stronger.exposure_basis == "target_turn_window":
+                    current = _subtract(current, stronger, "specified Action requirement consumes the overlapping attack opportunity")
         if current.normalization_disposition != "suppressed" and current.primitive_id == "offensive_impairment_next_attack":
             for stronger in all_attack_impairments:
                 if current.source_effect in stronger.overlapping_attack_impairment_sources:
@@ -447,7 +498,10 @@ def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, A
                     repeat_survival_probability=component.get("repeat_survival_probability"),
                     repeat_checkpoint=component.get("repeat_checkpoint"),
                     magnitude_feet=component.get("magnitude_feet"),
+                    magnitude=component.get("magnitude"),
                     attack_scope=component.get("attack_scope"),
+                    pricing_status=component.get("pricing_status"),
+                    qualifiers=component.get("qualifiers"),
                     overlapping_attack_impairment_sources=component.get("overlapping_attack_impairment_sources", ()),
                     active_probabilities_by_basis=component.get("active_probabilities_by_basis"),
                     disjoint_stage_group=str(component.get("disjoint_stage_group", "")),
