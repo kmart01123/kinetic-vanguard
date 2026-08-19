@@ -8,9 +8,9 @@ readonly EXPECTED_GH_VERSION="2.97.0"
 readonly CODEX_PACKAGE="@openai/codex@0.148.0"
 readonly CLAUDE_PACKAGE="@anthropic-ai/claude-code@2.1.234"
 readonly GROK_PACKAGE="@xai-official/grok@1.0.5"
-readonly CLAUDE_GLOBAL_STATE_PATH="/home/vscode/.claude.json"
-readonly CLAUDE_PERSISTENT_STATE_PATH="/home/vscode/.claude/global-state.json"
-readonly CLAUDE_BACKUP_DIRECTORY="/home/vscode/.claude/backups"
+readonly CLAUDE_CONFIG_DIRECTORY="/home/vscode/.claude"
+readonly CLAUDE_CONFIG_PATH="$CLAUDE_CONFIG_DIRECTORY/.claude.json"
+readonly CLAUDE_LEGACY_STATE_PATH="$CLAUDE_CONFIG_DIRECTORY/global-state.json"
 
 readonly -a STATE_DIRECTORIES=(
 	"/home/vscode/.codex"
@@ -34,67 +34,35 @@ require_exact_version() {
 	[[ "$actual" == "$expected" ]] || fail "$label version mismatch: expected $expected, got $actual"
 }
 
-is_nonempty_json_file() {
-	local path="$1"
-
-	[[ -f "$path" && ! -L "$path" && -s "$path" ]] \
-		&& python3 -c 'import json, sys; json.load(open(sys.argv[1]))' "$path" >/dev/null 2>&1
-}
-
-configure_claude_global_state() {
-	local backup_path=""
-	local candidate
-	local displaced_state_path
-	local resolved_path=""
-
-	install -d -m 0700 "$CLAUDE_BACKUP_DIRECTORY"
-	chmod 0700 "$CLAUDE_BACKUP_DIRECTORY"
-
-	if [[ -e "$CLAUDE_PERSISTENT_STATE_PATH" || -L "$CLAUDE_PERSISTENT_STATE_PATH" ]]; then
-		is_nonempty_json_file "$CLAUDE_PERSISTENT_STATE_PATH" \
-			|| fail "persistent Claude global state is not a nonempty regular JSON file"
-	elif [[ -f "$CLAUDE_GLOBAL_STATE_PATH" && ! -L "$CLAUDE_GLOBAL_STATE_PATH" ]]; then
-		is_nonempty_json_file "$CLAUDE_GLOBAL_STATE_PATH" \
-			|| fail "existing Claude global state is not a nonempty JSON file"
-		mv -- "$CLAUDE_GLOBAL_STATE_PATH" "$CLAUDE_PERSISTENT_STATE_PATH"
-	elif [[ -e "$CLAUDE_GLOBAL_STATE_PATH" || -L "$CLAUDE_GLOBAL_STATE_PATH" ]]; then
-		fail "existing Claude global state path is not a regular file"
-	else
-		for candidate in "$CLAUDE_BACKUP_DIRECTORY"/.claude.json.backup.*; do
-			if is_nonempty_json_file "$candidate" \
-				&& [[ -z "$backup_path" || "$candidate" -nt "$backup_path" ]]; then
-				backup_path="$candidate"
-			fi
-		done
-
-		if [[ -n "$backup_path" ]]; then
-			cp -- "$backup_path" "$CLAUDE_PERSISTENT_STATE_PATH"
-		else
-			printf '{}\n' >"$CLAUDE_PERSISTENT_STATE_PATH"
-		fi
+migrate_claude_global_state() {
+	if [[ -e "$CLAUDE_CONFIG_PATH" || -L "$CLAUDE_CONFIG_PATH" ]]; then
+		return
 	fi
 
-	sudo chown "$(id -u):$(id -g)" "$CLAUDE_PERSISTENT_STATE_PATH"
-	chmod 0600 "$CLAUDE_PERSISTENT_STATE_PATH"
-
-	if [[ -L "$CLAUDE_GLOBAL_STATE_PATH" ]]; then
-		resolved_path="$(readlink -f "$CLAUDE_GLOBAL_STATE_PATH" || true)"
-		if [[ "$resolved_path" == "$CLAUDE_PERSISTENT_STATE_PATH" ]]; then
-			return
-		fi
-		rm -- "$CLAUDE_GLOBAL_STATE_PATH"
-	elif [[ -e "$CLAUDE_GLOBAL_STATE_PATH" ]]; then
-		is_nonempty_json_file "$CLAUDE_GLOBAL_STATE_PATH" \
-			|| fail "displaced Claude global state is not a nonempty JSON file"
-		if [[ ! "$CLAUDE_GLOBAL_STATE_PATH" -ef "$CLAUDE_PERSISTENT_STATE_PATH" ]]; then
-			displaced_state_path="$(mktemp "$CLAUDE_BACKUP_DIRECTORY/.claude.json.pre-persistence.XXXXXX")"
-			cp -- "$CLAUDE_GLOBAL_STATE_PATH" "$displaced_state_path"
-			chmod 0600 "$displaced_state_path"
-		fi
-		rm -- "$CLAUDE_GLOBAL_STATE_PATH"
+	if [[ ! -e "$CLAUDE_LEGACY_STATE_PATH" && ! -L "$CLAUDE_LEGACY_STATE_PATH" ]]; then
+		return
 	fi
 
-	ln -s "$CLAUDE_PERSISTENT_STATE_PATH" "$CLAUDE_GLOBAL_STATE_PATH"
+	if [[ ! -f "$CLAUDE_LEGACY_STATE_PATH" || -L "$CLAUDE_LEGACY_STATE_PATH" \
+		|| ! -s "$CLAUDE_LEGACY_STATE_PATH" ]] \
+		|| ! python3 -c 'import json, sys; json.load(open(sys.argv[1]))' \
+			"$CLAUDE_LEGACY_STATE_PATH" >/dev/null 2>&1; then
+		printf 'post-create: warning: legacy Claude global state was not migrated because it is not a nonempty regular JSON file\n' >&2
+		return
+	fi
+
+	if ! mv --no-clobber -- "$CLAUDE_LEGACY_STATE_PATH" "$CLAUDE_CONFIG_PATH"; then
+		printf 'post-create: warning: could not migrate legacy Claude global state\n' >&2
+		return
+	fi
+	if [[ -e "$CLAUDE_LEGACY_STATE_PATH" || -L "$CLAUDE_LEGACY_STATE_PATH" ]]; then
+		printf 'post-create: warning: legacy Claude global state was not migrated because the canonical path appeared\n' >&2
+		return
+	fi
+
+	if ! chmod 0600 "$CLAUDE_CONFIG_PATH"; then
+		printf 'post-create: warning: could not set private mode on migrated Claude global state\n' >&2
+	fi
 }
 
 for state_directory in "${STATE_DIRECTORIES[@]}"; do
@@ -113,7 +81,7 @@ gh_version="${gh_version#gh version }"
 gh_version="${gh_version%% *}"
 require_exact_version "GitHub CLI" "$EXPECTED_GH_VERSION" "$gh_version"
 
-configure_claude_global_state
+migrate_claude_global_state
 
 npm ci
 
