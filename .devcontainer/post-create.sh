@@ -11,6 +11,8 @@ readonly GROK_PACKAGE="@xai-official/grok@1.0.5"
 readonly CLAUDE_CONFIG_DIRECTORY="/home/vscode/.claude"
 readonly CLAUDE_CONFIG_PATH="$CLAUDE_CONFIG_DIRECTORY/.claude.json"
 readonly CLAUDE_LEGACY_STATE_PATH="$CLAUDE_CONFIG_DIRECTORY/global-state.json"
+readonly GITHUB_ORIGIN_URL="https://github.com/kmart01123/kinetic-vanguard.git"
+readonly GITHUB_HTTPS_REWRITE_KEY='url.https://github.com/.insteadOf'
 
 readonly -a STATE_DIRECTORIES=(
 	"/home/vscode/.codex"
@@ -24,6 +26,10 @@ readonly -a STATE_DIRECTORIES=(
 fail() {
 	printf 'post-create: %s\n' "$*" >&2
 	exit 1
+}
+
+warn() {
+	printf 'post-create: warning: %s\n' "$*" >&2
 }
 
 require_exact_version() {
@@ -65,6 +71,54 @@ migrate_claude_global_state() {
 	fi
 }
 
+configure_github_https() {
+	local rewrite
+	local existing_rewrites
+	local found
+
+	if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+		if git remote get-url origin >/dev/null 2>&1; then
+			git remote set-url origin "$GITHUB_ORIGIN_URL" \
+				|| warn "could not normalize the origin fetch URL to GitHub HTTPS"
+			if git config --local --get-all remote.origin.pushurl >/dev/null 2>&1; then
+				git config --local --replace-all remote.origin.pushurl "$GITHUB_ORIGIN_URL" \
+					|| warn "could not normalize the origin push URL to GitHub HTTPS"
+			fi
+		else
+			warn "GitHub HTTPS origin normalization skipped because origin is unavailable"
+		fi
+
+		existing_rewrites="$(
+			git config --local --get-all "$GITHUB_HTTPS_REWRITE_KEY" 2>/dev/null || true
+		)"
+		for rewrite in 'git@github.com:' 'ssh://git@github.com/'; do
+			found=false
+			while IFS= read -r existing; do
+				if [[ "$existing" == "$rewrite" ]]; then
+					found=true
+					break
+				fi
+			done <<< "$existing_rewrites"
+			if [[ "$found" == false ]]; then
+				if git config --local --add "$GITHUB_HTTPS_REWRITE_KEY" "$rewrite"; then
+					existing_rewrites+="${existing_rewrites:+$'\n'}$rewrite"
+				else
+					warn "could not add GitHub HTTPS rewrite for $rewrite"
+				fi
+			fi
+		done
+	else
+		warn "repository-local GitHub HTTPS normalization skipped outside a Git worktree"
+	fi
+
+	if gh auth status --hostname github.com >/dev/null 2>&1; then
+		gh auth setup-git \
+			|| warn "GitHub CLI could not configure the HTTPS credential helper"
+	else
+		warn "GitHub CLI authentication is unavailable; skipped HTTPS credential helper setup"
+	fi
+}
+
 for state_directory in "${STATE_DIRECTORIES[@]}"; do
 	sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0700 "$state_directory"
 	sudo chown "$(id -u):$(id -g)" "$state_directory"
@@ -83,6 +137,7 @@ gh_version="${gh_version#gh version }"
 gh_version="${gh_version%% *}"
 require_exact_version "GitHub CLI" "$EXPECTED_GH_VERSION" "$gh_version"
 
+configure_github_https
 migrate_claude_global_state
 
 npm ci
