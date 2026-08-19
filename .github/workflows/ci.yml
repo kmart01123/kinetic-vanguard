@@ -64,5 +64,11 @@ jobs:
       - name: Build prototype
         run: npm run build
 
+      - name: Install layout browsers
+        run: npx playwright install --with-deps chromium firefox
+
+      - name: Test browser layouts
+        run: npm run test:layout:ci
+
       - name: Check diff
         run: git diff --check

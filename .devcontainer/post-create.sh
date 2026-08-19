@@ -120,8 +120,8 @@ node_binary_directory="$(dirname "$(command -v node)")"
 sudo env \
 	"PATH=$node_binary_directory:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin" \
 	DEBIAN_FRONTEND=noninteractive \
-	"$(command -v npx)" playwright install-deps chromium firefox
-npx playwright install chromium firefox
+	"$(command -v npx)" playwright install-deps chromium
+npx playwright install chromium
 
 npm install --global --no-audit --no-fund \
 	"$CODEX_PACKAGE" \
