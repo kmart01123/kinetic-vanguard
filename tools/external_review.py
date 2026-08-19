@@ -38,15 +38,6 @@ GITHUB_SECRET_VARIABLES = (
 )
 VERDICTS = frozenset(("PASS", "FINDINGS"))
 FINDING_SEVERITIES = frozenset(("BLOCKER", "HIGH", "MEDIUM", "LOW"))
-GROK_BUILD_MODEL_PATTERN = re.compile(
-    r"^grok(?:-[0-9]+(?:\.[0-9]+)*)?-build$", re.IGNORECASE
-)
-GROK_DEFAULT_MODEL_PATTERN = re.compile(
-    r"^Default model:\s*([A-Za-z0-9._-]+)\s*$", re.MULTILINE
-)
-GROK_AVAILABLE_MODEL_PATTERN = re.compile(
-    r"^\s*[*-]\s+([A-Za-z0-9._-]+)(?:\s+\(default\))?\s*$", re.MULTILINE
-)
 GROK_SANDBOX_PROFILE = "kv-external-review"
 GROK_SANDBOX_FAILURE_PATTERN = re.compile(
     r"(?:sandbox could not be applied|failed to apply sandbox|unknown sandbox profile)",
@@ -200,7 +191,6 @@ class ProviderExecution:
     result: ReviewResult
     cli_version: str
     model_metadata: str | None = None
-    requested_model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -263,7 +253,6 @@ REQUIRED_CLI_CAPABILITIES = {
         ("strict MCP isolation", ("--strict-mcp-config",)),
         ("wrapper-owned MCP configuration", ("--mcp-config",)),
         ("session persistence disabling", ("--no-session-persistence",)),
-        ("explicit model selection", ("--model",)),
     ),
     "grok": (
         ("structured JSON schema output", ("--json-schema",)),
@@ -276,7 +265,6 @@ REQUIRED_CLI_CAPABILITIES = {
         ("web disabling", ("--disable-web-search",)),
         ("subagent disabling", ("--no-subagents",)),
         ("prompt-file input", ("--prompt-file",)),
-        ("explicit model selection", ("--model",)),
     ),
 }
 
@@ -356,20 +344,6 @@ def resolve_provider_executable(
                 f"{spec.display_name} executable resolves inside the review worktree"
             )
     return resolved, safe_path
-
-
-def select_grok_request_model(models_output: str) -> str:
-    normalized = ANSI_PATTERN.sub("", models_output)
-    available = set(GROK_AVAILABLE_MODEL_PATTERN.findall(normalized))
-    if "grok-build" in available:
-        return "grok-build"
-    default_match = GROK_DEFAULT_MODEL_PATTERN.search(normalized)
-    if default_match is None:
-        raise ReviewBridgeError("Grok model listing omitted a default model")
-    default_model = default_match.group(1)
-    if default_model not in available:
-        raise ReviewBridgeError("Grok default model was absent from available models")
-    return default_model
 
 
 def safe_failure_detail(completed: subprocess.CompletedProcess[str]) -> str:
@@ -792,11 +766,6 @@ def normalize_metadata_value(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()[:160]
 
 
-def canonical_grok_model_identity(value: str) -> str:
-    normalized = normalize_metadata_value(value).casefold()
-    return normalized.removesuffix("-build")
-
-
 def model_usage_score(usage: object) -> tuple[float, float, float]:
     if not isinstance(usage, dict):
         return (0.0, 0.0, 0.0)
@@ -832,31 +801,11 @@ def select_model_usage(model_usage: object, provider_name: str) -> str | None:
     if not candidates:
         return None
     provider_key = provider_name.strip().lower()
-    preferred: dict[str, object] = {}
-    if provider_key == "claude":
-        preferred = {
-            model: usage
-            for model, usage in candidates.items()
-            if "opus" in model.lower()
-        }
-        if not preferred:
-            preferred = {
-                model: usage
-                for model, usage in candidates.items()
-                if detected_identities(model) == {"claude"}
-            }
-    elif provider_key == "grok":
-        preferred = {
-            model: usage
-            for model, usage in candidates.items()
-            if GROK_BUILD_MODEL_PATTERN.fullmatch(model.strip())
-        }
-        if not preferred:
-            preferred = {
-                model: usage
-                for model, usage in candidates.items()
-                if detected_identities(model) == {"grok"}
-            }
+    preferred = {
+        model: usage
+        for model, usage in candidates.items()
+        if detected_identities(model) == {provider_key}
+    }
     ranked = preferred or candidates
     selected = max(
         ranked,
@@ -1023,7 +972,6 @@ class ProviderAdapter:
             child_env["PATH"] = safe_path
             claude_isolation: ClaudeIsolationConfig | None = None
             grok_sandbox: GrokSandboxProfile | None = None
-            requested_model: str | None = None
             if self.spec.key == "claude":
                 claude_isolation = write_claude_isolation_config(temp_path)
                 child_env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
@@ -1084,23 +1032,10 @@ class ProviderAdapter:
             else:
                 if grok_sandbox is None:
                     raise ReviewBridgeError("Grok sandbox profile was not initialized")
-                models = require_success(
-                    self.runner.run(
-                        (str(executable), "--no-auto-update", "models"),
-                        cwd=temp_path,
-                        env=child_env,
-                        timeout=30,
-                    ),
-                    "Grok model lookup",
-                )
-                requested_model = select_grok_request_model(
-                    models.stdout + "\n" + models.stderr
-                )
                 self._validate_grok_configuration(
                     executable,
                     worktree,
                     child_env,
-                    requested_model,
                     grok_sandbox,
                 )
                 prompt_file = temp_path / "review-prompt.md"
@@ -1114,7 +1049,6 @@ class ProviderAdapter:
                     executable,
                     worktree,
                     prompt_file,
-                    requested_model,
                     grok_sandbox,
                 )
                 completed = self.runner.run(
@@ -1142,7 +1076,6 @@ class ProviderAdapter:
                 result=result,
                 cli_version=cli_version,
                 model_metadata=model_metadata,
-                requested_model=requested_model,
             )
 
     def _validate_grok_configuration(
@@ -1150,7 +1083,6 @@ class ProviderAdapter:
         executable: Path,
         worktree: Path,
         child_env: Mapping[str, str],
-        requested_model: str,
         sandbox: GrokSandboxProfile,
     ) -> None:
         inspected = require_success(
@@ -1159,9 +1091,7 @@ class ProviderAdapter:
                     str(executable),
                     "--no-auto-update",
                     "--no-memory",
-                    *self._grok_safety_options(
-                        worktree, requested_model, sandbox
-                    ),
+                    *self._grok_safety_options(worktree, sandbox),
                     "inspect",
                     "--json",
                 ),
@@ -1214,8 +1144,6 @@ class ProviderAdapter:
         return (
             str(executable),
             "-p",
-            "--model",
-            "opus",
             "--output-format",
             "json",
             "--json-schema",
@@ -1246,12 +1174,9 @@ class ProviderAdapter:
     @staticmethod
     def _grok_safety_options(
         worktree: Path,
-        requested_model: str,
         sandbox: GrokSandboxProfile,
     ) -> tuple[str, ...]:
         options = [
-            "-m",
-            requested_model,
             "--cwd",
             str(worktree),
             "--permission-mode",
@@ -1290,14 +1215,13 @@ class ProviderAdapter:
         executable: Path,
         worktree: Path,
         prompt_file: Path,
-        requested_model: str,
         sandbox: GrokSandboxProfile,
     ) -> tuple[str, ...]:
         command = [
             str(executable),
             "--no-auto-update",
             "--no-memory",
-            *cls._grok_safety_options(worktree, requested_model, sandbox),
+            *cls._grok_safety_options(worktree, sandbox),
             "--prompt-file",
             str(prompt_file),
             "--output-format",
@@ -1574,30 +1498,6 @@ def validate_execution(
         validate_model_claim(result.model_claim, provider.key)
     if execution.model_metadata:
         validate_model_claim(execution.model_metadata, provider.key)
-    if provider.key == "grok":
-        if execution.requested_model is None:
-            raise ReviewBridgeError("Grok execution omitted the requested model")
-        requested_model = normalize_metadata_value(execution.requested_model)
-        if not requested_model:
-            raise ReviewBridgeError("Grok execution omitted the requested model")
-        validate_model_claim(requested_model, provider.key)
-        if execution.model_metadata is None:
-            raise ReviewBridgeError("Grok execution omitted model metadata")
-        reported_model = normalize_metadata_value(execution.model_metadata)
-        canonical_requested_model = canonical_grok_model_identity(requested_model)
-        if canonical_grok_model_identity(reported_model) != canonical_requested_model:
-            raise ReviewBridgeError(
-                "Grok reported model identity "
-                f"`{reported_model}`; requested `{requested_model}`"
-            )
-        if (
-            result.model_claim is not None
-            and canonical_grok_model_identity(result.model_claim)
-            != canonical_requested_model
-        ):
-            raise ReviewBridgeError(
-                "Grok structured model claim did not match the requested model"
-            )
     body = validate_and_strip_body_claims(
         result.body_markdown,
         provider=provider,
@@ -2001,15 +1901,6 @@ def doctor(runner: Runner, cwd: Path) -> tuple[bool, list[str]]:
         healthy = False
     else:
         lines.append("OK   Grok authentication: authenticated model access")
-        try:
-            requested_model = select_grok_request_model(grok_probe)
-        except ReviewBridgeError as error:
-            lines.append(f"FAIL Grok review model selection: {error}")
-            healthy = False
-        else:
-            lines.append(
-                f"OK   Grok review model selection: explicit `{requested_model}` request"
-            )
 
     return healthy, [redact_sensitive(line) for line in lines]
 

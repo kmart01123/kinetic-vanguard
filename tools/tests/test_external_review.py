@@ -92,7 +92,6 @@ def execution(
         ),
         cli_version=f"{provider} 1.0",
         model_metadata=model_metadata,
-        requested_model=model_metadata if provider == "grok" else None,
     )
 
 
@@ -337,7 +336,6 @@ class ReviewBridgeTests(unittest.TestCase):
             result=bridge.review_result_from_contract(contract),
             cli_version="grok 1.0.5",
             model_metadata=model,
-            requested_model=model,
         )
         posted, github, _repository = self.run_bridge(
             ("claude", "grok"),
@@ -346,7 +344,7 @@ class ReviewBridgeTests(unittest.TestCase):
         self.assertEqual(len(posted), 2)
         self.assertEqual(len(github.comments), 2)
 
-    def test_claude_multi_model_usage_selects_opus_and_renders_evidence(self) -> None:
+    def test_claude_multi_model_usage_uses_observed_usage_score(self) -> None:
         envelope = {
             "modelUsage": {
                 "claude-haiku-4-5-20251001": {
@@ -371,7 +369,7 @@ class ReviewBridgeTests(unittest.TestCase):
         contract, model = bridge.extract_contract(
             bridge.json.dumps(envelope), "Claude"
         )
-        self.assertEqual(model, "claude-opus-4-6")
+        self.assertEqual(model, "claude-haiku-4-5-20251001")
         claude_execution = bridge.ProviderExecution(
             result=bridge.review_result_from_contract(contract),
             cli_version="claude 2.1.234",
@@ -380,9 +378,9 @@ class ReviewBridgeTests(unittest.TestCase):
         _posted, github, _repository = self.run_bridge(
             ("claude",), {"claude": claude_execution}
         )
-        self.assertIn("`claude-opus-4-6`", github.comments[0])
+        self.assertIn("`claude-haiku-4-5-20251001`", github.comments[0])
 
-    def test_grok_multi_model_usage_prefers_build_identity(self) -> None:
+    def test_grok_multi_model_usage_uses_observed_usage_score(self) -> None:
         envelope = {
             "modelUsage": {
                 "grok-4.5": {"modelCalls": 9, "outputTokens": 9000},
@@ -399,17 +397,35 @@ class ReviewBridgeTests(unittest.TestCase):
         contract, model = bridge.extract_contract(
             bridge.json.dumps(envelope), "Grok"
         )
-        self.assertEqual(model, "grok-4.7-build")
+        self.assertEqual(model, "grok-4.5")
         valid = bridge.ProviderExecution(
             result=bridge.review_result_from_contract(contract),
             cli_version="grok 1.0.5",
             model_metadata=model,
-            requested_model=model,
         )
         posted, _github, _repository = self.run_bridge(
             ("grok",), {"grok": valid}
         )
         self.assertEqual(len(posted), 1)
+
+    def test_model_usage_prefers_invoked_provider_before_usage_score(self) -> None:
+        cases = (
+            ("Claude", "claude-sonnet-5", "grok-5"),
+            ("Grok", "grok-5", "claude-sonnet-5"),
+        )
+        for provider, expected, other_provider_model in cases:
+            with self.subTest(provider=provider):
+                selected = bridge.select_model_usage(
+                    {
+                        expected: {"modelCalls": 1, "outputTokens": 100},
+                        other_provider_model: {
+                            "modelCalls": 99,
+                            "outputTokens": 9999,
+                        },
+                    },
+                    provider,
+                )
+                self.assertEqual(selected, expected)
 
     def test_flat_contract_model_claim_is_not_trusted_model_metadata(self) -> None:
         flat_contract = {
@@ -432,7 +448,7 @@ class ReviewBridgeTests(unittest.TestCase):
         self.assertEqual(result.verdict, "PASS")
         self.assertEqual(result.model_claim, "claude-opus-self-claimed")
 
-    def test_grok_flat_contract_self_claim_cannot_establish_build_provenance(self) -> None:
+    def test_grok_flat_contract_self_claim_does_not_establish_provenance(self) -> None:
         flat_contract = {
             "pr_number": PR_NUMBER,
             "head_sha": HEAD,
@@ -445,21 +461,15 @@ class ReviewBridgeTests(unittest.TestCase):
             bridge.json.dumps(flat_contract), "Grok"
         )
         self.assertIsNone(model)
-        untrusted = bridge.ProviderExecution(
+        execution_without_envelope_metadata = bridge.ProviderExecution(
             result=bridge.review_result_from_contract(contract),
             cli_version="grok 1.0.5",
             model_metadata=model,
-            requested_model="grok-4.6-build",
         )
-        github = FakeGitHub([metadata()])
-        with self.assertRaisesRegex(bridge.ReviewBridgeError, "omitted model metadata"):
-            bridge.ReviewBridge(
-                github,
-                FakeRepository(),
-                {"grok": FakeAdapter(untrusted)},
-                emit=lambda _message: None,
-            ).review(PR_NUMBER, ("grok",), "Review.")
-        self.assertEqual(github.comments, [])
+        _posted, github, _repository = self.run_bridge(
+            ("grok",), {"grok": execution_without_envelope_metadata}
+        )
+        self.assertNotIn("| Model |", github.comments[0])
 
     def test_explicit_outer_model_precedes_model_usage(self) -> None:
         envelope = {
@@ -510,65 +520,47 @@ class ReviewBridgeTests(unittest.TestCase):
         )
         self.assertNotIn("\r", comment)
 
-    def test_grok_model_provenance_accepts_canonical_versions(self) -> None:
+    def test_provider_model_versions_are_evidence_not_binding(self) -> None:
         cases = (
-            ("grok-4.6", "grok-4.6", None),
-            ("grok-4.6", "grok-4.6-build", None),
-            ("grok-4.6-build", "grok-4.6", None),
-            ("GROK-4.6", "grok-4.6-build", None),
-            ("grok-build", "grok-build", None),
-            ("grok-4.6", "grok-4.6-build", "  grok-4.6  "),
-            ("grok-4.6", "grok-4.6-build", "grok-4.6-build"),
+            ("claude", "claude-sonnet-5", "claude-opus-6"),
+            ("claude", "claude-opus-5-20260801", "claude-sonnet-5"),
+            ("grok", "grok-4.6", "grok-4.7-build"),
+            ("grok", "grok-4.7-build", "grok-5"),
         )
-        for requested_model, reported_model, model_claim in cases:
+        for provider, reported_model, model_claim in cases:
             with self.subTest(
-                requested=requested_model,
+                provider=provider,
                 reported=reported_model,
                 structured=model_claim,
             ):
-                result = execution("grok", model_claim=model_claim)
+                result = execution(provider, model_claim=model_claim)
                 valid = bridge.ProviderExecution(
                     result=result.result,
                     cli_version=result.cli_version,
                     model_metadata=reported_model,
-                    requested_model=requested_model,
                 )
                 posted, _github, _repository = self.run_bridge(
-                    ("grok",), {"grok": valid}
+                    (provider,), {provider: valid}
                 )
                 self.assertEqual(len(posted), 1)
 
-    def test_grok_model_provenance_failures_are_rejected(self) -> None:
+    def test_cross_provider_model_identities_are_rejected(self) -> None:
         cases = (
-            ("other provider", "claude-sonnet", "grok-4.6", None, "identity conflicts"),
-            (
-                "different version",
-                "grok-4.5-build",
-                "grok-4.6",
-                None,
-                "requested `grok-4.6`",
-            ),
-            ("missing reported model", None, "grok-4.6", None, "omitted model metadata"),
-            ("missing requested model", "grok-4.6", None, None, "omitted the requested"),
-            (
-                "different structured version",
-                "grok-4.6",
-                "grok-4.6",
-                "grok-4.5",
-                "structured model claim did not match",
-            ),
+            ("claude metadata", "claude", "grok-4.7", None),
+            ("grok metadata", "grok", "claude-sonnet-5", None),
+            ("claude structured claim", "claude", "claude-sonnet-5", "grok-4.7"),
+            ("grok structured claim", "grok", "grok-4.7", "claude-opus-5"),
         )
-        for label, reported, requested, claim, error in cases:
+        for label, provider, reported, claim in cases:
             with self.subTest(case=label):
-                result = execution("grok", model_claim=claim)
+                result = execution(provider, model_claim=claim)
                 invalid = bridge.ProviderExecution(
                     result=result.result,
                     cli_version=result.cli_version,
                     model_metadata=reported,
-                    requested_model=requested,
                 )
                 self.assert_review_rejected(
-                    ("grok",), {"grok": invalid}, error
+                    (provider,), {provider: invalid}, "identity conflicts"
                 )
 
     def test_provider_subprocess_failure_posts_nothing(self) -> None:
@@ -855,6 +847,7 @@ class ReviewBridgeTests(unittest.TestCase):
     def test_verdict_and_findings_must_be_consistent(self) -> None:
         cases = (
             (
+                "grok",
                 "findings verdict without findings",
                 execution(
                     "grok",
@@ -865,6 +858,7 @@ class ReviewBridgeTests(unittest.TestCase):
                 "FINDINGS without structured findings",
             ),
             (
+                "claude",
                 "pass verdict with findings",
                 execution(
                     "claude",
@@ -875,9 +869,8 @@ class ReviewBridgeTests(unittest.TestCase):
                 "PASS with findings",
             ),
         )
-        for label, result, error in cases:
+        for provider, label, result, error in cases:
             with self.subTest(case=label):
-                provider = "grok" if result.requested_model else "claude"
                 self.assert_review_rejected(
                     (provider,), {provider: result}, error
                 )
@@ -1287,7 +1280,7 @@ class ProviderExecutableResolutionTests(unittest.TestCase):
     def test_providers_use_one_trusted_absolute_executable(self) -> None:
         cases = (
             ("claude", "2.1.234 (Claude Code)\n", CLAUDE_HELP, "claude-test", 2),
-            ("grok", "grok 1.0.5\n", GROK_HELP, "grok-4.6", 3),
+            ("grok", "grok 1.0.5\n", GROK_HELP, "grok-4.6", 2),
         )
         for provider, version, help_output, model, first_worktree_call in cases:
             with self.subTest(provider=provider):
@@ -1322,9 +1315,7 @@ class ProviderExecutableResolutionTests(unittest.TestCase):
                         auth_file = credentials / "auth.json"
                         auth_file.write_text("synthetic-only\n", encoding="utf-8")
                         source_environment["GROK_AUTH_PATH"] = str(auth_file)
-                        responses.extend(
-                            [completed(stdout=GROK_MODELS), completed(stdout="{}")]
-                        )
+                        responses.append(completed(stdout="{}"))
                     responses.append(completed(stdout=bridge.json.dumps(payload)))
                     runner = QueueRunner(responses)
                     result = bridge.ProviderAdapter(
@@ -1344,10 +1335,7 @@ class ProviderExecutableResolutionTests(unittest.TestCase):
                             self.assertEqual(call["cwd"], expected_cwd)
                         self.assertEqual(call["env"]["PATH"], str(trusted))
                     if provider == "grok":
-                        self.assertEqual(result.requested_model, "grok-4.6")
                         self.assertEqual(result.model_metadata, "grok-4.6")
-                    else:
-                        self.assertIsNone(result.requested_model)
 
 
 class ProviderAdapterTests(unittest.TestCase):
@@ -1399,15 +1387,30 @@ class ProviderAdapterTests(unittest.TestCase):
             self.assertEqual(environment["CLAUDE_CODE_DISABLE_AUTO_MEMORY"], "1")
         provider_command = runner.calls[-1]["args"]
         assert isinstance(provider_command, tuple)
-        self.assertEqual(
-            provider_command[provider_command.index("--model") + 1], "opus"
-        )
+        self.assertNotIn("--model", provider_command)
         self.assertFalse(
-            any(
-                argument.startswith("claude-opus-")
-                for argument in provider_command
-            )
+            any("opus" in argument.lower() for argument in provider_command)
         )
+        for option in (
+            "-p",
+            "--output-format",
+            "--json-schema",
+            "--permission-mode",
+            "--tools",
+            "--allowedTools",
+            "--disallowedTools",
+            "--safe-mode",
+            "--setting-sources",
+            "--settings",
+            "--strict-mcp-config",
+            "--mcp-config",
+            "--disable-slash-commands",
+            "--no-chrome",
+            "--no-session-persistence",
+            "--max-turns",
+        ):
+            with self.subTest(option=option):
+                self.assertIn(option, provider_command)
         self.assertEqual(
             provider_command[provider_command.index("--tools") + 1], "Read"
         )
@@ -1558,7 +1561,6 @@ class ProviderAdapterTests(unittest.TestCase):
                         [
                             completed(stdout="grok 1.0.5\n"),
                             completed(stdout=GROK_HELP),
-                            completed(stdout=GROK_MODELS),
                             *phase_responses,
                         ]
                     )
@@ -1587,7 +1589,6 @@ class ProviderAdapterTests(unittest.TestCase):
                 [
                     completed(stdout="grok 1.0.5\n"),
                     completed(stdout=GROK_HELP),
-                    completed(stdout=GROK_MODELS),
                     completed(stdout='{"mcpServers":[{"name":"unsafe"}]}'),
                 ]
             )
@@ -1603,7 +1604,7 @@ class ProviderAdapterTests(unittest.TestCase):
                 bridge.ReviewBridgeError, "active review customizations"
             ):
                 adapter.run(Path("/detached"), "Review.")
-        self.assertEqual(len(runner.calls), 4)
+        self.assertEqual(len(runner.calls), 3)
         environment = runner.calls[-1]["env"]
         assert isinstance(environment, dict)
         self.assertFalse(Path(environment["GROK_HOME"]).exists())
@@ -1630,7 +1631,6 @@ class ProviderAdapterTests(unittest.TestCase):
                 [
                     completed(stdout="grok 1.0.5\n"),
                     completed(stdout=GROK_HELP),
-                    completed(stdout=GROK_MODELS),
                     completed(stdout="{}"),
                     completed(stdout=bridge.json.dumps(provider_payload)),
                 ]
@@ -1678,7 +1678,22 @@ class ProviderAdapterTests(unittest.TestCase):
             provider_environment["GROK_AUTH_PATH"],
         )
         for command in (inspect_command, provider_command):
-            self.assertEqual(command[command.index("-m") + 1], "grok-4.6")
+            self.assertNotIn("-m", command)
+            self.assertNotIn("--model", command)
+            for option in (
+                "--no-auto-update",
+                "--no-memory",
+                "--cwd",
+                "--permission-mode",
+                "--tools",
+                "--sandbox",
+                "--no-subagents",
+                "--disable-web-search",
+                "--allow",
+                "--deny",
+            ):
+                with self.subTest(command=command[-2:], option=option):
+                    self.assertIn(option, command)
             self.assertEqual(
                 command[command.index("--sandbox") + 1],
                 bridge.GROK_SANDBOX_PROFILE,
@@ -1715,54 +1730,22 @@ class ProviderAdapterTests(unittest.TestCase):
             str(auth_file.resolve()), provider_execution.result.body_markdown
         )
         self.assertIn("[REDACTED]", provider_execution.result.body_markdown)
-        self.assertEqual(provider_execution.requested_model, "grok-4.6")
 
-    def test_grok_build_alias_is_preferred_and_explicit_when_available(self) -> None:
-        listing = """Default model: grok-4.7
-Available models:
-  * grok-4.7 (default)
-  - grok-build
-"""
-        selected = bridge.select_grok_request_model(listing)
-        self.assertEqual(selected, "grok-build")
-        sandbox = bridge.GrokSandboxProfile(
-            name=bridge.GROK_SANDBOX_PROFILE,
-            auth_file=Path("/credentials/auth.json"),
-            read_only_directory=Path("/credentials"),
-            config_file=Path("/ephemeral/grok-home/sandbox.toml"),
-        )
-        command = bridge.ProviderAdapter._grok_command(
-            Path("/usr/bin/true"),
-            Path("/detached"),
-            Path("/prompt.md"),
-            selected,
-            sandbox,
-        )
-        self.assertEqual(command[command.index("-m") + 1], "grok-build")
+        self.assertFalse(any("models" in call["args"] for call in runner.calls))
+        for option in (
+            "--prompt-file",
+            "--output-format",
+            "--json-schema",
+            "--max-turns",
+        ):
+            with self.subTest(review_option=option):
+                self.assertIn(option, provider_command)
 
-    def test_grok_advertised_default_is_selected_when_build_alias_is_absent(self) -> None:
-        self.assertEqual(
-            bridge.select_grok_request_model(GROK_MODELS),
-            "grok-4.6",
-        )
-
-    def test_grok_model_listing_requires_available_default(self) -> None:
-        with self.assertRaisesRegex(bridge.ReviewBridgeError, "omitted a default"):
-            bridge.select_grok_request_model("Available models:\n  - grok-4.6\n")
-        with self.assertRaisesRegex(bridge.ReviewBridgeError, "absent from available"):
-            bridge.select_grok_request_model(
-                "Default model: grok-4.6\nAvailable models:\n  - grok-4.5\n"
-            )
-
-    def test_provider_model_selector_capability_is_required(self) -> None:
+    def test_provider_model_selector_capability_is_not_required(self) -> None:
         for provider, help_output in (("claude", CLAUDE_HELP), ("grok", GROK_HELP)):
             with self.subTest(provider=provider):
-                with self.assertRaisesRegex(
-                    bridge.ReviewBridgeError, "explicit model selection"
-                ):
-                    bridge.validate_cli_capabilities(
-                        provider, help_output.replace("--model", "")
-                    )
+                self.assertNotIn("--model", help_output)
+                bridge.validate_cli_capabilities(provider, help_output)
 
     def test_claude_capability_check_requires_emitted_flag_spellings(self) -> None:
         for emitted, alias in (
@@ -1810,7 +1793,7 @@ Available models:
     def test_cli_capability_checks_reject_prefix_collisions(self) -> None:
         cases = (
             ("grok", GROK_HELP.replace("--allow", "--allowedTools")),
-            ("claude", CLAUDE_HELP.replace("--model", "--model-name")),
+            ("claude", CLAUDE_HELP.replace("--settings", "--settings-file")),
         )
         for provider, help_output in cases:
             with self.subTest(provider=provider):
@@ -1987,9 +1970,7 @@ class DoctorTests(unittest.TestCase):
         self.assertIn("Claude safety capabilities: compatible", output)
         self.assertIn("Grok safety capabilities: compatible", output)
         self.assertIn("Grok session controls: compatible", output)
-        self.assertIn(
-            "Grok review model selection: explicit `grok-4.6` request", output
-        )
+        self.assertNotIn("Grok review model selection", output)
 
     def test_doctor_fails_for_incompatible_provider_cli(self) -> None:
         runner = QueueRunner(
