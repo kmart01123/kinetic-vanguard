@@ -11,3 +11,11 @@ observations as LOW.
 
 Do not repeat findings already disproven by the current code or execution evidence
 unless the current exact head provides new concrete evidence.
+
+Complete the inspection before returning one final review. Do not return progress
+reports, placeholders, "review in progress", "being processed", or promises of
+later findings. If there are no concrete findings, return verdict PASS with
+`findings = []`. If there are concrete findings, return verdict FINDINGS with at
+least one structured finding; never return FINDINGS with an empty findings array.
+If the review cannot be completed in this invocation, fail instead of emitting a
+placeholder.

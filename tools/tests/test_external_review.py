@@ -560,15 +560,24 @@ class ReviewBridgeTests(unittest.TestCase):
             ).review(PR_NUMBER, ("grok",), "Review.")
         self.assertEqual(github.comments, [])
 
-    def test_matching_grok_model_identities_are_accepted(self) -> None:
-        for model in ("grok-build", "grok-4.6"):
-            with self.subTest(model=model):
+    def test_matching_and_build_alias_grok_model_identities_are_accepted(self) -> None:
+        cases = (
+            ("grok-4.6", "grok-4.6"),
+            ("grok-4.6", "grok-4.6-build"),
+            ("grok-4.6-build", "grok-4.6"),
+            ("GROK-4.6", "grok-4.6-build"),
+            ("grok-build", "grok-build"),
+        )
+        for requested_model, reported_model in cases:
+            with self.subTest(
+                requested_model=requested_model, reported_model=reported_model
+            ):
                 valid = execution("grok")
                 valid = bridge.ProviderExecution(
                     result=valid.result,
                     cli_version=valid.cli_version,
-                    model_metadata=model,
-                    requested_model=model,
+                    model_metadata=reported_model,
+                    requested_model=requested_model,
                 )
                 posted, _github, _repository = self.run_bridge(
                     ("grok",), {"grok": valid}
@@ -581,7 +590,7 @@ class ReviewBridgeTests(unittest.TestCase):
         invalid = bridge.ProviderExecution(
             result=invalid.result,
             cli_version=invalid.cli_version,
-            model_metadata="grok-4.5",
+            model_metadata="grok-4.5-build",
             requested_model="grok-4.6",
         )
         with self.assertRaisesRegex(bridge.ReviewBridgeError, "requested `grok-4.6`"):
@@ -647,18 +656,20 @@ class ReviewBridgeTests(unittest.TestCase):
             ).review(PR_NUMBER, ("grok",), "Review.")
         self.assertEqual(github.comments, [])
 
-    def test_matching_grok_structured_model_claim_is_accepted(self) -> None:
-        valid = execution("grok", model_claim="  grok-4.6  ")
-        valid = bridge.ProviderExecution(
-            result=valid.result,
-            cli_version=valid.cli_version,
-            model_metadata="grok-4.6",
-            requested_model="grok-4.6",
-        )
-        posted, _github, _repository = self.run_bridge(
-            ("grok",), {"grok": valid}
-        )
-        self.assertEqual(len(posted), 1)
+    def test_grok_structured_model_claim_uses_build_alias_rule(self) -> None:
+        for model_claim in ("  grok-4.6  ", "grok-4.6-build"):
+            with self.subTest(model_claim=model_claim):
+                valid = execution("grok", model_claim=model_claim)
+                valid = bridge.ProviderExecution(
+                    result=valid.result,
+                    cli_version=valid.cli_version,
+                    model_metadata="grok-4.6-build",
+                    requested_model="grok-4.6",
+                )
+                posted, _github, _repository = self.run_bridge(
+                    ("grok",), {"grok": valid}
+                )
+                self.assertEqual(len(posted), 1)
 
     def test_provider_subprocess_failure_posts_nothing(self) -> None:
         github = FakeGitHub([metadata()])

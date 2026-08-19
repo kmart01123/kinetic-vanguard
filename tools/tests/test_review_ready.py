@@ -574,7 +574,20 @@ Flags:
             review_call[review_call.index("--prompt-file") + 1],
             review_ready.PROMPT_PATH,
         )
-        self.assertTrue((ROOT / review_ready.PROMPT_PATH).is_file())
+        prompt_path = ROOT / review_ready.PROMPT_PATH
+        self.assertTrue(prompt_path.is_file())
+        prompt = prompt_path.read_text(encoding="utf-8")
+        normalized_prompt = " ".join(prompt.split())
+        self.assertIn(
+            "Complete the inspection before returning one final review",
+            normalized_prompt,
+        )
+        self.assertIn("verdict PASS", normalized_prompt)
+        self.assertIn("verdict FINDINGS", normalized_prompt)
+        self.assertIn(
+            "never return FINDINGS with an empty findings array", normalized_prompt
+        )
+        self.assertIn("fail instead of emitting a placeholder", normalized_prompt)
 
     def test_no_merge_rerun_or_pr_mutation_command_is_invoked(self) -> None:
         runner = FakeRunner()

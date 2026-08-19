@@ -792,6 +792,11 @@ def normalize_metadata_value(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()[:160]
 
 
+def canonical_grok_model_identity(value: str) -> str:
+    normalized = normalize_metadata_value(value).casefold()
+    return normalized.removesuffix("-build")
+
+
 def model_usage_score(usage: object) -> tuple[float, float, float]:
     if not isinstance(usage, dict):
         return (0.0, 0.0, 0.0)
@@ -1579,14 +1584,16 @@ def validate_execution(
         if execution.model_metadata is None:
             raise ReviewBridgeError("Grok execution omitted model metadata")
         reported_model = normalize_metadata_value(execution.model_metadata)
-        if reported_model != requested_model:
+        canonical_requested_model = canonical_grok_model_identity(requested_model)
+        if canonical_grok_model_identity(reported_model) != canonical_requested_model:
             raise ReviewBridgeError(
                 "Grok reported model identity "
                 f"`{reported_model}`; requested `{requested_model}`"
             )
         if (
             result.model_claim is not None
-            and normalize_metadata_value(result.model_claim) != requested_model
+            and canonical_grok_model_identity(result.model_claim)
+            != canonical_requested_model
         ):
             raise ReviewBridgeError(
                 "Grok structured model claim did not match the requested model"
