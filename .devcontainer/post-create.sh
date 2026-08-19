@@ -17,6 +17,7 @@ readonly -a STATE_DIRECTORIES=(
 	"/home/vscode/.config/gh"
 	"/home/vscode/.claude"
 	"/home/vscode/.grok"
+	"/home/vscode/.cache"
 	"/home/vscode/.cache/ms-playwright"
 )
 
