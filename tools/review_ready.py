@@ -16,6 +16,16 @@ from typing import Callable, Protocol, Sequence
 SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 PR_FIELDS = "number,state,headRefOid,headRefName,url"
 PROMPT_PATH = "tools/review_prompts/release-gate.md"
+LOW_VALUE_DIAGNOSTIC_HEADINGS = frozenset(
+    ("usage:", "flags:", "options:", "inherited flags:", "json fields:", "learn more:")
+)
+OPTION_LISTING_PATTERN = re.compile(r"^-{1,2}(?:[A-Za-z0-9]|,)")
+SENSITIVE_PATTERNS = (
+    re.compile(r"\bgithub_pat_[A-Za-z0-9_]{8,}\b"),
+    re.compile(r"\bgh[oprsu]_[A-Za-z0-9_]{8,}\b"),
+    re.compile(r"(?i)(token|secret|password|api[_-]?key)(\s*[:=]\s*)([^\s,;]+)"),
+    re.compile(r"(?i)(https?://[^/\s:@]+:)[^@\s/]+@"),
+)
 
 
 class ReviewReadyError(RuntimeError):
@@ -59,20 +69,43 @@ def require_success(
     completed: subprocess.CompletedProcess[str], description: str
 ) -> subprocess.CompletedProcess[str]:
     if completed.returncode != 0:
-        diagnostic = completed.stderr or completed.stdout
-        detail = next(
-            (
-                line.strip()
-                for line in reversed(diagnostic.splitlines())
-                if line.strip()
-            ),
-            "",
-        )
+        detail = useful_diagnostic(completed)
         suffix = f": {detail[:300]}" if detail else ""
         raise ReviewReadyError(
             f"{description} failed with exit code {completed.returncode}{suffix}"
         )
     return completed
+
+
+def redact_sensitive(text: str) -> str:
+    redacted = text
+    for pattern in SENSITIVE_PATTERNS:
+        if pattern.groups >= 3:
+            redacted = pattern.sub(r"\1\2[REDACTED]", redacted)
+        elif pattern.groups == 1:
+            redacted = pattern.sub(r"\1[REDACTED]@", redacted)
+        else:
+            redacted = pattern.sub("[REDACTED]", redacted)
+    return redacted
+
+
+def useful_diagnostic(completed: subprocess.CompletedProcess[str]) -> str:
+    diagnostic = "\n".join(
+        part for part in (completed.stderr, completed.stdout) if part.strip()
+    )
+    lines = [line.strip() for line in diagnostic.splitlines() if line.strip()]
+
+    def is_low_value(line: str) -> bool:
+        lowered = line.casefold()
+        return (
+            any(lowered.startswith(heading) for heading in LOW_VALUE_DIAGNOSTIC_HEADINGS)
+            or OPTION_LISTING_PATTERN.match(line) is not None
+            or (lowered.startswith("gh ") and "[flags]" in lowered)
+        )
+
+    meaningful = [line for line in lines if not is_low_value(line)]
+    selected = meaningful[0] if meaningful else (lines[0] if lines else "")
+    return redact_sensitive(selected)[:300]
 
 
 def parse_json_object(raw: str, description: str) -> dict[str, object]:
@@ -81,6 +114,16 @@ def parse_json_object(raw: str, description: str) -> dict[str, object]:
     except json.JSONDecodeError as error:
         raise ReviewReadyError(f"{description} returned malformed JSON") from error
     if not isinstance(payload, dict):
+        raise ReviewReadyError(f"{description} returned malformed JSON")
+    return payload
+
+
+def parse_json_list(raw: str, description: str) -> list[object]:
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError as error:
+        raise ReviewReadyError(f"{description} returned malformed JSON") from error
+    if not isinstance(payload, list):
         raise ReviewReadyError(f"{description} returned malformed JSON")
     return payload
 
@@ -147,6 +190,19 @@ class ReviewReady:
             raise ReviewReadyError("local HEAD lookup returned a malformed SHA")
         return head
 
+    def local_branch(self) -> str:
+        completed = self.runner.run(
+            ("git", "symbolic-ref", "--quiet", "--short", "HEAD"), cwd=self.cwd
+        )
+        if completed.returncode != 0:
+            raise ReviewReadyError(
+                "HEAD is detached; check out the pull request branch before review"
+            )
+        branch = completed.stdout.strip()
+        if not branch:
+            raise ReviewReadyError("local branch lookup returned an empty name")
+        return branch
+
     def repository_name(self) -> str:
         completed = self.command(
             ("gh", "repo", "view", "--json", "nameWithOwner"),
@@ -160,12 +216,13 @@ class ReviewReady:
             )
         return name
 
-    def current_pr(self, repository: str) -> PRMetadata:
+    def current_pr(self, repository: str, branch: str) -> PRMetadata:
         completed = self.runner.run(
             (
                 "gh",
                 "pr",
                 "view",
+                branch,
                 "--repo",
                 repository,
                 "--json",
@@ -184,6 +241,49 @@ class ReviewReady:
                 )
             require_success(completed, "current PR lookup")
         return parse_pr_metadata(completed.stdout, "current PR lookup")
+
+    def required_checks_exist(self, repository: str, pr_number: int) -> bool:
+        description = f"required checks lookup for PR #{pr_number}"
+        completed = self.runner.run(
+            (
+                "gh",
+                "pr",
+                "checks",
+                str(pr_number),
+                "--repo",
+                repository,
+                "--required",
+                "--json",
+                "name,state,bucket",
+            ),
+            cwd=self.cwd,
+        )
+        if completed.returncode not in (0, 1, 8):
+            require_success(completed, description)
+        if completed.stdout.strip():
+            checks = parse_json_list(completed.stdout, description)
+            return bool(checks)
+        diagnostic = useful_diagnostic(completed).casefold()
+        if "no required checks" in diagnostic:
+            return False
+        require_success(completed, description)
+        raise ReviewReadyError(f"{description} returned no check data")
+
+    def wait_for_checks(self, repository: str, pr_number: int) -> None:
+        required = self.required_checks_exist(repository, pr_number)
+        arguments = [
+            "gh",
+            "pr",
+            "checks",
+            str(pr_number),
+            "--repo",
+            repository,
+        ]
+        if required:
+            arguments.append("--required")
+        arguments.extend(("--watch", "--fail-fast"))
+        scope = "required" if required else "all"
+        self.command(arguments, f"{scope} checks for PR #{pr_number}")
 
     def refresh_pr(self, repository: str, pr_number: int) -> PRMetadata:
         completed = self.command(
@@ -206,9 +306,10 @@ class ReviewReady:
     def run(self) -> str:
         self.repository_root()
         self.assert_clean()
-        before_local = self.local_head()
+        branch = self.local_branch()
         repository = self.repository_name()
-        before_pr = self.current_pr(repository)
+        before_pr = self.current_pr(repository, branch)
+        before_local = self.local_head()
         if before_pr.state.upper() != "OPEN":
             raise ReviewReadyError(
                 f"PR #{before_pr.number} is {before_pr.state}; only open PRs can be reviewed"
@@ -230,20 +331,7 @@ class ReviewReady:
             ("python3", "tools/external_review.py", "doctor"),
             "external-review doctor",
         )
-        self.command(
-            (
-                "gh",
-                "pr",
-                "checks",
-                str(before_pr.number),
-                "--repo",
-                repository,
-                "--required",
-                "--watch",
-                "--fail-fast",
-            ),
-            f"required checks for PR #{before_pr.number}",
-        )
+        self.wait_for_checks(repository, before_pr.number)
 
         after_pr = self.refresh_pr(repository, before_pr.number)
         after_local = self.local_head()
