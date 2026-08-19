@@ -29,7 +29,7 @@
 		"source=kinetic-vanguard-gh,target=/home/vscode/.config/gh,type=volume",
 		"source=kinetic-vanguard-claude,target=/home/vscode/.claude,type=volume",
 		"source=kinetic-vanguard-grok,target=/home/vscode/.grok,type=volume",
-		"source=kinetic-vanguard-playwright,target=/home/vscode/.cache/ms-playwright,type=volume"
+		"source=kinetic-vanguard-playwright-resolute,target=/home/vscode/.cache/ms-playwright,type=volume"
 	],
 
 	"customizations": {
