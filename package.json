@@ -16,6 +16,7 @@
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
     "test:tools": "python3 -m unittest tools.tests.test_external_review",
+    "review:ready": "python3 tools/review_ready.py",
     "test:layout": "KV_LAYOUT_BROWSERS=chromium tsx --test --test-timeout=120000 tests/layout.browser.ts",
     "test:layout:ci": "KV_LAYOUT_BROWSERS=chromium,firefox tsx --test --test-timeout=120000 tests/layout.browser.ts",
     "test:determinism": "tsx src/determinism.ts",
