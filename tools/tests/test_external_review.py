@@ -66,6 +66,7 @@ def execution(
     pr_number: int = PR_NUMBER,
     head: str = HEAD,
     findings: tuple[bridge.ReviewFinding, ...] | None = None,
+    model_claim: str | None = None,
 ) -> bridge.ProviderExecution:
     if findings is None:
         findings = (
@@ -79,6 +80,7 @@ def execution(
             if verdict == "FINDINGS"
             else ()
         )
+    model_metadata = "grok-build" if provider == "grok" else "claude-model"
     return bridge.ProviderExecution(
         result=bridge.ReviewResult(
             pr_number=pr_number,
@@ -86,9 +88,11 @@ def execution(
             verdict=verdict,
             body_markdown=body,
             findings=findings,
+            model_claim=model_claim,
         ),
         cli_version=f"{provider} 1.0",
-        model_metadata="grok-build" if provider == "grok" else "claude-model",
+        model_metadata=model_metadata,
+        requested_model=model_metadata if provider == "grok" else None,
     )
 
 
@@ -401,6 +405,7 @@ class ReviewBridgeTests(unittest.TestCase):
             result=bridge.review_result_from_contract(contract),
             cli_version="grok 1.0.5",
             model_metadata=model,
+            requested_model=model,
         )
         posted, _github, _repository = self.run_bridge(
             ("grok",), {"grok": valid}
@@ -445,9 +450,10 @@ class ReviewBridgeTests(unittest.TestCase):
             result=bridge.review_result_from_contract(contract),
             cli_version="grok 1.0.5",
             model_metadata=model,
+            requested_model="grok-4.6-build",
         )
         github = FakeGitHub([metadata()])
-        with self.assertRaisesRegex(bridge.ReviewBridgeError, "missing or non-Build"):
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "omitted model metadata"):
             bridge.ReviewBridge(
                 github,
                 FakeRepository(),
@@ -525,6 +531,7 @@ class ReviewBridgeTests(unittest.TestCase):
             result=bridge.review_result_from_contract(contract),
             cli_version="grok 1.0.5",
             model_metadata=model,
+            requested_model=model,
         )
         posted, github, _repository = self.run_bridge(
             ("claude", "grok"),
@@ -542,6 +549,7 @@ class ReviewBridgeTests(unittest.TestCase):
             result=execution("grok").result,
             cli_version="grok 1.0",
             model_metadata="claude-sonnet",
+            requested_model="grok-4.6",
         )
         with self.assertRaisesRegex(bridge.ReviewBridgeError, "model identity conflicts"):
             bridge.ReviewBridge(
@@ -552,29 +560,40 @@ class ReviewBridgeTests(unittest.TestCase):
             ).review(PR_NUMBER, ("grok",), "Review.")
         self.assertEqual(github.comments, [])
 
-    def test_grok_build_model_identities_are_accepted(self) -> None:
-        for model in ("grok-build", "grok-4.6-build"):
-            with self.subTest(model=model):
+    def test_matching_and_build_alias_grok_model_identities_are_accepted(self) -> None:
+        cases = (
+            ("grok-4.6", "grok-4.6"),
+            ("grok-4.6", "grok-4.6-build"),
+            ("grok-4.6-build", "grok-4.6"),
+            ("GROK-4.6", "grok-4.6-build"),
+            ("grok-build", "grok-build"),
+        )
+        for requested_model, reported_model in cases:
+            with self.subTest(
+                requested_model=requested_model, reported_model=reported_model
+            ):
                 valid = execution("grok")
                 valid = bridge.ProviderExecution(
                     result=valid.result,
                     cli_version=valid.cli_version,
-                    model_metadata=model,
+                    model_metadata=reported_model,
+                    requested_model=requested_model,
                 )
                 posted, _github, _repository = self.run_bridge(
                     ("grok",), {"grok": valid}
                 )
                 self.assertEqual(len(posted), 1)
 
-    def test_non_build_grok_model_is_rejected_without_post(self) -> None:
+    def test_grok_reported_model_must_match_requested_model(self) -> None:
         github = FakeGitHub([metadata()])
         invalid = execution("grok")
         invalid = bridge.ProviderExecution(
             result=invalid.result,
             cli_version=invalid.cli_version,
-            model_metadata="grok-4.5",
+            model_metadata="grok-4.5-build",
+            requested_model="grok-4.6",
         )
-        with self.assertRaisesRegex(bridge.ReviewBridgeError, "non-Build model"):
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "requested `grok-4.6`"):
             bridge.ReviewBridge(
                 github,
                 FakeRepository(),
@@ -590,8 +609,9 @@ class ReviewBridgeTests(unittest.TestCase):
             result=invalid.result,
             cli_version=invalid.cli_version,
             model_metadata=None,
+            requested_model="grok-4.6",
         )
-        with self.assertRaisesRegex(bridge.ReviewBridgeError, "missing or non-Build"):
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "omitted model metadata"):
             bridge.ReviewBridge(
                 github,
                 FakeRepository(),
@@ -599,6 +619,57 @@ class ReviewBridgeTests(unittest.TestCase):
                 emit=lambda _message: None,
             ).review(PR_NUMBER, ("grok",), "Review.")
         self.assertEqual(github.comments, [])
+
+    def test_missing_grok_requested_model_is_rejected_without_post(self) -> None:
+        github = FakeGitHub([metadata()])
+        invalid = bridge.ProviderExecution(
+            result=execution("grok").result,
+            cli_version="grok 1.0",
+            model_metadata="grok-4.6",
+        )
+        with self.assertRaisesRegex(bridge.ReviewBridgeError, "omitted the requested"):
+            bridge.ReviewBridge(
+                github,
+                FakeRepository(),
+                {"grok": FakeAdapter(invalid)},
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("grok",), "Review.")
+        self.assertEqual(github.comments, [])
+
+    def test_grok_structured_model_claim_must_match_requested_model(self) -> None:
+        github = FakeGitHub([metadata()])
+        invalid = execution("grok", model_claim="grok-4.5")
+        invalid = bridge.ProviderExecution(
+            result=invalid.result,
+            cli_version=invalid.cli_version,
+            model_metadata="grok-4.6",
+            requested_model="grok-4.6",
+        )
+        with self.assertRaisesRegex(
+            bridge.ReviewBridgeError, "structured model claim did not match"
+        ):
+            bridge.ReviewBridge(
+                github,
+                FakeRepository(),
+                {"grok": FakeAdapter(invalid)},
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("grok",), "Review.")
+        self.assertEqual(github.comments, [])
+
+    def test_grok_structured_model_claim_uses_build_alias_rule(self) -> None:
+        for model_claim in ("  grok-4.6  ", "grok-4.6-build"):
+            with self.subTest(model_claim=model_claim):
+                valid = execution("grok", model_claim=model_claim)
+                valid = bridge.ProviderExecution(
+                    result=valid.result,
+                    cli_version=valid.cli_version,
+                    model_metadata="grok-4.6-build",
+                    requested_model="grok-4.6",
+                )
+                posted, _github, _repository = self.run_bridge(
+                    ("grok",), {"grok": valid}
+                )
+                self.assertEqual(len(posted), 1)
 
     def test_provider_subprocess_failure_posts_nothing(self) -> None:
         github = FakeGitHub([metadata()])
@@ -1036,6 +1107,96 @@ class ReviewBridgeTests(unittest.TestCase):
             ).review(PR_NUMBER, ("grok",), "Review.")
         self.assertEqual(github.comments, [])
 
+    def test_review_in_progress_finding_is_rejected_without_retry_or_post(self) -> None:
+        github = FakeGitHub([metadata()])
+        adapter = FakeAdapter(
+            execution(
+                "grok",
+                verdict="FINDINGS",
+                body="The exact-head review has not produced final evidence.",
+                findings=(
+                    bridge.ReviewFinding(
+                        "LOW",
+                        "  REVIEW -- in progress! ",
+                        "Results will follow.",
+                    ),
+                ),
+            )
+        )
+        with self.assertRaisesRegex(
+            bridge.ReviewBridgeError,
+            "Grok returned non-final review output",
+        ):
+            bridge.ReviewBridge(
+                github,
+                FakeRepository(),
+                {"grok": adapter},
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("grok",), "Review.")
+        self.assertEqual(len(adapter.prompts), 1)
+        self.assertEqual(github.comments, [])
+
+    def test_placeholder_or_processing_review_output_is_rejected(self) -> None:
+        cases = (
+            (
+                "Placeholder while the exact-head review is completed.",
+                "Awaiting completion",
+                "The provider has not finished.",
+            ),
+            (
+                "The review request is being processed from the detached head.",
+                "Pending result",
+                "Substantive findings will follow.",
+            ),
+            (
+                "No final evidence is available.",
+                "Placeholder",
+                "Awaiting review completion.",
+            ),
+        )
+        for body, title, detail in cases:
+            with self.subTest(body=body):
+                github = FakeGitHub([metadata()])
+                invalid = execution(
+                    "grok",
+                    verdict="FINDINGS",
+                    body=body,
+                    findings=(bridge.ReviewFinding("LOW", title, detail),),
+                )
+                with self.assertRaisesRegex(
+                    bridge.ReviewBridgeError, "non-final review output"
+                ):
+                    bridge.ReviewBridge(
+                        github,
+                        FakeRepository(),
+                        {"grok": FakeAdapter(invalid)},
+                        emit=lambda _message: None,
+                    ).review(PR_NUMBER, ("grok",), "Review.")
+                self.assertEqual(github.comments, [])
+
+    def test_legitimate_future_work_finding_is_not_a_placeholder(self) -> None:
+        github = FakeGitHub([metadata(), metadata()])
+        legitimate = execution(
+            "grok",
+            verdict="FINDINGS",
+            body="The implementation is complete; one bounded hardening remains.",
+            findings=(
+                bridge.ReviewFinding(
+                    "LOW",
+                    "Future cache-key hardening",
+                    "A future change should include the platform in the cache key.",
+                ),
+            ),
+        )
+        posted = bridge.ReviewBridge(
+            github,
+            FakeRepository(),
+            {"grok": FakeAdapter(legitimate)},
+            emit=lambda _message: None,
+        ).review(PR_NUMBER, ("grok",), "Review.")
+        self.assertEqual(len(posted), 1)
+        self.assertEqual(len(github.comments), 1)
+
     def test_pass_with_structured_findings_is_rejected(self) -> None:
         github = FakeGitHub([metadata()])
         inconsistent = execution(
@@ -1458,7 +1619,7 @@ class ProviderExecutableResolutionTests(unittest.TestCase):
                     "PATH": f".{os.pathsep}{os.pathsep}relative{os.pathsep}{trusted}"
                 },
             )
-            adapter.run(worktree, "Review.")
+            provider_execution = adapter.run(worktree, "Review.")
             self.assertEqual(
                 [call["args"][0] for call in runner.calls],
                 [str(executable)] * 3,
@@ -1468,6 +1629,7 @@ class ProviderExecutableResolutionTests(unittest.TestCase):
             self.assertEqual(runner.calls[2]["cwd"], worktree)
             for call in runner.calls:
                 self.assertEqual(call["env"]["PATH"], str(trusted))
+            self.assertIsNone(provider_execution.requested_model)
 
     def test_grok_uses_one_trusted_absolute_executable(self) -> None:
         provider_payload = {
@@ -1478,7 +1640,7 @@ class ProviderExecutableResolutionTests(unittest.TestCase):
                 "body_markdown": "No findings.",
                 "findings": [],
             },
-            "model": "grok-4.6-build",
+            "model": "grok-4.6",
         }
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -1507,7 +1669,7 @@ class ProviderExecutableResolutionTests(unittest.TestCase):
                     "GROK_AUTH_PATH": str(auth_file),
                 },
             )
-            adapter.run(worktree, "Review.")
+            provider_execution = adapter.run(worktree, "Review.")
             self.assertEqual(
                 [call["args"][0] for call in runner.calls],
                 [str(executable)] * 5,
@@ -1519,6 +1681,8 @@ class ProviderExecutableResolutionTests(unittest.TestCase):
             self.assertEqual(runner.calls[4]["cwd"], worktree)
             for call in runner.calls:
                 self.assertEqual(call["env"]["PATH"], str(trusted))
+            self.assertEqual(provider_execution.requested_model, "grok-4.6")
+            self.assertEqual(provider_execution.model_metadata, "grok-4.6")
 
 
 class ProviderAdapterTests(unittest.TestCase):
@@ -1909,6 +2073,7 @@ class ProviderAdapterTests(unittest.TestCase):
             str(auth_file.resolve()), provider_execution.result.body_markdown
         )
         self.assertIn("[REDACTED]", provider_execution.result.body_markdown)
+        self.assertEqual(provider_execution.requested_model, "grok-4.6")
 
     def test_grok_build_alias_is_preferred_and_explicit_when_available(self) -> None:
         listing = """Default model: grok-4.7
@@ -1932,6 +2097,12 @@ Available models:
             sandbox,
         )
         self.assertEqual(command[command.index("-m") + 1], "grok-build")
+
+    def test_grok_advertised_default_is_selected_when_build_alias_is_absent(self) -> None:
+        self.assertEqual(
+            bridge.select_grok_request_model(GROK_MODELS),
+            "grok-4.6",
+        )
 
     def test_grok_model_listing_requires_available_default(self) -> None:
         with self.assertRaisesRegex(bridge.ReviewBridgeError, "omitted a default"):
@@ -2175,7 +2346,7 @@ class DoctorTests(unittest.TestCase):
         self.assertIn("Grok safety capabilities: compatible", output)
         self.assertIn("Grok session controls: compatible", output)
         self.assertIn(
-            "Grok Build model selection: explicit `grok-4.6` request", output
+            "Grok review model selection: explicit `grok-4.6` request", output
         )
 
     def test_doctor_fails_for_incompatible_provider_cli(self) -> None:

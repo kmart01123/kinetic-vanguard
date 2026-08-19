@@ -52,6 +52,18 @@ GROK_SANDBOX_FAILURE_PATTERN = re.compile(
     r"(?:sandbox could not be applied|failed to apply sandbox|unknown sandbox profile)",
     re.IGNORECASE,
 )
+NON_FINAL_REVIEW_PATTERNS = (
+    re.compile(r"\b(?:the )?review(?: request)? is being processed\b"),
+    re.compile(
+        r"\bplaceholder(?: \w+){0,3} (?:while|until)"
+        r"(?: \w+){0,8} review(?: \w+){0,3}"
+        r" (?:complete|completed|completion)\b"
+    ),
+    re.compile(
+        r"\bplaceholder(?: \w+){0,3} (?:awaiting|pending)"
+        r"(?: \w+){0,4} (?:review )?completion\b"
+    ),
+)
 BROAD_GROK_AUTH_DIRECTORIES = frozenset(
     Path(path)
     for path in (
@@ -188,6 +200,7 @@ class ProviderExecution:
     result: ReviewResult
     cli_version: str
     model_metadata: str | None = None
+    requested_model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -343,13 +356,6 @@ def resolve_provider_executable(
                 f"{spec.display_name} executable resolves inside the review worktree"
             )
     return resolved, safe_path
-
-
-def validate_grok_build_model(model: str | None) -> None:
-    if model is None or not GROK_BUILD_MODEL_PATTERN.fullmatch(model.strip()):
-        raise ReviewBridgeError(
-            "Grok Build adapter returned a missing or non-Build model identity"
-        )
 
 
 def select_grok_request_model(models_output: str) -> str:
@@ -786,6 +792,11 @@ def normalize_metadata_value(value: str) -> str:
     return re.sub(r"\s+", " ", value).strip()[:160]
 
 
+def canonical_grok_model_identity(value: str) -> str:
+    normalized = normalize_metadata_value(value).casefold()
+    return normalized.removesuffix("-build")
+
+
 def model_usage_score(usage: object) -> tuple[float, float, float]:
     if not isinstance(usage, dict):
         return (0.0, 0.0, 0.0)
@@ -1012,6 +1023,7 @@ class ProviderAdapter:
             child_env["PATH"] = safe_path
             claude_isolation: ClaudeIsolationConfig | None = None
             grok_sandbox: GrokSandboxProfile | None = None
+            requested_model: str | None = None
             if self.spec.key == "claude":
                 claude_isolation = write_claude_isolation_config(temp_path)
                 child_env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
@@ -1130,6 +1142,7 @@ class ProviderAdapter:
                 result=result,
                 cli_version=cli_version,
                 model_metadata=model_metadata,
+                requested_model=requested_model,
             )
 
     def _validate_grok_configuration(
@@ -1525,18 +1538,66 @@ def validate_execution(
         raise ReviewBridgeError(
             f"{provider.display_name} returned FINDINGS without structured findings"
         )
+    normalized_titles = [
+        re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            unicodedata.normalize("NFKC", finding.title).casefold(),
+        ).strip()
+        for finding in result.findings
+    ]
+    finality_texts = (
+        result.body_markdown,
+        *(f"{finding.title}\n{finding.detail}" for finding in result.findings),
+    )
+    normalized_review_texts = [
+        re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            unicodedata.normalize("NFKC", text).casefold(),
+        ).strip()
+        for text in finality_texts
+    ]
+    if "review in progress" in normalized_titles or any(
+        pattern.search(text)
+        for text in normalized_review_texts
+        for pattern in NON_FINAL_REVIEW_PATTERNS
+    ):
+        raise ReviewBridgeError(
+            f"{provider.display_name} returned non-final review output"
+        )
     if result.provider_claim:
         validate_identity_claim(result.provider_claim, provider.key, "provider")
     if result.reviewer_claim:
         validate_identity_claim(result.reviewer_claim, provider.key, "reviewer")
     if result.model_claim:
         validate_model_claim(result.model_claim, provider.key)
-        if provider.key == "grok":
-            validate_grok_build_model(result.model_claim)
     if execution.model_metadata:
         validate_model_claim(execution.model_metadata, provider.key)
     if provider.key == "grok":
-        validate_grok_build_model(execution.model_metadata)
+        if execution.requested_model is None:
+            raise ReviewBridgeError("Grok execution omitted the requested model")
+        requested_model = normalize_metadata_value(execution.requested_model)
+        if not requested_model:
+            raise ReviewBridgeError("Grok execution omitted the requested model")
+        validate_model_claim(requested_model, provider.key)
+        if execution.model_metadata is None:
+            raise ReviewBridgeError("Grok execution omitted model metadata")
+        reported_model = normalize_metadata_value(execution.model_metadata)
+        canonical_requested_model = canonical_grok_model_identity(requested_model)
+        if canonical_grok_model_identity(reported_model) != canonical_requested_model:
+            raise ReviewBridgeError(
+                "Grok reported model identity "
+                f"`{reported_model}`; requested `{requested_model}`"
+            )
+        if (
+            result.model_claim is not None
+            and canonical_grok_model_identity(result.model_claim)
+            != canonical_requested_model
+        ):
+            raise ReviewBridgeError(
+                "Grok structured model claim did not match the requested model"
+            )
     body = validate_and_strip_body_claims(
         result.body_markdown,
         provider=provider,
@@ -1943,11 +2004,11 @@ def doctor(runner: Runner, cwd: Path) -> tuple[bool, list[str]]:
         try:
             requested_model = select_grok_request_model(grok_probe)
         except ReviewBridgeError as error:
-            lines.append(f"FAIL Grok Build model selection: {error}")
+            lines.append(f"FAIL Grok review model selection: {error}")
             healthy = False
         else:
             lines.append(
-                f"OK   Grok Build model selection: explicit `{requested_model}` request"
+                f"OK   Grok review model selection: explicit `{requested_model}` request"
             )
 
     return healthy, [redact_sensitive(line) for line in lines]

@@ -13,10 +13,22 @@ const desktopViewports = [
   { width: 1280, height: 800 },
   { width: 1024, height: 768 }
 ];
-const desktopBrowsers = [
-  { name: "Chromium", type: chromium },
-  { name: "Firefox", type: firefox }
-];
+const browserLaunchOptions = { headless: true, timeout: 30_000 } as const;
+const availableDesktopBrowsers = [
+  { id: "chromium", name: "Chromium", type: chromium },
+  { id: "firefox", name: "Firefox", type: firefox }
+] as const;
+const requestedBrowserIds = new Set((process.env.KV_LAYOUT_BROWSERS ?? "chromium").split(","));
+const unsupportedBrowserIds = [...requestedBrowserIds].filter(
+  id => !availableDesktopBrowsers.some(browser => browser.id === id)
+);
+if (unsupportedBrowserIds.length > 0) {
+  throw new Error(`Unsupported layout browser selection: ${unsupportedBrowserIds.join(", ")}`);
+}
+const desktopBrowsers = availableDesktopBrowsers.filter(browser => requestedBrowserIds.has(browser.id));
+if (desktopBrowsers.length === 0) {
+  throw new Error("At least one layout browser must be selected");
+}
 const nativeSelectIndicatorAllowance = 24;
 
 const readSubclassProgressionLayout=(page:Page)=>page.evaluate(()=>{
@@ -27,13 +39,13 @@ const readSubclassProgressionLayout=(page:Page)=>page.evaluate(()=>{
   return{headers:headers.map(cell=>cell.textContent),tableWidth:tableRect.width,wrapperWidth:wrapper.clientWidth,scrollable:wrapper.scrollWidth>wrapper.clientWidth+1,tableContained:tableRect.left>=wrapperRect.left-1&&tableRect.right<=wrapperRect.right+1,levelColumnWidth:headers[0]!.getBoundingClientRect().width,featureColumnWidth:headers[1]!.getBoundingClientRect().width,levelTextFits,levelTextSingleLine,levelContentUnclipped,documentOverflow:document.documentElement.scrollWidth-document.documentElement.clientWidth};
 });
 
-test("master Name select renders canonical progression and stable renamed routes in Chromium and Firefox",async()=>{
+test("master Name select renders canonical progression and stable renamed routes in configured browsers",async()=>{
   const result=await executeBuild("prototype");const {authority}=await loadAuthority();const url=pathToFileURL(result.htmlPath).href+defaultReferenceFragment;
   const rulesAreas=authority.vocabularies.rules_areas!;const expectedGroups=[...rulesAreas].sort((a,b)=>a.order-b.order).map(area=>area.label);
   const featureIds=new Set(authority.entities.filter(entity=>entity.kind==="feature").map(entity=>entity.id));
   const expectedFeatures=Object.fromEntries(rulesAreas.map(area=>[area.label,authority.entities.filter(entity=>entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area===area.id).sort((a,b)=>Number(a.level)-Number(b.level)||(a.title<b.title?-1:a.title>b.title?1:0)||(a.id<b.id?-1:a.id>b.id?1:0)).map(entity=>entity.id)]));
   for(const engine of desktopBrowsers){
-    const browser=await engine.type.launch({headless:true});
+    const browser=await engine.type.launch(browserLaunchOptions);
     try{
       const page=await browser.newPage({viewport:{width:1366,height:768}});await page.goto(url);await page.evaluate(()=>{const push=history.pushState.bind(history);(window as any).__namePushCount=0;history.pushState=(...args)=>{(window as any).__namePushCount++;return push(...args);};});
       const readGroups=()=>page.locator("#name-select optgroup").evaluateAll(groups=>groups.map(group=>({label:(group as HTMLOptGroupElement).label,ids:[...group.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.value),labels:[...group.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.textContent??"")})));
@@ -61,7 +73,7 @@ test("master Name select renders canonical progression and stable renamed routes
 test("mobile Name and result navigation focus and reveal the selected Calculator card",async()=>{
   const result=await executeBuild("prototype");const url=pathToFileURL(result.htmlPath).href+defaultReferenceFragment;
   for(const engine of desktopBrowsers){
-    const browser=await engine.type.launch({headless:true});
+    const browser=await engine.type.launch(browserLaunchOptions);
     try{
       const page=await browser.newPage({viewport:{width:412,height:915}});await page.goto(url);
       const assertFocusedAndVisible=async(title:string)=>{
@@ -78,7 +90,7 @@ test("prototype columns and long selected topics fit in desktop browsers", async
   const url = `${pathToFileURL(result.htmlPath).href}#category=common_features&topic=common_features_advanced_training_progression_topic`;
 
   for (const engine of desktopBrowsers) {
-    const browser = await engine.type.launch({ headless: true });
+    const browser = await engine.type.launch(browserLaunchOptions);
     const page = await browser.newPage();
     try {
       for (const viewport of desktopViewports) {
@@ -138,7 +150,7 @@ test("prototype columns and long selected topics fit in desktop browsers", async
 
 test("prototype deliberately stacks below the two-column breakpoint", async () => {
   const result = await executeBuild("prototype");
-  const browser = await chromium.launch({ headless: true });
+  const browser = await chromium.launch(browserLaunchOptions);
   const page = await browser.newPage({ viewport: { width: 760, height: 900 } });
 
   try {
@@ -165,7 +177,7 @@ test("Subclass Feature Reference keeps both tables readable across screen and pr
   const result=await executeBuild("prototype");const url=pathToFileURL(result.htmlPath).href+"#category=common_features&topic=common_features_subclass_feature_reference_topic";
   const assertProgressionLayout=(layout:Awaited<ReturnType<typeof readSubclassProgressionLayout>>,context:string)=>{assert.deepEqual(layout.headers,["Level","Feature"],context+" progression headers");assert.ok(layout.tableWidth<=layout.wrapperWidth+1,context+" progression table fits its wrapper");assert.equal(layout.scrollable,false,context+" progression table does not scroll horizontally");assert.equal(layout.tableContained,true,context+" progression table remains contained");assert.ok(layout.featureColumnWidth>layout.levelColumnWidth,context+" Feature remains the wider column");assert.equal(layout.levelTextFits,true,context+" Level text fits naturally");assert.equal(layout.levelTextSingleLine,true,context+" Level text remains on one line");assert.equal(layout.levelContentUnclipped,true,context+" Level text is not clipped");assert.equal(layout.documentOverflow,0,context+" progression document overflow");};
   for(const engine of desktopBrowsers){
-    const browser=await engine.type.launch({headless:true});
+    const browser=await engine.type.launch(browserLaunchOptions);
     try{
       const page=await browser.newPage({viewport:{width:412,height:915}});await page.goto(url);
       for(const width of [412,320,761]){
@@ -212,7 +224,7 @@ test("Manifested Strike progression cells render exactly in desktop browsers", a
   const url = `${pathToFileURL(result.htmlPath).href}#category=common_features&topic=common_features_common_manifested_strike_topic`;
 
   for (const engine of desktopBrowsers) {
-    const browser = await engine.type.launch({ headless: true });
+    const browser = await engine.type.launch(browserLaunchOptions);
     const page = await browser.newPage({ viewport: { width: 1366, height: 768 } });
     try {
       await page.goto(url);
@@ -252,7 +264,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
   const expectedHeadings=["Pyrokinesis","Psychokinesis","Cryokinesis","Electrokinesis"];
   let canonicalText:string[]|undefined;
   for(const engine of desktopBrowsers){
-    const browser=await engine.type.launch({headless:true});
+    const browser=await engine.type.launch(browserLaunchOptions);
     const page=await browser.newPage();
     try{
       for(const viewport of viewports){
@@ -335,7 +347,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
 
 
 test("Rules area filtering is immediate, canonical, progressive, and history-safe on desktop and mobile",async()=>{
-  const result=await executeBuild("prototype");const browser=await chromium.launch({headless:true});
+  const result=await executeBuild("prototype");const browser=await chromium.launch(browserLaunchOptions);
   const expected=["Telekinetic Shove — Psychokinesis","Vectored Thrust — Psychokinesis","Explosion/Implosion — Psychokinesis","Telekinetic Slam — Psychokinesis","Mass Levitation — Psychokinesis"];
   try{
     for(const viewport of [{width:1366,height:768},{width:390,height:844}]){
@@ -353,7 +365,7 @@ test("Rules area filtering is immediate, canonical, progressive, and history-saf
 
 test("concentration metadata ribbon wraps without overflow on desktop and mobile",async()=>{
   const result=await executeBuild("prototype");const url=`${pathToFileURL(result.htmlPath).href}#calculator&card=advanced_gravitic_press&level=20&modifier=5&group=advanced_training`;
-  const browser=await chromium.launch({headless:true});
+  const browser=await chromium.launch(browserLaunchOptions);
   try{
     for(const viewport of [{width:1366,height:768},{width:390,height:844}]){
       const page=await browser.newPage({viewport});await page.goto(url);await page.waitForSelector("#calculator-feature-results .feature-metadata__item--concentration");
@@ -373,7 +385,7 @@ test("concentration metadata ribbon wraps without overflow on desktop and mobile
 test("Calculator Feature Deck stays contained and operable on desktop and mobile",async()=>{
   const result=await executeBuild("prototype"),url=pathToFileURL(result.htmlPath).href+"#calculator&card=manifested_strike&level=3&modifier=2";
   for(const engine of desktopBrowsers){
-    const browser=await engine.type.launch({headless:true});
+    const browser=await engine.type.launch(browserLaunchOptions);
     try{
       for(const viewport of [{name:"desktop",width:1280,height:1000,columns:3},{name:"mobile",width:390,height:844,columns:1}] as const){
         const page=await browser.newPage({viewport});await page.goto(url);await page.waitForSelector("#calculator-root");const context=`${engine.name} ${viewport.name}`;
@@ -393,7 +405,7 @@ test("Start Here is a contained single-column experience across engines, breakpo
   const result=await executeBuild("prototype"),base=pathToFileURL(result.htmlPath).href,homeUrl=base+"#home";
   const widths=[320,412,760,761,1280,1366];
   for(const engine of desktopBrowsers){
-    const browser=await engine.type.launch({headless:true});
+    const browser=await engine.type.launch(browserLaunchOptions);
     const page=await browser.newPage({viewport:{width:1366,height:1000}});
     try{
       await page.goto(homeUrl);assert.equal(await page.evaluate(()=>document.activeElement===document.body),true,engine.name+" initial focus");
