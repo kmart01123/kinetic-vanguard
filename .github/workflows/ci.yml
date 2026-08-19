@@ -71,21 +71,14 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          for attempt in 1 2; do
-            echo "Playwright dependency install attempt ${attempt}/2"
-            if timeout --kill-after=30s 8m \
-              npx playwright install-deps chromium firefox; then
-              exit 0
-            else
-              status=$?
-            fi
-            if [[ "$attempt" -eq 2 ]]; then
-              echo "::error::Playwright dependency installation failed after 2 attempts (exit ${status})"
-              exit "$status"
-            fi
-            echo "::warning::Playwright dependency installation failed or timed out; retrying in 10 seconds"
-            sleep 10
-          done
+          echo "Configuring bounded apt network retries for Playwright dependencies"
+          sudo tee /etc/apt/apt.conf.d/80-playwright-network >/dev/null <<'EOF'
+          Acquire::Retries "3";
+          Acquire::http::Timeout "30";
+          Acquire::https::Timeout "30";
+          EOF
+          echo "Installing Playwright system dependencies"
+          npx playwright install-deps chromium firefox
 
       - name: Install layout browsers
         run: timeout --kill-after=30s 8m npx playwright install chromium firefox
