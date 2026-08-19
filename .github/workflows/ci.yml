@@ -23,6 +23,9 @@ jobs:
         with:
           fetch-depth: 2
 
+      - name: Check toolchain version consistency
+        run: python3 tools/check_toolchain_versions.py
+
       - name: Set up Node.js
         uses: actions/setup-node@v7
         with:
