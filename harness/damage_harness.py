@@ -384,9 +384,10 @@ def _battle_master_damage(row:dict[str,Any],target:Target,pb:int,level:int,criti
 
 
 def _battle_master_dpr(model:AuthorityModel,config:dict[str,Any],row:dict[str,Any],target:Target)->float:
-    policy=row["tactical_policy"];expected_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","maneuver_choice_timing":"after_observed_attack_roll_result","on_hit_die_effect":"damage","on_miss_die_effect":"attack_roll_bonus","maneuver_die_consumption":"on_use_before_die_result","maximum_maneuver_dice_per_attack":1,"relentless_die_options":"same_as_superiority_die","relentless_uses_per_turn":1,"relentless_superiority_pool_cost":0,"relentless_refresh":"start_of_next_turn","hew_choice_timing":"after_observed_critical"}
+    policy=row["tactical_policy"];expected_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","maneuver_choice_timing":"pre_roll_feint_or_post_roll_observed_result","decision_information":"observed_state_only","on_hit_die_effect":"damage","on_miss_die_effect":"attack_roll_bonus","maneuver_die_consumption":"on_use_before_die_result","maximum_maneuver_dice_per_attack":1,"feint_choice_timing":"before_attack_roll","feint_resource_timing":"before_attack_roll","feint_effect":"advantage_next_attack_same_target_same_turn_and_die_damage_on_hit","bonus_action_ledger":"one_per_turn_shared_by_feint_and_hew","relentless_die_options":"same_as_superiority_die","relentless_uses_per_turn":1,"relentless_superiority_pool_cost":0,"relentless_refresh":"start_of_next_turn","hew_choice_timing":"after_observed_critical"}
     if policy!=expected_policy:raise ValueError("Unsupported Battle Master tactical policy")
     level=target.level;progression=level_config(config,level);pb=model.progression("proficiency_bonus",level);studied_enabled=bool(progression["studied_attacks"]);prowess_enabled=bool(progression["combat_prowess"]);attacks=int(progression["attacks_per_action"]);relentless_per_turn=int(policy["relentless_uses_per_turn"]) if level>=int(row["relentless_minimum_level"]) else 0;relentless_pool_cost=int(policy["relentless_superiority_pool_cost"]);hew_enabled=bool(row["hew_critical_bonus_attack_once_per_round"]);pool=int(row["superiority_pool_by_level"][str(level)]);prowess_after_failed_bonus=bool(config["fighter_mechanics"]["combat_prowess"]["eligible_after_failed_attack_roll_bonus"])
+    known=set(row["known_maneuvers_by_level"][str(level)]);feint_enabled="feinting_attack" in known;precision_enabled="precision_attack" in known;generic_on_hit_enabled=bool(known&{"disarming_attack","distracting_strike","goading_attack","maneuvering_attack","menacing_attack","pushing_attack","trip_attack"})
     attacks_by_round=tuple(int(actions)*attacks for actions in progression["action_slots_by_round"]);weapon=row["weapon"];weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(level)]);ability=int(row["ability_modifier"]);attack_bonus=ability+pb+weapon_bonus;superiority_sides=int(row["superiority_die_by_level"][str(level)]);relentless_sides=int(row["relentless_die"]);graze=float(_profile_damage(target,weapon["damage_type"],int(row["graze_damage"])))
 
     @lru_cache(maxsize=None)
@@ -394,48 +395,55 @@ def _battle_master_dpr(model:AuthorityModel,config:dict[str,Any],row:dict[str,An
         return _battle_master_damage(row,target,pb,level,critical,maneuver_sides,part_of_action)
 
     @lru_cache(maxsize=None)
-    def optimize(round_index:int,attacks_remaining:int,studied:bool,superiority:int,prowess:bool,relentless:int,hew:bool)->float:
+    def optimize(round_index:int,attacks_remaining:int,studied:bool,superiority:int,prowess:bool,relentless:int,bonus_action:bool)->float:
         if attacks_remaining==0:
             if round_index+1==len(attacks_by_round):return 0.0
-            return optimize(round_index+1,attacks_by_round[round_index+1],studied,superiority,prowess_enabled,relentless_per_turn,hew_enabled)
-        return attack_value(round_index,attacks_remaining-1,studied,superiority,prowess,relentless,hew,True)
+            return optimize(round_index+1,attacks_by_round[round_index+1],studied,superiority,prowess_enabled,relentless_per_turn,True)
+        choices=[attack_value(round_index,attacks_remaining-1,studied,superiority,prowess,relentless,bonus_action,True,False,0)]
+        if feint_enabled and bonus_action:
+            if relentless:choices.append(attack_value(round_index,attacks_remaining-1,studied,superiority-relentless_pool_cost,prowess,relentless-1,False,True,True,relentless_sides))
+            if superiority:choices.append(attack_value(round_index,attacks_remaining-1,studied,superiority-1,prowess,relentless,False,True,True,superiority_sides))
+        return max(choices)
 
     @lru_cache(maxsize=None)
-    def attack_value(round_index:int,remaining_main_attacks:int,studied:bool,superiority:int,prowess:bool,relentless:int,hew:bool,part_of_action:bool)->float:
-        """Choose a maneuver after this roll, then continue without seeing future rolls."""
-        def future(hit:bool,next_superiority:int,next_prowess:bool,next_relentless:int,next_hew:bool,critical:bool)->float:
+    def attack_value(round_index:int,remaining_main_attacks:int,studied:bool,superiority:int,prowess:bool,relentless:int,bonus_action:bool,part_of_action:bool,advantage:bool,committed_maneuver_sides:int)->float:
+        """Resolve one attack after any Feint commitment, then choose only legal observed-result options."""
+        maneuver_committed=committed_maneuver_sides>0
+        def future(hit:bool,next_superiority:int,next_prowess:bool,next_relentless:int,next_bonus_action:bool,critical:bool)->float:
             next_studied=(not hit) if studied_enabled else False
-            continuation=optimize(round_index,remaining_main_attacks,next_studied,next_superiority,next_prowess,next_relentless,next_hew)
-            if part_of_action and critical and next_hew:
-                bonus=attack_value(round_index,remaining_main_attacks,next_studied,next_superiority,next_prowess,next_relentless,False,False)
+            continuation=optimize(round_index,remaining_main_attacks,next_studied,next_superiority,next_prowess,next_relentless,next_bonus_action)
+            if part_of_action and critical and hew_enabled and next_bonus_action:
+                bonus=attack_value(round_index,remaining_main_attacks,next_studied,next_superiority,next_prowess,next_relentless,False,False,False,0)
                 return max(continuation,bonus)
             return continuation
         def failed_precision(next_superiority:int,next_relentless:int)->float:
-            outcomes=[graze+future(False,next_superiority,prowess,next_relentless,hew,False)]
-            if prowess and prowess_after_failed_bonus:outcomes.append(attack_damage(False,0,part_of_action)+future(True,next_superiority,False,next_relentless,hew,False))
+            outcomes=[graze+future(False,next_superiority,prowess,next_relentless,bonus_action,False)]
+            if prowess and prowess_after_failed_bonus:outcomes.append(attack_damage(False,0,part_of_action)+future(True,next_superiority,False,next_relentless,bonus_action,False))
             return max(outcomes)
         expected=0.0
-        for natural,natural_probability in _natural_probabilities(studied_enabled and studied).items():
+        for natural,natural_probability in _natural_probabilities(advantage or (studied_enabled and studied)).items():
             critical=natural==20;hit=critical or (natural!=1 and natural+attack_bonus>=target.ac);choices=[]
             if hit:
-                choices.append(attack_damage(critical,0,part_of_action)+future(True,superiority,prowess,relentless,hew,critical))
-                if relentless:choices.append(attack_damage(critical,relentless_sides,part_of_action)+future(True,superiority-relentless_pool_cost,prowess,relentless-1,hew,critical))
-                if superiority:choices.append(attack_damage(critical,superiority_sides,part_of_action)+future(True,superiority-1,prowess,relentless,hew,critical))
+                choices.append(attack_damage(critical,committed_maneuver_sides,part_of_action)+future(True,superiority,prowess,relentless,bonus_action,critical))
+                if not maneuver_committed and generic_on_hit_enabled:
+                    if relentless:choices.append(attack_damage(critical,relentless_sides,part_of_action)+future(True,superiority-relentless_pool_cost,prowess,relentless-1,bonus_action,critical))
+                    if superiority:choices.append(attack_damage(critical,superiority_sides,part_of_action)+future(True,superiority-1,prowess,relentless,bonus_action,critical))
             else:
-                choices.append(graze+future(False,superiority,prowess,relentless,hew,False));required=target.ac-(natural+attack_bonus)
-                if natural!=1 and 1<=required<=relentless_sides and relentless:
+                choices.append(graze+future(False,superiority,prowess,relentless,bonus_action,False));required=target.ac-(natural+attack_bonus)
+                if not maneuver_committed and precision_enabled and natural!=1 and 1<=required<=relentless_sides and relentless:
                     success=(relentless_sides-required+1)/relentless_sides
-                    choices.append(success*(attack_damage(False,0,part_of_action)+future(True,superiority-relentless_pool_cost,prowess,relentless-1,hew,False))+(1-success)*failed_precision(superiority-relentless_pool_cost,relentless-1))
-                if natural!=1 and 1<=required<=superiority_sides and superiority:
+                    choices.append(success*(attack_damage(False,0,part_of_action)+future(True,superiority-relentless_pool_cost,prowess,relentless-1,bonus_action,False))+(1-success)*failed_precision(superiority-relentless_pool_cost,relentless-1))
+                if not maneuver_committed and precision_enabled and natural!=1 and 1<=required<=superiority_sides and superiority:
                     success=(superiority_sides-required+1)/superiority_sides
-                    choices.append(success*(attack_damage(False,0,part_of_action)+future(True,superiority-1,prowess,relentless,hew,False))+(1-success)*failed_precision(superiority-1,relentless))
+                    choices.append(success*(attack_damage(False,0,part_of_action)+future(True,superiority-1,prowess,relentless,bonus_action,False))+(1-success)*failed_precision(superiority-1,relentless))
                 if prowess:
-                    choices.append(attack_damage(False,0,part_of_action)+future(True,superiority,False,relentless,hew,False))
-                    if relentless:choices.append(attack_damage(False,relentless_sides,part_of_action)+future(True,superiority-relentless_pool_cost,False,relentless-1,hew,False))
-                    if superiority:choices.append(attack_damage(False,superiority_sides,part_of_action)+future(True,superiority-1,False,relentless,hew,False))
+                    choices.append(attack_damage(False,committed_maneuver_sides,part_of_action)+future(True,superiority,False,relentless,bonus_action,False))
+                    if not maneuver_committed and generic_on_hit_enabled:
+                        if relentless:choices.append(attack_damage(False,relentless_sides,part_of_action)+future(True,superiority-relentless_pool_cost,False,relentless-1,bonus_action,False))
+                        if superiority:choices.append(attack_damage(False,superiority_sides,part_of_action)+future(True,superiority-1,False,relentless,bonus_action,False))
             expected+=natural_probability*max(choices)
         return expected
-    return optimize(0,attacks_by_round[0],False,pool,prowess_enabled,relentless_per_turn,hew_enabled)/3.0
+    return optimize(0,attacks_by_round[0],False,pool,prowess_enabled,relentless_per_turn,True)/3.0
 
 
 def _comparator_dpr(model:AuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,comparator_id:str)->float:

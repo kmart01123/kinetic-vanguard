@@ -132,6 +132,54 @@ def _weapon(value:Any,label:str)->dict[str,Any]:
     return row
 
 
+_BATTLE_MASTER_DAMAGE_LOADOUTS={
+    "7":("feinting_attack","precision_attack","pushing_attack","sweeping_attack","trip_attack"),
+    "11":("feinting_attack","precision_attack","pushing_attack","sweeping_attack","trip_attack","lunging_attack","riposte"),
+    "15":("feinting_attack","precision_attack","pushing_attack","sweeping_attack","trip_attack","lunging_attack","riposte","goading_attack","menacing_attack"),
+    "20":("feinting_attack","precision_attack","pushing_attack","sweeping_attack","trip_attack","lunging_attack","riposte","goading_attack","menacing_attack"),
+}
+_BATTLE_MASTER_CONTROL_LOADOUTS={
+    "7":("disarming_attack","goading_attack","menacing_attack","pushing_attack","trip_attack"),
+    "11":("disarming_attack","goading_attack","menacing_attack","pushing_attack","trip_attack","distracting_strike","precision_attack"),
+    "15":("disarming_attack","goading_attack","menacing_attack","pushing_attack","trip_attack","distracting_strike","precision_attack","ambush","maneuvering_attack"),
+    "20":("disarming_attack","goading_attack","menacing_attack","pushing_attack","trip_attack","distracting_strike","precision_attack","ambush","maneuvering_attack"),
+}
+
+
+def _battle_master_loadouts(value:Any,label:str,expected:dict[str,tuple[str,...]])->dict[str,Any]:
+    rows=_object(value,label);_exact_keys(rows,{"7","11","15","20"},label)
+    for level,required in expected.items():
+        maneuvers=rows[level]
+        if not isinstance(maneuvers,list) or any(not isinstance(item,str) or not item for item in maneuvers):raise ValueError(f"{label}.{level} must be a maneuver string list")
+        if len(maneuvers)!=len(set(maneuvers)):raise ValueError(f"{label}.{level} must be duplicate-free")
+        if tuple(maneuvers)!=required:raise ValueError(f"{label}.{level} does not match the audited fixed loadout")
+    return rows
+
+
+def _validate_battle_master_effects(scenario:dict[str,Any],label:str)->None:
+    effects=scenario["effects"]
+    if not isinstance(effects,list) or not effects:raise ValueError(f"{label}.effects must be non-empty")
+    ids=[]
+    for index,value in enumerate(effects):
+        effect_label=f"{label}.effects[{index}]";effect=_object(value,effect_label);required={"id","gate","duration"};allowed=required|{"conditions","outcomes","magnitude_feet","pricing_status","qualifiers","recovery"}
+        if not required<=effect.keys() or not effect.keys()<=allowed:raise ValueError(f"{effect_label} keys are invalid")
+        ids.append(_string(effect["id"],f"{effect_label}.id"));_string(effect["duration"],f"{effect_label}.duration")
+        if effect["gate"]!="on_failed_save":raise ValueError(f"{effect_label}.gate is invalid")
+        for key in ("conditions","outcomes"):
+            if key in effect and (not isinstance(effect[key],list) or not effect[key] or any(not isinstance(item,str) or not item for item in effect[key])):raise ValueError(f"{effect_label}.{key} must be a non-empty string list")
+        if not effect.get("conditions") and not effect.get("outcomes"):raise ValueError(f"{effect_label} must declare a condition or outcome")
+        if "magnitude_feet" in effect:_integer(effect["magnitude_feet"],f"{effect_label}.magnitude_feet",0)
+        if effect.get("pricing_status") not in {None,"candidate","context_required","unsupported"}:raise ValueError(f"{effect_label}.pricing_status is invalid")
+        if "qualifiers" in effect:
+            qualifiers=_object(effect["qualifiers"],f"{effect_label}.qualifiers")
+            if any(not isinstance(key,str) or not key or not isinstance(item,(str,int,float,bool)) for key,item in qualifiers.items()):raise ValueError(f"{effect_label}.qualifiers is invalid")
+        if "recovery" in effect:
+            recovery=_object(effect["recovery"],f"{effect_label}.recovery");_exact_keys(recovery,{"timing","method","movement_cost"},f"{effect_label}.recovery")
+            if recovery!={"timing":"target_turn","method":"stand","movement_cost":"half_speed"}:raise ValueError(f"{effect_label}.recovery is invalid")
+            if effect["duration"]!="until_target_stands" or "prone" not in effect.get("conditions",[]):raise ValueError(f"{effect_label}.recovery requires recoverable Prone")
+    if len(ids)!=len(set(ids)):raise ValueError(f"{label} effect IDs must be unique")
+
+
 def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
     with path.open(encoding="utf-8") as stream:data=json.load(stream)
     data=_object(data,"comparator config");_exact_keys(data,{"format_version","source_ruleset","primary_comparator_ids","damage","control"},"comparator config")
@@ -143,14 +191,14 @@ def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
     damage=_object(data["damage"],"damage comparators");control=_object(data["control"],"control comparators")
     if set(damage)!=expected:raise ValueError("Damage comparator set is incomplete or unsupported")
     if set(control)!=expected:raise ValueError("Control comparator set is incomplete or unsupported")
-    bm=_object(damage["battle_master"],"damage.battle_master");_exact_keys(bm,{"ability_modifier","weapon","magic_weapon_bonus_by_level","great_weapon_master_attack_action_bonus","graze_damage","hew_critical_bonus_attack_once_per_round","superiority_die_by_level","superiority_pool_by_level","relentless_minimum_level","relentless_die","tactical_policy"},"damage.battle_master")
+    bm=_object(damage["battle_master"],"damage.battle_master");_exact_keys(bm,{"ability_modifier","weapon","magic_weapon_bonus_by_level","great_weapon_master_attack_action_bonus","graze_damage","hew_critical_bonus_attack_once_per_round","superiority_die_by_level","superiority_pool_by_level","known_maneuvers_by_level","relentless_minimum_level","relentless_die","tactical_policy"},"damage.battle_master")
     for key in ("ability_modifier","graze_damage","relentless_minimum_level","relentless_die"):_integer(bm[key],f"damage.battle_master.{key}",0)
-    _weapon(bm["weapon"],"damage.battle_master.weapon");_level_map(bm["magic_weapon_bonus_by_level"],"damage.battle_master.magic_weapon_bonus_by_level");_level_map(bm["superiority_die_by_level"],"damage.battle_master.superiority_die_by_level");_level_map(bm["superiority_pool_by_level"],"damage.battle_master.superiority_pool_by_level")
+    _weapon(bm["weapon"],"damage.battle_master.weapon");_level_map(bm["magic_weapon_bonus_by_level"],"damage.battle_master.magic_weapon_bonus_by_level");_level_map(bm["superiority_die_by_level"],"damage.battle_master.superiority_die_by_level");_level_map(bm["superiority_pool_by_level"],"damage.battle_master.superiority_pool_by_level");_battle_master_loadouts(bm["known_maneuvers_by_level"],"damage.battle_master.known_maneuvers_by_level",_BATTLE_MASTER_DAMAGE_LOADOUTS)
     if bm["great_weapon_master_attack_action_bonus"]!="proficiency_bonus":raise ValueError("Battle Master GWM bonus must be proficiency_bonus")
     _boolean(bm["hew_critical_bonus_attack_once_per_round"],"damage.battle_master.hew_critical_bonus_attack_once_per_round")
-    bm_policy=_object(bm["tactical_policy"],"damage.battle_master.tactical_policy");_exact_keys(bm_policy,{"objective","maneuver_choice_timing","on_hit_die_effect","on_miss_die_effect","maneuver_die_consumption","maximum_maneuver_dice_per_attack","relentless_die_options","relentless_uses_per_turn","relentless_superiority_pool_cost","relentless_refresh","hew_choice_timing"},"damage.battle_master.tactical_policy")
+    bm_policy=_object(bm["tactical_policy"],"damage.battle_master.tactical_policy");_exact_keys(bm_policy,{"objective","maneuver_choice_timing","decision_information","on_hit_die_effect","on_miss_die_effect","maneuver_die_consumption","maximum_maneuver_dice_per_attack","feint_choice_timing","feint_resource_timing","feint_effect","bonus_action_ledger","relentless_die_options","relentless_uses_per_turn","relentless_superiority_pool_cost","relentless_refresh","hew_choice_timing"},"damage.battle_master.tactical_policy")
     _integer(bm_policy["maximum_maneuver_dice_per_attack"],"damage.battle_master.tactical_policy.maximum_maneuver_dice_per_attack",1);_integer(bm_policy["relentless_uses_per_turn"],"damage.battle_master.tactical_policy.relentless_uses_per_turn",1);_integer(bm_policy["relentless_superiority_pool_cost"],"damage.battle_master.tactical_policy.relentless_superiority_pool_cost",0)
-    expected_bm_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","maneuver_choice_timing":"after_observed_attack_roll_result","on_hit_die_effect":"damage","on_miss_die_effect":"attack_roll_bonus","maneuver_die_consumption":"on_use_before_die_result","maximum_maneuver_dice_per_attack":1,"relentless_die_options":"same_as_superiority_die","relentless_uses_per_turn":1,"relentless_superiority_pool_cost":0,"relentless_refresh":"start_of_next_turn","hew_choice_timing":"after_observed_critical"}
+    expected_bm_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","maneuver_choice_timing":"pre_roll_feint_or_post_roll_observed_result","decision_information":"observed_state_only","on_hit_die_effect":"damage","on_miss_die_effect":"attack_roll_bonus","maneuver_die_consumption":"on_use_before_die_result","maximum_maneuver_dice_per_attack":1,"feint_choice_timing":"before_attack_roll","feint_resource_timing":"before_attack_roll","feint_effect":"advantage_next_attack_same_target_same_turn_and_die_damage_on_hit","bonus_action_ledger":"one_per_turn_shared_by_feint_and_hew","relentless_die_options":"same_as_superiority_die","relentless_uses_per_turn":1,"relentless_superiority_pool_cost":0,"relentless_refresh":"start_of_next_turn","hew_choice_timing":"after_observed_critical"}
     if bm_policy!=expected_bm_policy:raise ValueError("Unsupported Battle Master tactical policy")
     ek=_object(damage["eldritch_knight"],"damage.eldritch_knight");_exact_keys(ek,{"regular_attack_ability_modifier","true_strike_ability_modifier_by_level","weapon","magic_weapon_bonus_by_level","dueling_damage_bonus","true_strike_damage_by_level","true_strike_uses_per_attack_action","true_strike_damage_type","tactical_policy"},"damage.eldritch_knight")
     _integer(ek["regular_attack_ability_modifier"],"damage.eldritch_knight.regular_attack_ability_modifier",0);_integer(ek["dueling_damage_bonus"],"damage.eldritch_knight.dueling_damage_bonus",0);_integer(ek["true_strike_uses_per_attack_action"],"damage.eldritch_knight.true_strike_uses_per_attack_action",0);_weapon(ek["weapon"],"damage.eldritch_knight.weapon");_level_map(ek["true_strike_ability_modifier_by_level"],"damage.eldritch_knight.true_strike_ability_modifier_by_level");_level_map(ek["magic_weapon_bonus_by_level"],"damage.eldritch_knight.magic_weapon_bonus_by_level")
@@ -161,17 +209,18 @@ def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
     expected_ek_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","true_strike_choice_timing":"before_attack_roll","decision_information":"observed_state_only","true_strike_use_count":"exactly_configured_per_attack_action"}
     if ek_policy!=expected_ek_policy:raise ValueError("Unsupported Eldritch Knight tactical policy")
     for build_id,row_value in control.items():
-        row=_object(row_value,f"control.{build_id}");common={"minimum_level","attack_ability_modifier","magic_weapon_bonus_by_level","save_dc_base","magic_resistance_applies","scenarios"};ability={"save_ability_modifier"} if build_id=="battle_master" else {"spellcasting_ability_modifier_by_level","spell_access","eldritch_strike_minimum_level","reliability_scenario_ids"};_exact_keys(row,common|ability,f"control.{build_id}")
+        row=_object(row_value,f"control.{build_id}");common={"minimum_level","attack_ability_modifier","magic_weapon_bonus_by_level","save_dc_base","magic_resistance_applies","scenarios"};ability={"save_ability_modifier","known_maneuvers_by_level"} if build_id=="battle_master" else {"spellcasting_ability_modifier_by_level","spell_access","eldritch_strike_minimum_level","reliability_scenario_ids"};_exact_keys(row,common|ability,f"control.{build_id}")
         for key in ("minimum_level","attack_ability_modifier","save_dc_base"):_integer(row[key],f"control.{build_id}.{key}",0)
         _level_map(row["magic_weapon_bonus_by_level"],f"control.{build_id}.magic_weapon_bonus_by_level");_boolean(row["magic_resistance_applies"],f"control.{build_id}.magic_resistance_applies")
-        if build_id=="battle_master":_integer(row["save_ability_modifier"],"control.battle_master.save_ability_modifier",0)
+        if build_id=="battle_master":
+            _integer(row["save_ability_modifier"],"control.battle_master.save_ability_modifier",0);_battle_master_loadouts(row["known_maneuvers_by_level"],"control.battle_master.known_maneuvers_by_level",_BATTLE_MASTER_CONTROL_LOADOUTS)
         else:
             _level_map(row["spellcasting_ability_modifier_by_level"],"control.eldritch_knight.spellcasting_ability_modifier_by_level");_integer(row["eldritch_strike_minimum_level"],"control.eldritch_knight.eldritch_strike_minimum_level",1)
             access=_object(row["spell_access"],"control.eldritch_knight.spell_access");_exact_keys(access,{"highest_slot_level_by_fighter_level"},"control.eldritch_knight.spell_access");slots=_level_map(access["highest_slot_level_by_fighter_level"],"control.eldritch_knight.spell_access.highest_slot_level_by_fighter_level")
             if any(int(value)<1 for value in slots.values()) or list(slots.values())!=sorted(slots.values()):raise ValueError("Eldritch Knight spell access must be positive and nondecreasing")
         if not isinstance(row["scenarios"],list) or not row["scenarios"]:raise ValueError(f"control.{build_id}.scenarios must be non-empty")
         for index,scenario_value in enumerate(row["scenarios"]):
-            scenario=_object(scenario_value,f"control.{build_id}.scenarios[{index}]");required={"id"}|({"save"} if build_id=="battle_master" else {"spell_id","audit_comment_id","source_scope","disposition","spell_level","delivery","effects"});allowed=required|({"hit_gated","conditions","outcomes","maximum_size"} if build_id=="battle_master" else {"save","hit_gated","spell_attack","automatic_effect","initial_save_advantage","primer_hit_disadvantage","required_creature_type","maximum_size","improved_war_magic_eligible","automatic_success_if","targeting","breaks","escapes","context_predicates","area_exit_policy","turn_branches"})
+            scenario=_object(scenario_value,f"control.{build_id}.scenarios[{index}]");required={"id","audit_comment_id","source_scope","disposition","save","hit_gated","effects"} if build_id=="battle_master" else {"id","spell_id","audit_comment_id","source_scope","disposition","spell_level","delivery","effects"};allowed=required|({"maximum_size","context_predicates"} if build_id=="battle_master" else {"save","hit_gated","spell_attack","automatic_effect","initial_save_advantage","primer_hit_disadvantage","required_creature_type","maximum_size","improved_war_magic_eligible","automatic_success_if","targeting","breaks","escapes","context_predicates","area_exit_policy","turn_branches"})
             if not required<=scenario.keys() or not scenario.keys()<=allowed:raise ValueError(f"control.{build_id}.scenarios[{index}] keys are invalid")
             if build_id=="eldritch_knight" and sum(("save" in scenario,bool(scenario.get("spell_attack")),bool(scenario.get("automatic_effect"))))!=1:raise ValueError(f"control.{build_id}.scenarios[{index}] must use exactly one resolution gate")
             for key in ("hit_gated","spell_attack","automatic_effect","initial_save_advantage","primer_hit_disadvantage","improved_war_magic_eligible"):
@@ -181,8 +230,13 @@ def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
             for key in ("spell_level","audit_comment_id"):
                 if key in scenario:_integer(scenario[key],f"control.{build_id}.scenarios[{index}].{key}",0)
             if scenario.get("delivery") not in {None,"war_magic_cantrip","action_spell","reaction_spell"}:raise ValueError(f"control.{build_id}.scenarios[{index}] has unsupported delivery")
-            if build_id=="eldritch_knight" and scenario["source_scope"]!="independently_expressed_phb_comparator_abstraction":raise ValueError(f"control.{build_id}.scenarios[{index}] source scope is invalid")
-            if build_id=="eldritch_knight" and scenario["disposition"] not in {"modeled","modeled_mixed","diagnostic_unpriced"}:raise ValueError(f"control.{build_id}.scenarios[{index}] disposition is invalid")
+            if scenario["source_scope"]!="independently_expressed_phb_comparator_abstraction":raise ValueError(f"control.{build_id}.scenarios[{index}] source scope is invalid")
+            if scenario["disposition"] not in {"modeled","modeled_mixed","diagnostic_unpriced"}:raise ValueError(f"control.{build_id}.scenarios[{index}] disposition is invalid")
+            if build_id=="battle_master":
+                if scenario["hit_gated"] is not True:raise ValueError(f"control.{build_id}.scenarios[{index}] must be hit gated")
+                _validate_battle_master_effects(scenario,f"control.{build_id}.scenarios[{index}]")
+                predicates=scenario.get("context_predicates",[])
+                if not isinstance(predicates,list) or len(predicates)!=len(set(predicates)) or any(not isinstance(item,str) or not item for item in predicates):raise ValueError(f"control.{build_id}.scenarios[{index}].context_predicates is invalid")
             for key in ("conditions","outcomes"):
                 if key in scenario and (not isinstance(scenario[key],list) or not scenario[key] or any(not isinstance(item,str) or not item for item in scenario[key])):raise ValueError(f"control.{build_id}.scenarios[{index}].{key} must be a non-empty string list")
             if build_id=="eldritch_knight":
@@ -280,6 +334,9 @@ def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
                         if "origin" in area:_string(area["origin"],f"{target_label}.area.origin")
                         for key in ("moves_with_source","enemy_only"):
                             if key in area:_boolean(area[key],f"{target_label}.area.{key}")
+        if build_id=="battle_master":
+            scenario_ids=[scenario["id"] for scenario in row["scenarios"]]
+            if scenario_ids!=["menacing_attack","pushing_attack","trip_attack","goading_attack","disarming_attack"]:raise ValueError("control.battle_master scenarios do not match the audited package set")
         if build_id=="eldritch_knight":
             scenario_ids=[scenario["id"] for scenario in row["scenarios"]];reliability_ids=row["reliability_scenario_ids"]
             if not isinstance(reliability_ids,list) or not reliability_ids or any(not isinstance(item,str) for item in reliability_ids) or len(reliability_ids)!=len(set(reliability_ids)):raise ValueError("control.eldritch_knight.reliability_scenario_ids must be a unique non-empty string list")

@@ -12,7 +12,7 @@ from unittest.mock import patch
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
 from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_repeat_rider_probability,run as run_control
-from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_comparator_dpr,_kv_dpr,_rider_values,run as run_damage
+from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_comparator_dpr,_kv_dpr,_rider_values,run as run_damage
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,load_comparators,load_config,load_targets,save_success_probability
 
 
@@ -141,6 +141,8 @@ class FrozenInputValidationTests(unittest.TestCase):
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"].__setitem__("great_weapon_master_attack_action_bonus","fixed"),"GWM bonus")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["tactical_policy"].__setitem__("maximum_maneuver_dice_per_attack",2),"Battle Master tactical policy")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["tactical_policy"].__setitem__("maneuver_choice_timing","before_attack_roll"),"Battle Master tactical policy")
+        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["known_maneuvers_by_level"]["7"].__setitem__(0,"riposte"),"audited fixed loadout")
+        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["control"]["battle_master"]["known_maneuvers_by_level"]["11"].append("trip_attack"),"duplicate-free")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"]["tactical_policy"].__setitem__("true_strike_choice_timing","after_attack_roll"),"Eldritch Knight tactical policy")
 
 class FighterNumericalTests(unittest.TestCase):
@@ -150,10 +152,10 @@ class FighterNumericalTests(unittest.TestCase):
 
     def test_exact_fighter_dpr_sentinels_cover_every_supported_level(self)->None:
         expected={
-            7:("Air Elemental",13.900000000000006,24.575569569001160),
-            11:("Deva",40.916666666666686,81.127998399293940),
-            15:("Adult Black Dragon",49.960671191473686,90.409620247713760),
-            20:("Balor",108.956136040152290,168.515058184716450),
+            7:("Air Elemental",13.900000000000006,25.019884651397450),
+            11:("Deva",40.916666666666686,81.801982129598270),
+            15:("Adult Black Dragon",49.960671191473686,91.212464318445840),
+            20:("Balor",108.956136040152290,168.983538568658330),
         }
         for level,(name,eldritch_knight,battle_master) in expected.items():
             with self.subTest(level=level,target=name):
@@ -192,6 +194,67 @@ class FighterNumericalTests(unittest.TestCase):
         with patch("harness.damage_harness._natural_probabilities",return_value={10:1.0}):
             result=_comparator_dpr(self.model,config,self.comparators,target,"battle_master")
         self.assertEqual(result,11.0)
+
+    def test_battle_master_fixed_damage_loadout_counts_and_membership(self)->None:
+        loadouts=self.comparators["damage"]["battle_master"]["known_maneuvers_by_level"]
+        self.assertEqual({level:len(maneuvers) for level,maneuvers in loadouts.items()},{"7":5,"11":7,"15":9,"20":9})
+        self.assertEqual(loadouts["7"],["feinting_attack","precision_attack","pushing_attack","sweeping_attack","trip_attack"])
+        self.assertEqual(loadouts["11"][-2:],["lunging_attack","riposte"]);self.assertEqual(loadouts["15"][-2:],["goading_attack","menacing_attack"]);self.assertEqual(loadouts["20"],loadouts["15"])
+
+    def test_feint_expected_value_spends_its_resource_before_a_possible_miss(self)->None:
+        target=replace(next(item for item in self.targets if item.level==7),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset())
+        config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,action_slots_by_round=[1,1,1],studied_attacks=False,combat_prowess=False)
+        comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["superiority_pool_by_level"]["7"]=1;row["hew_critical_bonus_attack_once_per_round"]=False
+        probabilities=lambda advantage:{1:0.5,10:0.5} if advantage else {1:1.0}
+        pb=self.model.progression("proficiency_bonus",7);hit=_battle_master_damage(row,target,pb,7,False,8,True);expected=(15+0.5*(hit-5))/3
+        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):result=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        self.assertAlmostEqual(result,expected,places=12)
+
+    def test_feint_hit_and_critical_add_exactly_one_doubled_maneuver_die(self)->None:
+        target=replace(next(item for item in self.targets if item.level==7),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,action_slots_by_round=[1,0,0],studied_attacks=False,combat_prowess=False)
+        comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["superiority_pool_by_level"]["7"]=2;row["hew_critical_bonus_attack_once_per_round"]=False;pb=self.model.progression("proficiency_bonus",7)
+        for natural,critical in ((10,False),(20,True)):
+            probabilities=lambda advantage,natural=natural:{natural:1.0} if advantage else {1:1.0}
+            with self.subTest(critical=critical),patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):
+                result=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+            self.assertAlmostEqual(result,_battle_master_damage(row,target,pb,7,critical,8,True)/3,places=12)
+
+    def test_feinted_miss_cannot_add_precision_on_the_same_attack(self)->None:
+        base=next(item for item in self.targets if item.level==7);attack_bonus=5+self.model.progression("proficiency_bonus",7)+1;target=replace(base,ac=attack_bonus+11,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,action_slots_by_round=[1,0,0],studied_attacks=False,combat_prowess=False)
+        comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["superiority_pool_by_level"]["7"]=2;row["hew_critical_bonus_attack_once_per_round"]=False;pb=self.model.progression("proficiency_bonus",7)
+        probabilities=lambda advantage:{10:0.5,20:0.5} if advantage else {1:1.0};expected=(5+_battle_master_damage(row,target,pb,7,True,8,True))/6
+        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):result=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        self.assertAlmostEqual(result,expected,places=12)
+
+    def test_feint_plus_combat_prowess_applies_feint_damage_without_a_second_maneuver(self)->None:
+        target=replace(next(item for item in self.targets if item.level==20),ac=40,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["20"].update(attacks_per_action=1,action_slots_by_round=[1,0,0],studied_attacks=False,combat_prowess=True)
+        comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["superiority_pool_by_level"]["20"]=1;row["relentless_minimum_level"]=21;row["hew_critical_bonus_attack_once_per_round"]=False;pb=self.model.progression("proficiency_bonus",20)
+        with patch("harness.damage_harness._natural_probabilities",return_value={1:1.0}):result=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        self.assertAlmostEqual(result,_battle_master_damage(row,target,pb,20,False,12,True)/3,places=12)
+
+    def test_feint_and_hew_share_one_bonus_action_in_both_directions(self)->None:
+        target=replace(next(item for item in self.targets if item.level==7),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,action_slots_by_round=[1,0,0],studied_attacks=False,combat_prowess=False)
+        comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["superiority_pool_by_level"]["7"]=1;row["hew_critical_bonus_attack_once_per_round"]=True;pb=self.model.progression("proficiency_bonus",7);probabilities=lambda advantage:{20:1.0} if advantage else {1:1.0}
+        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):feint_first=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        self.assertAlmostEqual(feint_first,_battle_master_damage(row,target,pb,7,True,8,True)/3,places=12)
+        target=replace(next(item for item in self.targets if item.level==11),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["11"].update(attacks_per_action=2,action_slots_by_round=[1,0,0],studied_attacks=False,combat_prowess=False)
+        comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["known_maneuvers_by_level"]["11"]=["feinting_attack","precision_attack","sweeping_attack","lunging_attack","riposte"];row["superiority_pool_by_level"]["11"]=1;row["hew_critical_bonus_attack_once_per_round"]=True;pb=self.model.progression("proficiency_bonus",11)
+        with patch("harness.damage_harness._natural_probabilities",return_value={20:1.0}):hew_first=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        expected=(2*_battle_master_damage(row,target,pb,11,True,0,True)+_battle_master_damage(row,target,pb,11,True,0,False))/3;self.assertAlmostEqual(hew_first,expected,places=12)
+
+    def test_bonus_action_and_relentless_feint_resources_reset_per_turn(self)->None:
+        target=replace(next(item for item in self.targets if item.level==15),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["15"].update(attacks_per_action=1,action_slots_by_round=[1,1,1],studied_attacks=False,combat_prowess=False)
+        comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["known_maneuvers_by_level"]["15"]=["feinting_attack"];row["superiority_pool_by_level"]["15"]=1;row["hew_critical_bonus_attack_once_per_round"]=False;pb=self.model.progression("proficiency_bonus",15);probabilities=lambda advantage:{10:1.0} if advantage else {1:1.0}
+        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):result=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        expected=(_battle_master_damage(row,target,pb,15,False,10,True)+2*_battle_master_damage(row,target,pb,15,False,8,True))/3;self.assertAlmostEqual(result,expected,places=12)
+
+    def test_generic_on_hit_damage_remains_exact_and_contextual_maneuvers_add_nothing_free(self)->None:
+        target=replace(next(item for item in self.targets if item.level==7),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,action_slots_by_round=[1,0,0],studied_attacks=False,combat_prowess=False)
+        comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["known_maneuvers_by_level"]["7"]=["pushing_attack"];row["superiority_pool_by_level"]["7"]=1;row["hew_critical_bonus_attack_once_per_round"]=False;pb=self.model.progression("proficiency_bonus",7)
+        with patch("harness.damage_harness._natural_probabilities",return_value={10:1.0}):generic=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        self.assertAlmostEqual(generic,_battle_master_damage(row,target,pb,7,False,8,True)/3,places=12)
+        target=replace(next(item for item in self.targets if item.level==11),damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);contextual=deepcopy(self.comparators);row=contextual["damage"]["battle_master"];row["known_maneuvers_by_level"]["11"]=["sweeping_attack","lunging_attack","riposte"];without=deepcopy(contextual);without["damage"]["battle_master"]["superiority_pool_by_level"]["11"]=0;without["damage"]["battle_master"]["relentless_minimum_level"]=21
+        self.assertEqual(_comparator_dpr(self.model,config,contextual,target,"battle_master"),_comparator_dpr(self.model,config,without,target,"battle_master"))
 
     def test_combat_prowess_can_be_retained_after_an_observed_miss(self)->None:
         base=next(item for item in self.targets if item.level==20 and item.name=="Balor")
@@ -247,7 +310,7 @@ class FighterNumericalTests(unittest.TestCase):
         unavailable=deepcopy(self.config);unavailable["fighter_mechanics"]["combat_prowess"]["eligible_after_failed_attack_roll_bonus"]=False
         reviewed=_comparator_dpr(self.model,self.config,self.comparators,target,"battle_master")
         without_post_failure_choice=_comparator_dpr(self.model,unavailable,self.comparators,target,"battle_master")
-        self.assertAlmostEqual(reviewed-without_post_failure_choice,0.06767946573216932,places=12)
+        self.assertAlmostEqual(reviewed-without_post_failure_choice,0.05542795657382271,places=12)
 
 
 class ComparatorLeafContractTests(unittest.TestCase):
@@ -276,6 +339,13 @@ class ComparatorLeafContractTests(unittest.TestCase):
             build=str(path[1]);field=str(path[-1]);current=_path_value(self.comparators,path)
             level=next((int(part) for part in path if isinstance(part,str) and part in {"7","11","15","20"}),20)
             damage_immunity=None
+            if "known_maneuvers_by_level" in path:
+                changed=deepcopy(self.comparators);_set_path(changed,path,f"{current}_unsupported")
+                with tempfile.TemporaryDirectory() as directory:
+                    comparator_path=Path(directory)/"comparators.json";comparator_path.write_text(json.dumps(changed),encoding="utf-8")
+                    with self.subTest(path=_path_label(path)):
+                        with self.assertRaisesRegex(ValueError,"audited fixed loadout"):load_comparators(comparator_path)
+                continue
             if "tactical_policy" in path:
                 replacement=current+1 if isinstance(current,int) else f"{current}_unsupported"
                 changed=deepcopy(self.comparators);_set_path(changed,path,replacement)
@@ -592,13 +662,30 @@ class ControlComparatorRetryTests(unittest.TestCase):
     def test_battle_master_comparator_uses_frozen_inputs_and_observed_retry_chronology(self)->None:
         damage=self.comparators["damage"]["battle_master"];control=self.comparators["control"]["battle_master"]
         self.assertEqual(damage["superiority_pool_by_level"],{"7":5,"11":5,"15":6,"20":6})
-        self.assertEqual(damage["tactical_policy"]["maneuver_choice_timing"],"after_observed_attack_roll_result")
+        self.assertEqual(damage["tactical_policy"]["maneuver_choice_timing"],"pre_roll_feint_or_post_roll_observed_result")
+        self.assertEqual(damage["tactical_policy"]["decision_information"],"observed_state_only")
         self.assertEqual(damage["tactical_policy"]["maneuver_die_consumption"],"on_use_before_die_result")
         self.assertEqual(damage["tactical_policy"]["maximum_maneuver_dice_per_attack"],1)
         self.assertNotIn("relentless",control)
         target=self.target(11);scenario=self.scenario("battle_master","menacing_attack");row=_comparator_scenario(self.model,self.config,self.comparators,target,"battle_master",scenario)
         bonus=self.model.progression("proficiency_bonus",11)+int(control["attack_ability_modifier"])+int(control["magic_weapon_bonus_by_level"]["11"]);hit=sum(attack_probabilities(bonus,target.ac)[1:]);dc=int(control["save_dc_base"])+self.model.progression("proficiency_bonus",11)+int(control["save_ability_modifier"]);failed=1-save_success_probability(target,"wisdom",dc)
         self.assertAlmostEqual(row["whole"],100*_battle_master_retry_probability(3,5,hit,failed),places=12)
+        self.assertEqual(row["source_scope"],"independently_expressed_phb_comparator_abstraction");self.assertEqual(row["audit_comment_id"],5322552001);self.assertEqual(row["shadow_components"][0]["duration"],"until_end_next_turn")
+
+    def test_battle_master_control_loadouts_gate_scenarios_at_every_level(self)->None:
+        row=self.comparators["control"]["battle_master"];self.assertEqual({level:len(maneuvers) for level,maneuvers in row["known_maneuvers_by_level"].items()},{"7":5,"11":7,"15":9,"20":9})
+        for level in (7,11,15,20):
+            for scenario in row["scenarios"]:
+                with self.subTest(level=level,scenario=scenario["id"]):self.assertTrue(_comparator_scenario(self.model,self.config,self.comparators,replace(self.target(level),size="medium"),"battle_master",scenario)["eligible"])
+        changed=deepcopy(self.comparators);changed["control"]["battle_master"]["known_maneuvers_by_level"]["7"].remove("menacing_attack");scenario=self.scenario("battle_master","menacing_attack");result=_comparator_scenario(self.model,self.config,changed,self.target(7),"battle_master",scenario);self.assertFalse(result["eligible"]);self.assertEqual(result["whole"],0)
+
+    def test_battle_master_control_size_recovery_diagnostics_and_immunity(self)->None:
+        medium=replace(self.target(11),size="medium");huge=replace(medium,size="huge");row=self.comparators["control"]["battle_master"]
+        push=self.scenario("battle_master","pushing_attack");pushed=_comparator_scenario(self.model,self.config,self.comparators,medium,"battle_master",push);self.assertGreater(pushed["whole"],0);self.assertEqual(pushed["shadow_components"][0]["magnitude_feet"],15);self.assertEqual(pushed["shadow_components"][0]["qualifiers"]["direction"],"directly_away_from_source");self.assertFalse(_comparator_scenario(self.model,self.config,self.comparators,huge,"battle_master",push)["eligible"])
+        trip=self.scenario("battle_master","trip_attack");self.assertNotIn("outcomes",trip["effects"][0]);tripped=_comparator_scenario(self.model,self.config,self.comparators,medium,"battle_master",trip);self.assertEqual(tripped["shadow_components"][0]["duration"],"until_target_stands");self.assertEqual(tripped["shadow_components"][0]["qualifiers"]["recovery_timing"],"target_turn");self.assertEqual(tripped["shadow_components"][0]["qualifiers"]["recovery_movement_cost"],"half_speed")
+        immune=replace(medium,condition_immunities=frozenset({"frightened"}));menacing=_comparator_scenario(self.model,self.config,self.comparators,immune,"battle_master",self.scenario("battle_master","menacing_attack"));self.assertEqual(menacing["whole"],0);self.assertFalse(menacing["shadow_components"])
+        for scenario_id,predicate in (("goading_attack","alternate_valid_attack_target"),("disarming_attack","benchmark_relevant_held_object_exists")):
+            result=_comparator_scenario(self.model,self.config,self.comparators,medium,"battle_master",self.scenario("battle_master",scenario_id));self.assertEqual(result["whole"],0);self.assertIn(predicate,result["context_predicates"]);self.assertTrue(result["shadow_components"]);self.assertEqual(result["shadow_components"][0]["pricing_status"],"context_required")
 
     def test_eldritch_strike_primer_hand_sentinel_uses_at_least_one_hit(self)->None:
         self.assertAlmostEqual(_eldritch_strike_primer_probability(2,0.5),0.75,places=12)

@@ -12,15 +12,26 @@
       "hew_critical_bonus_attack_once_per_round": true,
       "superiority_die_by_level": {"7": 8, "11": 10, "15": 10, "20": 12},
       "superiority_pool_by_level": {"7": 5, "11": 5, "15": 6, "20": 6},
+      "known_maneuvers_by_level": {
+        "7": ["feinting_attack", "precision_attack", "pushing_attack", "sweeping_attack", "trip_attack"],
+        "11": ["feinting_attack", "precision_attack", "pushing_attack", "sweeping_attack", "trip_attack", "lunging_attack", "riposte"],
+        "15": ["feinting_attack", "precision_attack", "pushing_attack", "sweeping_attack", "trip_attack", "lunging_attack", "riposte", "goading_attack", "menacing_attack"],
+        "20": ["feinting_attack", "precision_attack", "pushing_attack", "sweeping_attack", "trip_attack", "lunging_attack", "riposte", "goading_attack", "menacing_attack"]
+      },
       "relentless_minimum_level": 15,
       "relentless_die": 8,
       "tactical_policy": {
         "objective": "maximum_expected_damage_over_benchmark_horizon",
-        "maneuver_choice_timing": "after_observed_attack_roll_result",
+        "maneuver_choice_timing": "pre_roll_feint_or_post_roll_observed_result",
+        "decision_information": "observed_state_only",
         "on_hit_die_effect": "damage",
         "on_miss_die_effect": "attack_roll_bonus",
         "maneuver_die_consumption": "on_use_before_die_result",
         "maximum_maneuver_dice_per_attack": 1,
+        "feint_choice_timing": "before_attack_roll",
+        "feint_resource_timing": "before_attack_roll",
+        "feint_effect": "advantage_next_attack_same_target_same_turn_and_die_damage_on_hit",
+        "bonus_action_ledger": "one_per_turn_shared_by_feint_and_hew",
         "relentless_die_options": "same_as_superiority_die",
         "relentless_uses_per_turn": 1,
         "relentless_superiority_pool_cost": 0,
@@ -53,11 +64,18 @@
       "save_dc_base": 8,
       "save_ability_modifier": 5,
       "magic_resistance_applies": false,
+      "known_maneuvers_by_level": {
+        "7": ["disarming_attack", "goading_attack", "menacing_attack", "pushing_attack", "trip_attack"],
+        "11": ["disarming_attack", "goading_attack", "menacing_attack", "pushing_attack", "trip_attack", "distracting_strike", "precision_attack"],
+        "15": ["disarming_attack", "goading_attack", "menacing_attack", "pushing_attack", "trip_attack", "distracting_strike", "precision_attack", "ambush", "maneuvering_attack"],
+        "20": ["disarming_attack", "goading_attack", "menacing_attack", "pushing_attack", "trip_attack", "distracting_strike", "precision_attack", "ambush", "maneuvering_attack"]
+      },
       "scenarios": [
-        {"id": "menacing_attack", "save": "wisdom", "hit_gated": true, "conditions": ["frightened"]},
-        {"id": "pushing_attack", "save": "strength", "hit_gated": true, "outcomes": ["forced_movement"], "maximum_size": "large"},
-        {"id": "trip_attack", "save": "strength", "hit_gated": true, "conditions": ["prone"], "maximum_size": "large"},
-        {"id": "goading_attack", "save": "wisdom", "hit_gated": true, "outcomes": ["attack_disadvantage"]}
+        {"id":"menacing_attack","audit_comment_id":5322552001,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"modeled","save":"wisdom","hit_gated":true,"effects":[{"id":"frightened","gate":"on_failed_save","conditions":["frightened"],"duration":"until_end_next_turn"}]},
+        {"id":"pushing_attack","audit_comment_id":5322554620,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"modeled","save":"strength","hit_gated":true,"maximum_size":"large","effects":[{"id":"displacement","gate":"on_failed_save","outcomes":["forced_movement"],"magnitude_feet":15,"qualifiers":{"direction":"directly_away_from_source","distance_kind":"maximum"},"duration":"instantaneous"}]},
+        {"id":"trip_attack","audit_comment_id":5322559586,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"modeled","save":"strength","hit_gated":true,"maximum_size":"large","effects":[{"id":"prone","gate":"on_failed_save","conditions":["prone"],"duration":"until_target_stands","recovery":{"timing":"target_turn","method":"stand","movement_cost":"half_speed"}}]},
+        {"id":"goading_attack","audit_comment_id":5322549175,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"diagnostic_unpriced","save":"wisdom","hit_gated":true,"context_predicates":["alternate_valid_attack_target"],"effects":[{"id":"other_target_attacks","gate":"on_failed_save","outcomes":["target_choice_restriction"],"qualifiers":{"restricted_attack_target_relation":"other_than_source"},"duration":"until_end_next_turn","pricing_status":"context_required"}]},
+        {"id":"disarming_attack","audit_comment_id":5322522591,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"diagnostic_unpriced","save":"strength","hit_gated":true,"context_predicates":["benchmark_relevant_held_object_exists"],"effects":[{"id":"held_object_drop","gate":"on_failed_save","outcomes":["held_item_drop"],"qualifiers":{"drop_location":"target_space","object_state":"held"},"duration":"instantaneous","pricing_status":"context_required"}]}
       ]
     },
     "eldritch_knight": {

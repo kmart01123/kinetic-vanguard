@@ -251,6 +251,7 @@ def expose_label(
     qualifiers: Mapping[str, Any] | None = None,
     overlapping_attack_impairment_sources: Sequence[str] = (),
     active_probabilities_by_basis: Mapping[str, Sequence[float]] | None = None,
+    suppressed_recovery_options: Sequence[str] = (),
     disjoint_stage_group: str = "",
     source_reason: str = "",
 ) -> tuple[PrimitiveExposure, ...]:
@@ -266,6 +267,9 @@ def expose_label(
         pricing_status=pricing_status,
         qualifiers=qualifiers,
     )
+    suppressed_recoveries = frozenset(str(item) for item in suppressed_recovery_options)
+    if "end_own_prone" in suppressed_recoveries:
+        specs = tuple(spec for spec in specs if spec.primitive_id != "standing_movement_cost")
     attack_overlap_sources = tuple(sorted(set(overlapping_attack_impairment_sources)))
     result: list[PrimitiveExposure] = []
     for spec in specs:
@@ -478,8 +482,13 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
         if current.normalization_disposition != "suppressed" and current.primitive_id == "mobility_loss_feet" and _qualifier(current, "mobility_effect") == "flat_reduction":
             for stronger in speed_zeroes:
                 current = _subtract(current, stronger, "Speed 0 dominates lesser reduction")
+        if current.normalization_disposition != "suppressed" and current.primitive_id == "standing_movement_cost":
+            for stronger in speed_zeroes:
+                if current.exposure_basis == stronger.exposure_basis == "target_turn_window":
+                    current = _subtract(current, stronger, "Speed 0 makes standing recovery unavailable")
         revised.append(current)
-    return tuple(sorted(revised, key=lambda item: (item.primitive_id, item.source_effect, item.source_label, item.magnitude or 0.0, item.qualifiers)))
+    visible = (item for item in revised if item.primitive_id != "standing_movement_cost" or item.normalization_disposition != "suppressed")
+    return tuple(sorted(visible, key=lambda item: (item.primitive_id, item.source_effect, item.source_label, item.magnitude or 0.0, item.qualifiers)))
 
 
 def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, Any]], *, horizon: int = 3) -> list[dict[str, Any]]:
@@ -504,6 +513,7 @@ def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, A
                     qualifiers=component.get("qualifiers"),
                     overlapping_attack_impairment_sources=component.get("overlapping_attack_impairment_sources", ()),
                     active_probabilities_by_basis=component.get("active_probabilities_by_basis"),
+                    suppressed_recovery_options=component.get("suppressed_recovery_options", ()),
                     disjoint_stage_group=str(component.get("disjoint_stage_group", "")),
                     source_reason=str(component.get("reason", "")),
                 )
@@ -519,6 +529,7 @@ def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, A
                 "Mechanical Primitive": item.primitive_id,
                 "Exposure Basis": item.exposure_basis,
                 "Magnitude": "" if item.magnitude is None else f"{item.magnitude:g}",
+                "Qualifiers": ";".join(f"{key}={value}" for key,value in item.qualifiers),
                 "Application Probability": f"{item.application_probability:.12f}",
                 "Active Probabilities": ";".join(f"{probability_label}_{index}={value:.12f}" for index,value in enumerate(item.active_probabilities,1)),
                 "Expected Exposure": "" if item.expected_exposure is None else f"{item.expected_exposure:.12f}",

@@ -41,7 +41,8 @@ class PrimitiveDecompositionTests(unittest.TestCase):
     def test_restrained_frightened_and_prone_remain_mechanically_honest(self)->None:
         restrained=decompose_label("Restrained");self.assertEqual({item.primitive_id for item in restrained},{"mobility_loss_feet","defensive_attack_advantage","offensive_impairment_all_attacks","save_disadvantage"})
         frightened=decompose_label("Frightened");geometry=next(item for item in frightened if item.primitive_id=="geometry_sensitive_approach_restriction");self.assertEqual(geometry.pricing_status,"context_required")
-        prone=decompose_label("Prone");offense=next(item for item in prone if item.primitive_id=="offensive_impairment_all_attacks");self.assertEqual(offense.pricing_status,"context_required")
+        prone=decompose_label("Prone");standing=next(item for item in prone if item.primitive_id=="standing_movement_cost");offense=next(item for item in prone if item.primitive_id=="offensive_impairment_all_attacks")
+        self.assertEqual((standing.pricing_status,standing.exposure_basis),("candidate","target_turn_window"));self.assertEqual(dict(standing.qualifiers),{"movement_cost":"half_speed","recovery_method":"stand","recovery_timing":"target_turn"});self.assertEqual(offense.pricing_status,"context_required")
 
     def test_bare_outcomes_retain_scope_and_magnitude(self)->None:
         self.assertEqual(decompose_label("attack_disadvantage",attack_scope="next_attack")[0].primitive_id,"offensive_impairment_next_attack")
@@ -99,6 +100,15 @@ class NormalizationTests(unittest.TestCase):
     def test_duplicate_boolean_primitives_collapse_with_diagnostics(self)->None:
         rows=self.normalized(expose_label("one","reaction_denial",0.6,"until_start_next_turn"),expose_label("two","reaction_denial",0.6,"until_start_next_turn"))
         self.assertEqual(sum(item.normalization_disposition=="retained" for item in rows),1);self.assertEqual(sum(item.normalization_disposition=="suppressed" for item in rows),1);self.assertTrue(next(item for item in rows if item.normalization_disposition=="suppressed").suppressed_by)
+
+    def test_prone_recovery_is_suppressed_generically_and_never_duplicated(self)->None:
+        component={"source_effect":"recoverable_prone","labels":[("condition","prone"),("outcome","standing_movement_cost")],"duration":"until_end_current_turn","application_probability":0.6}
+        rows=shadow_rows({},[component],horizon=3);standing=[row for row in rows if row["Mechanical Primitive"]=="standing_movement_cost"]
+        self.assertEqual(len(standing),1);self.assertEqual(standing[0]["Normalization"],"retained")
+        explicit={**component,"labels":[("condition","prone")],"suppressed_recovery_options":["end_own_prone"]}
+        suppressed=shadow_rows({},[explicit],horizon=3);self.assertFalse(any(row["Mechanical Primitive"]=="standing_movement_cost" for row in suppressed));self.assertTrue(any(row["Mechanical Primitive"]=="offensive_impairment_all_attacks" for row in suppressed))
+        speed_zero={**component,"labels":[("condition","prone"),("outcome","speed_zero")]}
+        impossible=shadow_rows({},[speed_zero],horizon=3);self.assertFalse(any(row["Mechanical Primitive"]=="standing_movement_cost" for row in impossible));self.assertTrue(any(row["Mechanical Primitive"]=="mobility_loss_feet" for row in impossible))
 
     def test_turn_denial_suppresses_lesser_offense(self)->None:
         rows=self.normalized(expose_label("stun","stunned",0.5,"until_end_next_turn"),expose_label("sap","attack_disadvantage",0.5,"until_end_next_turn",attack_scope="all_attacks"))
@@ -193,14 +203,20 @@ class CurrentScenarioShadowTests(unittest.TestCase):
         successful_save_branch=float(sap["Application Probability"])-float(all_attacks["Application Probability"]);residual=float(str(sap["Active Probabilities"]).split("=")[1]);self.assertGreater(successful_save_branch,0);self.assertAlmostEqual(residual,successful_save_branch,places=10);self.assertAlmostEqual(float(sap["Expected Exposure"]),residual,places=10)
         self.assertIn("electron_burst:T2:effect0:offensive_impairment_all_attacks",str(sap["Suppressed By"]))
 
-    def test_battle_master_gaps_remain_explicit_while_eldritch_knight_packages_are_structured(self)->None:
-        for scenario in self.comparators["control"]["battle_master"]["scenarios"]:
-            value=_comparator_scenario(self.model,self.config,self.comparators,self.target,"battle_master",scenario);rows=self.rows(value,"all");self.assertTrue(rows);self.assertTrue(all(row["Pricing Status"]=="unsupported" for row in rows))
+    def test_battle_master_packages_use_structured_primitives_and_fail_closed_diagnostics(self)->None:
+        battle_master={scenario["id"]:scenario for scenario in self.comparators["control"]["battle_master"]["scenarios"]}
+        for scenario_id in ("menacing_attack","pushing_attack","trip_attack"):
+            value=_comparator_scenario(self.model,self.config,self.comparators,replace(self.target,size="medium"),"battle_master",battle_master[scenario_id]);self.assertGreater(value["whole"],0);self.assertTrue(self.rows(value,"all"))
+        for scenario_id in ("goading_attack","disarming_attack"):
+            value=_comparator_scenario(self.model,self.config,self.comparators,self.target,"battle_master",battle_master[scenario_id]);rows=self.rows(value,"all");self.assertEqual(value["whole"],0);self.assertTrue(rows);self.assertTrue(all(row["Pricing Status"]=="context_required" for row in rows))
         target=replace(self.target,creature_type="humanoid",size="medium")
         for scenario in self.comparators["control"]["eldritch_knight"]["scenarios"]:
             value=_comparator_scenario(self.model,self.config,self.comparators,target,"eldritch_knight",scenario);rows=self.rows(value,"all")
             self.assertTrue(rows);self.assertFalse(any(row["Pricing Status"]=="unsupported" for row in rows))
-        push=next(item for item in self.comparators["control"]["battle_master"]["scenarios"] if item["id"]=="pushing_attack");rows=self.rows(_comparator_scenario(self.model,self.config,self.comparators,self.target,"battle_master",push),"all");self.assertEqual(rows[0]["Mechanical Primitive"],"forced_displacement");self.assertEqual(rows[0]["Magnitude"],"")
+        push=battle_master["pushing_attack"];value=_comparator_scenario(self.model,self.config,self.comparators,target,"battle_master",push);rows=self.rows(value,"all");movement=next(row for row in rows if row["Mechanical Primitive"]=="forced_displacement");self.assertEqual(movement["Magnitude"],"15");self.assertIn("direction=directly_away_from_source",movement["Qualifiers"])
+        trip=battle_master["trip_attack"];value=_comparator_scenario(self.model,self.config,self.comparators,target,"battle_master",trip);rows=self.rows(value,"all");standing_rows=[row for row in rows if row["Mechanical Primitive"]=="standing_movement_cost"];self.assertEqual(len(standing_rows),1);standing=standing_rows[0];active=self.active(standing);self.assertAlmostEqual(active[0],value["whole"]/100,places=12);self.assertEqual(active[1:],(0.0,0.0));self.assertEqual(standing["Pricing Status"],"candidate");self.assertIn("movement_cost=half_speed",standing["Qualifiers"]);self.assertIn("recovery_method=stand",standing["Qualifiers"]);self.assertIn("recovery_timing=target_turn",standing["Qualifiers"])
+        offense=next(row for row in rows if row["Mechanical Primitive"]=="offensive_impairment_all_attacks");self.assertEqual(offense["Pricing Status"],"context_required")
+        goading=battle_master["goading_attack"];value=_comparator_scenario(self.model,self.config,self.comparators,target,"battle_master",goading);goading_rows=self.rows(value,"all");self.assertFalse(any(row["Mechanical Primitive"].startswith("offensive_impairment") for row in goading_rows));self.assertIn("restricted_attack_target_relation=other_than_source",goading_rows[0]["Qualifiers"])
 
     def scenario(self,scenario_id:str)->dict[str,object]:
         return next(item for item in self.comparators["control"]["eldritch_knight"]["scenarios"] if item["id"]==scenario_id)
@@ -228,11 +244,13 @@ class CurrentScenarioShadowTests(unittest.TestCase):
     def test_hideous_laughter_break_policy_and_eldritch_strike_repeat_math(self)->None:
         normal=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("hideous_laughter"));rows=self.rows(normal,"all");turn=next(row for row in rows if row["Mechanical Primitive"]=="active_turn_denial");p=float(turn["Application Probability"]);dc=8+self.model.progression("proficiency_bonus",20)+int(self.comparators["control"]["eldritch_knight"]["spellcasting_ability_modifier_by_level"]["20"]);q=1-save_success_probability(self.target,"wisdom",dc,False,True)
         self.assertEqual({row["Condition/Outcome"] for row in rows},{"prone","incapacitated"});self.assertEqual(len(self.active(turn)),3);self.assertAlmostEqual(self.active(turn)[0],p);self.assertAlmostEqual(self.active(turn)[1],p*q);self.assertAlmostEqual(self.active(turn)[2],p*q*q)
+        self.assertFalse(any(row["Mechanical Primitive"]=="standing_movement_cost" for row in rows));self.assertTrue(any(row["Condition/Outcome"]=="prone" and row["Mechanical Primitive"]=="offensive_impairment_all_attacks" for row in rows))
         self.assertEqual(normal["breaks"],[{"id":"damage_repeat_save","trigger":"damage","resolution":"repeat_save","save":"wisdom","save_advantage":True,"success":"ends_effect","baseline_disposition":"inactive_controller_preserves_control"}]);self.assertIn("end_own_prone",str(normal["shadow_components"]))
-        primer=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("hideous_laughter_after_eldritch_strike"));primer_turn=next(row for row in self.rows(primer,"all") if row["Mechanical Primitive"]=="active_turn_denial");primer_p=float(primer_turn["Application Probability"]);self.assertGreater(primer_p,p);self.assertAlmostEqual(self.active(primer_turn)[1],primer_p*q);self.assertAlmostEqual(self.active(primer_turn)[2],primer_p*q*q)
+        primer=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("hideous_laughter_after_eldritch_strike"));primer_rows=self.rows(primer,"all");primer_turn=next(row for row in primer_rows if row["Mechanical Primitive"]=="active_turn_denial");primer_p=float(primer_turn["Application Probability"]);self.assertGreater(primer_p,p);self.assertAlmostEqual(self.active(primer_turn)[1],primer_p*q);self.assertAlmostEqual(self.active(primer_turn)[2],primer_p*q*q);self.assertFalse(any(row["Mechanical Primitive"]=="standing_movement_cost" for row in primer_rows))
 
     def test_sleep_two_stage_vectors_eligibility_and_initial_only_primer(self)->None:
         normal=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("sleep"));rows=self.rows(normal,"all");stage1=next(row for row in rows if row["Source Effect"]=="sleep:incapacitated_stage" and row["Mechanical Primitive"]=="active_turn_denial");stage2_mobility=next(row for row in rows if row["Source Effect"]=="sleep:unconscious_stage" and row["Mechanical Primitive"]=="mobility_loss_feet");p=float(stage1["Application Probability"]);dc=8+self.model.progression("proficiency_bonus",20)+int(self.comparators["control"]["eldritch_knight"]["spellcasting_ability_modifier_by_level"]["20"]);q=1-save_success_probability(self.target,"wisdom",dc,False,True)
+        self.assertFalse(any(row["Mechanical Primitive"]=="standing_movement_cost" for row in rows))
         self.assertEqual(stage1["Normalization"],"combined_disjoint_stages");self.assertEqual(len(self.active(stage1)),3);self.assertAlmostEqual(self.active(stage1)[0],p);self.assertAlmostEqual(self.active(stage1)[1],p*q);self.assertAlmostEqual(self.active(stage1)[2],p*q);self.assertEqual(len(self.active(stage2_mobility)),3);self.assertEqual(self.active(stage2_mobility)[0],0.0);self.assertAlmostEqual(self.active(stage2_mobility)[1],p*q);self.assertAlmostEqual(self.active(stage2_mobility)[2],p*q);self.assertAlmostEqual(float(stage2_mobility["Application Probability"]),p*q)
         primer=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("sleep_after_eldritch_strike"));primer_rows=self.rows(primer,"all");primer_stage1=next(row for row in primer_rows if row["Source Effect"]=="sleep_after_eldritch_strike:incapacitated_stage" and row["Mechanical Primitive"]=="active_turn_denial");primer_stage2=next(row for row in primer_rows if row["Source Effect"]=="sleep_after_eldritch_strike:unconscious_stage" and row["Mechanical Primitive"]=="mobility_loss_feet");primer_p=float(primer_stage1["Application Probability"]);self.assertGreater(primer_p,p);self.assertAlmostEqual(float(primer_stage2["Application Probability"]),primer_p*q)
         exhaustion=_comparator_scenario(self.model,self.config,self.comparators,replace(self.target,condition_immunities=frozenset({"exhaustion"})),"eldritch_knight",self.scenario("sleep"));self.assertTrue(exhaustion["automatic_save_success"]);self.assertEqual(exhaustion["whole"],0);self.assertFalse(exhaustion["shadow_components"])
@@ -240,6 +258,36 @@ class CurrentScenarioShadowTests(unittest.TestCase):
         inferred=replace(self.target,name="Sleepless Construct",creature_type="construct");not_inferred=_comparator_scenario(self.model,self.config,self.comparators,inferred,"eldritch_knight",self.scenario("sleep"));self.assertFalse(not_inferred["automatic_save_success"]);self.assertGreater(not_inferred["whole"],0)
         incap_immune=_comparator_scenario(self.model,self.config,self.comparators,replace(self.target,condition_immunities=frozenset({"incapacitated"})),"eldritch_knight",self.scenario("sleep"));self.assertTrue(any(component["source_effect"].endswith("unconscious_stage") for component in incap_immune["shadow_components"]));self.assertFalse(any(component["source_effect"].endswith("incapacitated_stage") for component in incap_immune["shadow_components"]))
         unconscious_immune=_comparator_scenario(self.model,self.config,self.comparators,replace(self.target,condition_immunities=frozenset({"unconscious"})),"eldritch_knight",self.scenario("sleep"));self.assertTrue(any(component["source_effect"].endswith("incapacitated_stage") for component in unconscious_immune["shadow_components"]));self.assertFalse(any(component["source_effect"].endswith("unconscious_stage") for component in unconscious_immune["shadow_components"]))
+
+    def test_complete_prone_emitter_inventory_has_an_explicit_recovery_disposition(self)->None:
+        catalog=load_primitive_catalog();conditions=catalog["conditions"]
+        def includes_prone(condition:str,ancestors:tuple[str,...]=())->bool:
+            if condition=="prone":return True
+            if condition in ancestors:return False
+            return any(includes_prone(str(included),(*ancestors,condition)) for included in conditions[condition].get("includes",[]))
+        configured={}
+        for build,row in self.comparators["control"].items():
+            for scenario in row["scenarios"]:
+                if any(includes_prone(str(condition)) for effect in scenario["effects"] for condition in effect.get("conditions",[])):configured[(build,scenario["id"])]=scenario
+        self.assertEqual(set(configured),{("battle_master","trip_attack"),("eldritch_knight","grease"),("eldritch_knight","sleep"),("eldritch_knight","sleep_after_eldritch_strike"),("eldritch_knight","hideous_laughter"),("eldritch_knight","hideous_laughter_after_eldritch_strike"),("eldritch_knight","sleet_storm")})
+        kv_emitters={(entity_id,int(tier["tier"])) for entity_id,feature in self.model.features.items() for tier in feature.get("control_tiers",[]) if any(includes_prone(str(condition)) for effect in tier["effects"] for condition in effect.get("conditions",[]))};self.assertEqual(kv_emitters,{("advanced_deflection_screen",2)})
+        trip=_comparator_scenario(self.model,self.config,self.comparators,replace(self.target,size="medium"),"battle_master",configured[("battle_master","trip_attack")]);self.assertEqual(len([row for row in self.rows(trip,"all") if row["Mechanical Primitive"]=="standing_movement_cost"]),1)
+        expanded={scenario["id"]:scenario for scenario in _composed_eldritch_knight_scenarios(self.comparators,self.target) if any(includes_prone(str(condition)) for effect in scenario["effects"] for condition in effect.get("conditions",[]))}
+        self.assertEqual(set(expanded),{"grease","sleep","sleep_after_eldritch_strike","hideous_laughter","hideous_laughter_after_eldritch_strike","sleet_storm","grease_after_eldritch_strike","grease_after_mind_sliver","grease_after_mind_sliver_and_eldritch_strike","sleep_after_mind_sliver","sleep_after_mind_sliver_and_eldritch_strike","hideous_laughter_after_mind_sliver","hideous_laughter_after_mind_sliver_and_eldritch_strike","sleet_storm_after_eldritch_strike","sleet_storm_after_mind_sliver","sleet_storm_after_mind_sliver_and_eldritch_strike"})
+        for scenario_id,scenario in expanded.items():
+            with self.subTest(scenario=scenario_id):
+                value=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",scenario);standing=[row for row in self.rows(value,"all") if row["Mechanical Primitive"]=="standing_movement_cost"]
+                if scenario_id.startswith(("grease","sleet_storm")):
+                    self.assertEqual(len(standing),1);self.assertEqual(standing[0]["Pricing Status"],"candidate");self.assertAlmostEqual(self.active(standing[0])[0],value["whole"]/100,places=12);self.assertEqual(self.active(standing[0])[1:],(0.0,0.0))
+                else:self.assertFalse(standing)
+        kv=_kv_scenario(self.model,self.config,self.target,"psychokinesis","advanced_deflection_screen",2);kv_standing=next(row for row in self.rows(kv,"psychokinesis") if row["Mechanical Primitive"]=="standing_movement_cost");self.assertEqual(kv_standing["Pricing Status"],"context_required");self.assertFalse(self.active(kv_standing))
+
+    def test_grease_and_sleet_storm_standing_cost_reuses_unchanged_save_probability(self)->None:
+        row=self.comparators["control"]["eldritch_knight"];dc=int(row["save_dc_base"])+self.model.progression("proficiency_bonus",20)+int(row["spellcasting_ability_modifier_by_level"]["20"]);expected=1-save_success_probability(self.target,"dexterity",dc,False,True)
+        for scenario_id in ("grease","sleet_storm"):
+            with self.subTest(scenario=scenario_id):
+                value=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario(scenario_id));standing=next(row for row in self.rows(value,"all") if row["Mechanical Primitive"]=="standing_movement_cost")
+                self.assertAlmostEqual(value["whole"]/100,expected,places=12);self.assertAlmostEqual(float(standing["Application Probability"]),expected,places=12);self.assertEqual(self.active(standing)[1:],(0.0,0.0))
 
     def test_hypnotic_pattern_dependency_persistence_breaks_and_access(self)->None:
         normal=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("hypnotic_pattern"));rows=self.rows(normal,"all");turn=next(row for row in rows if row["Mechanical Primitive"]=="active_turn_denial");mobility=next(row for row in rows if row["Mechanical Primitive"]=="mobility_loss_feet");p=float(turn["Application Probability"]);self.assertEqual(self.active(turn),(p,p,p));self.assertEqual(self.active(mobility),(p,p,p));self.assertTrue(all(component["repeat_survival_probability"] is None for component in normal["shadow_components"]))
@@ -261,7 +309,7 @@ class CurrentScenarioShadowTests(unittest.TestCase):
 
     def test_reliability_boundary_battle_master_inventory_and_no_scalar(self)->None:
         self.assertEqual(self.comparators["control"]["eldritch_knight"]["reliability_scenario_ids"],["blindness_deafness","blindness_after_eldritch_strike"])
-        self.assertEqual(self.comparators["control"]["battle_master"]["scenarios"],[{"id":"menacing_attack","save":"wisdom","hit_gated":True,"conditions":["frightened"]},{"id":"pushing_attack","save":"strength","hit_gated":True,"outcomes":["forced_movement"],"maximum_size":"large"},{"id":"trip_attack","save":"strength","hit_gated":True,"conditions":["prone"],"maximum_size":"large"},{"id":"goading_attack","save":"wisdom","hit_gated":True,"outcomes":["attack_disadvantage"]}])
+        battle_master=self.comparators["control"]["battle_master"];self.assertEqual([scenario["id"] for scenario in battle_master["scenarios"]],["menacing_attack","pushing_attack","trip_attack","goading_attack","disarming_attack"]);self.assertEqual({level:len(maneuvers) for level,maneuvers in battle_master["known_maneuvers_by_level"].items()},{"7":5,"11":7,"15":9,"20":9})
         def keys(value:object)->set[str]:
             if isinstance(value,dict):return set(value)|set().union(*(keys(item) for item in value.values()))
             if isinstance(value,list):return set().union(*(keys(item) for item in value))
