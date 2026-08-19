@@ -8,6 +8,9 @@ readonly EXPECTED_GH_VERSION="2.97.0"
 readonly CODEX_PACKAGE="@openai/codex@0.148.0"
 readonly CLAUDE_PACKAGE="@anthropic-ai/claude-code@2.1.234"
 readonly GROK_PACKAGE="@xai-official/grok@1.0.5"
+readonly CLAUDE_GLOBAL_STATE_PATH="/home/vscode/.claude.json"
+readonly CLAUDE_PERSISTENT_STATE_PATH="/home/vscode/.claude/global-state.json"
+readonly CLAUDE_BACKUP_DIRECTORY="/home/vscode/.claude/backups"
 
 readonly -a STATE_DIRECTORIES=(
 	"/home/vscode/.codex"
@@ -30,6 +33,69 @@ require_exact_version() {
 	[[ "$actual" == "$expected" ]] || fail "$label version mismatch: expected $expected, got $actual"
 }
 
+is_nonempty_json_file() {
+	local path="$1"
+
+	[[ -f "$path" && ! -L "$path" && -s "$path" ]] \
+		&& python3 -c 'import json, sys; json.load(open(sys.argv[1]))' "$path" >/dev/null 2>&1
+}
+
+configure_claude_global_state() {
+	local backup_path=""
+	local candidate
+	local displaced_state_path
+	local resolved_path=""
+
+	install -d -m 0700 "$CLAUDE_BACKUP_DIRECTORY"
+	chmod 0700 "$CLAUDE_BACKUP_DIRECTORY"
+
+	if [[ -e "$CLAUDE_PERSISTENT_STATE_PATH" || -L "$CLAUDE_PERSISTENT_STATE_PATH" ]]; then
+		is_nonempty_json_file "$CLAUDE_PERSISTENT_STATE_PATH" \
+			|| fail "persistent Claude global state is not a nonempty regular JSON file"
+	elif [[ -f "$CLAUDE_GLOBAL_STATE_PATH" && ! -L "$CLAUDE_GLOBAL_STATE_PATH" ]]; then
+		is_nonempty_json_file "$CLAUDE_GLOBAL_STATE_PATH" \
+			|| fail "existing Claude global state is not a nonempty JSON file"
+		mv -- "$CLAUDE_GLOBAL_STATE_PATH" "$CLAUDE_PERSISTENT_STATE_PATH"
+	elif [[ -e "$CLAUDE_GLOBAL_STATE_PATH" || -L "$CLAUDE_GLOBAL_STATE_PATH" ]]; then
+		fail "existing Claude global state path is not a regular file"
+	else
+		for candidate in "$CLAUDE_BACKUP_DIRECTORY"/.claude.json.backup.*; do
+			if is_nonempty_json_file "$candidate" \
+				&& [[ -z "$backup_path" || "$candidate" -nt "$backup_path" ]]; then
+				backup_path="$candidate"
+			fi
+		done
+
+		if [[ -n "$backup_path" ]]; then
+			cp -- "$backup_path" "$CLAUDE_PERSISTENT_STATE_PATH"
+		else
+			printf '{}\n' >"$CLAUDE_PERSISTENT_STATE_PATH"
+		fi
+	fi
+
+	sudo chown "$(id -u):$(id -g)" "$CLAUDE_PERSISTENT_STATE_PATH"
+	chmod 0600 "$CLAUDE_PERSISTENT_STATE_PATH"
+
+	if [[ -L "$CLAUDE_GLOBAL_STATE_PATH" ]]; then
+		resolved_path="$(readlink -f "$CLAUDE_GLOBAL_STATE_PATH" || true)"
+		if [[ "$resolved_path" == "$CLAUDE_PERSISTENT_STATE_PATH" ]]; then
+			return
+		fi
+		rm -- "$CLAUDE_GLOBAL_STATE_PATH"
+	elif [[ -e "$CLAUDE_GLOBAL_STATE_PATH" ]]; then
+		is_nonempty_json_file "$CLAUDE_GLOBAL_STATE_PATH" \
+			|| fail "displaced Claude global state is not a nonempty JSON file"
+		if [[ ! "$CLAUDE_GLOBAL_STATE_PATH" -ef "$CLAUDE_PERSISTENT_STATE_PATH" ]]; then
+			displaced_state_path="$(mktemp "$CLAUDE_BACKUP_DIRECTORY/.claude.json.pre-persistence.XXXXXX")"
+			cp -- "$CLAUDE_GLOBAL_STATE_PATH" "$displaced_state_path"
+			chmod 0600 "$displaced_state_path"
+		fi
+		rm -- "$CLAUDE_GLOBAL_STATE_PATH"
+	fi
+
+	ln -s "$CLAUDE_PERSISTENT_STATE_PATH" "$CLAUDE_GLOBAL_STATE_PATH"
+}
+
 for state_directory in "${STATE_DIRECTORIES[@]}"; do
 	sudo install -d -o "$(id -un)" -g "$(id -gn)" -m 0700 "$state_directory"
 	sudo chown "$(id -u):$(id -g)" "$state_directory"
@@ -45,6 +111,8 @@ gh_version="${gh_version%%$'\n'*}"
 gh_version="${gh_version#gh version }"
 gh_version="${gh_version%% *}"
 require_exact_version "GitHub CLI" "$EXPECTED_GH_VERSION" "$gh_version"
+
+configure_claude_global_state
 
 npm ci
 
