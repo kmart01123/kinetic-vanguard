@@ -71,6 +71,8 @@ for state_directory in "${STATE_DIRECTORIES[@]}"; do
 	chmod 0700 "$state_directory"
 done
 
+python3 tools/check_toolchain_versions.py
+
 require_exact_version "Node" "$EXPECTED_NODE_VERSION" "$(node --version)"
 require_exact_version "npm" "$EXPECTED_NPM_VERSION" "$(npm --version)"
 [[ "$(python3 -c 'import sys; print(f"{sys.version_info.major}.{sys.version_info.minor}")')" == "$EXPECTED_PYTHON_SERIES" ]] \
