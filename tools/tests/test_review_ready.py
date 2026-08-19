@@ -71,6 +71,8 @@ class FakeRunner:
         initial_local_head: str = HEAD,
         final_local_head: str = HEAD,
         doctor_returncode: int = 0,
+        doctor_stdout: str = "OK   external-review doctor: healthy\n",
+        doctor_stderr: str = "",
         required_probe_checks: list[dict[str, str]] | None = None,
         required_probe_returncode: int | None = None,
         check_snapshots: list[list[dict[str, str]]] | None = None,
@@ -88,6 +90,8 @@ class FakeRunner:
         self.poll_pr_heads = list(poll_pr_heads or [])
         self.local_heads = [initial_local_head, final_local_head]
         self.doctor_returncode = doctor_returncode
+        self.doctor_stdout = doctor_stdout
+        self.doctor_stderr = doctor_stderr
         self.required_probe_checks = list(
             required_probe_checks if required_probe_checks is not None else [PENDING]
         )
@@ -98,6 +102,7 @@ class FakeRunner:
         self.check_lookup_timeout_at = check_lookup_timeout_at
         self.review_returncode = review_returncode
         self.calls: list[tuple[str, ...]] = []
+        self.streaming_calls: list[tuple[str, ...]] = []
         self.timed_calls: list[tuple[tuple[str, ...], float | None]] = []
         self.check_lookup_count = 0
         self.snapshot_index = 0
@@ -199,7 +204,8 @@ class FakeRunner:
             return completed(
                 command,
                 returncode=self.doctor_returncode,
-                stderr="provider doctor failed" if self.doctor_returncode else "",
+                stdout=self.doctor_stdout,
+                stderr=self.doctor_stderr,
             )
         if command[:3] == ("gh", "pr", "checks"):
             self.check_lookup_count += 1
@@ -222,13 +228,19 @@ class FakeRunner:
                 returncode=returncode,
                 stdout=review_ready.json.dumps(snapshot),
             )
-        if command[:3] == ("python3", "tools/external_review.py", "review"):
-            return completed(
-                command,
-                returncode=self.review_returncode,
-                stderr="provider review failed" if self.review_returncode else "",
-            )
         raise AssertionError(f"unexpected command: {command}")
+
+    def run_streaming(
+        self,
+        args: tuple[str, ...],
+        *,
+        cwd: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        command = tuple(args)
+        self.streaming_calls.append(command)
+        if command[:3] != ("python3", "tools/external_review.py", "review"):
+            raise AssertionError(f"unexpected streaming command: {command}")
+        return completed(command, returncode=self.review_returncode)
 
 
 class ReviewReadyTests(unittest.TestCase):
@@ -266,7 +278,7 @@ class ReviewReadyTests(unittest.TestCase):
     def review_calls(runner: FakeRunner) -> list[tuple[str, ...]]:
         return [
             call
-            for call in runner.calls
+            for call in runner.streaming_calls
             if call[:3] == ("python3", "tools/external_review.py", "review")
         ]
 
@@ -330,9 +342,40 @@ Flags:
             FakeRunner(initial_local_head=MOVED_HEAD), "local HEAD does not match"
         )
 
-    def test_doctor_failure_is_blocked_before_check_lookup(self) -> None:
-        runner = FakeRunner(doctor_returncode=1)
-        self.assert_blocked(runner, "external-review doctor.*failed")
+    def test_doctor_failure_reports_all_fail_lines_from_realistic_stdout(self) -> None:
+        runner = FakeRunner(
+            doctor_returncode=1,
+            doctor_stdout=(
+                "OK   git: git version 2.55.0\n"
+                "OK   gh: gh version 2.97.0\n"
+                "FAIL Claude authentication: token=gho_supersecretvalue\n"
+                "FAIL Grok authentication: run `grok login`\n"
+            ),
+        )
+        with self.assertRaises(review_ready.ReviewReadyError) as raised:
+            self.invoke(runner)
+        message = str(raised.exception)
+        self.assertIn("FAIL Claude authentication: token=[REDACTED]", message)
+        self.assertIn("FAIL Grok authentication: run `grok login`", message)
+        self.assertNotIn("OK   git", message)
+        self.assertNotIn("supersecretvalue", message)
+        self.assertEqual(runner.check_lookup_count, 0)
+        self.assertEqual(self.review_calls(runner), [])
+
+    def test_successful_doctor_emits_concise_health_status(self) -> None:
+        _head, output, _calls, _clock = self.invoke(FakeRunner())
+        self.assertIn("External-review doctor: healthy", output)
+
+    def test_failed_doctor_never_uses_ok_line_as_failure_reason(self) -> None:
+        runner = FakeRunner(
+            doctor_returncode=1,
+            doctor_stdout="OK   git: git version 2.55.0\n",
+        )
+        with self.assertRaises(review_ready.ReviewReadyError) as raised:
+            self.invoke(runner)
+        message = str(raised.exception)
+        self.assertIn("external-review doctor failed with exit code 1", message)
+        self.assertNotIn("OK   git", message)
         self.assertEqual(runner.check_lookup_count, 0)
 
     def test_pending_then_pass_invokes_review_once(self) -> None:
@@ -506,7 +549,21 @@ Flags:
                 sleeper=clock.sleep,
             ).run()
         self.assertEqual(len(self.review_calls(runner)), 1)
+        self.assertIn("Starting exact-head external reviews...", output)
         self.assertFalse(any("completed for exact head" in line for line in output))
+
+    def test_external_review_uses_streaming_path_exactly_once(self) -> None:
+        runner = FakeRunner()
+        _head, output, _calls, _clock = self.invoke(runner)
+        self.assertEqual(len(self.review_calls(runner)), 1)
+        self.assertFalse(
+            any(
+                call[:3] == ("python3", "tools/external_review.py", "review")
+                for call in runner.calls
+            )
+        )
+        self.assertIn("Starting exact-head external reviews...", output)
+        self.assertIn(f"External reviews completed for exact head {HEAD}.", output)
 
     def test_checked_in_prompt_and_all_providers_are_supplied(self) -> None:
         runner = FakeRunner()

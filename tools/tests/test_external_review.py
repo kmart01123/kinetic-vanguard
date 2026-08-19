@@ -1036,6 +1036,96 @@ class ReviewBridgeTests(unittest.TestCase):
             ).review(PR_NUMBER, ("grok",), "Review.")
         self.assertEqual(github.comments, [])
 
+    def test_review_in_progress_finding_is_rejected_without_retry_or_post(self) -> None:
+        github = FakeGitHub([metadata()])
+        adapter = FakeAdapter(
+            execution(
+                "grok",
+                verdict="FINDINGS",
+                body="The exact-head review has not produced final evidence.",
+                findings=(
+                    bridge.ReviewFinding(
+                        "LOW",
+                        "  REVIEW -- in progress! ",
+                        "Results will follow.",
+                    ),
+                ),
+            )
+        )
+        with self.assertRaisesRegex(
+            bridge.ReviewBridgeError,
+            "Grok returned non-final review output",
+        ):
+            bridge.ReviewBridge(
+                github,
+                FakeRepository(),
+                {"grok": adapter},
+                emit=lambda _message: None,
+            ).review(PR_NUMBER, ("grok",), "Review.")
+        self.assertEqual(len(adapter.prompts), 1)
+        self.assertEqual(github.comments, [])
+
+    def test_placeholder_or_processing_review_output_is_rejected(self) -> None:
+        cases = (
+            (
+                "Placeholder while the exact-head review is completed.",
+                "Awaiting completion",
+                "The provider has not finished.",
+            ),
+            (
+                "The review request is being processed from the detached head.",
+                "Pending result",
+                "Substantive findings will follow.",
+            ),
+            (
+                "No final evidence is available.",
+                "Placeholder",
+                "Awaiting review completion.",
+            ),
+        )
+        for body, title, detail in cases:
+            with self.subTest(body=body):
+                github = FakeGitHub([metadata()])
+                invalid = execution(
+                    "grok",
+                    verdict="FINDINGS",
+                    body=body,
+                    findings=(bridge.ReviewFinding("LOW", title, detail),),
+                )
+                with self.assertRaisesRegex(
+                    bridge.ReviewBridgeError, "non-final review output"
+                ):
+                    bridge.ReviewBridge(
+                        github,
+                        FakeRepository(),
+                        {"grok": FakeAdapter(invalid)},
+                        emit=lambda _message: None,
+                    ).review(PR_NUMBER, ("grok",), "Review.")
+                self.assertEqual(github.comments, [])
+
+    def test_legitimate_future_work_finding_is_not_a_placeholder(self) -> None:
+        github = FakeGitHub([metadata(), metadata()])
+        legitimate = execution(
+            "grok",
+            verdict="FINDINGS",
+            body="The implementation is complete; one bounded hardening remains.",
+            findings=(
+                bridge.ReviewFinding(
+                    "LOW",
+                    "Future cache-key hardening",
+                    "A future change should include the platform in the cache key.",
+                ),
+            ),
+        )
+        posted = bridge.ReviewBridge(
+            github,
+            FakeRepository(),
+            {"grok": FakeAdapter(legitimate)},
+            emit=lambda _message: None,
+        ).review(PR_NUMBER, ("grok",), "Review.")
+        self.assertEqual(len(posted), 1)
+        self.assertEqual(len(github.comments), 1)
+
     def test_pass_with_structured_findings_is_rejected(self) -> None:
         github = FakeGitHub([metadata()])
         inconsistent = execution(

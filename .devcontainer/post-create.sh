@@ -11,7 +11,6 @@ readonly GROK_PACKAGE="@xai-official/grok@1.0.5"
 readonly CLAUDE_CONFIG_DIRECTORY="/home/vscode/.claude"
 readonly CLAUDE_CONFIG_PATH="$CLAUDE_CONFIG_DIRECTORY/.claude.json"
 readonly CLAUDE_LEGACY_STATE_PATH="$CLAUDE_CONFIG_DIRECTORY/global-state.json"
-readonly GITHUB_ORIGIN_URL="https://github.com/kmart01123/kinetic-vanguard.git"
 readonly GITHUB_HTTPS_REWRITE_KEY='url.https://github.com/.insteadOf'
 
 readonly -a STATE_DIRECTORIES=(
@@ -71,18 +70,53 @@ migrate_claude_global_state() {
 	fi
 }
 
+normalize_github_remote_url() {
+	local remote_url="$1"
+
+	case "$remote_url" in
+	git@github.com:*)
+		printf 'https://github.com/%s\n' "${remote_url#git@github.com:}"
+		;;
+	ssh://git@github.com/*)
+		printf 'https://github.com/%s\n' "${remote_url#ssh://git@github.com/}"
+		;;
+	https://github.com/*)
+		printf '%s\n' "$remote_url"
+		;;
+	*)
+		return 1
+		;;
+	esac
+}
+
 configure_github_https() {
 	local rewrite
 	local existing_rewrites
 	local found
+	local origin_url
+	local normalized_url
+	local push_url
+	local -a push_urls=()
 
 	if git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
-		if git remote get-url origin >/dev/null 2>&1; then
-			git remote set-url origin "$GITHUB_ORIGIN_URL" \
-				|| warn "could not normalize the origin fetch URL to GitHub HTTPS"
+		if origin_url="$(git config --local --get remote.origin.url 2>/dev/null)"; then
+			if normalized_url="$(normalize_github_remote_url "$origin_url")" \
+				&& [[ "$normalized_url" != "$origin_url" ]]; then
+				git remote set-url origin "$normalized_url" \
+					|| warn "could not normalize the origin fetch URL to GitHub HTTPS"
+			fi
 			if git config --local --get-all remote.origin.pushurl >/dev/null 2>&1; then
-				git config --local --replace-all remote.origin.pushurl "$GITHUB_ORIGIN_URL" \
-					|| warn "could not normalize the origin push URL to GitHub HTTPS"
+				mapfile -t push_urls < <(
+					git config --local --get-all remote.origin.pushurl
+				)
+				for push_url in "${push_urls[@]}"; do
+					if normalized_url="$(normalize_github_remote_url "$push_url")" \
+						&& [[ "$normalized_url" != "$push_url" ]]; then
+						git config --local --fixed-value --replace-all \
+							remote.origin.pushurl "$normalized_url" "$push_url" \
+							|| warn "could not normalize an origin push URL to GitHub HTTPS"
+					fi
+				done
 			fi
 		else
 			warn "GitHub HTTPS origin normalization skipped because origin is unavailable"

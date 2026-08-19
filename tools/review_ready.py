@@ -49,6 +49,13 @@ class Runner(Protocol):
         timeout: float | None = None,
     ) -> subprocess.CompletedProcess[str]: ...
 
+    def run_streaming(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+    ) -> subprocess.CompletedProcess[str]: ...
+
 
 class SubprocessRunner:
     def run(
@@ -66,6 +73,24 @@ class SubprocessRunner:
                 capture_output=True,
                 check=False,
                 timeout=timeout,
+            )
+        except FileNotFoundError as error:
+            raise ReviewReadyError(
+                f"required command is unavailable: {args[0]}"
+            ) from error
+
+    def run_streaming(
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+    ) -> subprocess.CompletedProcess[str]:
+        try:
+            return subprocess.run(
+                list(args),
+                cwd=cwd,
+                text=True,
+                check=False,
             )
         except FileNotFoundError as error:
             raise ReviewReadyError(
@@ -130,6 +155,25 @@ def useful_diagnostic(completed: subprocess.CompletedProcess[str]) -> str:
     meaningful = [line for line in lines if not is_low_value(line)]
     selected = meaningful[0] if meaningful else (lines[0] if lines else "")
     return redact_sensitive(selected)[:300]
+
+
+def doctor_failure_diagnostic(
+    completed: subprocess.CompletedProcess[str],
+) -> str:
+    diagnostic = "\n".join(
+        part for part in (completed.stderr, completed.stdout) if part.strip()
+    )
+    failure_lines = [
+        line.strip()
+        for line in diagnostic.splitlines()
+        if line.lstrip().startswith("FAIL")
+    ]
+    if failure_lines:
+        return redact_sensitive("\n".join(failure_lines))[:1200]
+    fallback = useful_diagnostic(completed)
+    if fallback.casefold().startswith("ok "):
+        return ""
+    return fallback
 
 
 def parse_json_object(raw: str, description: str) -> dict[str, object]:
@@ -244,6 +288,30 @@ class ReviewReady:
             ),
             description,
         )
+
+    def streaming_command(
+        self, args: Sequence[str], description: str
+    ) -> subprocess.CompletedProcess[str]:
+        completed = self.runner.run_streaming(args, cwd=self.cwd)
+        if completed.returncode != 0:
+            raise ReviewReadyError(
+                f"{description} failed with exit code {completed.returncode}"
+            )
+        return completed
+
+    def check_doctor(self) -> None:
+        completed = self.execute(
+            ("python3", "tools/external_review.py", "doctor"),
+            "external-review doctor",
+        )
+        if completed.returncode != 0:
+            detail = doctor_failure_diagnostic(completed)
+            suffix = f":\n{detail}" if detail else ""
+            raise ReviewReadyError(
+                "external-review doctor failed with exit code "
+                f"{completed.returncode}{suffix}"
+            )
+        self.emit("External-review doctor: healthy")
 
     def repository_root(self) -> Path:
         completed = self.command(
@@ -525,10 +593,7 @@ class ReviewReady:
         self.emit(f"PR: #{before_pr.number}")
         self.emit(f"Exact head: {before_local}")
 
-        self.command(
-            ("python3", "tools/external_review.py", "doctor"),
-            "external-review doctor",
-        )
+        self.check_doctor()
         self.wait_for_checks(repository, before_pr)
 
         after_pr = self.refresh_pr(repository, before_pr.number)
@@ -542,7 +607,8 @@ class ReviewReady:
                 "Review was not started."
             )
 
-        self.command(
+        self.emit("Starting exact-head external reviews...")
+        self.streaming_command(
             (
                 "python3",
                 "tools/external_review.py",

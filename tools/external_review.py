@@ -52,6 +52,18 @@ GROK_SANDBOX_FAILURE_PATTERN = re.compile(
     r"(?:sandbox could not be applied|failed to apply sandbox|unknown sandbox profile)",
     re.IGNORECASE,
 )
+NON_FINAL_REVIEW_PATTERNS = (
+    re.compile(r"\b(?:the )?review(?: request)? is being processed\b"),
+    re.compile(
+        r"\bplaceholder(?: \w+){0,3} (?:while|until)"
+        r"(?: \w+){0,8} review(?: \w+){0,3}"
+        r" (?:complete|completed|completion)\b"
+    ),
+    re.compile(
+        r"\bplaceholder(?: \w+){0,3} (?:awaiting|pending)"
+        r"(?: \w+){0,4} (?:review )?completion\b"
+    ),
+)
 BROAD_GROK_AUTH_DIRECTORIES = frozenset(
     Path(path)
     for path in (
@@ -1524,6 +1536,34 @@ def validate_execution(
     if result.verdict == "FINDINGS" and not result.findings:
         raise ReviewBridgeError(
             f"{provider.display_name} returned FINDINGS without structured findings"
+        )
+    normalized_titles = [
+        re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            unicodedata.normalize("NFKC", finding.title).casefold(),
+        ).strip()
+        for finding in result.findings
+    ]
+    finality_texts = (
+        result.body_markdown,
+        *(f"{finding.title}\n{finding.detail}" for finding in result.findings),
+    )
+    normalized_review_texts = [
+        re.sub(
+            r"[^a-z0-9]+",
+            " ",
+            unicodedata.normalize("NFKC", text).casefold(),
+        ).strip()
+        for text in finality_texts
+    ]
+    if "review in progress" in normalized_titles or any(
+        pattern.search(text)
+        for text in normalized_review_texts
+        for pattern in NON_FINAL_REVIEW_PATTERNS
+    ):
+        raise ReviewBridgeError(
+            f"{provider.display_name} returned non-final review output"
         )
     if result.provider_claim:
         validate_identity_claim(result.provider_claim, provider.key, "provider")
