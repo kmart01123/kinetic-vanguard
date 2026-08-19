@@ -200,6 +200,7 @@ class ProviderExecution:
     result: ReviewResult
     cli_version: str
     model_metadata: str | None = None
+    requested_model: str | None = None
 
 
 @dataclass(frozen=True)
@@ -355,13 +356,6 @@ def resolve_provider_executable(
                 f"{spec.display_name} executable resolves inside the review worktree"
             )
     return resolved, safe_path
-
-
-def validate_grok_build_model(model: str | None) -> None:
-    if model is None or not GROK_BUILD_MODEL_PATTERN.fullmatch(model.strip()):
-        raise ReviewBridgeError(
-            "Grok Build adapter returned a missing or non-Build model identity"
-        )
 
 
 def select_grok_request_model(models_output: str) -> str:
@@ -1024,6 +1018,7 @@ class ProviderAdapter:
             child_env["PATH"] = safe_path
             claude_isolation: ClaudeIsolationConfig | None = None
             grok_sandbox: GrokSandboxProfile | None = None
+            requested_model: str | None = None
             if self.spec.key == "claude":
                 claude_isolation = write_claude_isolation_config(temp_path)
                 child_env["CLAUDE_CODE_DISABLE_AUTO_MEMORY"] = "1"
@@ -1142,6 +1137,7 @@ class ProviderAdapter:
                 result=result,
                 cli_version=cli_version,
                 model_metadata=model_metadata,
+                requested_model=requested_model,
             )
 
     def _validate_grok_configuration(
@@ -1571,12 +1567,30 @@ def validate_execution(
         validate_identity_claim(result.reviewer_claim, provider.key, "reviewer")
     if result.model_claim:
         validate_model_claim(result.model_claim, provider.key)
-        if provider.key == "grok":
-            validate_grok_build_model(result.model_claim)
     if execution.model_metadata:
         validate_model_claim(execution.model_metadata, provider.key)
     if provider.key == "grok":
-        validate_grok_build_model(execution.model_metadata)
+        if execution.requested_model is None:
+            raise ReviewBridgeError("Grok execution omitted the requested model")
+        requested_model = normalize_metadata_value(execution.requested_model)
+        if not requested_model:
+            raise ReviewBridgeError("Grok execution omitted the requested model")
+        validate_model_claim(requested_model, provider.key)
+        if execution.model_metadata is None:
+            raise ReviewBridgeError("Grok execution omitted model metadata")
+        reported_model = normalize_metadata_value(execution.model_metadata)
+        if reported_model != requested_model:
+            raise ReviewBridgeError(
+                "Grok reported model identity "
+                f"`{reported_model}`; requested `{requested_model}`"
+            )
+        if (
+            result.model_claim is not None
+            and normalize_metadata_value(result.model_claim) != requested_model
+        ):
+            raise ReviewBridgeError(
+                "Grok structured model claim did not match the requested model"
+            )
     body = validate_and_strip_body_claims(
         result.body_markdown,
         provider=provider,
@@ -1983,11 +1997,11 @@ def doctor(runner: Runner, cwd: Path) -> tuple[bool, list[str]]:
         try:
             requested_model = select_grok_request_model(grok_probe)
         except ReviewBridgeError as error:
-            lines.append(f"FAIL Grok Build model selection: {error}")
+            lines.append(f"FAIL Grok review model selection: {error}")
             healthy = False
         else:
             lines.append(
-                f"OK   Grok Build model selection: explicit `{requested_model}` request"
+                f"OK   Grok review model selection: explicit `{requested_model}` request"
             )
 
     return healthy, [redact_sensitive(line) for line in lines]
