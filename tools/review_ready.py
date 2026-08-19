@@ -9,6 +9,7 @@ from pathlib import Path
 import re
 import subprocess
 import sys
+import time
 from dataclasses import dataclass
 from typing import Callable, Protocol, Sequence
 
@@ -16,6 +17,13 @@ from typing import Callable, Protocol, Sequence
 SHA_PATTERN = re.compile(r"^[0-9a-fA-F]{40}$")
 PR_FIELDS = "number,state,headRefOid,headRefName,url"
 PROMPT_PATH = "tools/review_prompts/release-gate.md"
+CHECK_FIELDS = "name,state,bucket,workflow,link"
+CHECK_POLL_INTERVAL_SECONDS = 10.0
+CHECK_WAIT_TIMEOUT_SECONDS = 2100.0
+CHECK_STARTUP_GRACE_SECONDS = 120.0
+CHECK_PROGRESS_INTERVAL_SECONDS = 60.0
+GITHUB_QUERY_TIMEOUT_SECONDS = 30.0
+CHECK_BUCKETS = frozenset(("pass", "fail", "pending", "skipping", "cancel"))
 LOW_VALUE_DIAGNOSTIC_HEADINGS = frozenset(
     ("usage:", "flags:", "options:", "inherited flags:", "json fields:", "learn more:")
 )
@@ -34,13 +42,21 @@ class ReviewReadyError(RuntimeError):
 
 class Runner(Protocol):
     def run(
-        self, args: Sequence[str], *, cwd: Path
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+        timeout: float | None = None,
     ) -> subprocess.CompletedProcess[str]: ...
 
 
 class SubprocessRunner:
     def run(
-        self, args: Sequence[str], *, cwd: Path
+        self,
+        args: Sequence[str],
+        *,
+        cwd: Path,
+        timeout: float | None = None,
     ) -> subprocess.CompletedProcess[str]:
         try:
             return subprocess.run(
@@ -49,6 +65,7 @@ class SubprocessRunner:
                 text=True,
                 capture_output=True,
                 check=False,
+                timeout=timeout,
             )
         except FileNotFoundError as error:
             raise ReviewReadyError(
@@ -63,6 +80,13 @@ class PRMetadata:
     head_sha: str
     head_ref: str
     url: str
+
+
+@dataclass(frozen=True)
+class CheckStatus:
+    name: str
+    state: str
+    bucket: str
 
 
 def require_success(
@@ -128,6 +152,26 @@ def parse_json_list(raw: str, description: str) -> list[object]:
     return payload
 
 
+def parse_check_statuses(raw: str, description: str) -> tuple[CheckStatus, ...]:
+    payload = parse_json_list(raw, description)
+    checks: list[CheckStatus] = []
+    for item in payload:
+        if not isinstance(item, dict):
+            raise ReviewReadyError(f"{description} returned malformed check data")
+        name = item.get("name")
+        state = item.get("state")
+        bucket = item.get("bucket")
+        if not all(isinstance(value, str) and value for value in (name, state, bucket)):
+            raise ReviewReadyError(f"{description} returned malformed check data")
+        normalized_bucket = bucket.casefold()
+        if normalized_bucket not in CHECK_BUCKETS:
+            raise ReviewReadyError(
+                f"{description} returned unsupported check bucket: {bucket}"
+            )
+        checks.append(CheckStatus(name, state, normalized_bucket))
+    return tuple(checks)
+
+
 def parse_pr_metadata(raw: str, description: str) -> PRMetadata:
     payload = parse_json_object(raw, description)
     number = payload.get("number")
@@ -151,15 +195,55 @@ class ReviewReady:
         cwd: Path,
         *,
         emit: Callable[[str], None] = print,
+        clock: Callable[[], float] = time.monotonic,
+        sleeper: Callable[[float], None] = time.sleep,
+        check_poll_interval: float = CHECK_POLL_INTERVAL_SECONDS,
+        check_wait_timeout: float = CHECK_WAIT_TIMEOUT_SECONDS,
+        check_startup_grace: float = CHECK_STARTUP_GRACE_SECONDS,
+        check_progress_interval: float = CHECK_PROGRESS_INTERVAL_SECONDS,
     ) -> None:
         self.runner = runner
         self.cwd = cwd
         self.emit = emit
+        self.clock = clock
+        self.sleeper = sleeper
+        self.check_poll_interval = check_poll_interval
+        self.check_wait_timeout = check_wait_timeout
+        self.check_startup_grace = check_startup_grace
+        self.check_progress_interval = check_progress_interval
+
+    def execute(
+        self,
+        args: Sequence[str],
+        description: str,
+        *,
+        timeout: float | None = None,
+        timeout_message: str | None = None,
+    ) -> subprocess.CompletedProcess[str]:
+        try:
+            return self.runner.run(args, cwd=self.cwd, timeout=timeout)
+        except subprocess.TimeoutExpired as error:
+            raise ReviewReadyError(
+                timeout_message or f"{description} timed out"
+            ) from error
 
     def command(
-        self, args: Sequence[str], description: str
+        self,
+        args: Sequence[str],
+        description: str,
+        *,
+        timeout: float | None = None,
+        timeout_message: str | None = None,
     ) -> subprocess.CompletedProcess[str]:
-        return require_success(self.runner.run(args, cwd=self.cwd), description)
+        return require_success(
+            self.execute(
+                args,
+                description,
+                timeout=timeout,
+                timeout_message=timeout_message,
+            ),
+            description,
+        )
 
     def repository_root(self) -> Path:
         completed = self.command(
@@ -191,8 +275,9 @@ class ReviewReady:
         return head
 
     def local_branch(self) -> str:
-        completed = self.runner.run(
-            ("git", "symbolic-ref", "--quiet", "--short", "HEAD"), cwd=self.cwd
+        completed = self.execute(
+            ("git", "symbolic-ref", "--quiet", "--short", "HEAD"),
+            "local branch lookup",
         )
         if completed.returncode != 0:
             raise ReviewReadyError(
@@ -207,6 +292,10 @@ class ReviewReady:
         completed = self.command(
             ("gh", "repo", "view", "--json", "nameWithOwner"),
             "GitHub repository lookup",
+            timeout=GITHUB_QUERY_TIMEOUT_SECONDS,
+            timeout_message=(
+                "GitHub repository lookup timed out; external review was not started"
+            ),
         )
         payload = parse_json_object(completed.stdout, "GitHub repository lookup")
         name = payload.get("nameWithOwner")
@@ -217,7 +306,7 @@ class ReviewReady:
         return name
 
     def current_pr(self, repository: str, branch: str) -> PRMetadata:
-        completed = self.runner.run(
+        completed = self.execute(
             (
                 "gh",
                 "pr",
@@ -228,7 +317,11 @@ class ReviewReady:
                 "--json",
                 PR_FIELDS,
             ),
-            cwd=self.cwd,
+            "current PR lookup",
+            timeout=GITHUB_QUERY_TIMEOUT_SECONDS,
+            timeout_message=(
+                "current PR lookup timed out; external review was not started"
+            ),
         )
         if completed.returncode != 0:
             diagnostic = (completed.stderr or completed.stdout).lower()
@@ -242,35 +335,11 @@ class ReviewReady:
             require_success(completed, "current PR lookup")
         return parse_pr_metadata(completed.stdout, "current PR lookup")
 
-    def required_checks_exist(self, repository: str, pr_number: int) -> bool:
-        description = f"required checks lookup for PR #{pr_number}"
-        completed = self.runner.run(
-            (
-                "gh",
-                "pr",
-                "checks",
-                str(pr_number),
-                "--repo",
-                repository,
-                "--required",
-                "--json",
-                "name,state,bucket",
-            ),
-            cwd=self.cwd,
-        )
-        if completed.returncode not in (0, 1, 8):
-            require_success(completed, description)
-        if completed.stdout.strip():
-            checks = parse_json_list(completed.stdout, description)
-            return bool(checks)
-        diagnostic = useful_diagnostic(completed).casefold()
-        if "no required checks" in diagnostic:
-            return False
-        require_success(completed, description)
-        raise ReviewReadyError(f"{description} returned no check data")
-
-    def wait_for_checks(self, repository: str, pr_number: int) -> None:
-        required = self.required_checks_exist(repository, pr_number)
+    def check_statuses(
+        self, repository: str, pr_number: int, *, required: bool
+    ) -> tuple[CheckStatus, ...]:
+        scope = "required" if required else "all"
+        description = f"{scope} checks lookup for PR #{pr_number}"
         arguments = [
             "gh",
             "pr",
@@ -281,9 +350,134 @@ class ReviewReady:
         ]
         if required:
             arguments.append("--required")
-        arguments.extend(("--watch", "--fail-fast"))
+        arguments.extend(("--json", CHECK_FIELDS))
+        completed = self.execute(
+            arguments,
+            description,
+            timeout=GITHUB_QUERY_TIMEOUT_SECONDS,
+            timeout_message=(
+                "GitHub check status lookup timed out; external review was not started"
+            ),
+        )
+        if completed.returncode not in (0, 1, 8):
+            require_success(completed, description)
+        if completed.stdout.strip():
+            return parse_check_statuses(completed.stdout, description)
+        diagnostic = useful_diagnostic(completed).casefold()
+        if "no required checks" in diagnostic or "no checks reported" in diagnostic:
+            return ()
+        require_success(completed, description)
+        raise ReviewReadyError(f"{description} returned no check data")
+
+    @staticmethod
+    def format_elapsed(seconds: float) -> str:
+        total = max(0, int(seconds))
+        minutes, remaining = divmod(total, 60)
+        return f"{minutes}m {remaining}s" if minutes else f"{remaining}s"
+
+    @staticmethod
+    def check_signature(
+        checks: Sequence[CheckStatus],
+    ) -> tuple[tuple[str, str, str], ...]:
+        return tuple(
+            sorted((check.name, check.state, check.bucket) for check in checks)
+        )
+
+    def assert_pr_head_unchanged(
+        self, current: PRMetadata, original: PRMetadata
+    ) -> None:
+        if current.number != original.number:
+            raise ReviewReadyError("GitHub returned a different PR during revalidation")
+        if current.state.upper() != "OPEN":
+            raise ReviewReadyError(
+                f"PR #{original.number} is no longer open; review was not started"
+            )
+        if current.head_sha != original.head_sha:
+            raise ReviewReadyError(
+                "PR head changed while waiting for CI:\n"
+                f"  before: {original.head_sha}\n"
+                f"  after:  {current.head_sha}\n"
+                "Review was not started."
+            )
+
+    def wait_for_checks(self, repository: str, original: PRMetadata) -> None:
+        required = bool(
+            self.check_statuses(repository, original.number, required=True)
+        )
         scope = "required" if required else "all"
-        self.command(arguments, f"{scope} checks for PR #{pr_number}")
+        self.emit(f"Waiting for {scope} CI checks...")
+        started = self.clock()
+        last_signature: tuple[tuple[str, str, str], ...] | None = None
+        last_progress_at: float | None = None
+        empty_reported = False
+
+        while True:
+            now = self.clock()
+            elapsed = now - started
+            if elapsed >= self.check_wait_timeout:
+                raise ReviewReadyError(
+                    f"Timed out waiting for CI checks for PR #{original.number} after "
+                    f"{self.format_elapsed(elapsed)}.\n"
+                    "External review was not started."
+                )
+
+            checks = self.check_statuses(
+                repository, original.number, required=required
+            )
+            current_pr = self.refresh_pr(repository, original.number)
+            self.assert_pr_head_unchanged(current_pr, original)
+            now = self.clock()
+            elapsed = now - started
+
+            if not checks:
+                if elapsed >= self.check_startup_grace:
+                    raise ReviewReadyError(
+                        f"No CI checks appeared for PR #{original.number} within "
+                        f"{self.format_elapsed(elapsed)}.\n"
+                        "External review was not started."
+                    )
+                if (
+                    not empty_reported
+                    or last_progress_at is None
+                    or now - last_progress_at >= self.check_progress_interval
+                ):
+                    self.emit("Waiting for CI check to appear...")
+                    empty_reported = True
+                    last_progress_at = now
+            else:
+                failures = [
+                    check for check in checks if check.bucket in ("fail", "cancel")
+                ]
+                if failures:
+                    detail = "\n".join(
+                        f"  {check.name}: {check.state} ({check.bucket})"
+                        for check in failures
+                    )
+                    raise ReviewReadyError(
+                        f"CI did not pass for PR #{original.number}:\n{detail}\n"
+                        "External review was not started."
+                    )
+                pending = [check for check in checks if check.bucket == "pending"]
+                if not pending:
+                    self.emit(f"CI passed for exact head {original.head_sha}.")
+                    return
+
+                signature = self.check_signature(checks)
+                if (
+                    signature != last_signature
+                    or last_progress_at is None
+                    or now - last_progress_at >= self.check_progress_interval
+                ):
+                    detail = "\n".join(
+                        f"  {check.name}: {check.state}" for check in pending
+                    )
+                    elapsed_text = self.format_elapsed(elapsed)
+                    self.emit(f"CI pending:\n{detail}\nElapsed: {elapsed_text}")
+                    last_signature = signature
+                    last_progress_at = now
+
+            remaining = self.check_wait_timeout - elapsed
+            self.sleeper(min(self.check_poll_interval, max(0.0, remaining)))
 
     def refresh_pr(self, repository: str, pr_number: int) -> PRMetadata:
         completed = self.command(
@@ -298,6 +492,10 @@ class ReviewReady:
                 PR_FIELDS,
             ),
             f"GitHub PR #{pr_number} revalidation",
+            timeout=GITHUB_QUERY_TIMEOUT_SECONDS,
+            timeout_message=(
+                "GitHub PR revalidation timed out; external review was not started"
+            ),
         )
         return parse_pr_metadata(
             completed.stdout, f"GitHub PR #{pr_number} revalidation"
@@ -331,23 +529,11 @@ class ReviewReady:
             ("python3", "tools/external_review.py", "doctor"),
             "external-review doctor",
         )
-        self.wait_for_checks(repository, before_pr.number)
+        self.wait_for_checks(repository, before_pr)
 
         after_pr = self.refresh_pr(repository, before_pr.number)
         after_local = self.local_head()
-        if after_pr.number != before_pr.number:
-            raise ReviewReadyError("GitHub returned a different PR during revalidation")
-        if after_pr.state.upper() != "OPEN":
-            raise ReviewReadyError(
-                f"PR #{before_pr.number} is no longer open; review was not started"
-            )
-        if after_pr.head_sha != before_pr.head_sha:
-            raise ReviewReadyError(
-                "PR head changed while waiting for CI:\n"
-                f"  before: {before_pr.head_sha}\n"
-                f"  after:  {after_pr.head_sha}\n"
-                "Review was not started."
-            )
+        self.assert_pr_head_unchanged(after_pr, before_pr)
         if after_local != before_pr.head_sha:
             raise ReviewReadyError(
                 "Local HEAD changed while waiting for CI:\n"
