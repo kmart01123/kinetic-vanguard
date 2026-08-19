@@ -36,9 +36,7 @@
 			"extensions": [
 				"openai.chatgpt",
 				"redhat.vscode-yaml",
-				"DavidAnson.vscode-markdownlint",
 				"ms-vscode.live-server",
-				"eamodio.gitlens",
 				"ms-playwright.playwright"
 			],
 			"settings": {
