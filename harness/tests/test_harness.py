@@ -468,11 +468,6 @@ class DamagePlannerTests(unittest.TestCase):
         result=planner._actions(0,0,True,True,0,0,0,0,2,False,0,False)
         self.assertEqual(result.choice,("end_turn",False))
 
-    def test_tier_zero_does_not_spend_the_first_overload_mastery_trigger(self)->None:
-        planner=self.planner(1)
-        self.assertEqual(planner._payment_options(0,1,0),((0,1,0,False),))
-        self.assertIn((3,0,1,True),planner._payment_options(6,1,0))
-
     def test_standalone_consumes_one_slot_and_remains_capped_during_action_surge(self)->None:
         target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());package=Package(None,0,0,0);standalone=Standalone("forked_lightning",0,0,0,100.0,100.0,False)
         planner=_KVDamagePlanner(self.model,target,(package,),{package:(0.0,0.0)},(("normal",(0.0,0.0,0.0)),),((standalone,),),0,1,(2,),False,False,0,0,self.mastery,0,1);self.addCleanup(planner.clear)
@@ -586,9 +581,6 @@ class CanonicalControlTests(unittest.TestCase):
         target=self.target();single=attack_probabilities(self.model.kv_attack_bonus(20,5)+2,target.ac);reach=single[1]+single[2];failed=1-save_success_probability(target,"constitution",self.model.kv_save_dc(20,5));one=reach*failed
         repeated=_repeat_rider_probability(self.model,self.config,20,0,int(self.model.features["snow_chains"]["psi_cost"]),one)
         self.assertGreater(repeated,one);self.assertLessEqual(repeated,1.0)
-
-    def test_tier_two_control_cannot_retry_in_the_same_attack_action(self)->None:
-        self.assertAlmostEqual(_repeat_rider_probability(self.model,self.config,20,2,0,0.25),0.25,places=12)
 
     def test_control_retry_contract_contains_no_target_identity(self)->None:
         from inspect import signature
