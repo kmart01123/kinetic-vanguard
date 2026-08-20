@@ -14,7 +14,8 @@ from unittest.mock import patch
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
 from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_repeat_rider_probability,run as run_control
-from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_comparator_dpr,_kv_dpr,_rider_values,run as run_damage
+from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_comparator_dpr,_comparator_score,_kv_dpr,_rider_values,run as run_damage
+from harness.ek_damage_planner import EKDamagePlanner,EKScore,EKState,chromatic_orb_duplicate_probability
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,load_comparators,load_config,load_targets,save_success_probability
 
 
@@ -148,14 +149,14 @@ class FrozenInputValidationTests(unittest.TestCase):
 
     def test_comparator_config_rejects_unknown_missing_and_incomplete_parameters(self)->None:
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"].__setitem__("unused_bonus",1),"damage.battle_master keys")
-        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"].pop("true_strike_uses_per_attack_action"),"damage.eldritch_knight keys")
+        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"].pop("spell_slots_by_level"),"damage.eldritch_knight keys")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["magic_weapon_bonus_by_level"].pop("20"),"magic_weapon_bonus_by_level keys")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"].__setitem__("great_weapon_master_attack_action_bonus","fixed"),"GWM bonus")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["tactical_policy"].__setitem__("maximum_maneuver_dice_per_attack",2),"Battle Master tactical policy")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["tactical_policy"].__setitem__("maneuver_choice_timing","before_attack_roll"),"Battle Master tactical policy")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["known_maneuvers_by_level"]["7"].__setitem__(0,"riposte"),"audited fixed loadout")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["control"]["battle_master"]["known_maneuvers_by_level"]["11"].append("trip_attack"),"duplicate-free")
-        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"]["tactical_policy"].__setitem__("true_strike_choice_timing","after_attack_roll"),"Eldritch Knight tactical policy")
+        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"]["tactical_policy"].__setitem__("spell_choice_timing","after_resolution"),"Eldritch Knight tactical policy")
 
 class FighterNumericalTests(unittest.TestCase):
     @classmethod
@@ -164,10 +165,10 @@ class FighterNumericalTests(unittest.TestCase):
 
     def test_exact_fighter_dpr_sentinels_cover_every_supported_level(self)->None:
         expected={
-            7:("Air Elemental",13.900000000000006,25.019884651397450),
-            11:("Deva",40.916666666666686,81.801982129598270),
-            15:("Adult Black Dragon",49.960671191473686,91.212464318445840),
-            20:("Balor",108.956136040152290,168.983538568658330),
+            7:("Air Elemental",18.816666666666663,25.019884651397450),
+            11:("Deva",43.2,81.801982129598270),
+            15:("Adult Black Dragon",49.960671191473644,91.212464318445840),
+            20:("Balor",135.50405069063788,168.983538568658330),
         }
         for level,(name,eldritch_knight,battle_master) in expected.items():
             with self.subTest(level=level,target=name):
@@ -177,27 +178,34 @@ class FighterNumericalTests(unittest.TestCase):
 
     def test_declared_comparator_switches_are_numerically_live(self)->None:
         target=next(item for item in self.targets if item.level==20 and item.name=="Balor")
-        baseline={build:_comparator_dpr(self.model,self.config,self.comparators,target,build) for build in ("battle_master","eldritch_knight")}
+        baseline=_comparator_dpr(self.model,self.config,self.comparators,target,"battle_master")
         mutations=[
-            ("battle_master",lambda row:row.__setitem__("hew_critical_bonus_attack_once_per_round",False)),
-            ("battle_master",lambda row:row.__setitem__("great_weapon_master_attack_action_bonus","disabled")),
-            ("battle_master",lambda row:row["weapon"].__setitem__("great_weapon_fighting",False)),
-            ("eldritch_knight",lambda row:row.__setitem__("true_strike_uses_per_attack_action",0)),
-            ("eldritch_knight",lambda row:row["weapon"].__setitem__("great_weapon_fighting",True)),
+            lambda row:row.__setitem__("hew_critical_bonus_attack_once_per_round",False),
+            lambda row:row.__setitem__("great_weapon_master_attack_action_bonus","disabled"),
+            lambda row:row["weapon"].__setitem__("great_weapon_fighting",False),
         ]
-        for build,mutate in mutations:
-            with self.subTest(build=build,mutation=mutate):
-                changed=deepcopy(self.comparators);mutate(changed["damage"][build])
-                self.assertNotAlmostEqual(_comparator_dpr(self.model,self.config,changed,target,build),baseline[build],places=9)
+        for mutate in mutations:
+            with self.subTest(mutation=mutate):
+                changed=deepcopy(self.comparators);mutate(changed["damage"]["battle_master"])
+                self.assertNotAlmostEqual(_comparator_dpr(self.model,self.config,changed,target,"battle_master"),baseline,places=9)
+        row=deepcopy(self.comparators["damage"]["eldritch_knight"]);progression=deepcopy(self.config["fighter_progression"]["7"]);progression["action_slots_by_round"]=[1]
+        planner=EKDamagePlanner(row,replace(target,level=7,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset()),progression,self.model.progression("proficiency_bonus",7),1,1);state=EKState(0,1,False,False,(0,0,0,0),True);original=planner._weapon_damage(state,False,False);row["dueling_damage_bonus"]+=1
+        changed=EKDamagePlanner(row,planner.target,progression,self.model.progression("proficiency_bonus",7),1,1)
+        self.assertNotEqual(changed._weapon_damage(state,False,False),original)
 
     def test_true_strike_choice_uses_current_studied_state_before_the_roll(self)->None:
         base=next(item for item in self.targets if item.level==15 and item.name=="Adult Black Dragon")
-        target=replace(base,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset())
-        config=deepcopy(self.config);progression=config["fighter_progression"]["15"];progression["attacks_per_action"]=2;progression["action_slots_by_round"]=[1,1,1]
-        probabilities=lambda advantage:{20:1.0} if advantage else {1:1.0}
-        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):
-            result=_comparator_dpr(self.model,config,self.comparators,target,"eldritch_knight")
-        self.assertEqual(result,32.0)
+        target=replace(base,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());progression=deepcopy(self.config["fighter_progression"]["15"]);progression["action_slots_by_round"]=[1]
+        planner=EKDamagePlanner(self.comparators["damage"]["eldritch_knight"],target,progression,self.model.progression("proficiency_bonus",15),1,1);studied=EKState(0,0,True,False,(0,0,0,0),False);unstudied=replace(studied,studied=False)
+        probabilities=lambda _bonus,_ac,advantage=False:(0.0,0.0,1.0) if advantage else (1.0,0.0,0.0)
+        def forced(current:EKState,true_strike_first:bool)->EKScore:
+            if true_strike_first:return planner._cast_value(current,"true_strike",0,lambda state:planner._weapon_attack(state,False,lambda _:EKScore()))
+            return planner._weapon_attack(current,False,lambda state:planner._cast_value(state,"true_strike",0,lambda _:EKScore()))
+        with patch("harness.ek_damage_planner.attack_probabilities",side_effect=probabilities):
+            studied_first=forced(studied,True);studied_second=forced(studied,False);studied_optimum=planner._sequence(studied,1,"true_strike",0,True)
+            unstudied_first=forced(unstudied,True);unstudied_second=forced(unstudied,False);unstudied_optimum=planner._sequence(unstudied,1,"true_strike",0,True)
+        self.assertGreater(studied_first.primary,studied_second.primary);self.assertEqual(studied_optimum,studied_first)
+        self.assertGreater(unstudied_second.primary,unstudied_first.primary);self.assertEqual(unstudied_optimum,unstudied_second)
 
     def test_precision_attack_keeps_both_fifty_percent_outcomes_in_the_optimum(self)->None:
         base=next(item for item in self.targets if item.level==7 and item.name=="Air Elemental")
@@ -212,6 +220,34 @@ class FighterNumericalTests(unittest.TestCase):
         self.assertEqual({level:len(maneuvers) for level,maneuvers in loadouts.items()},{"7":5,"11":7,"15":9,"20":9})
         self.assertEqual(loadouts["7"],["feinting_attack","precision_attack","pushing_attack","sweeping_attack","trip_attack"])
         self.assertEqual(loadouts["11"][-2:],["lunging_attack","riposte"]);self.assertEqual(loadouts["15"][-2:],["goading_attack","menacing_attack"]);self.assertEqual(loadouts["20"],loadouts["15"])
+
+    def test_eldritch_knight_fixed_damage_cantrips_and_prepared_spells(self)->None:
+        row=self.comparators["damage"]["eldritch_knight"]
+        self.assertEqual(row["cantrips_by_level"],{
+            "7":["true_strike","acid_splash"],
+            "11":["true_strike","acid_splash","poison_spray"],
+            "15":["true_strike","acid_splash","poison_spray"],
+            "20":["true_strike","acid_splash","poison_spray"],
+        })
+        self.assertEqual(row["prepared_spells_by_level"],{
+            "7":["chromatic_orb","dragons_breath","magic_missile","shatter","witch_bolt"],
+            "11":["chromatic_orb","dragons_breath","magic_missile","shatter","witch_bolt","scorching_ray","melfs_acid_arrow","enlarge_reduce"],
+            "15":["chromatic_orb","dragons_breath","magic_missile","shatter","witch_bolt","scorching_ray","enlarge_reduce","fireball","lightning_bolt","bestow_curse"],
+            "20":["chromatic_orb","magic_missile","witch_bolt","scorching_ray","shatter","enlarge_reduce","melfs_acid_arrow","fireball","bestow_curse","conjure_minor_elementals","greater_invisibility","phantasmal_killer","vitriolic_sphere"],
+        })
+        self.assertEqual({level:len(spells) for level,spells in row["prepared_spells_by_level"].items()},{"7":5,"11":8,"15":10,"20":13})
+
+    def test_eldritch_knight_exact_slot_pools_and_dragons_breath_types(self)->None:
+        row=self.comparators["damage"]["eldritch_knight"]
+        self.assertEqual(row["spell_slots_by_level"],{
+            "7":{"1":4,"2":2,"3":0,"4":0},
+            "11":{"1":4,"2":3,"3":0,"4":0},
+            "15":{"1":4,"2":3,"3":2,"4":0},
+            "20":{"1":4,"2":3,"3":3,"4":1},
+        })
+        spell=next(item for item in row["spells"] if item["id"]=="dragons_breath")
+        self.assertEqual(spell["damage_types"],["acid","cold","fire","lightning","poison"])
+        self.assertEqual(spell["damage_type_choice"],"once_at_cast_time")
 
     def test_feint_expected_value_spends_its_resource_before_a_possible_miss(self)->None:
         target=replace(next(item for item in self.targets if item.level==7),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset())
@@ -275,7 +311,6 @@ class FighterNumericalTests(unittest.TestCase):
         comparators=deepcopy(self.comparators);battle_master=comparators["damage"]["battle_master"];battle_master["superiority_pool_by_level"]["20"]=0;battle_master["relentless_minimum_level"]=21;battle_master["hew_critical_bonus_attack_once_per_round"]=False
         probabilities=lambda advantage:{20:1.0} if advantage else {1:1.0}
         with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):
-            self.assertEqual(_comparator_dpr(self.model,config,comparators,target,"eldritch_knight"),40.0)
             self.assertEqual(_comparator_dpr(self.model,config,comparators,target,"battle_master"),38.0)
 
     def test_gwm_applies_to_each_attack_action_hit_but_not_the_single_hew_attack(self)->None:
@@ -325,6 +360,234 @@ class FighterNumericalTests(unittest.TestCase):
         self.assertAlmostEqual(reviewed-without_post_failure_choice,0.05542795657382271,places=12)
 
 
+class EldritchKnightPlannerTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls)->None:
+        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.base=load_targets()[0]
+
+    def target(self,level:int=7,**changes:object)->Target:
+        values={"level":level,"name":"EK hand sentinel","ac":18,"saves":{"strength":0,"dexterity":0,"constitution":0,"intelligence":0,"wisdom":0,"charisma":0},"magic_resistance":False,"damage_resistances":frozenset(),"damage_immunities":frozenset(),"damage_vulnerabilities":frozenset(),"blindsight_range":0,"truesight_range":0};values.update(changes)
+        return replace(self.base,**values)
+
+    def planner(self,level:int=7,cluster:int=1,*,attacks:int|None=None,actions:tuple[int,...]=(1,),target:Target|None=None)->EKDamagePlanner:
+        progression=deepcopy(self.config["fighter_progression"][str(level)]);progression["action_slots_by_round"]=list(actions)
+        if attacks is not None:progression["attacks_per_action"]=attacks
+        return EKDamagePlanner(self.comparators["damage"]["eldritch_knight"],target or self.target(level),progression,self.model.progression("proficiency_bonus",level),cluster,len(actions))
+
+    def state(self,planner:EKDamagePlanner,*,actions:int=1,slots:tuple[int,int,int,int]=(0,0,0,0),bonus:bool=True,concentration:str="",concentration_type:str="")->EKState:
+        return EKState(0,actions,False,False,slots,bonus,concentration,concentration_type)
+
+    def test_war_magic_replaces_one_attack_and_is_not_free(self)->None:
+        planner=self.planner(attacks=2);state=self.state(planner);spell=planner.spells["acid_splash"]
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)),patch("harness.ek_damage_planner.modified_save_success_probability",return_value=0.0):
+            ordinary=planner._attack_action(state);war_magic=planner._attack_action(state,"acid_splash",0,1)
+        weapon=planner._weapon_damage(state,False,False);acid=planner._packet(spell["damage_dice_by_level"]["7"],"acid")
+        self.assertEqual(ordinary.primary,2*weapon);self.assertEqual(war_magic.primary,weapon+acid)
+
+    def test_improved_war_magic_replaces_exactly_two_attacks(self)->None:
+        planner=self.planner(20,attacks=4,target=self.target(20));state=self.state(planner,slots=(1,0,0,0));spell=planner.spells["magic_missile"]
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)):
+            result=planner._attack_action(state,"magic_missile",1,2)
+        weapon=planner._weapon_damage(state,False,False);missiles=3*planner._packet(spell["dart_damage"],"force")
+        self.assertEqual(result.primary,2*weapon+missiles)
+
+    def test_ordinary_action_spell_consumes_one_action_and_action_surge_adds_only_an_action(self)->None:
+        immune=frozenset({"acid","cold","fire","lightning","poison","radiant","slashing","thunder"});target=self.target(damage_immunities=immune,saves={ability:20 for ability in ("strength","dexterity","constitution","intelligence","wisdom","charisma")})
+        planner=self.planner(actions=(2,),target=target);state=self.state(planner,actions=2,slots=(2,0,0,0))
+        consumed=planner._consume_action_states(state,magic=False)
+        self.assertEqual({next_state.ordinary_action_available for next_state in consumed},{False,True})
+        self.assertEqual(planner._consume_action_states(state,magic=True),(replace(state,actions_left=1,ordinary_action_available=False),))
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(1.0,0.0,0.0)),patch("harness.ek_damage_planner.modified_save_success_probability",return_value=1.0):
+            self.assertEqual(planner._turn(state),EKScore(10.5,10.5))
+            self.assertEqual(planner._turn(replace(state,actions_left=1,ordinary_action_available=False)),EKScore())
+        weapon_planner=self.planner(actions=(2,));surge_only=replace(self.state(weapon_planner,actions=1),ordinary_action_available=False)
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)),patch("harness.ek_damage_planner.modified_save_success_probability",return_value=1.0):self.assertGreater(weapon_planner._turn(surge_only).primary,0.0)
+
+    def test_bonus_action_ledger_allows_only_one_witch_packet(self)->None:
+        planner=self.planner(actions=(1,));state=self.state(planner,actions=0,slots=(0,1,0,0),concentration="witch_bolt")
+        self.assertEqual(planner._turn(state),EKScore(6.5,6.5))
+
+    def test_concentration_replacement_is_exclusive(self)->None:
+        planner=self.planner(15,target=self.target(15));states=[];initial=self.state(planner,slots=(0,1,1,0))
+        planner._cast_value(initial,"enlarge_reduce",2,lambda state:(states.append(state),EKScore())[1]);enlarged=next(state for state in states if state.concentration=="enlarge_reduce");states.clear()
+        with patch("harness.ek_damage_planner.modified_save_success_probability",return_value=0.0):planner._cast_value(enlarged,"bestow_curse",3,lambda state:(states.append(state),EKScore())[1])
+        self.assertNotIn("enlarge_reduce",{state.concentration for state in states});self.assertIn("bestow_curse",{state.concentration for state in states})
+
+    def test_spell_attack_hit_and_critical_double_only_attack_dice(self)->None:
+        planner=self.planner(11,target=self.target(11));state=self.state(planner);spell=planner.spells["poison_spray"]
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)):hit=planner._cast_value(state,"poison_spray",0,lambda _:EKScore())
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,0.0,1.0)):critical=planner._cast_value(state,"poison_spray",0,lambda _:EKScore())
+        self.assertAlmostEqual(hit.primary,19.5);self.assertAlmostEqual(critical.primary,39.0);self.assertTrue(spell["critical_dice"])
+
+    def test_combat_prowess_converts_an_observed_spell_attack_miss_and_is_consumed(self)->None:
+        planner=self.planner(20,target=self.target(20));state=replace(self.state(planner),prowess=True);seen=[]
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(1.0,0.0,0.0)):
+            score=planner._cast_value(state,"poison_spray",0,lambda next_state:(seen.append(next_state),EKScore())[1])
+        self.assertAlmostEqual(score.primary,26.0);self.assertIn(False,{next_state.prowess for next_state in seen})
+
+    def test_combat_prowess_can_be_retained_for_the_more_valuable_true_strike(self)->None:
+        planner=self.planner(20,target=self.target(20));state=replace(self.state(planner,actions=0),prowess=True)
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(1.0,0.0,0.0)):
+            optimized=planner._weapon_attack(state,False,lambda next_state:planner._weapon_attack(next_state,True,lambda _:EKScore()))
+        true_strike=planner._weapon_damage(state,True,False);ordinary=planner._weapon_damage(state,False,False)
+        self.assertEqual(optimized.primary,true_strike);self.assertGreater(true_strike,ordinary)
+
+    def test_true_strike_chooses_only_the_base_weapon_packet_damage_type(self)->None:
+        neutral=self.planner(target=self.target());slashing_immune=self.planner(target=self.target(damage_immunities=frozenset({"slashing"})));slashing_resistant=self.planner(target=self.target(damage_resistances=frozenset({"slashing"})));radiant_immune=self.planner(target=self.target(damage_immunities=frozenset({"radiant"})))
+        neutral_damage=neutral._weapon_damage(self.state(neutral),True,False)
+        self.assertEqual(neutral_damage,14.0)
+        self.assertEqual(slashing_immune._weapon_damage(self.state(slashing_immune),True,False),14.0)
+        self.assertEqual(slashing_resistant._weapon_damage(self.state(slashing_resistant),True,False),14.0)
+        self.assertEqual(radiant_immune._weapon_damage(self.state(radiant_immune),True,False),10.5)
+
+    def test_eldritch_strike_is_level_gated_and_repeat_saves_are_not_primed(self)->None:
+        level_seven=self.planner(7);level_eleven=self.planner(11,target=self.target(11));seen_seven=[];seen_eleven=[]
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)):
+            level_seven._weapon_attack(self.state(level_seven),False,lambda state:(seen_seven.append(state),EKScore())[1])
+            level_eleven._weapon_attack(self.state(level_eleven),False,lambda state:(seen_eleven.append(state),EKScore())[1])
+        self.assertFalse(level_seven.eldritch_strike_enabled);self.assertFalse(seen_seven[0].eldritch_strike)
+        self.assertTrue(level_eleven.eldritch_strike_enabled);self.assertTrue(seen_eleven[0].eldritch_strike)
+        gate_calls=[]
+        def gate_probability(_target:Target,_ability:str,_dc:int,*,disadvantage:bool=False)->float:
+            gate_calls.append(disadvantage);return 1.0
+        with patch("harness.ek_damage_planner.modified_save_success_probability",side_effect=gate_probability):
+            level_seven._save_success(level_seven.spells["acid_splash"],primer=level_seven._has_primer(seen_seven[0]))
+            level_eleven._save_success(level_eleven.spells["acid_splash"],primer=level_eleven._has_primer(seen_eleven[0]))
+        self.assertEqual(gate_calls,[False,True])
+        primer_calls=[]
+        def save_probability(_target:Target,_ability:str,_dc:int,*,disadvantage:bool=False)->float:
+            primer_calls.append(disadvantage);return 1.0
+        phantasmal=replace(self.state(self.planner(20,target=self.target(20)),actions=0),concentration="phantasmal_killer",eldritch_strike=True)
+        repeat_planner=self.planner(20,target=self.target(20))
+        with patch("harness.ek_damage_planner.modified_save_success_probability",side_effect=save_probability):repeat_planner._finish_turn(phantasmal)
+        self.assertEqual(primer_calls,[False])
+
+    def test_half_damage_uses_integer_halving_before_resistance(self)->None:
+        planner=self.planner(target=self.target(damage_resistances=frozenset({"fire"})));packet={"count":1,"sides":4}
+        self.assertEqual(planner._packet(packet,"fire",half=True),0.25)
+
+    def test_magic_missile_is_automatic_and_upcasts_by_one_dart(self)->None:
+        planner=self.planner();state=self.state(planner,slots=(1,1,0,0));seen=[]
+        level_one=planner._cast_value(state,"magic_missile",1,lambda next_state:(seen.append(next_state),EKScore())[1]);level_two=planner._cast_value(state,"magic_missile",2,lambda _:EKScore())
+        self.assertEqual(level_one.primary,10.5);self.assertEqual(level_two.primary,14.0);self.assertEqual(seen[0].slots,(0,1,0,0))
+
+    def test_area_primary_and_aggregate_fireball_cluster_damage(self)->None:
+        planner=self.planner(15,3,target=self.target(15));state=self.state(planner,slots=(0,0,1,0))
+        with patch("harness.ek_damage_planner.modified_save_success_probability",return_value=0.0):score=planner._cast_value(state,"fireball",3,lambda _:EKScore())
+        self.assertEqual(score,EKScore(28.0,84.0))
+        with patch("harness.ek_damage_planner.modified_save_success_probability",return_value=1.0):half=planner._cast_value(state,"fireball",3,lambda _:EKScore())
+        self.assertAlmostEqual(half.primary,13.75);self.assertAlmostEqual(half.aggregate,41.25)
+
+    def test_chromatic_orb_uses_exact_duplicate_enumeration_and_fresh_leap_attack(self)->None:
+        self.assertEqual(chromatic_orb_duplicate_probability(3),0.34375)
+        planner=self.planner(cluster=3);state=self.state(planner,slots=(1,0,0,0))
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)):score=planner._cast_value(state,"chromatic_orb",1,lambda _:EKScore())
+        self.assertEqual(score.primary,13.5);self.assertAlmostEqual(score.aggregate,13.5*(1+0.34375),places=12)
+
+    def test_witch_bolt_initial_miss_persists_for_later_bonus_action_packet(self)->None:
+        planner=self.planner();state=self.state(planner,slots=(1,0,0,0));seen=[]
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(1.0,0.0,0.0)):score=planner._cast_value(state,"witch_bolt",1,lambda next_state:(seen.append(next_state),EKScore())[1])
+        self.assertEqual(score,EKScore());self.assertEqual(seen[0].concentration,"witch_bolt_pending")
+        self.assertEqual(planner._witch_repeat(replace(seen[0],actions_left=0,concentration="witch_bolt",bonus_available=True)),EKScore(6.5,6.5))
+
+    def test_dragons_breath_self_cast_uses_stored_type_and_later_magic_action(self)->None:
+        immune=frozenset({"acid","fire","lightning","poison","radiant","slashing","thunder"});target=self.target(damage_immunities=immune);planner=self.planner(cluster=3,actions=(2,),target=target);state=self.state(planner,actions=2,slots=(0,2,0,0),concentration="enlarge_reduce")
+        active=planner._cast_dragons_breath(state,2)
+        self.assertEqual(active.slots,(0,1,0,0));self.assertFalse(active.bonus_available);self.assertEqual((active.concentration,active.concentration_type),("dragons_breath:2","cold"))
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(1.0,0.0,0.0)),patch("harness.ek_damage_planner.modified_save_success_probability",return_value=0.0):activation=planner._dragons_breath(active);score=planner._turn(active)
+        self.assertAlmostEqual(activation.primary,10.5);self.assertAlmostEqual(activation.aggregate,31.5)
+        self.assertAlmostEqual(score.primary,14.0);self.assertAlmostEqual(score.aggregate,31.5)
+
+    def test_enlarge_and_bestow_curse_add_exact_weapon_hit_packets(self)->None:
+        planner=self.planner(15,target=self.target(15));normal=self.state(planner);enlarge=replace(normal,concentration="enlarge_reduce");curse=replace(normal,concentration="bestow_curse")
+        base=planner._weapon_damage(normal,False,False)
+        critical_base=planner._weapon_damage(normal,False,True)
+        self.assertEqual(planner._weapon_damage(enlarge,False,False)-base,2.5);self.assertEqual(planner._weapon_damage(curse,False,False)-base,4.5)
+        self.assertEqual(planner._weapon_damage(curse,False,True)-critical_base,9.0)
+
+    def test_bestow_curse_uses_one_magic_missile_event_but_each_scorching_ray_hit(self)->None:
+        planner=self.planner(20,target=self.target(20));curse=replace(self.state(planner,slots=(1,1,0,0)),concentration="bestow_curse")
+        missiles=planner._cast_value(curse,"magic_missile",1,lambda _:EKScore())
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)):
+            rays=planner._cast_value(curse,"scorching_ray",2,lambda _:EKScore())
+        self.assertEqual(missiles.primary,15.0);self.assertEqual(rays.primary,34.5)
+
+    def test_melf_delayed_event_is_exact_and_uses_concentration_at_that_event(self)->None:
+        planner=self.planner(20,target=self.target(20));state=self.state(planner,slots=(0,1,0,0));seen=[]
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)):
+            initial=planner._cast_value(state,"melfs_acid_arrow",2,lambda next_state:(seen.append(next_state),EKScore())[1])
+        self.assertEqual(initial.primary,10.0);self.assertEqual(len(seen[0].delayed_packets),1)
+        self.assertEqual(planner._finish_turn(replace(seen[0],actions_left=0)).primary,5.0)
+        self.assertEqual(planner._finish_turn(replace(seen[0],actions_left=0,concentration="bestow_curse")).primary,9.5)
+        missed=[]
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(1.0,0.0,0.0)):
+            miss=planner._cast_value(state,"melfs_acid_arrow",2,lambda next_state:(missed.append(next_state),EKScore())[1])
+        self.assertEqual(miss.primary,4.75);self.assertIn((),{next_state.delayed_packets for next_state in missed})
+
+    def test_vitriolic_sphere_failure_schedules_exact_delayed_event(self)->None:
+        planner=self.planner(20,target=self.target(20));state=replace(self.state(planner,slots=(0,0,0,1)),concentration="bestow_curse");seen=[]
+        with patch("harness.ek_damage_planner.modified_save_success_probability",return_value=0.0):
+            initial=planner._cast_value(state,"vitriolic_sphere",4,lambda next_state:(seen.append(next_state),EKScore())[1])
+        self.assertEqual(initial.primary,29.5);self.assertEqual(len(seen[0].delayed_packets),1)
+        self.assertEqual(planner._finish_turn(replace(seen[0],actions_left=0)).primary,17.0)
+
+    def test_conjure_minor_elementals_augments_only_maintained_weapon_hits(self)->None:
+        planner=self.planner(20,target=self.target(20));normal=self.state(planner);active=replace(normal,concentration="conjure_minor_elementals",concentration_type="cold")
+        self.assertEqual(planner._weapon_damage(active,False,False)-planner._weapon_damage(normal,False,False),9.0)
+        self.assertEqual(planner._weapon_damage(active,True,True)-planner._weapon_damage(normal,True,True),18.0)
+
+    def test_greater_invisibility_cast_drives_melee_and_ranged_attack_advantage(self)->None:
+        def active(planner:EKDamagePlanner)->EKState:
+            seen=[];initial=self.state(planner,slots=(0,0,0,1))
+            planner._cast_value(initial,"greater_invisibility",4,lambda state:(seen.append(state),EKScore())[1])
+            self.assertEqual(seen[0].slots,(0,0,0,0));self.assertEqual(seen[0].concentration,"greater_invisibility")
+            return replace(seen[0],slots=(1,1,0,0))
+        probabilities=lambda _bonus,_ac,advantage=False:(0.0,1.0,0.0) if advantage else (1.0,0.0,0.0)
+        ordinary=self.planner(20,target=self.target(20));blind=self.planner(20,target=self.target(20,blindsight_range=1));true=self.planner(20,target=self.target(20,truesight_range=1))
+        ordinary_state=active(ordinary);blind_state=active(blind);true_state=active(true)
+        self.assertTrue(ordinary._melee_invisibility_advantage(ordinary_state));self.assertTrue(blind._melee_invisibility_advantage(blind_state));self.assertTrue(true._melee_invisibility_advantage(true_state))
+        for spell_id,slot in (("poison_spray",0),("chromatic_orb",1),("witch_bolt",1),("scorching_ray",2),("melfs_acid_arrow",2)):
+            with self.subTest(spell=spell_id),patch("harness.ek_damage_planner.attack_probabilities",side_effect=probabilities):
+                unobscured=ordinary._cast_value(ordinary_state,spell_id,slot,lambda _:EKScore())
+                blindsighted=blind._cast_value(blind_state,spell_id,slot,lambda _:EKScore())
+                truesighted=true._cast_value(true_state,spell_id,slot,lambda _:EKScore())
+            self.assertGreater(unobscured.primary,blindsighted.primary);self.assertEqual(blindsighted,truesighted)
+        self.assertEqual(ordinary._cast_value(ordinary_state,"magic_missile",1,lambda _:EKScore()),EKScore(10.5,10.5))
+        with patch("harness.ek_damage_planner.modified_save_success_probability",return_value=0.0):
+            self.assertEqual(ordinary._cast_value(ordinary_state,"acid_splash",0,lambda _:EKScore()),ordinary._cast_value(replace(ordinary_state,concentration=""),"acid_splash",0,lambda _:EKScore()))
+
+    def test_conjure_minor_elementals_does_not_augment_ranged_spell_attacks(self)->None:
+        planner=self.planner(20,target=self.target(20));normal=self.state(planner);active=replace(normal,concentration="conjure_minor_elementals",concentration_type="cold")
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)):
+            normal_score=planner._cast_value(normal,"poison_spray",0,lambda _:EKScore());active_score=planner._cast_value(active,"poison_spray",0,lambda _:EKScore())
+        self.assertEqual(active_score,normal_score)
+
+    def test_phantasmal_killer_initial_and_repeat_failed_saves_are_distinct_packets(self)->None:
+        planner=self.planner(20,target=self.target(20));state=self.state(planner,slots=(0,0,0,1))
+        with patch("harness.ek_damage_planner.modified_save_success_probability",return_value=0.0):initial=planner._cast_value(state,"phantasmal_killer",4,lambda _:EKScore());repeat=planner._finish_turn(replace(state,actions_left=0,concentration="phantasmal_killer"))
+        self.assertAlmostEqual(initial.primary,22.0);self.assertAlmostEqual(repeat.primary,22.0)
+
+    def test_damage_defenses_and_empty_slot_pool_fail_closed(self)->None:
+        resistant=self.planner(target=self.target(damage_resistances=frozenset({"force"})));immune=self.planner(target=self.target(damage_immunities=frozenset({"force"})));vulnerable=self.planner(target=self.target(damage_vulnerabilities=frozenset({"force"})));packet={"count":1,"sides":4,"flat":1}
+        self.assertEqual(resistant._packet(packet,"force"),1.5);self.assertEqual(immune._packet(packet,"force"),0.0);self.assertEqual(vulnerable._packet(packet,"force"),7.0)
+        self.assertEqual(resistant._slot_options(self.state(resistant),resistant.spells["magic_missile"]),())
+
+    def test_diagnostic_and_exclude_spells_cannot_enter_the_nominal_planner(self)->None:
+        for disposition in ("diagnostic","exclude"):
+            with self.subTest(disposition=disposition):
+                changed=deepcopy(self.comparators);changed["damage"]["eldritch_knight"]["spells"][0]["disposition"]=disposition
+                with tempfile.TemporaryDirectory() as directory:
+                    path=Path(directory)/"comparators.json";path.write_text(json.dumps(changed),encoding="utf-8")
+                    with self.assertRaisesRegex(ValueError,"source scope or disposition"):load_comparators(path)
+
+    def test_true_strike_is_available_but_not_forced_and_objectives_choose_independently(self)->None:
+        target=self.target(damage_immunities=frozenset({"radiant"}),saves={"strength":20,"dexterity":20,"constitution":20,"intelligence":20,"wisdom":20,"charisma":20});single=self.planner(target=target);cluster=self.planner(cluster=3,target=self.target())
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)),patch("harness.ek_damage_planner.modified_save_success_probability",return_value=1.0):single_score=single.solve();ordinary=2*single._weapon_damage(self.state(single),False,False)
+        self.assertEqual(single_score.primary,ordinary)
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)),patch("harness.ek_damage_planner.modified_save_success_probability",return_value=0.0):cluster_score=cluster.solve()
+        self.assertEqual(cluster_score.primary,26.5);self.assertEqual(cluster_score.aggregate,40.5)
+
+
 class ComparatorLeafContractTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls)->None:
@@ -345,12 +608,62 @@ class ComparatorLeafContractTests(unittest.TestCase):
             damage_vulnerabilities=frozenset(),
         )
 
+    def ek_damage_signature(self,comparators:dict[str,object],level:int,damage_immunity:str|None=None)->tuple[object,...]:
+        target=replace(self.target(level,damage_immunity=damage_immunity),magic_resistance=False,saves={"strength":8,"dexterity":-2,"constitution":5,"intelligence":1,"wisdom":3,"charisma":0},blindsight_range=0,truesight_range=0);progression=deepcopy(self.config["fighter_progression"][str(level)]);progression["action_slots_by_round"]=[1]
+        row=comparators["damage"]["eldritch_knight"]  # type: ignore[index]
+        planner=EKDamagePlanner(row,target,progression,self.model.progression("proficiency_bonus",level),6,1);state=EKState(0,0,False,False,(1,1,1,1),True)
+        def continuation(next_state:EKState)->EKScore:
+            value=planner._weapon_damage(next_state,False,False)+sum((index+1)*count for index,count in enumerate(next_state.slots))
+            if next_state.concentration in {"witch_bolt","witch_bolt_pending"}:value+=planner._packet(planner.spells["witch_bolt"]["repeat_damage"],"lightning")
+            value+=float(planner._melee_invisibility_advantage(next_state))
+            return EKScore(value,value)+planner._finish_turn(replace(next_state,actions_left=0))
+        signature:list[object]=[planner.regular_attack_bonus,planner.true_strike_attack_bonus,planner.spell_attack_bonus,planner.spell_save_dc,planner.eldritch_strike_enabled,planner._weapon_damage(state,False,False),planner._weapon_damage(state,False,True)]
+        for spell_id in (*planner.cantrips,*planner.prepared):
+            spell=planner.spells[spell_id];types=tuple(planner._profile(damage_type,17) for damage_type in spell.get("damage_types",[]));minimum=int(spell["spell_level"])
+            if spell_id=="dragons_breath":
+                packets=[]
+                for slot in range(2,5):
+                    packet=planner._spell_packet(spell,slot);packets.append(planner._save_area_score(state,spell,packet,planner._best_damage_type(spell["damage_types"]))[0])
+                signature.append((spell_id,types,tuple(packets)));continue
+            slots=(0,) if minimum==0 else tuple(dict.fromkeys((minimum,4)))
+            values=[]
+            for slot in slots:values.append(planner._cast_value(state,spell_id,slot,continuation))
+            signature.append((spell_id,types,tuple(values)))
+        planner.clear();return tuple(signature)
+
     def test_every_damage_comparator_leaf_is_numerically_live(self)->None:
-        baselines:dict[tuple[str,int,str|None],float]={}
+        baselines:dict[tuple[str,int,str|None],float]={};ek_outcomes:Counter[str]=Counter();ek_leaf_count=0
         for path in _leaf_paths(self.comparators["damage"],("damage",)):
             build=str(path[1]);field=str(path[-1]);current=_path_value(self.comparators,path)
             level=next((int(part) for part in path if isinstance(part,str) and part in {"7","11","15","20"}),20)
             damage_immunity=None
+            if build=="eldritch_knight":
+                ek_leaf_count+=1
+                if "damage_types" in path:
+                    configured=set(_path_value(self.comparators,path[:path.index("damage_types")+1]));replacement=next(item for item in ("acid","cold","fire","force","lightning","necrotic","poison","psychic","radiant","thunder") if item not in configured);damage_immunity=replacement
+                elif field=="weapon_damage_type_choice":replacement=not current;damage_immunity="slashing"
+                elif field=="eldritch_strike_minimum_level":replacement=12;level=11
+                elif field=="damage_type":replacement="fire" if current!="fire" else "cold";damage_immunity=replacement
+                elif isinstance(current,bool):replacement=not current
+                elif isinstance(current,int):replacement=current+1
+                elif isinstance(current,str):replacement=("wisdom" if current!="wisdom" else "dexterity") if field=="save" else f"{current}_unsupported"
+                else:raise AssertionError(f"No EK damage semantic mutation for {_path_label(path)}")
+                changed=deepcopy(self.comparators);_set_path(changed,path,replacement)
+                with tempfile.TemporaryDirectory() as directory:
+                    comparator_path=Path(directory)/"comparators.json";comparator_path.write_text(json.dumps(changed),encoding="utf-8")
+                    try:validated=load_comparators(comparator_path)
+                    except ValueError:
+                        ek_outcomes["validation_rejected"]+=1
+                        continue
+                target_level=level if level in {7,11,15,20} else 20
+                if len(path)>3 and path[2]=="spells":
+                    spell_id=self.comparators["damage"]["eldritch_knight"]["spells"][int(path[3])]["id"]
+                    if "damage_dice_by_level" in path:target_level=int(path[path.index("damage_dice_by_level")+1])
+                    else:target_level=next(candidate for candidate in (7,11,15,20) if spell_id in self.comparators["damage"]["eldritch_knight"]["cantrips_by_level"][str(candidate)] or spell_id in self.comparators["damage"]["eldritch_knight"]["prepared_spells_by_level"][str(candidate)])
+                with self.subTest(path=_path_label(path)):
+                    self.assertNotEqual(self.ek_damage_signature(validated,target_level,damage_immunity),self.ek_damage_signature(self.comparators,target_level,damage_immunity))
+                ek_outcomes["observable"]+=1
+                continue
             if "known_maneuvers_by_level" in path:
                 changed=deepcopy(self.comparators);_set_path(changed,path,f"{current}_unsupported")
                 with tempfile.TemporaryDirectory() as directory:
@@ -377,6 +690,8 @@ class ComparatorLeafContractTests(unittest.TestCase):
             changed=deepcopy(self.comparators);_set_path(changed,path,replacement)
             with self.subTest(path=_path_label(path)):
                 self.assertNotEqual(_comparator_dpr(self.model,self.config,changed,target,build),baselines[key])
+        self.assertEqual(ek_leaf_count,387)
+        self.assertEqual(ek_outcomes,Counter({"validation_rejected":272,"observable":115}))
 
     def control_mutation(self,path:tuple[object,...],current:object)->object:
         build=str(path[1]);row_field=str(path[2]);field=str(path[-2]) if isinstance(path[-1],int) else str(path[-1])
@@ -912,7 +1227,8 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             with (root/"kv-14-3-0-damage-detail.csv").open(encoding="utf-8") as stream:
                 damage_row=next(csv.DictReader(stream))
             self.assertEqual(damage_row["Target Profile"],"headline")
-            self.assertAlmostEqual(float(damage_row["Eldritch Knight DPR"]),13.9,places=12)
+            self.assertAlmostEqual(float(damage_row["Eldritch Knight Primary DPR"]),18.816666666666663,places=12)
+            self.assertAlmostEqual(float(damage_row["Eldritch Knight Aggregate DPR"]),18.816666666666663,places=12)
             with damage["paths"]["csv"].open(encoding="utf-8") as stream:
                 matrix_rows=list(csv.DictReader(stream))
             self.assertTrue(matrix_rows);self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
