@@ -14,7 +14,7 @@ from unittest.mock import patch
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
 from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_mastery_scenario,_repeat_rider_probability,run as run_control
-from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_battle_master_dpr_for_schedule,_battle_master_result,_comparator_dpr,_comparator_score,_eldritch_knight_result,_kv_dpr,_rider_values,run as run_damage
+from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_battle_master_dpr_for_schedule,_battle_master_result,_comparator_dpr,_comparator_score,_eldritch_knight_result,_kv_dpr,_psionic_apex_packet,_rider_values,_strike_packet_options,run as run_damage
 from harness.ek_damage_planner import EKDamagePlanner,EKScore,EKState,chromatic_orb_duplicate_probability
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,fighter_action_schedules,load_comparators,load_config,load_targets,save_success_probability
 
@@ -58,9 +58,14 @@ class AuthorityProjectionTests(unittest.TestCase):
 
     def test_real_root_authority_and_complete_stable_id_inventory(self)->None:
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
+        self.assertEqual(self.model.projection["projection_version"],"1.1.0")
         self.assertEqual(self.model.rules_version,"14.3.0")
-        self.assertEqual(self.model.projection["schema_version"],"2.2.0")
+        self.assertEqual(self.model.projection["schema_version"],"2.3.0")
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":1,"action_surge_allows_additional_standalone_psionic_action":False})
+        self.assertEqual(self.model.holdout_formula(17)["kind"],"halve_total_rounded_down")
+        self.assertEqual(self.model.holdout_formula(18),{"minimum_level":18,"maximum_level":20,"kind":"dice_plus_psionic_ability_modifier","count":1,"sides":6})
+        self.assertEqual(self.model.psionic_apex_strike_packet("psychokinesis",18)["reset"],"start_of_each_attack_action")
+        self.assertIsNone(self.model.psionic_apex_strike_packet("psychokinesis",17));self.assertIsNone(self.model.psionic_apex_strike_packet("pyrokinesis",20))
         feature_ids=list(self.model.features)
         self.assertEqual(len(feature_ids),len(set(feature_ids)))
         self.assertEqual(set(self.model.disciplines),{"pyrokinesis","cryokinesis","psychokinesis","electrokinesis"})
@@ -932,17 +937,17 @@ class DamagePlannerTests(unittest.TestCase):
 
     def planner(self,attacks_per_action:int)->_KVDamagePlanner:
         target=replace(self.base,ac=30,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());packages=(Package(None,0,0,0),Package("branching_bolt",0,0,0));riders={packages[0]:(0.0,0.0),packages[1]:(100.0,100.0)}
-        planner=_KVDamagePlanner(self.model,target,packages,riders,(("normal",(0.0,1.0,2.0)),),((),),0,attacks_per_action,(1,),True,True,0,0,self.mastery,0,1);self.addCleanup(planner.clear);return planner
+        planner=_KVDamagePlanner(self.model,target,packages,riders,(("normal",(0.0,1.0,2.0)),),((),),0,attacks_per_action,(1,),True,True,0,0,self.mastery,0,1,None);self.addCleanup(planner.clear);return planner
 
     def test_combat_prowess_hit_instead_does_not_establish_studied(self)->None:
         planner=self.planner(1);package_index=1
-        result=planner._resolve_attack_roll(0,0,0,0,package_index,0,"miss",True,0,0,0,0,2,False,0)
-        self.assertEqual(result.choice[:4],("prowess",False,False,0))
+        result=planner._resolve_attack_roll(0,0,0,0,False,package_index,0,"miss",True,0,0,0,0,2,False,0)
+        self.assertEqual(result.choice[:5],("prowess",False,False,False,0))
 
     def test_combat_prowess_can_be_retained_for_a_more_valuable_later_attack(self)->None:
         planner=self.planner(2)
-        result=planner._resolve_attack_roll(0,0,1,0,0,0,"miss",True,0,0,0,0,2,False,0)
-        self.assertEqual(result.choice[:4],("miss",True,True,0))
+        result=planner._resolve_attack_roll(0,0,1,0,False,0,0,"miss",True,0,0,0,0,2,False,0)
+        self.assertEqual(result.choice[:5],("miss",True,False,True,0))
         self.assertAlmostEqual(result.score.aggregate,101.0975,places=12)
 
     def test_studied_expires_after_a_zero_attack_turn(self)->None:
@@ -952,13 +957,13 @@ class DamagePlannerTests(unittest.TestCase):
 
     def test_standalone_consumes_one_slot_and_remains_capped_during_action_surge(self)->None:
         target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());package=Package(None,0,0,0);standalone=Standalone("forked_lightning",0,0,0,100.0,100.0,False)
-        planner=_KVDamagePlanner(self.model,target,(package,),{package:(0.0,0.0)},(("normal",(0.0,0.0,0.0)),),((standalone,),),0,1,(2,),False,False,0,0,self.mastery,0,1);self.addCleanup(planner.clear)
+        planner=_KVDamagePlanner(self.model,target,(package,),{package:(0.0,0.0)},(("normal",(0.0,0.0,0.0)),),((standalone,),),0,1,(2,),False,False,0,0,self.mastery,0,1,None);self.addCleanup(planner.clear)
         self.assertAlmostEqual(planner.solve().aggregate,100.0,places=12)
         self.assertEqual(planner.selection().count("forked_lightning:T0"),1)
 
     def test_pre_roll_rider_cost_is_spent_on_a_miss_without_outcome_lookahead(self)->None:
         target=replace(self.base,ac=30,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",0,1,0);packages=(plain,rider)
-        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,1,0,self.mastery,0,1);self.addCleanup(planner.clear)
+        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,1,0,self.mastery,0,1,None);self.addCleanup(planner.clear)
         self.assertAlmostEqual(planner.solve().aggregate,5.0,places=12)
 
     def test_mastery_activates_only_on_first_overload_and_then_covers_the_turn(self)->None:
@@ -970,49 +975,73 @@ class DamagePlannerTests(unittest.TestCase):
 
     def test_tier_two_allowance_resets_for_a_new_attack_action(self)->None:
         target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",2,0,0);packages=(plain,rider)
-        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,1,(2,),False,False,0,0,self.mastery,0,1);self.addCleanup(planner.clear)
+        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,1,(2,),False,False,0,0,self.mastery,0,1,None);self.addCleanup(planner.clear)
         self.assertAlmostEqual(planner.solve().aggregate,190.0,places=12)
         self.assertEqual(planner.selection().count("branching_bolt:T2"),2)
 
     def test_psionic_apex_covers_each_actual_attack_action_during_action_surge(self)->None:
         target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",2,0,12);packages=(plain,rider)
-        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,1,(2,),False,False,0,12,self.mastery,1,1);self.addCleanup(planner.clear)
+        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,1,(2,),False,False,0,12,self.mastery,1,1,None);self.addCleanup(planner.clear)
         self.assertAlmostEqual(planner.solve().aggregate,190.0,places=12)
         selection=planner.selection();self.assertEqual(selection.count("branching_bolt:T2"),2);self.assertEqual(selection.count(";mastery"),1)
 
     def test_same_paid_rider_can_be_selected_on_all_three_manifested_strikes(self)->None:
         target=replace(next(item for item in load_targets(profile="headline",levels={11}) if item.name=="Deva"),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",0,2,0);packages=(plain,rider)
-        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,3,(1,),False,False,6,0,self.mastery,0,1);self.addCleanup(planner.clear)
+        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,3,(1,),False,False,6,0,self.mastery,0,1,None);self.addCleanup(planner.clear)
         self.assertAlmostEqual(planner.solve().aggregate,285.0,places=12)
         self.assertEqual(planner.selection().count("branching_bolt:T0"),3)
 
     def test_miss_spends_cost_and_same_rider_remains_legal_on_next_strike(self)->None:
         target=replace(self.base,ac=30,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",0,1,0);packages=(plain,rider)
-        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,2,0,self.mastery,0,1);self.addCleanup(planner.clear)
+        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,2,0,self.mastery,0,1,None);self.addCleanup(planner.clear)
         self.assertAlmostEqual(planner.solve().aggregate,10.0,places=12)
 
     def test_repeated_overload_pays_blood_tax_for_each_declaration(self)->None:
         target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",1,0,4);packages=(plain,rider)
-        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,0,8,self.mastery,0,1);self.addCleanup(planner.clear)
+        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,0,8,self.mastery,0,1,None);self.addCleanup(planner.clear)
         self.assertAlmostEqual(planner.solve().aggregate,190.0,places=12)
         self.assertEqual(planner.selection().count("branching_bolt:T1"),2)
 
     def test_tier_two_remains_one_declaration_per_attack_action(self)->None:
         target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",2,0,0);packages=(plain,rider)
-        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,3,(1,),False,False,0,0,self.mastery,0,1);self.addCleanup(planner.clear)
+        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,3,(1,),False,False,0,0,self.mastery,0,1,None);self.addCleanup(planner.clear)
         self.assertAlmostEqual(planner.solve().aggregate,95.0,places=12)
         self.assertEqual(planner.selection().count("branching_bolt:T2"),1)
 
     def test_repeated_thermal_fracture_uses_max_or_refresh_not_addition(self)->None:
         target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());thermal=Package("thermal_fracture",0,0,0)
-        planner=_KVDamagePlanner(self.model,target,(thermal,),{thermal:(0.0,0.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,0,0,self.mastery,0,1);self.addCleanup(planner.clear)
-        self.assertEqual(planner._roll_options(0,0,"hit",False,1)[0][3],1)
+        planner=_KVDamagePlanner(self.model,target,(thermal,),{thermal:(0.0,0.0)},(("normal",(0.0,0.0,0.0)),),((),),0,2,(1,),False,False,0,0,self.mastery,0,1,None);self.addCleanup(planner.clear)
+        self.assertEqual(planner._roll_options(0,0,"hit",False,False,1)[0][4],1)
+
+    def test_refined_holdout_uses_1d6_plus_full_modifier_and_full_graze(self)->None:
+        target=replace(self.base,damage_resistances=frozenset(),damage_immunities=frozenset({"fire"}),damage_vulnerabilities=frozenset())
+        before=_strike_packet_options(self.model,replace(target,level=17),"pyrokinesis",17,5,12)
+        refined=_strike_packet_options(self.model,target,"pyrokinesis",20,5,12)
+        self.assertEqual(before[0][0],"holdout");self.assertEqual(before[0][1][0],2.0)
+        self.assertEqual(refined,(('holdout',(5.0,8.5,12.0)),))
+
+    def test_psychokinesis_apex_packet_is_once_per_attack_action_and_action_surge_refreshes_it(self)->None:
+        target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());package=Package(None,0,0,0);packet=_psionic_apex_packet(self.model,target,"psychokinesis",20)
+        planner=_KVDamagePlanner(self.model,target,(package,),{package:(0.0,0.0)},(("normal",(0.0,0.0,0.0)),),((),),0,4,(2,),False,False,0,0,self.mastery,0,1,packet);self.addCleanup(planner.clear)
+        once=packet*(1-0.05**4)
+        self.assertAlmostEqual(planner.solve().primary,2*once,places=12)
+        hit=planner._roll_options(0,0,"hit",True,False,0)[0];critical=planner._roll_options(0,0,"critical",True,False,0)[0]
+        self.assertFalse(hit[2]);self.assertEqual(hit[-2:],critical[-2:]);self.assertEqual(hit[-1],packet)
+        immune=replace(target,damage_immunities=frozenset({"force"}));immune_packet=_psionic_apex_packet(self.model,immune,"psychokinesis",20);self.assertEqual(immune_packet,0.0)
+        immune_planner=_KVDamagePlanner(self.model,immune,(package,),{package:(0.0,0.0)},(("normal",(0.0,0.0,0.0)),),((),),0,1,(1,),False,False,0,0,self.mastery,0,1,immune_packet);self.addCleanup(immune_planner.clear)
+        immune_hit=immune_planner._roll_options(0,0,"hit",True,False,0)[0];self.assertFalse(immune_hit[2]);self.assertEqual(immune_hit[-1],0.0)
+
+    def test_area_damage_tiers_preserve_primary_and_reduce_only_approved_packets(self)->None:
+        electron=next(item for item in self.model.features["electron_burst"]["damage_tiers"] if int(item["tier"])==2)
+        self.assertEqual((electron["damage"]["count"],electron["secondary_damage"]["count"]),(4,3))
+        arctic=[int(item["damage"]["count"]) for item in self.model.features["arctic_tempest"]["damage_tiers"]]
+        self.assertEqual(arctic,[8,9,10])
 
     def test_observed_state_policy_matches_current_l20_sentinel(self)->None:
         target=next(item for item in load_targets(profile="headline",levels={20}) if item.name=="Ancient White Dragon")
         primary,aggregate,selection,_schedule=_kv_dpr(self.model,self.config,target,"electrokinesis",3)
         self.assertAlmostEqual(primary,116.29434009056969,places=10)
-        self.assertAlmostEqual(aggregate,191.24370620676075,places=10)
+        self.assertAlmostEqual(aggregate,171.23091363060868,places=10)
         self.assertIn("electron_burst:T2",selection)
         self.assertTrue(selection.endswith("|representative=locally-modal-path|policy=observed-state-adaptive"))
 

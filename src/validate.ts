@@ -58,11 +58,15 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
   const deckRiderIds=authority.entities.filter(entity=>isCalculatorDeckEntity(entity)&&entity.activation==="on_hit"&&entity.classifications.feature_role==="rider").map(entity=>entity.id).sort(codepointCompare);
   if(JSON.stringify(projectedRiderIds)!==JSON.stringify(deckRiderIds))diagnostics.push({severity:"error",code:"calculator.rider_coverage",message:"Every deck-owned on-hit rider must retain a Calculator projection exactly once",path:"/calculator/features"});
   const utilityIds=calculator.utility_cards.map(card=>card.id);diagnostics.push(...duplicateDiagnostics(utilityIds,"calculator.utility_duplicate","calculator utility card ID"));
-  if(JSON.stringify([...utilityIds].sort(codepointCompare))!==JSON.stringify(["blood_tax","manifested_strike"]))diagnostics.push({severity:"error",code:"calculator.utility_coverage",message:"Calculator utility cards must be exactly Manifested Strike and Blood Tax",path:"/calculator/utility_cards"});
+  if(JSON.stringify([...utilityIds].sort(codepointCompare))!==JSON.stringify(["blood_tax","holdout_option","manifested_strike"]))diagnostics.push({severity:"error",code:"calculator.utility_coverage",message:"Calculator utility cards must be exactly Manifested Strike, Holdout Option, and Blood Tax",path:"/calculator/utility_cards"});
   for(const [utilityIndex,card] of calculator.utility_cards.entries()){
     const path=`/calculator/utility_cards/${utilityIndex}`,source=entities.get(card.source_entity_id);
     if(!source)diagnostics.push({severity:"error",code:"calculator.utility_source_unknown",message:`Calculator utility ${card.id} references unknown source entity ${card.source_entity_id}`,path:`${path}/source_entity_id`});
     if(card.id!==card.calculation_kind)diagnostics.push({severity:"error",code:"calculator.utility_kind",message:`Calculator utility ${card.id} must use its matching typed calculation kind`,path:`${path}/calculation_kind`});
+    for(const relatedId of card.related_card_ids??[]){
+      if(relatedId===card.id)diagnostics.push({severity:"error",code:"calculator.utility_related_self",message:`Calculator utility ${card.id} cannot relate to itself`,path:`${path}/related_card_ids`});
+      if(!utilityIds.includes(relatedId))diagnostics.push({severity:"error",code:"calculator.utility_related_unknown",message:`Calculator utility ${card.id} references unknown related card ${relatedId}`,path:`${path}/related_card_ids`});
+    }
     for(const [contextIndex,context] of (card.context??[]).entries()){
       const contextEntity=entities.get(context.entity_id),contextPath=`${path}/context/${contextIndex}`;
       if(!contextEntity)diagnostics.push({severity:"error",code:"calculator.utility_context_unknown",message:`Calculator utility ${card.id} references unknown context entity ${context.entity_id}`,path:`${contextPath}/entity_id`});
@@ -75,10 +79,14 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
   const harness=calculator.harness_mechanics;
   if(JSON.stringify(harness.action_economy)!==JSON.stringify({standalone_psionic_action_limit_per_turn:1,action_surge_allows_additional_standalone_psionic_action:false}))diagnostics.push({severity:"error",code:"harness.action_economy",message:"Harness action economy must allow at most one standalone psionic Action per turn and no additional standalone activation from Action Surge",path:"/calculator/harness_mechanics/action_economy"});
   if(harness.manifested_strike.rider_repeatability!=="per_manifested_strike")diagnostics.push({severity:"error",code:"harness.rider_repeatability",message:"Manifested Strike riders must use the supported per_manifested_strike repeatability contract",path:"/calculator/harness_mechanics/manifested_strike/rider_repeatability"});
+  const expectedHoldout={damage_type:"force",declaration_timing:"before_attack_roll",formulas:[{minimum_level:3,maximum_level:17,kind:"halve_total_rounded_down"},{minimum_level:18,maximum_level:20,kind:"dice_plus_psionic_ability_modifier",count:1,sides:6}]};
+  if(JSON.stringify(harness.manifested_strike.holdout)!==JSON.stringify(expectedHoldout))diagnostics.push({severity:"error",code:"harness.holdout_formula",message:"Holdout must retain the level-banded base and Refined Holdout formulas",path:"/calculator/harness_mechanics/manifested_strike/holdout"});
   if(JSON.stringify(harness.manifested_strike.attack_bonus)!==JSON.stringify({base:0,components:["psionic_ability_modifier","proficiency_bonus","psionic_focus"]}))diagnostics.push({severity:"error",code:"harness.attack_formula",message:"Manifested Strike attack bonus must use its canonical base and ordered components",path:"/calculator/harness_mechanics/manifested_strike/attack_bonus"});
   if(JSON.stringify(harness.manifested_strike.save_dc)!==JSON.stringify({base:8,components:["proficiency_bonus","psionic_ability_modifier"]}))diagnostics.push({severity:"error",code:"harness.save_dc_formula",message:"Kinetic Vanguard save DC must use its canonical base and ordered components",path:"/calculator/harness_mechanics/manifested_strike/save_dc"});
   if(JSON.stringify(harness.overload.blood_tax_per_tier)!==JSON.stringify({base:0,proficiency_bonus_multiplier:1}))diagnostics.push({severity:"error",code:"harness.blood_tax_formula",message:"Blood Tax per tier must use its canonical base and Proficiency Bonus multiplier",path:"/calculator/harness_mechanics/overload/blood_tax_per_tier"});
   if(JSON.stringify(harness.overload.mastery)!==JSON.stringify({minimum_level:18,uses_per_rest:1,blood_tax_divisor:2,minimum_per_overload:1}))diagnostics.push({severity:"error",code:"harness.overload_mastery",message:"Overload Mastery must retain its canonical level, use, divisor, and minimum",path:"/calculator/harness_mechanics/overload/mastery"});
+  const expectedApex={minimum_level:18,psychokinesis_manifested_strike_hit:{discipline_id:"psychokinesis",uses_per_attack_action:1,reset:"start_of_each_attack_action",damage_type:"force",damage:{kind:"dice",count:3,sides:8},critical_dice_multiplier:1,psi_cost:0,blood_tax:0}};
+  if(JSON.stringify(harness.psionic_apex)!==JSON.stringify(expectedApex))diagnostics.push({severity:"error",code:"harness.psionic_apex",message:"Psionic Apex must retain the once-per-Attack-action Psychokinesis damage packet",path:"/calculator/harness_mechanics/psionic_apex"});
   const disciplineIds=harness.disciplines.map(item=>item.id);
   diagnostics.push(...duplicateDiagnostics(disciplineIds,"harness.discipline_duplicate","harness discipline ID"));
   const expectedDisciplines=["cryokinesis","electrokinesis","psychokinesis","pyrokinesis"];
@@ -155,9 +163,9 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
       };
       validateDamage(tier.damage,`${tierPath}/damage`,"damage");
       if(tier.secondary_damage){
-        if(feature.entity_id!=="forked_lightning")diagnostics.push({severity:"error",code:"calculator.secondary_damage_feature",message:"Only forked_lightning may define secondary damage",path:`${tierPath}/secondary_damage`});
+        if(!["electron_burst","forked_lightning"].includes(feature.entity_id))diagnostics.push({severity:"error",code:"calculator.secondary_damage_feature",message:"Only electron_burst and forked_lightning may define secondary damage",path:`${tierPath}/secondary_damage`});
         validateDamage(tier.secondary_damage,`${tierPath}/secondary_damage`,"secondary damage");
-      }else if(feature.entity_id==="forked_lightning")diagnostics.push({severity:"error",code:"calculator.secondary_damage_required",message:`forked_lightning Tier ${tier.tier} must define secondary damage`,path:`${tierPath}/secondary_damage`});
+      }else if(["electron_burst","forked_lightning"].includes(feature.entity_id))diagnostics.push({severity:"error",code:"calculator.secondary_damage_required",message:`${feature.entity_id} Tier ${tier.tier} must define secondary damage`,path:`${tierPath}/secondary_damage`});
     }
     for(const [metricIndex,metric] of (feature.metrics??[]).entries())if("values" in metric){const metricTiers=metric.values.map(value=>value.tier);if(JSON.stringify([...metricTiers].sort((a,b)=>a-b))!==JSON.stringify([0,1,2]))diagnostics.push({severity:"error",code:"calculator.metric_tier_coverage",message:`${feature.entity_id} metric ${metric.label} must cover Tiers 0, 1, and 2 exactly once`,path:`${featurePath}/metrics/${metricIndex}/values`});}
   }

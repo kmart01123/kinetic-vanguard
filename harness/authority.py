@@ -97,6 +97,20 @@ class AuthorityModel:
     def kv_save_dc(self, level: int, psi_modifier: int) -> int:
         return self._derived_value(self.projection["core"]["manifested_strike"]["save_dc"], level, psi_modifier)
 
+    def holdout_formula(self, level: int) -> dict[str, Any]:
+        formulas = self.projection["core"]["manifested_strike"]["holdout"]["formulas"]
+        matches = [row for row in formulas if int(row["minimum_level"]) <= level <= int(row["maximum_level"])]
+        if len(matches) != 1:
+            raise AuthorityError(f"Holdout has {len(matches)} formulas at Fighter level {level}; expected exactly one")
+        return matches[0]
+
+    def psionic_apex_strike_packet(self, discipline_id: str, level: int) -> dict[str, Any] | None:
+        apex = self.projection["core"]["psionic_apex"]
+        if level < int(apex["minimum_level"]):
+            return None
+        packet = apex["psychokinesis_manifested_strike_hit"]
+        return packet if discipline_id == packet["discipline_id"] else None
+
     def blood_tax(self, level: int, tier: int) -> int:
         if tier not in {0, 1, 2}:
             raise AuthorityError(f"Unsupported Overload tier {tier}")

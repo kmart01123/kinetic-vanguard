@@ -142,10 +142,11 @@ export interface CalculatorFeature {
 }
 
 export interface CalculatorUtilityCard {
-  id: "manifested_strike" | "blood_tax";
+  id: "manifested_strike" | "holdout_option" | "blood_tax";
   source_entity_id: string;
-  calculation_kind: "manifested_strike" | "blood_tax";
+  calculation_kind: "manifested_strike" | "holdout_option" | "blood_tax";
   context?: Array<{ entity_id: string; content_block_indexes: number[] }>;
+  related_card_ids?: Array<"manifested_strike" | "holdout_option" | "blood_tax">;
 }
 
 export interface CalculatorLevelBand {
@@ -226,8 +227,9 @@ export interface HarnessFeatureRule {
 }
 export interface HarnessMechanics {
   action_economy:{standalone_psionic_action_limit_per_turn:1;action_surge_allows_additional_standalone_psionic_action:false};
-  manifested_strike:{entity_id:"common_manifested_strike";rider_repeatability:"per_manifested_strike";damage_type_source:"discipline";holdout_damage_type:"force";holdout_damage_divisor:2;critical_dice_multiplier:2;attack_bonus:{base:number;components:Array<"psionic_ability_modifier"|"proficiency_bonus"|"psionic_focus">};save_dc:{base:number;components:Array<"psionic_ability_modifier"|"proficiency_bonus"|"psionic_focus">}};
+  manifested_strike:{entity_id:"common_manifested_strike";rider_repeatability:"per_manifested_strike";damage_type_source:"discipline";holdout:{damage_type:"force";declaration_timing:"before_attack_roll";formulas:Array<{minimum_level:number;maximum_level:number;kind:"halve_total_rounded_down"}|{minimum_level:number;maximum_level:number;kind:"dice_plus_psionic_ability_modifier";count:1;sides:6}>};critical_dice_multiplier:2;attack_bonus:{base:number;components:Array<"psionic_ability_modifier"|"proficiency_bonus"|"psionic_focus">};save_dc:{base:number;components:Array<"psionic_ability_modifier"|"proficiency_bonus"|"psionic_focus">}};
   overload:{entity_id:"common_overload";blood_tax_per_tier:{base:number;proficiency_bonus_multiplier:number};tier_two_limit_per_attack_action:1;mastery:{minimum_level:18;uses_per_rest:1;blood_tax_divisor:2;minimum_per_overload:1}};
+  psionic_apex:{minimum_level:18;psychokinesis_manifested_strike_hit:{discipline_id:"psychokinesis";uses_per_attack_action:1;reset:"start_of_each_attack_action";damage_type:"force";damage:{kind:"dice";count:3;sides:8};critical_dice_multiplier:1;psi_cost:0;blood_tax:0}};
   disciplines:HarnessDiscipline[];
   feature_rules:HarnessFeatureRule[];
 }
