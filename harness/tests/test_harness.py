@@ -4,14 +4,16 @@ import csv
 import json
 import tempfile
 import unittest
+from collections import Counter
 from copy import deepcopy
 from dataclasses import replace
 from pathlib import Path
+from typing import Callable
 from unittest.mock import patch
 
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
-from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_repeat_rider_probability,run as run_control
+from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_repeat_rider_probability,run as run_control
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_comparator_dpr,_kv_dpr,_rider_values,run as run_damage
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,load_comparators,load_config,load_targets,save_success_probability
 
@@ -36,6 +38,16 @@ def _set_path(value:object,path:tuple[object,...],replacement:object)->None:
 
 def _path_label(path:tuple[object,...])->str:
     return '.'.join(f'[{part}]' if isinstance(part,int) else str(part) for part in path)
+
+
+def _classify_control_leaf_mutation(validate:Callable[[],object],evaluate:Callable[[object],tuple[str,str]],*,expected_evaluation_rejection:str|None=None)->tuple[str,str|None]:
+    try:validated=validate()
+    except ValueError as error:return "validation_rejected",str(error)
+    try:baseline,changed=evaluate(validated)
+    except ValueError as error:
+        if expected_evaluation_rejection is None or str(error)!=expected_evaluation_rejection:raise
+        return "evaluation_rejected",str(error)
+    return ("observable",None) if changed!=baseline else ("unobservable",None)
 
 
 class AuthorityProjectionTests(unittest.TestCase):
@@ -393,6 +405,13 @@ class ComparatorLeafContractTests(unittest.TestCase):
         keys=("scenario","spell_id","audit_comment_id","source_scope","disposition","eligible","reach","named","whole","after_repeats","shadow_components","targeting","breaks","escapes","escape_resolution","context_predicates","area_exit_policy","turn_branches","save_composition","automatic_save_success","automatic_success_rules")
         return json.dumps({key:result.get(key) for key in keys},sort_keys=True)
 
+    def composed_eldritch_knight_signature(self,comparators:dict[str,object],target:Target)->list[tuple[str,tuple[str,...]]]:
+        return [
+            (str(scenario["id"]),tuple(str(primer) for primer in scenario.get("_composed_save_primers",[])))
+            for scenario in _composed_eldritch_knight_scenarios(comparators,target)  # type: ignore[arg-type]
+            if "_composed_save_primers" in scenario
+        ]
+
     def scenario_level(self,row:dict[str,object],scenario:dict[str,object])->int:
         levels=sorted(int(level) for level in row["magic_weapon_bonus_by_level"])  # type: ignore[union-attr]
         if "spell_level" not in scenario:return next(level for level in levels if level>=int(row["minimum_level"]))
@@ -406,7 +425,16 @@ class ComparatorLeafContractTests(unittest.TestCase):
         if field=="maximum_size":target=replace(target,size=str(current))
         elif scenario.get("maximum_size"):target=replace(target,size=str(scenario["maximum_size"]))
         if field=="conditions":target=replace(target,condition_immunities=frozenset({str(current).lower()}))
-        return self.control_result_signature(_comparator_scenario(self.model,self.config,comparators,target,build,scenario))
+        signature={"evaluation":json.loads(self.control_result_signature(_comparator_scenario(self.model,self.config,comparators,target,build,scenario)))}
+        if build=="eldritch_knight":signature["composed_scenarios"]=self.composed_eldritch_knight_signature(comparators,target)
+        return json.dumps(signature,sort_keys=True)
+
+    def expected_control_evaluation_rejection(self,path:tuple[object,...],current:object)->str|None:
+        field=str(path[-2]) if isinstance(path[-1],int) else str(path[-1])
+        if field=="check":return f"Unknown ability check skill: {str(current).split('_',1)[1]}_contract_probe"
+        if field=="area_exit_policy":return "Modeled action escape lacks the standing legal-exit policy"
+        if field=="area_trigger":return "Unsupported modeled area trigger"
+        return None
 
     def row_signature(self,comparators:dict[str,object],build:str)->str:
         row=comparators["control"][build]  # type: ignore[index]
@@ -424,14 +452,13 @@ class ComparatorLeafContractTests(unittest.TestCase):
         return json.dumps({"evaluations":results,"reliability":reliability},sort_keys=True)
 
     def test_every_control_comparator_leaf_has_observable_semantics(self)->None:
+        outcomes:Counter[str]=Counter();evaluation_rejections:Counter[str]=Counter()
         with tempfile.TemporaryDirectory() as directory:
             comparator_path=Path(directory)/"comparators.json"
             for path in _leaf_paths(self.comparators["control"],("control",)):
                 build=str(path[1]);row_field=str(path[2]);scenario_index=int(path[3]) if row_field=="scenarios" else None;field=str(path[-2]) if isinstance(path[-1],int) else str(path[-1]);current=_path_value(self.comparators,path)
                 before=deepcopy(self.comparators);after=deepcopy(self.comparators);_set_path(after,path,self.control_mutation(path,current));comparator_path.write_text(json.dumps(after),encoding="utf-8")
-                try:validated=load_comparators(comparator_path)
-                except ValueError:continue
-                try:
+                def evaluate(validated:object)->tuple[str,str]:
                     if scenario_index is not None:
                         before_scenario=before["control"][build]["scenarios"][scenario_index];after_scenario=validated["control"][build]["scenarios"][scenario_index];level=self.scenario_level(before["control"][build],before_scenario)
                         baseline=self.scenario_signature(before,build,before_scenario,level,field,current);changed=self.scenario_signature(validated,build,after_scenario,level,field,current)
@@ -439,8 +466,37 @@ class ComparatorLeafContractTests(unittest.TestCase):
                         if build=="eldritch_knight" and row_field=="magic_weapon_bonus_by_level" and int(path[-1])<int(before["control"][build]["eldritch_strike_minimum_level"]):
                             before["control"][build]["eldritch_strike_minimum_level"]=int(path[-1]);validated["control"][build]["eldritch_strike_minimum_level"]=int(path[-1])
                         baseline=self.row_signature(before,build);changed=self.row_signature(validated,build)
-                except (KeyError,ValueError):continue
-                with self.subTest(path=_path_label(path)):self.assertNotEqual(changed,baseline)
+                    return baseline,changed
+                with self.subTest(path=_path_label(path)):
+                    outcome,reason=_classify_control_leaf_mutation(lambda:load_comparators(comparator_path),evaluate,expected_evaluation_rejection=self.expected_control_evaluation_rejection(path,current))
+                    self.assertNotEqual(outcome,"unobservable")
+                outcomes[outcome]+=1
+                if outcome=="evaluation_rejected":evaluation_rejections[str(reason)]+=1
+        self.assertEqual(outcomes,Counter({"observable":947,"validation_rejected":455,"evaluation_rejected":6}))
+        self.assertEqual(evaluation_rejections,Counter({"Unknown ability check skill: athletics_contract_probe":2,"Modeled action escape lacks the standing legal-exit policy":2,"Unsupported modeled area trigger":2}))
+
+    def test_control_leaf_contract_propagates_accidental_evaluator_key_error(self)->None:
+        def broken_evaluator(_:object)->tuple[str,str]:raise KeyError("missing evaluator leaf")
+        with self.assertRaises(KeyError) as raised:_classify_control_leaf_mutation(lambda:self.comparators,broken_evaluator)
+        self.assertEqual(raised.exception.args,("missing evaluator leaf",))
+
+    def test_control_leaf_contract_classifies_intentional_validation_rejection(self)->None:
+        changed=deepcopy(self.comparators);changed["control"]["battle_master"]["scenarios"][0]["id"]="unsupported_maneuver"
+        with tempfile.TemporaryDirectory() as directory:
+            comparator_path=Path(directory)/"comparators.json";comparator_path.write_text(json.dumps(changed),encoding="utf-8")
+            outcome,reason=_classify_control_leaf_mutation(lambda:load_comparators(comparator_path),lambda _:self.fail("validation rejection must not reach evaluation"))
+        self.assertEqual((outcome,reason),("validation_rejected","control.battle_master scenarios do not match the audited package set"))
+
+    def test_ek_delivery_leaf_changes_production_composed_inventory(self)->None:
+        before=deepcopy(self.comparators);after=deepcopy(self.comparators);before_scenario=next(item for item in before["control"]["eldritch_knight"]["scenarios"] if item["id"]=="slow");after_scenario=next(item for item in after["control"]["eldritch_knight"]["scenarios"] if item["id"]=="slow");after_scenario["delivery"]="war_magic_cantrip";target=self.target(20)
+        baseline=self.composed_eldritch_knight_signature(before,target);changed=self.composed_eldritch_knight_signature(after,target)
+        self.assertIn(("slow_after_mind_sliver",("mind_sliver",)),baseline);self.assertNotIn(("slow_after_mind_sliver",("mind_sliver",)),changed);self.assertNotEqual(changed,baseline)
+        self.assertNotEqual(self.scenario_signature(before,"eldritch_knight",before_scenario,20,"delivery","action_spell"),self.scenario_signature(after,"eldritch_knight",after_scenario,20,"delivery","action_spell"))
+
+    def test_ordinary_control_leaf_does_not_change_composed_inventory(self)->None:
+        before=deepcopy(self.comparators);after=deepcopy(self.comparators);after["control"]["eldritch_knight"]["save_dc_base"]+=1;scenario=next(item for item in before["control"]["eldritch_knight"]["scenarios"] if item["id"]=="slow");target=self.target(20)
+        self.assertEqual(self.composed_eldritch_knight_signature(before,target),self.composed_eldritch_knight_signature(after,target))
+        self.assertNotEqual(self.scenario_signature(before,"eldritch_knight",scenario,20,"save_dc_base",8),self.scenario_signature(after,"eldritch_knight",scenario,20,"save_dc_base",8))
 
 
 class DamagePlannerTests(unittest.TestCase):
