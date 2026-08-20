@@ -13,6 +13,7 @@ from typing import Any
 
 from .authority import AuthorityModel,DEFAULT_AUTHORITY
 from .comparison_report import NOTICE_COLUMNS,matrix_row,write_matrix
+from .ek_damage_planner import EKDamagePlanner
 from .model import DEFAULT_CATALOG,DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_PROFILE,DEFAULT_ROSTERS,PROFILE_COUNTS,Target,file_sha256,level_config,load_comparators,load_config,load_targets,save_success_probability
 
 
@@ -330,50 +331,14 @@ def _natural_probabilities(advantage:bool)->dict[int,float]:
     return dict(values)
 
 
-def _eldritch_knight_dpr(model:AuthorityModel,config:dict[str,Any],row:dict[str,Any],target:Target)->float:
-    policy=row["tactical_policy"];expected_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","true_strike_choice_timing":"before_attack_roll","decision_information":"observed_state_only","true_strike_use_count":"exactly_configured_per_attack_action"}
+def _eldritch_knight_score(model:AuthorityModel,config:dict[str,Any],row:dict[str,Any],target:Target,cluster_size:int)->_Score:
+    policy=row["tactical_policy"];expected_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","decision_information":"observed_state_only","preparation_choice":"fixed_before_target_and_cluster","spell_choice_timing":"before_resolution","bonus_action_ledger":"one_shared_per_turn","concentration_ledger":"one_active_spell"}
     if policy!=expected_policy:raise ValueError("Unsupported Eldritch Knight tactical policy")
-    level=target.level;progression=level_config(config,level);pb=model.progression("proficiency_bonus",level)
-    studied_enabled=bool(progression["studied_attacks"]);prowess_enabled=bool(progression["combat_prowess"]);attacks=int(progression["attacks_per_action"]);actions_by_round=tuple(int(value) for value in progression["action_slots_by_round"])
-    weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(level)]);regular_ability=int(row["regular_attack_ability_modifier"]);true_ability=int(row["true_strike_ability_modifier_by_level"][str(level)])
-    true_damage=row["true_strike_damage_by_level"][str(level)];true_count=int(true_damage["count"]);true_sides=int(true_damage["sides"])
-    weapon=row["weapon"];weapon_count=int(weapon["count"]);weapon_sides=int(weapon["sides"]);weapon_minimum=3 if bool(weapon["great_weapon_fighting"]) else None;dueling=int(row["dueling_damage_bonus"]);true_uses=int(row["true_strike_uses_per_attack_action"])
-    if true_uses>attacks:raise ValueError("True Strike uses per Attack action cannot exceed attacks per action")
-    cache:dict[tuple[bool,bool],float]={}
-    def expected_hit_damage(true_strike:bool,critical:bool)->float:
-        key=(true_strike,critical)
-        if key in cache:return cache[key]
-        ability=true_ability if true_strike else regular_ability
-        value=_expected_packet(target,weapon["damage_type"],[(weapon_count*(2 if critical else 1),weapon_sides,weapon_minimum)],ability+weapon_bonus+dueling)
-        if true_strike:value+=_expected_packet(target,row["true_strike_damage_type"],[(true_count*(2 if critical else 1),true_sides,None)])
-        cache[key]=value;return value
-
-    @lru_cache(maxsize=None)
-    def optimize(round_index:int,action_index:int,attacks_remaining:int,true_remaining:int,studied:bool,prowess:bool)->float:
-        """Choose the next attack before its roll from only the currently observed state."""
-        if attacks_remaining==0:
-            if true_remaining:raise RuntimeError("True Strike allocation did not fit its Attack action")
-            if action_index+1<actions_by_round[round_index]:return optimize(round_index,action_index+1,attacks,true_uses,studied,prowess)
-            if round_index+1==len(actions_by_round):return 0.0
-            return optimize(round_index+1,0,attacks,true_uses,studied,prowess_enabled)
-        legal=[]
-        if attacks_remaining>true_remaining:legal.append(False)
-        if true_remaining:legal.append(True)
-        expected_values=[]
-        for true_strike in legal:
-            ability=true_ability if true_strike else regular_ability;bonus=ability+pb+weapon_bonus;expected=0.0
-            for natural,natural_probability in _natural_probabilities(studied_enabled and studied).items():
-                critical=natural==20;hit=critical or (natural!=1 and natural+bonus>=target.ac);next_attacks=attacks_remaining-1;next_true=true_remaining-int(true_strike)
-                if hit:
-                    outcome=expected_hit_damage(true_strike,critical)+optimize(round_index,action_index,next_attacks,next_true,False,prowess)
-                else:
-                    next_studied=studied_enabled;outcomes=[optimize(round_index,action_index,next_attacks,next_true,next_studied,prowess)]
-                    if prowess:outcomes.append(expected_hit_damage(true_strike,False)+optimize(round_index,action_index,next_attacks,next_true,False,False))
-                    outcome=max(outcomes)
-                expected+=natural_probability*outcome
-            expected_values.append(expected)
-        return max(expected_values)
-    return optimize(0,0,attacks,true_uses,False,prowess_enabled)/3.0
+    planner=EKDamagePlanner(row,target,level_config(config,target.level),model.progression("proficiency_bonus",target.level),cluster_size,int(config["methodology"]["rounds"]))
+    try:
+        score=planner.solve();return _Score(score.primary,score.aggregate)
+    finally:
+        planner.clear()
 
 
 def _battle_master_damage(row:dict[str,Any],target:Target,pb:int,level:int,critical:bool,maneuver_sides:int,part_of_action:bool)->float:
@@ -446,17 +411,22 @@ def _battle_master_dpr(model:AuthorityModel,config:dict[str,Any],row:dict[str,An
     return optimize(0,attacks_by_round[0],False,pool,prowess_enabled,relentless_per_turn,True)/3.0
 
 
-def _comparator_dpr(model:AuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,comparator_id:str)->float:
+def _comparator_score(model:AuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,comparator_id:str,cluster_size:int)->_Score:
     row=comparators["damage"][comparator_id]
-    return _battle_master_dpr(model,config,row,target) if comparator_id=="battle_master" else _eldritch_knight_dpr(model,config,row,target)
+    if comparator_id=="eldritch_knight":return _eldritch_knight_score(model,config,row,target,cluster_size)
+    value=_battle_master_dpr(model,config,row,target);return _Score(value,value)
 
 
-def _discipline_damage_rows(arguments:tuple[AuthorityModel,dict[str,Any],Target,str,list[int],float,float])->list[dict[str,Any]]:
-    model,config,target,discipline,clusters,ek,bm=arguments;kv_cache={};detail=[]
+def _comparator_dpr(model:AuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,comparator_id:str)->float:
+    return _comparator_score(model,config,comparators,target,comparator_id,1).primary
+
+
+def _discipline_damage_rows(arguments:tuple[AuthorityModel,dict[str,Any],Target,str,list[int],dict[int,_Score],float])->list[dict[str,Any]]:
+    model,config,target,discipline,clusters,ek_by_cluster,bm=arguments;kv_cache={};detail=[]
     for cluster in clusters:
         signature=_cluster_signature(model,config,discipline,target.level,int(cluster))
         if signature not in kv_cache:kv_cache[signature]=_kv_dpr(model,config,target,discipline,int(cluster))
-        primary,aggregate,selection=kv_cache[signature];detail.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"Cluster Size":cluster,"KV Primary DPR":primary,"KV Aggregate DPR":aggregate,"Eldritch Knight DPR":ek,"Battle Master DPR":bm,"Selection":selection})
+        primary,aggregate,selection=kv_cache[signature];ek=ek_by_cluster[int(cluster)];detail.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"Cluster Size":cluster,"KV Primary DPR":primary,"KV Aggregate DPR":aggregate,"Eldritch Knight Primary DPR":ek.primary,"Eldritch Knight Aggregate DPR":ek.aggregate,"Battle Master DPR":bm,"Selection":selection})
     return detail
 
 
@@ -464,8 +434,8 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
     model=AuthorityModel.load(authority);config=load_config();comparators=load_comparators();targets=load_targets(profile=profile,levels=levels,limit=target_limit);clusters=config["methodology"]["cluster_sizes"]
     arguments=[]
     for target in targets:
-        ek=_comparator_dpr(model,config,comparators,target,"eldritch_knight");bm=_comparator_dpr(model,config,comparators,target,"battle_master")
-        for discipline in model.disciplines:arguments.append((model,config,target,discipline,[int(cluster) for cluster in clusters],ek,bm))
+        ek_by_cluster={int(cluster):_comparator_score(model,config,comparators,target,"eldritch_knight",int(cluster)) for cluster in clusters};bm=_comparator_dpr(model,config,comparators,target,"battle_master")
+        for discipline in model.disciplines:arguments.append((model,config,target,discipline,[int(cluster) for cluster in clusters],ek_by_cluster,bm))
     if workers==1:discipline_rows=map(_discipline_damage_rows,arguments)
     else:
         with ProcessPoolExecutor(max_workers=workers,max_tasks_per_child=1) as executor:discipline_rows=executor.map(_discipline_damage_rows,arguments)
@@ -480,9 +450,9 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
     for row in detail:groups[(int(row["Level"]),str(row["Discipline"]),int(row["Cluster Size"]))].append(row)
     rows=[]
     for (level,discipline,cluster),values in sorted(groups.items()):
-        for scope,field in (("primary-target DPR","KV Primary DPR"),("aggregate cluster DPR","KV Aggregate DPR")):
+        for scope,field,ek_field in (("primary-target DPR","KV Primary DPR","Eldritch Knight Primary DPR"),("aggregate cluster DPR","KV Aggregate DPR","Eldritch Knight Aggregate DPR")):
             mean=lambda key:sum(float(item[key]) for item in values)/len(values)
-            rows.append(matrix_row({"Level":level,"Discipline":discipline,"Cluster Size":cluster,"Damage Scope":scope,"Profile":config["kv_profile"]["id"]},mean(field),mean("Eldritch Knight DPR"),mean("Battle Master DPR"),"damage"))
+            rows.append(matrix_row({"Level":level,"Discipline":discipline,"Cluster Size":cluster,"Damage Scope":scope,"Profile":config["kv_profile"]["id"]},mean(field),mean(ek_field),mean("Battle Master DPR"),"damage"))
     provenance={"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"catalog_sha256":file_sha256(DEFAULT_CATALOG),"roster_sha256":file_sha256(DEFAULT_ROSTERS),"target_profile":profile,"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"evaluator":"exact_analytical_enumeration","aggregation":"equal-weight roster means; percentages from displayed aggregates"}
     paths=write_matrix(output_dir,model.rules_version,"damage",rows,provenance) if write_headline else {}
     return {"rules_version":model.rules_version,"detail_rows":len(detail),"matrix_rows":len(rows),"paths":paths}

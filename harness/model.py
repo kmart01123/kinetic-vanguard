@@ -31,6 +31,7 @@ class Target:
     condition_immunities:frozenset[str];damage_resistances:frozenset[str];damage_immunities:frozenset[str];damage_vulnerabilities:frozenset[str]
     hp:int;source:str;source_page:str;source_url:str
     ability_modifiers:dict[str,int]=field(default_factory=dict);skill_bonuses:dict[str,int]=field(default_factory=dict)
+    blindsight_range:int=0;truesight_range:int=0
 
 
 def _object(value:Any,label:str)->dict[str,Any]:
@@ -144,6 +145,134 @@ _BATTLE_MASTER_CONTROL_LOADOUTS={
     "15":("disarming_attack","goading_attack","menacing_attack","pushing_attack","trip_attack","distracting_strike","precision_attack","ambush","maneuvering_attack"),
     "20":("disarming_attack","goading_attack","menacing_attack","pushing_attack","trip_attack","distracting_strike","precision_attack","ambush","maneuvering_attack"),
 }
+_ELDRITCH_KNIGHT_DAMAGE_CANTRIPS={
+    "7":("true_strike","acid_splash"),
+    "11":("true_strike","acid_splash","poison_spray"),
+    "15":("true_strike","acid_splash","poison_spray"),
+    "20":("true_strike","acid_splash","poison_spray"),
+}
+_ELDRITCH_KNIGHT_DAMAGE_PREPARED={
+    "7":("chromatic_orb","dragons_breath","magic_missile","shatter","witch_bolt"),
+    "11":("chromatic_orb","dragons_breath","magic_missile","shatter","witch_bolt","scorching_ray","melfs_acid_arrow","enlarge_reduce"),
+    "15":("chromatic_orb","dragons_breath","magic_missile","shatter","witch_bolt","scorching_ray","enlarge_reduce","fireball","lightning_bolt","bestow_curse"),
+    "20":("chromatic_orb","magic_missile","witch_bolt","scorching_ray","shatter","enlarge_reduce","melfs_acid_arrow","fireball","bestow_curse","conjure_minor_elementals","greater_invisibility","phantasmal_killer","vitriolic_sphere"),
+}
+_ELDRITCH_KNIGHT_DAMAGE_SLOTS={
+    "7":{"1":4,"2":2,"3":0,"4":0},
+    "11":{"1":4,"2":3,"3":0,"4":0},
+    "15":{"1":4,"2":3,"3":2,"4":0},
+    "20":{"1":4,"2":3,"3":3,"4":1},
+}
+
+
+def _dice(value:Any,label:str,*,flat:bool=False)->dict[str,Any]:
+    row=_object(value,label);keys={"count","sides","flat"} if flat else {"count","sides"};_exact_keys(row,keys,label)
+    _integer(row["count"],f"{label}.count",1);_integer(row["sides"],f"{label}.sides",2)
+    if flat:_integer(row["flat"],f"{label}.flat")
+    return row
+
+
+def _string_list(value:Any,label:str,*,allowed:set[str]|None=None)->list[str]:
+    if not isinstance(value,list) or not value or any(not isinstance(item,str) or not item for item in value) or len(value)!=len(set(value)):raise ValueError(f"{label} must be a unique non-empty string list")
+    if allowed is not None and not set(value)<=allowed:raise ValueError(f"{label} contains unsupported values")
+    return value
+
+
+def _validate_eldritch_knight_damage(ek:dict[str,Any])->None:
+    expected_keys={"regular_attack_ability_modifier","spellcasting_ability_modifier_by_level","save_dc_base","weapon","magic_weapon_bonus_by_level","dueling_damage_bonus","eldritch_strike_minimum_level","cantrips_by_level","prepared_spells_by_level","spell_slots_by_level","war_magic","improved_war_magic","spells","tactical_policy"}
+    _exact_keys(ek,expected_keys,"damage.eldritch_knight")
+    for key in ("regular_attack_ability_modifier","save_dc_base","dueling_damage_bonus"):_integer(ek[key],f"damage.eldritch_knight.{key}",0)
+    _integer(ek["eldritch_strike_minimum_level"],"damage.eldritch_knight.eldritch_strike_minimum_level",1)
+    _weapon(ek["weapon"],"damage.eldritch_knight.weapon");_level_map(ek["spellcasting_ability_modifier_by_level"],"damage.eldritch_knight.spellcasting_ability_modifier_by_level");_level_map(ek["magic_weapon_bonus_by_level"],"damage.eldritch_knight.magic_weapon_bonus_by_level")
+    for field,expected in (("cantrips_by_level",_ELDRITCH_KNIGHT_DAMAGE_CANTRIPS),("prepared_spells_by_level",_ELDRITCH_KNIGHT_DAMAGE_PREPARED)):
+        rows=_object(ek[field],f"damage.eldritch_knight.{field}");_exact_keys(rows,set(expected),f"damage.eldritch_knight.{field}")
+        for level,members in rows.items():
+            _string_list(members,f"damage.eldritch_knight.{field}.{level}")
+            if tuple(members)!=expected[level]:raise ValueError(f"damage.eldritch_knight.{field}.{level} does not match the audited fixed loadout")
+    slots=_object(ek["spell_slots_by_level"],"damage.eldritch_knight.spell_slots_by_level");_exact_keys(slots,set(_ELDRITCH_KNIGHT_DAMAGE_SLOTS),"damage.eldritch_knight.spell_slots_by_level")
+    for level,expected in _ELDRITCH_KNIGHT_DAMAGE_SLOTS.items():
+        pool=_object(slots[level],f"damage.eldritch_knight.spell_slots_by_level.{level}");_exact_keys(pool,set(expected),f"damage.eldritch_knight.spell_slots_by_level.{level}")
+        for slot,count in pool.items():_integer(count,f"damage.eldritch_knight.spell_slots_by_level.{level}.{slot}",0)
+        if pool!=expected:raise ValueError(f"damage.eldritch_knight.spell_slots_by_level.{level} does not match the audited slot pool")
+    war=_object(ek["war_magic"],"damage.eldritch_knight.war_magic");_exact_keys(war,{"minimum_level","attack_replacement_cost"},"damage.eldritch_knight.war_magic")
+    improved=_object(ek["improved_war_magic"],"damage.eldritch_knight.improved_war_magic");_exact_keys(improved,{"minimum_level","eligible_spell_levels","attack_replacement_cost"},"damage.eldritch_knight.improved_war_magic")
+    if war!={"minimum_level":7,"attack_replacement_cost":1} or improved!={"minimum_level":18,"eligible_spell_levels":[1,2],"attack_replacement_cost":2}:raise ValueError("Unsupported Eldritch Knight War Magic action economy")
+    common={"id","spell_level","audit_comment_id","source_scope","disposition","action_type","concentration","mechanic"}
+    mechanic_fields={
+        "true_strike":{"damage_types","weapon_damage_type_choice","damage_dice_by_level"},
+        "save_area":{"save","save_result","targeting","damage_types"},
+        "spell_attack":{"targeting","critical_dice","damage_types","damage_dice_by_level"},
+        "chromatic_orb":{"targeting","critical_dice","damage_types","base_damage","slot_damage_dice","maximum_leaps"},
+        "dragons_breath":{"targeting","save","save_result","damage_types","damage_type_choice","base_damage","slot_damage_dice","activation_action"},
+        "magic_missile":{"targeting","damage_types","base_darts","slot_darts","dart_damage","automatic_hit"},
+        "witch_bolt":{"targeting","critical_dice","damage_types","base_damage","slot_damage_dice","repeat_damage","repeat_action","repeat_timing","persists_on_initial_miss"},
+        "multiple_spell_attacks":{"targeting","critical_dice","damage_types","base_attacks","slot_attacks","attack_damage"},
+        "melfs_acid_arrow":{"targeting","critical_dice","damage_types","initial_damage","delayed_damage","slot_damage_dice_each_event","miss_result"},
+        "self_enlarge":{"targeting","weapon_hit_bonus"},
+        "bestow_curse_damage":{"targeting","save","save_result","damage_types","damage_event_bonus","mode"},
+        "conjure_minor_elementals":{"targeting","damage_types","damage_type_choice","weapon_hit_bonus"},
+        "greater_invisibility":{"targeting","melee_distance_feet","suppressed_by_senses"},
+        "phantasmal_killer":{"targeting","save","initial_success","repeat_success","damage_types","damage","repeat_timing"},
+        "vitriolic_sphere":{"targeting","save","initial_success","damage_types","initial_damage","delayed_damage","delayed_timing"},
+    }
+    expected_mechanics={
+        "true_strike":"true_strike","acid_splash":"save_area","poison_spray":"spell_attack","chromatic_orb":"chromatic_orb","dragons_breath":"dragons_breath","magic_missile":"magic_missile","shatter":"save_area","witch_bolt":"witch_bolt","scorching_ray":"multiple_spell_attacks","melfs_acid_arrow":"melfs_acid_arrow","enlarge_reduce":"self_enlarge","fireball":"save_area","lightning_bolt":"save_area","bestow_curse":"bestow_curse_damage","conjure_minor_elementals":"conjure_minor_elementals","greater_invisibility":"greater_invisibility","phantasmal_killer":"phantasmal_killer","vitriolic_sphere":"vitriolic_sphere",
+    }
+    expected_levels={"true_strike":0,"acid_splash":0,"poison_spray":0,"chromatic_orb":1,"dragons_breath":2,"magic_missile":1,"shatter":2,"witch_bolt":1,"scorching_ray":2,"melfs_acid_arrow":2,"enlarge_reduce":2,"fireball":3,"lightning_bolt":3,"bestow_curse":3,"conjure_minor_elementals":4,"greater_invisibility":4,"phantasmal_killer":4,"vitriolic_sphere":4}
+    concentration_spells={"dragons_breath","witch_bolt","enlarge_reduce","bestow_curse","conjure_minor_elementals","greater_invisibility","phantasmal_killer"}
+    spells=ek["spells"]
+    if not isinstance(spells,list) or not spells:raise ValueError("damage.eldritch_knight.spells must be non-empty")
+    ids=[]
+    for index,value in enumerate(spells):
+        label=f"damage.eldritch_knight.spells[{index}]";spell=_object(value,label);mechanic=spell.get("mechanic")
+        if mechanic not in mechanic_fields:raise ValueError(f"{label}.mechanic is unsupported")
+        required=common|mechanic_fields[mechanic]
+        if mechanic=="save_area":
+            required|={"damage_dice_by_level"} if int(spell.get("spell_level",0))==0 else {"base_damage","slot_damage_dice"}
+            if spell.get("id")=="shatter":required|={"save_disadvantage_creature_type"}
+        _exact_keys(spell,required,label);spell_id=_string(spell["id"],f"{label}.id");ids.append(spell_id)
+        if expected_mechanics.get(spell_id)!=mechanic:raise ValueError(f"{label} does not match the audited spell mechanic")
+        _integer(spell["spell_level"],f"{label}.spell_level",0);_integer(spell["audit_comment_id"],f"{label}.audit_comment_id",1);_boolean(spell["concentration"],f"{label}.concentration")
+        if spell["spell_level"]!=expected_levels[spell_id] or spell["action_type"]!=("bonus_action" if spell_id=="dragons_breath" else "action") or spell["concentration"]!=(spell_id in concentration_spells):raise ValueError(f"{label} has unsupported level, action, or concentration semantics")
+        if spell["source_scope"]!="independently_expressed_phb_comparator_abstraction" or spell["disposition"]!="model":raise ValueError(f"{label} source scope or disposition is invalid")
+        if spell["action_type"] not in {"action","bonus_action"}:raise ValueError(f"{label}.action_type is unsupported")
+        if "damage_types" in spell:_string_list(spell["damage_types"],f"{label}.damage_types",allowed={"acid","cold","fire","force","lightning","necrotic","poison","psychic","radiant","slashing","thunder"})
+        if "save" in spell and spell["save"] not in ABILITIES:raise ValueError(f"{label}.save is unsupported")
+        for key in ("base_damage","repeat_damage","attack_damage","initial_damage","delayed_damage","weapon_hit_bonus","damage_event_bonus","damage"):
+            if key in spell:_dice(spell[key],f"{label}.{key}")
+        if "dart_damage" in spell:_dice(spell["dart_damage"],f"{label}.dart_damage",flat=True)
+        if "damage_dice_by_level" in spell:
+            packets=_object(spell["damage_dice_by_level"],f"{label}.damage_dice_by_level");expected_packet_levels={"11","15","20"} if spell_id=="poison_spray" else {"7","11","15","20"};_exact_keys(packets,expected_packet_levels,f"{label}.damage_dice_by_level")
+            for level,packet in packets.items():_dice(packet,f"{label}.damage_dice_by_level.{level}")
+        for key in ("slot_damage_dice","base_darts","slot_darts","base_attacks","slot_attacks","slot_damage_dice_each_event","melee_distance_feet"):
+            if key in spell:_integer(spell[key],f"{label}.{key}",0)
+        for key in ("critical_dice","automatic_hit","persists_on_initial_miss","weapon_damage_type_choice"):
+            if key in spell:_boolean(spell[key],f"{label}.{key}")
+        for key in ("critical_dice","automatic_hit","persists_on_initial_miss"):
+            if key in spell and spell[key] is not True:raise ValueError(f"{label}.{key} must preserve the frozen mechanic")
+        frozen_strings={
+            "maximum_leaps":"slot_level","damage_type_choice":"once_at_cast_time","activation_action":"magic","repeat_action":"bonus_action","repeat_timing":("target_end_turn" if spell_id=="phantasmal_killer" else "later_turns"),"miss_result":"half_initial_only","mode":"caster_damage_events","initial_success":("half_and_ends" if spell_id=="phantasmal_killer" else "half_initial_only"),"repeat_success":"ends","delayed_timing":"target_end_next_turn","save_disadvantage_creature_type":"construct",
+        }
+        for key,expected in frozen_strings.items():
+            if key in spell and spell[key]!=expected:raise ValueError(f"{label}.{key} is unsupported")
+        expected_targeting={"true_strike":None,"acid_splash":"cluster","poison_spray":"primary","chromatic_orb":"distinct_cluster_targets","dragons_breath":"cluster","magic_missile":"selectable_darts","shatter":"cluster","witch_bolt":"fixed_primary","scorching_ray":"primary","melfs_acid_arrow":"primary","enlarge_reduce":"self","fireball":"cluster","lightning_bolt":"cluster","bestow_curse":"primary","conjure_minor_elementals":"self_emanation_melee_hits","greater_invisibility":"self","phantasmal_killer":"primary","vitriolic_sphere":"cluster"}
+        if "targeting" in spell and spell["targeting"]!=expected_targeting[spell_id]:raise ValueError(f"{label}.targeting is unsupported")
+        if spell_id=="greater_invisibility" and spell["suppressed_by_senses"]!=["blindsight","truesight"]:raise ValueError("Greater Invisibility sense suppression is not exact")
+        if spell_id=="greater_invisibility" and spell["melee_distance_feet"]!=5:raise ValueError("Greater Invisibility melee sense distance is not exact")
+        expected_save_result={"acid_splash":"zero","dragons_breath":"half","shatter":"half","fireball":"half","lightning_bolt":"half","bestow_curse":"ends"}
+        if "save_result" in spell and spell["save_result"]!=expected_save_result[spell_id]:raise ValueError(f"{label}.save_result is unsupported")
+        if spell_id=="dragons_breath" and (spell["damage_types"]!=["acid","cold","fire","lightning","poison"] or spell["damage_type_choice"]!="once_at_cast_time" or spell["audit_comment_id"]!=5349868410):raise ValueError("Dragon's Breath damage-type ruling is not exact")
+        elif spell_id!="dragons_breath" and spell["audit_comment_id"]!=5322823489:raise ValueError(f"{label}.audit_comment_id is not the frozen disposition record")
+    expected_ids=set(expected_mechanics)
+    if len(ids)!=len(set(ids)) or set(ids)!=expected_ids:raise ValueError("damage.eldritch_knight.spells does not match the complete frozen nominal spell package")
+    if ek["weapon"]["great_weapon_fighting"] is not False:raise ValueError("Eldritch Knight weapon must not use Great Weapon Fighting")
+    spell_by_id={spell["id"]:spell for spell in spells}
+    for level,members in _ELDRITCH_KNIGHT_DAMAGE_CANTRIPS.items():
+        if any(spell_by_id[spell_id]["spell_level"]!=0 for spell_id in members):raise ValueError(f"damage.eldritch_knight.cantrips_by_level.{level} contains a leveled spell")
+    for level,members in _ELDRITCH_KNIGHT_DAMAGE_PREPARED.items():
+        if any(not 1<=spell_by_id[spell_id]["spell_level"]<=max(int(slot) for slot,count in slots[level].items() if count) for spell_id in members):raise ValueError(f"damage.eldritch_knight.prepared_spells_by_level.{level} is not slot-legal")
+    policy=_object(ek["tactical_policy"],"damage.eldritch_knight.tactical_policy");expected_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","decision_information":"observed_state_only","preparation_choice":"fixed_before_target_and_cluster","spell_choice_timing":"before_resolution","bonus_action_ledger":"one_shared_per_turn","concentration_ledger":"one_active_spell"};_exact_keys(policy,set(expected_policy),"damage.eldritch_knight.tactical_policy")
+    if policy!=expected_policy:raise ValueError("Unsupported Eldritch Knight tactical policy")
 
 
 def _battle_master_loadouts(value:Any,label:str,expected:dict[str,tuple[str,...]])->dict[str,Any]:
@@ -200,14 +329,7 @@ def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
     _integer(bm_policy["maximum_maneuver_dice_per_attack"],"damage.battle_master.tactical_policy.maximum_maneuver_dice_per_attack",1);_integer(bm_policy["relentless_uses_per_turn"],"damage.battle_master.tactical_policy.relentless_uses_per_turn",1);_integer(bm_policy["relentless_superiority_pool_cost"],"damage.battle_master.tactical_policy.relentless_superiority_pool_cost",0)
     expected_bm_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","maneuver_choice_timing":"pre_roll_feint_or_post_roll_observed_result","decision_information":"observed_state_only","on_hit_die_effect":"damage","on_miss_die_effect":"attack_roll_bonus","maneuver_die_consumption":"on_use_before_die_result","maximum_maneuver_dice_per_attack":1,"feint_choice_timing":"before_attack_roll","feint_resource_timing":"before_attack_roll","feint_effect":"advantage_next_attack_same_target_same_turn_and_die_damage_on_hit","bonus_action_ledger":"one_per_turn_shared_by_feint_and_hew","relentless_die_options":"same_as_superiority_die","relentless_uses_per_turn":1,"relentless_superiority_pool_cost":0,"relentless_refresh":"start_of_next_turn","hew_choice_timing":"after_observed_critical"}
     if bm_policy!=expected_bm_policy:raise ValueError("Unsupported Battle Master tactical policy")
-    ek=_object(damage["eldritch_knight"],"damage.eldritch_knight");_exact_keys(ek,{"regular_attack_ability_modifier","true_strike_ability_modifier_by_level","weapon","magic_weapon_bonus_by_level","dueling_damage_bonus","true_strike_damage_by_level","true_strike_uses_per_attack_action","true_strike_damage_type","tactical_policy"},"damage.eldritch_knight")
-    _integer(ek["regular_attack_ability_modifier"],"damage.eldritch_knight.regular_attack_ability_modifier",0);_integer(ek["dueling_damage_bonus"],"damage.eldritch_knight.dueling_damage_bonus",0);_integer(ek["true_strike_uses_per_attack_action"],"damage.eldritch_knight.true_strike_uses_per_attack_action",0);_weapon(ek["weapon"],"damage.eldritch_knight.weapon");_level_map(ek["true_strike_ability_modifier_by_level"],"damage.eldritch_knight.true_strike_ability_modifier_by_level");_level_map(ek["magic_weapon_bonus_by_level"],"damage.eldritch_knight.magic_weapon_bonus_by_level")
-    true_damage=_object(ek["true_strike_damage_by_level"],"damage.eldritch_knight.true_strike_damage_by_level");_exact_keys(true_damage,{"7","11","15","20"},"damage.eldritch_knight.true_strike_damage_by_level")
-    for level,packet_value in true_damage.items():packet=_object(packet_value,f"true strike damage {level}");_exact_keys(packet,{"count","sides"},f"true strike damage {level}");_integer(packet["count"],f"true strike damage {level}.count",0);_integer(packet["sides"],f"true strike damage {level}.sides",2)
-    if ek["true_strike_damage_type"]!="radiant":raise ValueError("Unsupported True Strike damage type")
-    ek_policy=_object(ek["tactical_policy"],"damage.eldritch_knight.tactical_policy");_exact_keys(ek_policy,{"objective","true_strike_choice_timing","decision_information","true_strike_use_count"},"damage.eldritch_knight.tactical_policy")
-    expected_ek_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","true_strike_choice_timing":"before_attack_roll","decision_information":"observed_state_only","true_strike_use_count":"exactly_configured_per_attack_action"}
-    if ek_policy!=expected_ek_policy:raise ValueError("Unsupported Eldritch Knight tactical policy")
+    ek=_object(damage["eldritch_knight"],"damage.eldritch_knight");_validate_eldritch_knight_damage(ek)
     for build_id,row_value in control.items():
         row=_object(row_value,f"control.{build_id}");common={"minimum_level","attack_ability_modifier","magic_weapon_bonus_by_level","save_dc_base","magic_resistance_applies","scenarios"};ability={"save_ability_modifier","known_maneuvers_by_level"} if build_id=="battle_master" else {"spellcasting_ability_modifier_by_level","spell_access","eldritch_strike_minimum_level","reliability_scenario_ids"};_exact_keys(row,common|ability,f"control.{build_id}")
         for key in ("minimum_level","attack_ability_modifier","save_dc_base"):_integer(row[key],f"control.{build_id}.{key}",0)
@@ -442,6 +564,12 @@ def _defense_values(creature:dict[str,Any],family:str)->frozenset[str]:
     return frozenset(values)
 
 
+def _sense_range(creature:dict[str,Any],kind:str)->int:
+    facts=creature["senses"][kind]
+    if any(fact["limitation"] is not None for fact in facts):raise ValueError(f"{creature['id']} has unsupported qualified {kind}")
+    return max((int(fact["range_feet"]) for fact in facts),default=0)
+
+
 def load_targets(profile:str=DEFAULT_PROFILE,levels:set[int]|None=None,limit:int|None=None,catalog_path:Path=DEFAULT_CATALOG,profiles_path:Path=DEFAULT_ROSTERS)->list[Target]:
     catalog=load_catalog(catalog_path);profiles=load_profiles(profiles_path,catalog)
     if profile not in profiles:raise ValueError(f"Unknown target profile {profile!r}; expected one of {sorted(profiles)}")
@@ -451,7 +579,7 @@ def load_targets(profile:str=DEFAULT_PROFILE,levels:set[int]|None=None,limit:int
         if levels is not None and level not in levels:continue
         creature=by_id[member["creature_id"]];saves={**creature["ability_modifiers"],**creature["saving_throw_bonuses"]}
         skill_bonuses={str(item["skill"]):int(item["bonus"]) for item in creature["skill_bonuses"]}
-        rows.append(Target(level,creature["name"],creature["ac"],saves,creature["magic_resistance"],creature["legendary_resistance"]["uses_per_day"],creature["sizes"][0],creature["creature_type"],_defense_values(creature,"condition_immunities"),_defense_values(creature,"damage_resistances"),_defense_values(creature,"damage_immunities"),_defense_values(creature,"damage_vulnerabilities"),creature["hp"],source["ruleset"],str(creature["source"]["page"]),source["url"],dict(creature["ability_modifiers"]),skill_bonuses))
+        rows.append(Target(level,creature["name"],creature["ac"],saves,creature["magic_resistance"],creature["legendary_resistance"]["uses_per_day"],creature["sizes"][0],creature["creature_type"],_defense_values(creature,"condition_immunities"),_defense_values(creature,"damage_resistances"),_defense_values(creature,"damage_immunities"),_defense_values(creature,"damage_vulnerabilities"),creature["hp"],source["ruleset"],str(creature["source"]["page"]),source["url"],dict(creature["ability_modifiers"]),skill_bonuses,_sense_range(creature,"blindsight"),_sense_range(creature,"truesight")))
     if limit is not None:rows=rows[:limit]
     if not rows:raise ValueError("Target selection is empty")
     return rows

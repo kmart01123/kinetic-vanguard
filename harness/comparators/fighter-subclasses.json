@@ -41,18 +41,59 @@
     },
     "eldritch_knight": {
       "regular_attack_ability_modifier": 5,
-      "true_strike_ability_modifier_by_level": {"7": 3, "11": 3, "15": 5, "20": 5},
+      "spellcasting_ability_modifier_by_level": {"7": 3, "11": 3, "15": 5, "20": 5},
+      "save_dc_base": 8,
       "weapon": {"count": 1, "sides": 8, "damage_type": "slashing", "great_weapon_fighting": false},
       "magic_weapon_bonus_by_level": {"7": 1, "11": 2, "15": 2, "20": 3},
       "dueling_damage_bonus": 2,
-      "true_strike_damage_by_level": {"7": {"count": 1, "sides": 6}, "11": {"count": 2, "sides": 6}, "15": {"count": 2, "sides": 6}, "20": {"count": 3, "sides": 6}},
-      "true_strike_uses_per_attack_action": 1,
-      "true_strike_damage_type": "radiant",
+      "eldritch_strike_minimum_level": 11,
+      "cantrips_by_level": {
+        "7": ["true_strike", "acid_splash"],
+        "11": ["true_strike", "acid_splash", "poison_spray"],
+        "15": ["true_strike", "acid_splash", "poison_spray"],
+        "20": ["true_strike", "acid_splash", "poison_spray"]
+      },
+      "prepared_spells_by_level": {
+        "7": ["chromatic_orb", "dragons_breath", "magic_missile", "shatter", "witch_bolt"],
+        "11": ["chromatic_orb", "dragons_breath", "magic_missile", "shatter", "witch_bolt", "scorching_ray", "melfs_acid_arrow", "enlarge_reduce"],
+        "15": ["chromatic_orb", "dragons_breath", "magic_missile", "shatter", "witch_bolt", "scorching_ray", "enlarge_reduce", "fireball", "lightning_bolt", "bestow_curse"],
+        "20": ["chromatic_orb", "magic_missile", "witch_bolt", "scorching_ray", "shatter", "enlarge_reduce", "melfs_acid_arrow", "fireball", "bestow_curse", "conjure_minor_elementals", "greater_invisibility", "phantasmal_killer", "vitriolic_sphere"]
+      },
+      "spell_slots_by_level": {
+        "7": {"1": 4, "2": 2, "3": 0, "4": 0},
+        "11": {"1": 4, "2": 3, "3": 0, "4": 0},
+        "15": {"1": 4, "2": 3, "3": 2, "4": 0},
+        "20": {"1": 4, "2": 3, "3": 3, "4": 1}
+      },
+      "war_magic": {"minimum_level": 7, "attack_replacement_cost": 1},
+      "improved_war_magic": {"minimum_level": 18, "eligible_spell_levels": [1, 2], "attack_replacement_cost": 2},
+      "spells": [
+        {"id":"true_strike","spell_level":0,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":false,"mechanic":"true_strike","damage_types":["radiant"],"weapon_damage_type_choice":true,"damage_dice_by_level":{"7":{"count":1,"sides":6},"11":{"count":2,"sides":6},"15":{"count":2,"sides":6},"20":{"count":3,"sides":6}}},
+        {"id":"acid_splash","spell_level":0,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":false,"mechanic":"save_area","save":"dexterity","save_result":"zero","targeting":"cluster","damage_types":["acid"],"damage_dice_by_level":{"7":{"count":2,"sides":6},"11":{"count":3,"sides":6},"15":{"count":3,"sides":6},"20":{"count":4,"sides":6}}},
+        {"id":"poison_spray","spell_level":0,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":false,"mechanic":"spell_attack","targeting":"primary","critical_dice":true,"damage_types":["poison"],"damage_dice_by_level":{"11":{"count":3,"sides":12},"15":{"count":3,"sides":12},"20":{"count":4,"sides":12}}},
+        {"id":"chromatic_orb","spell_level":1,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":false,"mechanic":"chromatic_orb","targeting":"distinct_cluster_targets","critical_dice":true,"damage_types":["acid","cold","fire","lightning","poison","thunder"],"base_damage":{"count":3,"sides":8},"slot_damage_dice":1,"maximum_leaps":"slot_level"},
+        {"id":"dragons_breath","spell_level":2,"audit_comment_id":5349868410,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"bonus_action","concentration":true,"mechanic":"dragons_breath","targeting":"cluster","save":"dexterity","save_result":"half","damage_types":["acid","cold","fire","lightning","poison"],"damage_type_choice":"once_at_cast_time","base_damage":{"count":3,"sides":6},"slot_damage_dice":1,"activation_action":"magic"},
+        {"id":"magic_missile","spell_level":1,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":false,"mechanic":"magic_missile","targeting":"selectable_darts","damage_types":["force"],"base_darts":3,"slot_darts":1,"dart_damage":{"count":1,"sides":4,"flat":1},"automatic_hit":true},
+        {"id":"shatter","spell_level":2,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":false,"mechanic":"save_area","targeting":"cluster","save":"constitution","save_result":"half","save_disadvantage_creature_type":"construct","damage_types":["thunder"],"base_damage":{"count":3,"sides":8},"slot_damage_dice":1},
+        {"id":"witch_bolt","spell_level":1,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":true,"mechanic":"witch_bolt","targeting":"fixed_primary","critical_dice":true,"damage_types":["lightning"],"base_damage":{"count":2,"sides":12},"slot_damage_dice":1,"repeat_damage":{"count":1,"sides":12},"repeat_action":"bonus_action","repeat_timing":"later_turns","persists_on_initial_miss":true},
+        {"id":"scorching_ray","spell_level":2,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":false,"mechanic":"multiple_spell_attacks","targeting":"primary","critical_dice":true,"damage_types":["fire"],"base_attacks":3,"slot_attacks":1,"attack_damage":{"count":2,"sides":6}},
+        {"id":"melfs_acid_arrow","spell_level":2,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":false,"mechanic":"melfs_acid_arrow","targeting":"primary","critical_dice":true,"damage_types":["acid"],"initial_damage":{"count":4,"sides":4},"delayed_damage":{"count":2,"sides":4},"slot_damage_dice_each_event":1,"miss_result":"half_initial_only"},
+        {"id":"enlarge_reduce","spell_level":2,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":true,"mechanic":"self_enlarge","targeting":"self","weapon_hit_bonus":{"count":1,"sides":4}},
+        {"id":"fireball","spell_level":3,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":false,"mechanic":"save_area","targeting":"cluster","save":"dexterity","save_result":"half","damage_types":["fire"],"base_damage":{"count":8,"sides":6},"slot_damage_dice":1},
+        {"id":"lightning_bolt","spell_level":3,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":false,"mechanic":"save_area","targeting":"cluster","save":"dexterity","save_result":"half","damage_types":["lightning"],"base_damage":{"count":8,"sides":6},"slot_damage_dice":1},
+        {"id":"bestow_curse","spell_level":3,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":true,"mechanic":"bestow_curse_damage","targeting":"primary","save":"wisdom","save_result":"ends","damage_types":["necrotic"],"damage_event_bonus":{"count":1,"sides":8},"mode":"caster_damage_events"},
+        {"id":"conjure_minor_elementals","spell_level":4,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":true,"mechanic":"conjure_minor_elementals","targeting":"self_emanation_melee_hits","damage_types":["acid","cold","fire","lightning"],"damage_type_choice":"once_at_cast_time","weapon_hit_bonus":{"count":2,"sides":8}},
+        {"id":"greater_invisibility","spell_level":4,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":true,"mechanic":"greater_invisibility","targeting":"self","melee_distance_feet":5,"suppressed_by_senses":["blindsight","truesight"]},
+        {"id":"phantasmal_killer","spell_level":4,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":true,"mechanic":"phantasmal_killer","targeting":"primary","save":"wisdom","initial_success":"half_and_ends","repeat_success":"ends","damage_types":["psychic"],"damage":{"count":4,"sides":10},"repeat_timing":"target_end_turn"},
+        {"id":"vitriolic_sphere","spell_level":4,"audit_comment_id":5322823489,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"model","action_type":"action","concentration":false,"mechanic":"vitriolic_sphere","targeting":"cluster","save":"dexterity","initial_success":"half_initial_only","damage_types":["acid"],"initial_damage":{"count":10,"sides":4},"delayed_damage":{"count":5,"sides":4},"delayed_timing":"target_end_next_turn"}
+      ],
       "tactical_policy": {
         "objective": "maximum_expected_damage_over_benchmark_horizon",
-        "true_strike_choice_timing": "before_attack_roll",
         "decision_information": "observed_state_only",
-        "true_strike_use_count": "exactly_configured_per_attack_action"
+        "preparation_choice": "fixed_before_target_and_cluster",
+        "spell_choice_timing": "before_resolution",
+        "bonus_action_ledger": "one_shared_per_turn",
+        "concentration_ledger": "one_active_spell"
       }
     }
   },
