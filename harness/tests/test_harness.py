@@ -157,6 +157,7 @@ class FrozenInputValidationTests(unittest.TestCase):
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["battle_master"]["known_maneuvers_by_level"]["7"].__setitem__(0,"riposte"),"audited fixed loadout")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["control"]["battle_master"]["known_maneuvers_by_level"]["11"].append("trip_attack"),"duplicate-free")
         self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"]["tactical_policy"].__setitem__("spell_choice_timing","after_resolution"),"Eldritch Knight tactical policy")
+        self.assert_json_rejected(DEFAULT_COMPARATORS,load_comparators,lambda value:value["damage"]["eldritch_knight"]["weapon"].__setitem__("great_weapon_fighting",True),"must not use Great Weapon Fighting")
 
 class FighterNumericalTests(unittest.TestCase):
     @classmethod
@@ -236,6 +237,21 @@ class FighterNumericalTests(unittest.TestCase):
             "20":["chromatic_orb","magic_missile","witch_bolt","scorching_ray","shatter","enlarge_reduce","melfs_acid_arrow","fireball","bestow_curse","conjure_minor_elementals","greater_invisibility","phantasmal_killer","vitriolic_sphere"],
         })
         self.assertEqual({level:len(spells) for level,spells in row["prepared_spells_by_level"].items()},{"7":5,"11":8,"15":10,"20":13})
+        true_strike=next(spell for spell in row["spells"] if spell["id"]=="true_strike")
+        self.assertEqual(true_strike["damage_dice_by_level"],{
+            "7":{"count":1,"sides":6},
+            "11":{"count":2,"sides":6},
+            "15":{"count":2,"sides":6},
+            "20":{"count":3,"sides":6},
+        })
+
+    def test_eldritch_knight_planner_clears_caches_when_solve_raises(self)->None:
+        target=next(item for item in self.targets if item.level==7)
+        with patch("harness.damage_harness.EKDamagePlanner") as planner_type:
+            planner_type.return_value.solve.side_effect=RuntimeError("planner failed")
+            with self.assertRaisesRegex(RuntimeError,"planner failed"):
+                _comparator_score(self.model,self.config,self.comparators,target,"eldritch_knight",1)
+            planner_type.return_value.clear.assert_called_once_with()
 
     def test_eldritch_knight_exact_slot_pools_and_dragons_breath_types(self)->None:
         row=self.comparators["damage"]["eldritch_knight"]
@@ -504,6 +520,12 @@ class EldritchKnightPlannerTests(unittest.TestCase):
         critical_base=planner._weapon_damage(normal,False,True)
         self.assertEqual(planner._weapon_damage(enlarge,False,False)-base,2.5);self.assertEqual(planner._weapon_damage(curse,False,False)-base,4.5)
         self.assertEqual(planner._weapon_damage(curse,False,True)-critical_base,9.0)
+
+    def test_enlarge_die_uses_true_strike_selected_weapon_damage_type(self)->None:
+        planner=self.planner(15,target=self.target(15,damage_immunities=frozenset({"slashing"})));normal=self.state(planner);enlarge=replace(normal,concentration="enlarge_reduce")
+        self.assertEqual(planner._weapon_damage(enlarge,False,False)-planner._weapon_damage(normal,False,False),0.0)
+        self.assertEqual(planner._weapon_damage(enlarge,True,False)-planner._weapon_damage(normal,True,False),2.5)
+        self.assertEqual(planner._weapon_damage(enlarge,True,True)-planner._weapon_damage(normal,True,True),5.0)
 
     def test_bestow_curse_uses_one_magic_missile_event_but_each_scorching_ray_hit(self)->None:
         planner=self.planner(20,target=self.target(20));curse=replace(self.state(planner,slots=(1,1,0,0)),concentration="bestow_curse")

@@ -335,7 +335,10 @@ def _eldritch_knight_score(model:AuthorityModel,config:dict[str,Any],row:dict[st
     policy=row["tactical_policy"];expected_policy={"objective":"maximum_expected_damage_over_benchmark_horizon","decision_information":"observed_state_only","preparation_choice":"fixed_before_target_and_cluster","spell_choice_timing":"before_resolution","bonus_action_ledger":"one_shared_per_turn","concentration_ledger":"one_active_spell"}
     if policy!=expected_policy:raise ValueError("Unsupported Eldritch Knight tactical policy")
     planner=EKDamagePlanner(row,target,level_config(config,target.level),model.progression("proficiency_bonus",target.level),cluster_size,int(config["methodology"]["rounds"]))
-    score=planner.solve();planner.clear();return _Score(score.primary,score.aggregate)
+    try:
+        score=planner.solve();return _Score(score.primary,score.aggregate)
+    finally:
+        planner.clear()
 
 
 def _battle_master_damage(row:dict[str,Any],target:Target,pb:int,level:int,critical:bool,maneuver_sides:int,part_of_action:bool)->float:

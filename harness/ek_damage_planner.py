@@ -201,7 +201,7 @@ class EKDamagePlanner:
         value=self._packet(packet,weapon_damage_type,critical=critical)
         if true_strike:
             packet=spell["damage_dice_by_level"][self.level_key];value+=self._packet(packet,spell["damage_types"][0],critical=critical)
-        if state.concentration=="enlarge_reduce":value+=self._packet(self.spells["enlarge_reduce"]["weapon_hit_bonus"],str(weapon["damage_type"]),critical=critical)
+        if state.concentration=="enlarge_reduce":value+=self._packet(self.spells["enlarge_reduce"]["weapon_hit_bonus"],weapon_damage_type,critical=critical)
         if state.concentration=="conjure_minor_elementals":value+=self._packet(self.spells["conjure_minor_elementals"]["weapon_hit_bonus"],state.concentration_type,critical=critical)
         if state.concentration=="bestow_curse" and value>0:value+=self._curse_packet(critical)
         return value
@@ -248,8 +248,7 @@ class EKDamagePlanner:
             if leaps_left and target_index+1<self.cluster_size:
                 leap=self._chromatic_value(next_state,spell,slot,damage_type,target_index+1,leaps_left-1,after)
                 probability=chromatic_orb_duplicate_probability(count);continuation=leap.scaled(probability)+continuation.scaled(1-probability)
-            score=self._damage_score(damage,damage if same_primary else damage)
-            if not same_primary:score=EKScore(0.0,damage)
+            score=EKScore(damage,damage) if same_primary else EKScore(0.0,damage)
             return score+continuation
         return self._attack_value(state,self.spell_attack_bonus,same_primary,self._ranged_invisibility_advantage(state),on_hit,after)
 
