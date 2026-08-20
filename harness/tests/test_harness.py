@@ -524,6 +524,17 @@ class EldritchKnightPlannerTests(unittest.TestCase):
             miss=planner._cast_value(state,"melfs_acid_arrow",2,lambda next_state:(missed.append(next_state),EKScore())[1])
         self.assertEqual(miss.primary,4.75);self.assertIn((),{next_state.delayed_packets for next_state in missed})
 
+    def test_melf_miss_applies_curse_only_when_half_acid_damages_target(self)->None:
+        planner=self.planner(20,target=self.target(20));state=self.state(planner,slots=(0,1,0,0));curse=replace(state,concentration="bestow_curse");cursed_seen=[];uncursed_seen=[]
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(1.0,0.0,0.0)):
+            cursed=planner._cast_value(curse,"melfs_acid_arrow",2,lambda next_state:(cursed_seen.append(next_state),EKScore())[1])
+            uncursed=planner._cast_value(state,"melfs_acid_arrow",2,lambda next_state:(uncursed_seen.append(next_state),EKScore())[1])
+        immune=self.planner(20,target=self.target(20,damage_immunities=frozenset({"acid"})));immune_seen=[]
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(1.0,0.0,0.0)):
+            negated=immune._cast_value(replace(self.state(immune,slots=(0,1,0,0)),concentration="bestow_curse"),"melfs_acid_arrow",2,lambda next_state:(immune_seen.append(next_state),EKScore())[1])
+        self.assertEqual(cursed.primary,9.25);self.assertEqual(uncursed.primary,4.75);self.assertEqual(negated.primary,0.0)
+        for seen in (cursed_seen,uncursed_seen,immune_seen):self.assertIn((),{next_state.delayed_packets for next_state in seen})
+
     def test_vitriolic_sphere_failure_schedules_exact_delayed_event(self)->None:
         planner=self.planner(20,target=self.target(20));state=replace(self.state(planner,slots=(0,0,0,1)),concentration="bestow_curse");seen=[]
         with patch("harness.ek_damage_planner.modified_save_success_probability",return_value=0.0):

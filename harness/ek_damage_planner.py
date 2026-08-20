@@ -268,8 +268,9 @@ class EKDamagePlanner:
             if state.concentration=="bestow_curse" and first>0:curse+=self._curse_packet(critical)
             return self._damage_score(first+curse)+after(self._schedule_delayed(next_state,damage_type,delayed))
         def on_miss(next_state:EKState)->EKScore:
-            first=self._packet(initial,damage_type,half=True)
-            return self._damage_score(first)+after(next_state)
+            first=self._packet(initial,damage_type,half=True);curse=0.0
+            if state.concentration=="bestow_curse" and first>0:curse=self._curse_packet()
+            return self._damage_score(first+curse)+after(next_state)
         return self._attack_value(state,self.spell_attack_bonus,True,self._ranged_invisibility_advantage(state),on_hit,on_miss)
 
     def _vitriolic_value(self,state:EKState,spell:dict[str,Any],after:Callable[[EKState],EKScore])->EKScore:
