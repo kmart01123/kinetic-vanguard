@@ -407,6 +407,54 @@ class EldritchKnightPlannerTests(unittest.TestCase):
         weapon=planner._weapon_damage(state,False,False);missiles=3*planner._packet(spell["dart_damage"],"force")
         self.assertEqual(result.primary,2*weapon+missiles)
 
+    def test_improved_war_magic_consumes_the_turns_slotted_spell_allowance(self)->None:
+        planner=self.planner(20,attacks=4,actions=(2,),target=self.target(20));state=self.state(planner,actions=2,slots=(2,0,0,0));seen=[]
+        after_attack=next(next_state for next_state in planner._consume_action_states(state,magic=False) if next_state.ordinary_action_available)
+        planner._cast_value(after_attack,"magic_missile",1,lambda next_state:(seen.append(next_state),EKScore())[1]);after_improved=seen[0]
+        self.assertTrue(after_improved.slotted_spell_cast_this_turn);self.assertTrue(after_improved.ordinary_action_available)
+        self.assertEqual(planner._slot_options(after_improved,planner.spells["magic_missile"]),())
+        with self.assertRaisesRegex(ValueError,"already expended a spell slot"):planner._consume_slot(after_improved,1)
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)):
+            self.assertGreater(planner._attack_action(after_improved).primary,0.0)
+
+    def test_normal_slotted_spell_prevents_later_improved_war_magic(self)->None:
+        planner=self.planner(20,attacks=4,actions=(2,),target=self.target(20));state=self.state(planner,actions=2,slots=(2,0,0,0));seen=[]
+        after_magic_action=planner._consume_action_states(state,magic=True)[0]
+        planner._cast_value(after_magic_action,"magic_missile",1,lambda next_state:(seen.append(next_state),EKScore())[1]);after_spell=seen[0]
+        self.assertTrue(after_spell.slotted_spell_cast_this_turn);self.assertEqual(planner._slot_options(after_spell,planner.spells["magic_missile"]),())
+        with self.assertRaisesRegex(ValueError,"already expended a spell slot"):
+            planner._attack_action(after_spell,"magic_missile",1,2)
+
+    def test_war_magic_cantrip_remains_legal_after_improved_war_magic(self)->None:
+        planner=self.planner(20,attacks=4,actions=(2,),target=self.target(20));state=self.state(planner,actions=2,slots=(1,0,0,0));seen=[]
+        after_attack=next(next_state for next_state in planner._consume_action_states(state,magic=False) if next_state.ordinary_action_available)
+        planner._cast_value(after_attack,"magic_missile",1,lambda next_state:(seen.append(next_state),EKScore())[1]);after_improved=seen[0]
+        with patch("harness.ek_damage_planner.attack_probabilities",return_value=(0.0,1.0,0.0)):
+            ordinary=planner._attack_action(after_improved);war_magic=planner._attack_action(after_improved,"true_strike",0,1)
+        self.assertGreater(war_magic.primary,ordinary.primary);self.assertTrue(after_improved.slotted_spell_cast_this_turn)
+
+    def test_slotted_spell_allowance_resets_only_on_the_next_turn(self)->None:
+        planner=self.planner(20,actions=(1,1),target=self.target(20));state=replace(self.state(planner,actions=0,slots=(1,0,0,0)),slotted_spell_cast_this_turn=True);seen=[]
+        with patch.object(planner,"_turn",side_effect=lambda next_state:(seen.append(next_state),EKScore())[1]):planner._finish_turn(state)
+        next_round=seen[0]
+        self.assertEqual(next_round.round_index,1);self.assertFalse(next_round.slotted_spell_cast_this_turn)
+        after_action=planner._consume_action_states(next_round,magic=True)[0];cast_states=[]
+        planner._cast_value(after_action,"magic_missile",1,lambda next_state:(cast_states.append(next_state),EKScore())[1])
+        self.assertTrue(cast_states[0].slotted_spell_cast_this_turn)
+
+    def test_action_surge_never_refreshes_slotted_spell_allowance(self)->None:
+        planner=self.planner(20,actions=(2,),target=self.target(20));state=replace(self.state(planner,actions=2,slots=(1,0,0,0)),slotted_spell_cast_this_turn=True)
+        after_attacks=planner._consume_action_states(state,magic=False)
+        self.assertEqual(len(after_attacks),2);self.assertTrue(all(next_state.slotted_spell_cast_this_turn for next_state in after_attacks))
+        self.assertEqual(planner._slot_options(state,planner.spells["magic_missile"]),())
+
+    def test_bonus_action_slotted_spell_uses_the_shared_turn_allowance(self)->None:
+        planner=self.planner(actions=(1,),target=self.target());state=self.state(planner,slots=(1,1,0,0));after_bonus=planner._cast_dragons_breath(state,2)
+        self.assertTrue(after_bonus.slotted_spell_cast_this_turn);self.assertEqual(planner._slot_options(after_bonus,planner.spells["magic_missile"]),())
+        after_action=planner._consume_action_states(state,magic=True)[0];seen=[]
+        planner._cast_value(after_action,"magic_missile",1,lambda next_state:(seen.append(next_state),EKScore())[1])
+        with self.assertRaisesRegex(ValueError,"already expended a spell slot"):planner._cast_dragons_breath(seen[0],2)
+
     def test_ordinary_action_spell_consumes_one_action_and_action_surge_adds_only_an_action(self)->None:
         immune=frozenset({"acid","cold","fire","lightning","poison","radiant","slashing","thunder"});target=self.target(damage_immunities=immune,saves={ability:20 for ability in ("strength","dexterity","constitution","intelligence","wisdom","charisma")})
         planner=self.planner(actions=(2,),target=target);state=self.state(planner,actions=2,slots=(2,0,0,0))
@@ -425,7 +473,7 @@ class EldritchKnightPlannerTests(unittest.TestCase):
 
     def test_concentration_replacement_is_exclusive(self)->None:
         planner=self.planner(15,target=self.target(15));states=[];initial=self.state(planner,slots=(0,1,1,0))
-        planner._cast_value(initial,"enlarge_reduce",2,lambda state:(states.append(state),EKScore())[1]);enlarged=next(state for state in states if state.concentration=="enlarge_reduce");states.clear()
+        planner._cast_value(initial,"enlarge_reduce",2,lambda state:(states.append(state),EKScore())[1]);enlarged=replace(next(state for state in states if state.concentration=="enlarge_reduce"),slotted_spell_cast_this_turn=False);states.clear()
         with patch("harness.ek_damage_planner.modified_save_success_probability",return_value=0.0):planner._cast_value(enlarged,"bestow_curse",3,lambda state:(states.append(state),EKScore())[1])
         self.assertNotIn("enlarge_reduce",{state.concentration for state in states});self.assertIn("bestow_curse",{state.concentration for state in states})
 
@@ -512,7 +560,7 @@ class EldritchKnightPlannerTests(unittest.TestCase):
         self.assertEqual(active.slots,(0,1,0,0));self.assertFalse(active.bonus_available);self.assertEqual((active.concentration,active.concentration_type),("dragons_breath:2","cold"))
         with patch("harness.ek_damage_planner.attack_probabilities",return_value=(1.0,0.0,0.0)),patch("harness.ek_damage_planner.modified_save_success_probability",return_value=0.0):activation=planner._dragons_breath(active);score=planner._turn(active)
         self.assertAlmostEqual(activation.primary,10.5);self.assertAlmostEqual(activation.aggregate,31.5)
-        self.assertAlmostEqual(score.primary,14.0);self.assertAlmostEqual(score.aggregate,31.5)
+        self.assertEqual(score,activation)
 
     def test_enlarge_and_bestow_curse_add_exact_weapon_hit_packets(self)->None:
         planner=self.planner(15,target=self.target(15));normal=self.state(planner);enlarge=replace(normal,concentration="enlarge_reduce");curse=replace(normal,concentration="bestow_curse")
@@ -574,7 +622,7 @@ class EldritchKnightPlannerTests(unittest.TestCase):
             seen=[];initial=self.state(planner,slots=(0,0,0,1))
             planner._cast_value(initial,"greater_invisibility",4,lambda state:(seen.append(state),EKScore())[1])
             self.assertEqual(seen[0].slots,(0,0,0,0));self.assertEqual(seen[0].concentration,"greater_invisibility")
-            return replace(seen[0],slots=(1,1,0,0))
+            return replace(seen[0],slots=(1,1,0,0),slotted_spell_cast_this_turn=False)
         probabilities=lambda _bonus,_ac,advantage=False:(0.0,1.0,0.0) if advantage else (1.0,0.0,0.0)
         ordinary=self.planner(20,target=self.target(20));blind=self.planner(20,target=self.target(20,blindsight_range=1));true=self.planner(20,target=self.target(20,truesight_range=1))
         ordinary_state=active(ordinary);blind_state=active(blind);true_state=active(true)

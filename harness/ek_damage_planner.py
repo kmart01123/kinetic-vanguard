@@ -37,6 +37,7 @@ class EKState:
     eldritch_strike_fresh:bool=False
     delayed_packets:tuple[tuple[str,int,int],...]=()
     ordinary_action_available:bool=True
+    slotted_spell_cast_this_turn:bool=False
 
 
 def _best(scores:list[EKScore])->EKScore:
@@ -117,8 +118,9 @@ class EKDamagePlanner:
         return max(damage_types,key=multiplier)
 
     def _consume_slot(self,state:EKState,slot:int)->EKState:
+        if state.slotted_spell_cast_this_turn:raise ValueError("Eldritch Knight already expended a spell slot to cast a spell this turn")
         if not 1<=slot<=4 or state.slots[slot-1]<=0:raise ValueError("Eldritch Knight spell slot is unavailable")
-        slots=list(state.slots);slots[slot-1]-=1;return replace(state,slots=tuple(slots))
+        slots=list(state.slots);slots[slot-1]-=1;return replace(state,slots=tuple(slots),slotted_spell_cast_this_turn=True)
 
     def _consume_action_states(self,state:EKState,*,magic:bool)->tuple[EKState,...]:
         if state.actions_left<=0:return ()
@@ -131,6 +133,7 @@ class EKDamagePlanner:
         return tuple(dict.fromkeys(choices))
 
     def _slot_options(self,state:EKState,spell:dict[str,Any])->tuple[int,...]:
+        if state.slotted_spell_cast_this_turn:return ()
         minimum=int(spell["spell_level"])
         return tuple(level for level,count in enumerate(state.slots,1) if count and level>=minimum)
 
@@ -356,7 +359,7 @@ class EKDamagePlanner:
             concentration=next_state.concentration
             if concentration=="witch_bolt_pending":concentration="witch_bolt"
             actions=self.actions_by_round[next_state.round_index+1]
-            return self._turn(EKState(next_state.round_index+1,actions,next_state.studied if next_state.attacked_this_turn else False,self.prowess_enabled,next_state.slots,True,concentration,next_state.concentration_type,False,next_state.eldritch_strike_fresh if self.eldritch_strike_enabled else False,False,(),bool(actions)))
+            return self._turn(EKState(next_state.round_index+1,actions,next_state.studied if next_state.attacked_this_turn else False,self.prowess_enabled,next_state.slots,True,concentration,next_state.concentration_type,False,next_state.eldritch_strike_fresh if self.eldritch_strike_enabled else False,False,(),ordinary_action_available=bool(actions),slotted_spell_cast_this_turn=False))
         delayed=EKScore();resolved=state
         if state.delayed_packets:
             primary=0.0
