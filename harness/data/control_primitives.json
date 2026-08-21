@@ -27,7 +27,7 @@
     {"id":"offensive_impairment_all_attacks","family":"offense","exposure_basis":"target_turn_window","default_status":"candidate","reason":"All attacks in the affected window are impaired."},
     {"id":"target_choice_restriction","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","reason":"Value depends on the restricted source and available target choices."},
     {"id":"sight_option_denial","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","reason":"Value depends on sight-dependent options and alternative senses."},
-    {"id":"mobility_loss_feet","family":"mobility","exposure_basis":"target_turn_window","default_status":"candidate","reason":"Movement capacity is reduced or completely denied."},
+    {"id":"mobility_loss_feet","family":"mobility","exposure_basis":"target_turn_window","default_status":"candidate","reason":"Movement capacity is reduced by an exact flat number of feet."},
     {"id":"movement_mode_denial","family":"mobility","exposure_basis":"contextual_opportunity","default_status":"context_required","reason":"Value depends on the target's usable movement modes."},
     {"id":"forced_displacement","family":"displacement","exposure_basis":"instantaneous_occurrence","default_status":"candidate","reason":"Intrinsic displacement is measured only in feet; no battlefield bonus is inferred."},
     {"id":"geometry_sensitive_approach_restriction","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","reason":"Requires source geometry and a willing movement choice."},
@@ -47,7 +47,7 @@
     {"id":"directional_movement_tax","family":"mobility","exposure_basis":"contextual_opportunity","default_status":"context_required","reason":"The movement cost applies only in a specified direction and requires geometry."},
     {"id":"specified_action_requirement","family":"action_restriction","exposure_basis":"target_turn_window","default_status":"candidate","reason":"A specified Action is required while other turn options remain separately available."},
     {"id":"action_bonus_exclusivity","family":"action_restriction","exposure_basis":"target_turn_window","default_status":"candidate","reason":"The target may use an Action or Bonus Action, but not both."},
-    {"id":"attack_action_cap","family":"action_restriction","exposure_basis":"attack_opportunity","default_status":"candidate","reason":"The target's Attack action is capped at the stated attack count."},
+    {"id":"attack_action_cap","family":"action_restriction","exposure_basis":"attack_opportunity","default_status":"context_required","reason":"The target's Attack action is capped, but the maintained target catalog does not establish a baseline attack count."},
     {"id":"bonus_action_denial","family":"action_denial","exposure_basis":"target_turn_window","default_status":"candidate","reason":"Bonus Actions are unavailable while Actions and movement remain separately governed."},
     {"id":"turn_movement_denial","family":"mobility","exposure_basis":"target_turn_window","default_status":"candidate","reason":"Movement is unavailable for the affected turn without assigning a distance."},
     {"id":"restricted_attack_choice","family":"option_restriction","exposure_basis":"contextual_opportunity","default_status":"context_required","reason":"The available attack and target depend on creatures within reach."},
@@ -133,7 +133,7 @@
       "source_page": 184,
       "includes": ["incapacitated"],
       "primitives": [
-        {"id":"mobility_loss_feet","qualifiers":{"mobility_effect":"speed_zero"}},
+        {"id":"turn_movement_denial"},
         {"id":"save_auto_failure","qualifiers":{"save_ability":"strength"}},
         {"id":"save_auto_failure","qualifiers":{"save_ability":"dexterity"}},
         {"id":"defensive_attack_advantage"},
@@ -144,7 +144,7 @@
       "source_page": 186,
       "includes": [],
       "primitives": [
-        {"id":"mobility_loss_feet","status":"context_required","qualifiers":{"mobility_effect":"speed_zero"}},
+        {"id":"turn_movement_denial"},
         {"id":"defensive_attack_advantage"},
         {"id":"offensive_impairment_all_attacks","qualifiers":{"attack_scope":"all_attacks"}},
         {"id":"save_disadvantage","qualifiers":{"save_ability":"dexterity"}}
@@ -163,7 +163,7 @@
       "source_page": 191,
       "includes": ["incapacitated", "prone"],
       "primitives": [
-        {"id":"mobility_loss_feet","qualifiers":{"mobility_effect":"speed_zero"}},
+        {"id":"turn_movement_denial"},
         {"id":"defensive_attack_advantage"},
         {"id":"save_auto_failure","qualifiers":{"save_ability":"strength"}},
         {"id":"save_auto_failure","qualifiers":{"save_ability":"dexterity"}},
@@ -178,7 +178,7 @@
     "movement_option_denial": {"primitive":"movement_mode_denial"},
     "reaction_denial": {"primitive":"reaction_denial"},
     "speed_reduction": {"primitive":"mobility_loss_feet","requires_magnitude_feet":true,"qualifiers":{"mobility_effect":"flat_reduction"}},
-    "speed_zero": {"primitive":"mobility_loss_feet","qualifiers":{"mobility_effect":"speed_zero"}},
+    "speed_zero": {"primitive":"turn_movement_denial"},
     "save_disadvantage": {"primitive":"save_disadvantage"},
     "active_turn_denial": {"primitive":"active_turn_denial"},
     "opportunity_attack_denial": {"primitive":"opportunity_attack_denial"},

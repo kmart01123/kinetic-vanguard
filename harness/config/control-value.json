@@ -1,0 +1,25 @@
+{
+  "format_version": 1,
+  "control_unit": "1.0 CU = denial of one target's normal Action + Bonus Action for one scored target-turn window.",
+  "rules": {
+    "active_turn_denial": { "transform": "linear_expected_exposure", "nominal_weight": 1.0 },
+    "reaction_denial": { "transform": "linear_expected_exposure", "nominal_weight": 0.2 },
+    "offensive_impairment_next_attack": { "transform": "linear_expected_exposure", "nominal_weight": 0.15 },
+    "offensive_impairment_all_attacks": { "transform": "linear_expected_exposure", "nominal_weight": 0.4 },
+    "mobility_loss_feet": { "transform": "bounded_fraction_of_benchmark_locomotion", "nominal_weight": 0.3 },
+    "forced_displacement": { "transform": "expected_displaced_feet", "nominal_weight": 0.02 },
+    "defensive_attack_advantage": { "transform": "linear_expected_exposure", "nominal_weight": 0.25 },
+    "save_disadvantage": { "transform": "linear_expected_exposure", "nominal_weight": 0.2 },
+    "save_auto_failure": { "transform": "linear_expected_exposure", "nominal_weight": 0.4 },
+    "specified_action_requirement": { "transform": "linear_expected_exposure", "nominal_weight": 0.75 },
+    "action_bonus_exclusivity": { "transform": "linear_expected_exposure", "nominal_weight": 0.25 },
+    "attack_action_cap": { "transform": "diagnostic_zero", "nominal_weight": 0.0 },
+    "bonus_action_denial": { "transform": "linear_expected_exposure", "nominal_weight": 0.25 },
+    "turn_movement_denial": { "transform": "linear_expected_exposure", "nominal_weight": 0.3 },
+    "flat_armor_class_penalty": { "transform": "points_times_placed_opportunities", "nominal_weight": 0.05 },
+    "flat_save_roll_penalty": { "transform": "points_times_placed_opportunities", "nominal_weight": 0.05 },
+    "speed_multiplier": { "transform": "remaining_speed_fraction", "nominal_weight": 0.3 },
+    "standing_movement_cost": { "transform": "linear_expected_exposure", "nominal_weight": 0.15 },
+    "finite_next_save_roll_penalty": { "transform": "diagnostic_zero", "nominal_weight": 0.0 }
+  }
+}

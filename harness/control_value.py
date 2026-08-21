@@ -1,7 +1,8 @@
-"""Pure Slice-1 control primitive decomposition, exposure, and normalization.
+"""Lean control primitive decomposition, exposure, normalization, and scoring.
 
-This module intentionally contains no weights, scenario selection, mutable combat
-state, or timeline machinery. Control Reliability remains the delivery layer.
+Control Reliability remains the delivery layer. This module adds only the
+frozen Slice-2 scalar contract; it does not add mutable combat state or timeline
+machinery.
 """
 
 from __future__ import annotations
@@ -14,7 +15,16 @@ from typing import Any, Iterable, Mapping, Sequence
 
 
 DEFAULT_PRIMITIVES = Path(__file__).resolve().parent / "data" / "control_primitives.json"
+DEFAULT_SCORING = Path(__file__).resolve().parent / "config" / "control-value.json"
 _STATUS_ORDER = {"candidate": 0, "context_required": 1, "unsupported": 2}
+_SCORING_TRANSFORMS = {
+    "linear_expected_exposure",
+    "bounded_fraction_of_benchmark_locomotion",
+    "expected_displaced_feet",
+    "points_times_placed_opportunities",
+    "remaining_speed_fraction",
+    "diagnostic_zero",
+}
 
 
 @dataclass(frozen=True)
@@ -44,6 +54,8 @@ class PrimitiveExposure:
     disjoint_stage_group: str = ""
     normalization_disposition: str = "retained"
     suppressed_by: str = ""
+    expected_occurrences: float | None = None
+    overlapping_mobility_reduction_sources: tuple[str, ...] = ()
 
 
 def _object(value: Any, label: str) -> dict[str, Any]:
@@ -104,6 +116,27 @@ def load_primitive_catalog(path: str | Path = DEFAULT_PRIMITIVES) -> dict[str, A
                 included_unknown = sorted(set(definition.get("includes", [])) - set(group))
                 if included_unknown:
                     raise ValueError(f"conditions.{label} includes unknown conditions: {', '.join(included_unknown)}")
+    return data
+
+
+@lru_cache(maxsize=None)
+def load_scoring_config(path: str | Path = DEFAULT_SCORING) -> dict[str, Any]:
+    with Path(path).open(encoding="utf-8") as stream:
+        data = _object(json.load(stream), "Control Value scoring config")
+    if set(data) != {"format_version", "control_unit", "rules"} or data["format_version"] != 1:
+        raise ValueError("Unsupported Control Value scoring config contract")
+    if data["control_unit"] != "1.0 CU = denial of one target's normal Action + Bonus Action for one scored target-turn window.":
+        raise ValueError("Control Unit definition changed")
+    rules = _object(data["rules"], "Control Value scoring rules")
+    for primitive_id, raw_rule in rules.items():
+        rule = _object(raw_rule, f"Control Value scoring rule {primitive_id}")
+        if set(rule) != {"transform", "nominal_weight"}:
+            raise ValueError(f"Control Value scoring rule {primitive_id} has invalid keys")
+        if rule["transform"] not in _SCORING_TRANSFORMS:
+            raise ValueError(f"Control Value scoring rule {primitive_id} has an unsupported transform")
+        weight = rule["nominal_weight"]
+        if isinstance(weight, bool) or not isinstance(weight, (int, float)) or weight < 0:
+            raise ValueError(f"Control Value scoring rule {primitive_id} has an invalid nominal weight")
     return data
 
 
@@ -250,15 +283,19 @@ def expose_label(
     pricing_status: str | None = None,
     qualifiers: Mapping[str, Any] | None = None,
     overlapping_attack_impairment_sources: Sequence[str] = (),
+    overlapping_mobility_reduction_sources: Sequence[str] = (),
     active_probabilities_by_basis: Mapping[str, Sequence[float]] | None = None,
     suppressed_recovery_options: Sequence[str] = (),
     disjoint_stage_group: str = "",
     source_reason: str = "",
+    expected_occurrences: float | None = None,
 ) -> tuple[PrimitiveExposure, ...]:
     if not 0.0 <= application_probability <= 1.0:
         raise ValueError("Application probability must be between zero and one")
     if horizon < 1:
         raise ValueError("Exposure horizon must be positive")
+    if expected_occurrences is not None and expected_occurrences < 0:
+        raise ValueError("Expected occurrences cannot be negative")
     specs = decompose_label(
         label,
         magnitude_feet=magnitude_feet,
@@ -271,8 +308,11 @@ def expose_label(
     if "end_own_prone" in suppressed_recoveries:
         specs = tuple(spec for spec in specs if spec.primitive_id != "standing_movement_cost")
     attack_overlap_sources = tuple(sorted(set(overlapping_attack_impairment_sources)))
+    mobility_overlap_sources = tuple(sorted(set(overlapping_mobility_reduction_sources)))
     result: list[PrimitiveExposure] = []
     for spec in specs:
+        if expected_occurrences is not None and spec.exposure_basis != "instantaneous_occurrence":
+            raise ValueError("Expected occurrences apply only to instantaneous primitives")
         status = spec.pricing_status
         reason_parts = [part for part in (source_reason, spec.reason) if part]
         active: tuple[float, ...]
@@ -307,10 +347,11 @@ def expose_label(
                 reason_parts.append("The occurrence cadence is not established without additional context.")
             elif spec.magnitude is None:
                 active = (application_probability,)
-                expected = application_probability
+                expected = application_probability if expected_occurrences is None else expected_occurrences
             else:
                 active = (application_probability,)
-                expected = instantaneous_exposure(application_probability, spec.magnitude)
+                occurrences = application_probability if expected_occurrences is None else expected_occurrences
+                expected = occurrences * spec.magnitude
         else:
             if duration in {"until_end_current_turn", "until_start_next_turn", "until_end_next_turn"}:
                 active = fixed_exposure(application_probability, 1)
@@ -372,7 +413,11 @@ def expose_label(
             expected = sum(active) * scale if status != "unsupported" else None
         if status == "unsupported":
             expected = None
-        result.append(PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources, disjoint_stage_group))
+        exposure=PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources, disjoint_stage_group)
+        if spec.primitive_id == "mobility_loss_feet":exposure=replace(exposure,overlapping_mobility_reduction_sources=mobility_overlap_sources)
+        if spec.exposure_basis == "instantaneous_occurrence" and status != "unsupported":
+            exposure=replace(exposure,expected_occurrences=application_probability if expected_occurrences is None else expected_occurrences)
+        result.append(exposure)
     return tuple(result)
 
 
@@ -422,7 +467,7 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
     retained_index_by_key: dict[tuple[Any, ...], int] = {}
     for item in ordered:
         key = (item.primitive_id, item.exposure_basis, item.qualifiers, item.magnitude)
-        if item.primitive_id == "mobility_loss_feet" and _qualifier(item, "mobility_effect") == "flat_reduction":
+        if item.primitive_id in {"mobility_loss_feet", "forced_displacement"}:
             key = (*key, item.source_effect)
         retained = retained_by_key.get(key)
         if retained is None:
@@ -436,7 +481,7 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
             normalized[retained_index_by_key[key]]=combined;retained_by_key[key]=combined
             zeroes=tuple(0.0 for _ in item.active_probabilities);normalized.append(replace(item,active_probabilities=zeroes,expected_exposure=_expected(zeroes,item.magnitude,item.pricing_status),normalization_disposition="combined_into_disjoint_stages",suppressed_by=f"{combined.source_effect}:{combined.primitive_id} (disjoint sequential stage)"))
         else:
-            zeroes=tuple(0.0 for _ in item.active_probabilities);normalized.append(replace(item, active_probabilities=zeroes, expected_exposure=_expected(zeroes,item.magnitude,item.pricing_status), normalization_disposition="suppressed", suppressed_by=f"{retained.source_effect}:{retained.primitive_id} (duplicate primitive)"))
+            zeroes=tuple(0.0 for _ in item.active_probabilities);normalized.append(replace(item, active_probabilities=zeroes, expected_exposure=_expected(zeroes,item.magnitude,item.pricing_status), normalization_disposition="suppressed", suppressed_by=f"{retained.source_effect}:{retained.primitive_id} (duplicate primitive)",expected_occurrences=0.0 if item.expected_occurrences is not None else None))
 
     def retained(predicate: Any) -> list[PrimitiveExposure]:
         return [item for item in normalized if item.normalization_disposition != "suppressed" and predicate(item)]
@@ -452,17 +497,30 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
         effective_specified_actions.append(effective)
     all_attack_impairments = retained(lambda item: item.primitive_id == "offensive_impairment_all_attacks")
     auto_failures = retained(lambda item: item.primitive_id == "save_auto_failure")
-    speed_zeroes = retained(lambda item: item.primitive_id == "mobility_loss_feet" and _qualifier(item, "mobility_effect") == "speed_zero")
+    movement_denials = retained(lambda item: item.primitive_id == "turn_movement_denial")
+    bonus_denials = retained(lambda item: item.primitive_id == "bonus_action_denial")
+    effective_bonus_denials: list[PrimitiveExposure] = []
+    for bonus_denial in bonus_denials:
+        effective=bonus_denial
+        for denial in denials:
+            effective=_subtract(effective,denial,"turn denial includes and dominates Bonus Action denial")
+        effective_bonus_denials.append(effective)
     revised: list[PrimitiveExposure] = []
     for item in normalized:
         current = item
         if current.normalization_disposition != "suppressed" and current.primitive_id == "bonus_action_denial":
             for stronger in denials:
                 current = _subtract(current, stronger, "turn denial includes and dominates Bonus Action denial")
+        if current.normalization_disposition != "suppressed" and current.primitive_id == "action_bonus_exclusivity":
+            for stronger in [*denials,*effective_bonus_denials]:
+                current = _subtract(current, stronger, "stronger action-economy denial dominates Action/Bonus Action exclusivity")
         if current.normalization_disposition != "suppressed" and current.primitive_id == "specified_action_requirement":
             for stronger in denials:
                 if current.exposure_basis == stronger.exposure_basis == "target_turn_window":
                     current = _subtract(current, stronger, "turn denial dominates a specified Action requirement")
+        if current.normalization_disposition != "suppressed" and current.primitive_id == "attack_action_cap":
+            for stronger in denials:
+                current = _subtract(current, stronger, "turn denial dominates an Attack action cap")
         if current.normalization_disposition != "suppressed" and current.primitive_id in {"offensive_impairment_next_attack", "offensive_impairment_all_attacks"}:
             for stronger in denials:
                 current = _subtract(current, stronger, "turn denial dominates offensive impairment")
@@ -474,24 +532,97 @@ def normalize_exposures(exposures: Iterable[PrimitiveExposure]) -> tuple[Primiti
             for stronger in all_attack_impairments:
                 if current.source_effect in stronger.overlapping_attack_impairment_sources:
                     current = _subtract(current, stronger, "all-attacks impairment dominates overlapping next-attack impairment")
-        if current.normalization_disposition != "suppressed" and current.primitive_id == "save_disadvantage":
+        if current.normalization_disposition != "suppressed" and current.primitive_id in {"save_disadvantage","flat_save_roll_penalty","finite_next_save_roll_penalty"}:
             ability = _qualifier(current, "save_ability")
             for stronger in auto_failures:
-                if _qualifier(stronger, "save_ability") == ability:
-                    current = _subtract(current, stronger, "automatic failure dominates Disadvantage")
-        if current.normalization_disposition != "suppressed" and current.primitive_id == "mobility_loss_feet" and _qualifier(current, "mobility_effect") == "flat_reduction":
-            for stronger in speed_zeroes:
-                current = _subtract(current, stronger, "Speed 0 dominates lesser reduction")
-        if current.normalization_disposition != "suppressed" and current.primitive_id == "standing_movement_cost":
-            for stronger in speed_zeroes:
-                if current.exposure_basis == stronger.exposure_basis == "target_turn_window":
-                    current = _subtract(current, stronger, "Speed 0 makes standing recovery unavailable")
+                if ability is not None and _qualifier(stronger, "save_ability") == ability:
+                    current = _subtract(current, stronger, "automatic failure dominates a weaker same-ability save impairment")
+        if current.normalization_disposition != "suppressed" and current.primitive_id in {"mobility_loss_feet","speed_multiplier","standing_movement_cost"}:
+            for stronger in movement_denials:
+                current = _subtract(current, stronger, "complete turn movement denial dominates lesser mobility effects")
         revised.append(current)
-    visible = (item for item in revised if item.primitive_id != "standing_movement_cost" or item.normalization_disposition != "suppressed")
-    return tuple(sorted(visible, key=lambda item: (item.primitive_id, item.source_effect, item.source_label, item.magnitude or 0.0, item.qualifiers)))
+    return tuple(sorted(revised, key=lambda item: (item.primitive_id, item.source_effect, item.source_label, item.magnitude or 0.0, item.qualifiers)))
 
 
-def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, Any]], *, horizon: int = 3) -> list[dict[str, Any]]:
+def resolve_scoring_context(exposure: PrimitiveExposure, benchmark_locomotion_speed: float | None) -> PrimitiveExposure:
+    """Apply the final target-context downgrade before scalar eligibility."""
+    if exposure.pricing_status != "candidate" or exposure.primitive_id != "mobility_loss_feet":
+        return exposure
+    if benchmark_locomotion_speed is not None and benchmark_locomotion_speed > 0:
+        return exposure
+    return replace(
+        exposure,
+        pricing_status="context_required",
+        reason=f"{exposure.reason} Flat mobility value requires a positive unconditional benchmark locomotion speed.",
+    )
+
+
+def cap_correlated_flat_mobility(exposures: Sequence[PrimitiveExposure], benchmark_locomotion_speed: float | None) -> tuple[PrimitiveExposure, ...]:
+    """Cap only explicitly correlated same-window flat reductions at movement denial."""
+    if benchmark_locomotion_speed is None or benchmark_locomotion_speed <= 0:return tuple(exposures)
+    revised=list(exposures);by_source:dict[str,list[int]]={}
+    for index,item in enumerate(revised):
+        if item.primitive_id=="mobility_loss_feet" and item.pricing_status=="candidate" and item.normalization_disposition!="suppressed":by_source.setdefault(item.source_effect,[]).append(index)
+    capped:set[int]=set()
+    for capper_index,capper in enumerate(tuple(revised)):
+        named=capper.overlapping_mobility_reduction_sources
+        if not named or capper.primitive_id!="mobility_loss_feet" or capper.pricing_status!="candidate" or capper.normalization_disposition=="suppressed":continue
+        if capper.magnitude is None or not capper.active_probabilities:raise ValueError("Explicit flat-mobility correlation lacks a placed magnitude or active window")
+        budget=max(0.0,benchmark_locomotion_speed-min(capper.magnitude,benchmark_locomotion_speed))
+        for source in named:
+            matches=by_source.get(source,[])
+            if len(matches)!=1:raise ValueError(f"Explicit flat-mobility correlation must resolve exactly one source: {source}")
+            weak_index=matches[0];weaker=revised[weak_index]
+            if weak_index==capper_index or weak_index in capped:raise ValueError("Explicit flat-mobility correlation is cyclic or overlaps another cap group")
+            if weaker.magnitude is None or weaker.active_probabilities!=capper.active_probabilities:raise ValueError("Explicit flat-mobility correlation requires identical scored windows")
+            allowed_magnitude=min(weaker.magnitude,budget);budget=max(0.0,budget-allowed_magnitude);allowed_expected=allowed_magnitude*sum(weaker.active_probabilities)
+            if allowed_expected+1e-12 < float(weaker.expected_exposure or 0.0):
+                disposition="suppressed" if allowed_expected==0.0 else "partially_suppressed";rule=f"{capper.source_effect}:{capper.primitive_id} (explicitly correlated flat mobility is capped at complete movement denial)";suppressor=f"{weaker.suppressed_by}; {rule}" if weaker.suppressed_by else rule
+                revised[weak_index]=replace(weaker,expected_exposure=allowed_expected,normalization_disposition=disposition,suppressed_by=suppressor)
+            capped.add(weak_index)
+    return tuple(revised)
+
+
+def score_exposure(
+    exposure: PrimitiveExposure,
+    benchmark_locomotion_speed: float | None,
+    scoring_config: Mapping[str, Any] | None = None,
+) -> tuple[float, str, float | None]:
+    """Return scalar CU, transform ID, and nominal weight for one final exposure."""
+    config = load_scoring_config() if scoring_config is None else scoring_config
+    rules = _object(config.get("rules"), "Control Value scoring rules")
+    raw_rule = rules.get(exposure.primitive_id)
+    if exposure.pricing_status != "candidate":
+        if raw_rule is None:
+            return 0.0, "unpriced_no_scalar_rule", None
+        rule = _object(raw_rule, f"Control Value scoring rule {exposure.primitive_id}")
+        return 0.0, str(rule["transform"]), float(rule["nominal_weight"])
+    if raw_rule is None:
+        raise ValueError(f"Resolved candidate primitive has no frozen Control Value scoring rule: {exposure.primitive_id}")
+    rule = _object(raw_rule, f"Control Value scoring rule {exposure.primitive_id}")
+    transform = str(rule["transform"])
+    weight = float(rule["nominal_weight"])
+    expected = exposure.expected_exposure
+    if transform == "diagnostic_zero":
+        return 0.0, transform, weight
+    if expected is None:
+        raise ValueError(f"Resolved candidate primitive lacks placed expected exposure: {exposure.primitive_id}")
+    if transform in {"linear_expected_exposure","expected_displaced_feet","points_times_placed_opportunities"}:
+        contribution = weight * expected
+    elif transform == "bounded_fraction_of_benchmark_locomotion":
+        if exposure.magnitude is None or benchmark_locomotion_speed is None or benchmark_locomotion_speed <= 0:
+            raise ValueError("Resolved flat mobility scoring lacks magnitude or benchmark locomotion speed")
+        contribution = weight * min(expected / benchmark_locomotion_speed, sum(exposure.active_probabilities))
+    elif transform == "remaining_speed_fraction":
+        if exposure.magnitude is None or not 0.0 <= exposure.magnitude <= 1.0:
+            raise ValueError("Resolved Speed multiplier must be in [0, 1]")
+        contribution = weight * (1.0 - exposure.magnitude) * sum(exposure.active_probabilities)
+    else:
+        raise ValueError(f"Unsupported Control Value scoring transform: {transform}")
+    return contribution, transform, weight
+
+
+def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, Any]], *, horizon: int = 3, benchmark_locomotion_speed: float | None = None) -> list[dict[str, Any]]:
     """Convert delivery-layer components into deterministic normalized shadow rows."""
     exposures: list[PrimitiveExposure] = []
     for component in components:
@@ -512,14 +643,19 @@ def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, A
                     pricing_status=component.get("pricing_status"),
                     qualifiers=component.get("qualifiers"),
                     overlapping_attack_impairment_sources=component.get("overlapping_attack_impairment_sources", ()),
+                    overlapping_mobility_reduction_sources=component.get("overlapping_mobility_reduction_sources", ()),
                     active_probabilities_by_basis=component.get("active_probabilities_by_basis"),
                     suppressed_recovery_options=component.get("suppressed_recovery_options", ()),
                     disjoint_stage_group=str(component.get("disjoint_stage_group", "")),
                     source_reason=str(component.get("reason", "")),
+                    expected_occurrences=component.get("expected_occurrences"),
                 )
             )
     rows: list[dict[str, Any]] = []
-    for item in normalize_exposures(exposures):
+    resolved=(resolve_scoring_context(item,benchmark_locomotion_speed) for item in exposures)
+    normalized=normalize_exposures(resolved)
+    for item in cap_correlated_flat_mobility(normalized,benchmark_locomotion_speed):
+        contribution,transform,weight=score_exposure(item,benchmark_locomotion_speed)
         probability_label="occurrence" if item.exposure_basis=="instantaneous_occurrence" else "window"
         rows.append(
             {
@@ -530,9 +666,15 @@ def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, A
                 "Exposure Basis": item.exposure_basis,
                 "Magnitude": "" if item.magnitude is None else f"{item.magnitude:g}",
                 "Qualifiers": ";".join(f"{key}={value}" for key,value in item.qualifiers),
+                "Correlated Mobility Sources": ";".join(item.overlapping_mobility_reduction_sources),
                 "Application Probability": f"{item.application_probability:.12f}",
                 "Active Probabilities": ";".join(f"{probability_label}_{index}={value:.12f}" for index,value in enumerate(item.active_probabilities,1)),
+                "Expected Occurrences": "" if item.expected_occurrences is None else f"{item.expected_occurrences:.12f}",
                 "Expected Exposure": "" if item.expected_exposure is None else f"{item.expected_exposure:.12f}",
+                "Benchmark Locomotion Speed": "" if benchmark_locomotion_speed is None or item.primitive_id != "mobility_loss_feet" else f"{benchmark_locomotion_speed:g}",
+                "Nominal Weight": "" if weight is None else f"{weight:g}",
+                "Scoring Transform": transform,
+                "Control Value CU": f"{contribution:.12f}",
                 "Normalization": item.normalization_disposition,
                 "Suppressed By": item.suppressed_by,
                 "Pricing Status": item.pricing_status,

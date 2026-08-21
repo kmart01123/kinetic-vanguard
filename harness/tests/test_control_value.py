@@ -9,9 +9,9 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from harness.authority import AuthorityModel
-from harness.control_harness import _comparator_scenario,_composed_eldritch_knight_scenarios,_eldritch_strike_primer_probability,_finite_penalty_save_failure_probability,_finite_penalty_with_disadvantage_probability,_kv_scenario
-from harness.control_value import PrimitiveExposure,decompose_label,expose_label,fixed_exposure,instantaneous_exposure,load_primitive_catalog,normalize_exposures,repeat_save_exposure,shadow_rows
-from harness.model import Target,ability_check_success_probability,attack_probabilities,load_comparators,load_config,modified_save_success_probability,save_success_probability
+from harness.control_harness import _attack_action_expected_occurrences,_best_value,_comparator_scenario,_composed_eldritch_knight_scenarios,_eldritch_strike_primer_probability,_finite_penalty_save_failure_probability,_finite_penalty_with_disadvantage_probability,_kv_scenario
+from harness.control_value import PrimitiveExposure,decompose_label,expose_label,fixed_exposure,instantaneous_exposure,load_primitive_catalog,load_scoring_config,normalize_exposures,repeat_save_exposure,score_exposure,shadow_rows
+from harness.model import Target,_benchmark_locomotion_speed,ability_check_success_probability,attack_probabilities,load_comparators,load_config,modified_save_success_probability,save_success_probability
 
 
 def target(*immunities:str)->Target:
@@ -39,14 +39,14 @@ class PrimitiveDecompositionTests(unittest.TestCase):
         self.assertNotIn("mobility_loss_feet",[item.primitive_id for item in stunned])
 
     def test_restrained_frightened_and_prone_remain_mechanically_honest(self)->None:
-        restrained=decompose_label("Restrained");self.assertEqual({item.primitive_id for item in restrained},{"mobility_loss_feet","defensive_attack_advantage","offensive_impairment_all_attacks","save_disadvantage"})
+        restrained=decompose_label("Restrained");self.assertEqual({item.primitive_id for item in restrained},{"turn_movement_denial","defensive_attack_advantage","offensive_impairment_all_attacks","save_disadvantage"})
         frightened=decompose_label("Frightened");geometry=next(item for item in frightened if item.primitive_id=="geometry_sensitive_approach_restriction");self.assertEqual(geometry.pricing_status,"context_required")
         prone=decompose_label("Prone");standing=next(item for item in prone if item.primitive_id=="standing_movement_cost");offense=next(item for item in prone if item.primitive_id=="offensive_impairment_all_attacks")
         self.assertEqual((standing.pricing_status,standing.exposure_basis),("candidate","target_turn_window"));self.assertEqual(dict(standing.qualifiers),{"movement_cost":"half_speed","recovery_method":"stand","recovery_timing":"target_turn"});self.assertEqual(offense.pricing_status,"context_required")
 
     def test_bare_outcomes_retain_scope_and_magnitude(self)->None:
         self.assertEqual(decompose_label("attack_disadvantage",attack_scope="next_attack")[0].primitive_id,"offensive_impairment_next_attack")
-        speed_zero=decompose_label("Speed 0")[0];self.assertEqual(speed_zero.primitive_id,"mobility_loss_feet");self.assertEqual(dict(speed_zero.qualifiers)["mobility_effect"],"speed_zero")
+        speed_zero=decompose_label("Speed 0")[0];self.assertEqual(speed_zero.primitive_id,"turn_movement_denial");self.assertFalse(speed_zero.qualifiers)
         reduction=decompose_label("speed_reduction",magnitude_feet=10)[0];self.assertEqual(reduction.magnitude,10);self.assertEqual(dict(reduction.qualifiers)["mobility_effect"],"flat_reduction")
         displacement=decompose_label("forced_movement",magnitude_feet=20)[0];self.assertEqual(displacement.primitive_id,"forced_displacement");self.assertEqual(displacement.magnitude,20)
         self.assertEqual(decompose_label("forced_movement")[0].pricing_status,"unsupported")
@@ -54,14 +54,14 @@ class PrimitiveDecompositionTests(unittest.TestCase):
     def test_poisoned_and_paralyzed_are_faithful_and_distinct_from_stunned(self)->None:
         poisoned=decompose_label("Poisoned");self.assertEqual([item.primitive_id for item in poisoned],["offensive_impairment_all_attacks","ability_check_impairment"]);self.assertEqual(poisoned[0].pricing_status,"candidate");self.assertEqual(poisoned[1].pricing_status,"context_required")
         paralyzed=decompose_label("Paralyzed");ids=[item.primitive_id for item in paralyzed]
-        self.assertEqual(ids.count("active_turn_denial"),1);self.assertEqual(ids.count("reaction_denial"),1);self.assertEqual(ids.count("mobility_loss_feet"),1);self.assertEqual(ids.count("defensive_attack_advantage"),1);self.assertEqual(ids.count("melee_hit_auto_critical_context"),1)
+        self.assertEqual(ids.count("active_turn_denial"),1);self.assertEqual(ids.count("reaction_denial"),1);self.assertEqual(ids.count("turn_movement_denial"),1);self.assertEqual(ids.count("defensive_attack_advantage"),1);self.assertEqual(ids.count("melee_hit_auto_critical_context"),1)
         self.assertEqual([dict(item.qualifiers)["save_ability"] for item in paralyzed if item.primitive_id=="save_auto_failure"],["strength","dexterity"])
         critical=next(item for item in paralyzed if item.primitive_id=="melee_hit_auto_critical_context");self.assertEqual(critical.pricing_status,"context_required");self.assertEqual(dict(critical.qualifiers)["attacker_distance"],"within_5_feet")
         self.assertNotIn("mobility_loss_feet",self.ids("Stunned"))
 
     def test_unconscious_includes_each_mechanical_consequence_without_duplication(self)->None:
         rows=decompose_label("Unconscious");ids=[item.primitive_id for item in rows]
-        for primitive in ("active_turn_denial","reaction_denial","mobility_loss_feet","defensive_attack_advantage","melee_hit_auto_critical_context","awareness_denial"):
+        for primitive in ("active_turn_denial","reaction_denial","turn_movement_denial","defensive_attack_advantage","melee_hit_auto_critical_context","awareness_denial"):
             self.assertEqual(ids.count(primitive),1,primitive)
         self.assertEqual([dict(item.qualifiers)["save_ability"] for item in rows if item.primitive_id=="save_auto_failure"],["strength","dexterity"])
         self.assertEqual(ids.count("fall_transition"),1);self.assertEqual(ids.count("prone_incoming_attack_context"),1)
@@ -93,6 +93,83 @@ class ExposureMathTests(unittest.TestCase):
         rows=expose_label("probe","blinded",0.5,None);self.assertTrue(rows);self.assertTrue(all(item.pricing_status=="unsupported" and item.expected_exposure is None and not item.active_probabilities for item in rows))
 
 
+class FrozenControlValueScoringTests(unittest.TestCase):
+    def rows(self,label:str,*,probability:float=1.0,magnitude_feet:float|None=None,magnitude:float|None=None,benchmark_speed:float|None=30,pricing_status:str|None=None,qualifiers:dict[str,str]|None=None,expected_occurrences:float|None=None)->list[dict[str,object]]:
+        component={"source_effect":"sentinel","labels":[("condition",label)] if label in load_primitive_catalog()["conditions"] else [("outcome",label)],"duration":"instantaneous" if label=="forced_movement" else "until_end_next_turn","application_probability":probability,"magnitude_feet":magnitude_feet,"magnitude":magnitude,"pricing_status":pricing_status,"qualifiers":qualifiers}
+        if expected_occurrences is not None:component["expected_occurrences"]=expected_occurrences
+        return shadow_rows({},[component],benchmark_locomotion_speed=benchmark_speed)
+
+    def total(self,rows:list[dict[str,object]])->float:
+        return sum(float(row["Control Value CU"]) for row in rows)
+
+    def test_frozen_runtime_contract_is_exact(self)->None:
+        config=load_scoring_config()
+        observed=(config["control_unit"],tuple((key,value["transform"],float(value["nominal_weight"])) for key,value in config["rules"].items()))
+        expected=("1.0 CU = denial of one target's normal Action + Bonus Action for one scored target-turn window.",(
+            ("active_turn_denial","linear_expected_exposure",1.0),("reaction_denial","linear_expected_exposure",0.2),("offensive_impairment_next_attack","linear_expected_exposure",0.15),("offensive_impairment_all_attacks","linear_expected_exposure",0.4),("mobility_loss_feet","bounded_fraction_of_benchmark_locomotion",0.3),("forced_displacement","expected_displaced_feet",0.02),("defensive_attack_advantage","linear_expected_exposure",0.25),("save_disadvantage","linear_expected_exposure",0.2),("save_auto_failure","linear_expected_exposure",0.4),("specified_action_requirement","linear_expected_exposure",0.75),("action_bonus_exclusivity","linear_expected_exposure",0.25),("attack_action_cap","diagnostic_zero",0.0),("bonus_action_denial","linear_expected_exposure",0.25),("turn_movement_denial","linear_expected_exposure",0.3),("flat_armor_class_penalty","points_times_placed_opportunities",0.05),("flat_save_roll_penalty","points_times_placed_opportunities",0.05),("speed_multiplier","remaining_speed_fraction",0.3),("standing_movement_cost","linear_expected_exposure",0.15),("finite_next_save_roll_penalty","diagnostic_zero",0.0)))
+        self.assertEqual(observed,expected)
+
+    def test_mobility_transforms_and_missing_context(self)->None:
+        self.assertAlmostEqual(self.total(self.rows("speed_zero")),0.30)
+        for speed,expected in ((10,0.30),(30,0.10),(60,0.05)):
+            with self.subTest(speed=speed):self.assertAlmostEqual(self.total(self.rows("speed_reduction",magnitude_feet=10,benchmark_speed=speed)),expected)
+        missing=self.rows("speed_reduction",magnitude_feet=10,benchmark_speed=None);self.assertEqual(missing[0]["Pricing Status"],"context_required");self.assertEqual(self.total(missing),0.0)
+        self.assertAlmostEqual(self.total(self.rows("speed_multiplier",magnitude=0.5)),0.15);self.assertAlmostEqual(self.total(self.rows("speed_multiplier",magnitude=0.75)),0.075)
+        self.assertAlmostEqual(self.total(self.rows("standing_movement_cost")),0.15)
+        combined=shadow_rows({},[{"source_effect":"stop","labels":[("outcome","speed_zero")],"duration":"until_end_next_turn","application_probability":1.0},{"source_effect":"slow","labels":[("outcome","speed_reduction")],"duration":"until_end_next_turn","application_probability":1.0,"magnitude_feet":10},{"source_effect":"half","labels":[("outcome","speed_multiplier")],"duration":"until_end_next_turn","application_probability":1.0,"magnitude":0.5},{"source_effect":"prone","labels":[("outcome","standing_movement_cost")],"duration":"until_end_next_turn","application_probability":1.0}],benchmark_locomotion_speed=30)
+        self.assertAlmostEqual(self.total(combined),0.30);self.assertTrue(all(row["Normalization"]=="suppressed" for row in combined if row["Mechanical Primitive"] in {"mobility_loss_feet","speed_multiplier","standing_movement_cost"}))
+
+    def test_only_explicitly_correlated_flat_reductions_share_the_movement_denial_cap(self)->None:
+        components=[{"source_effect":"correlated_primary","labels":[("outcome","speed_reduction")],"duration":"until_end_next_turn","application_probability":1.0,"magnitude_feet":20,"overlapping_mobility_reduction_sources":["correlated_secondary"]},{"source_effect":"correlated_secondary","labels":[("outcome","speed_reduction")],"duration":"until_end_next_turn","application_probability":1.0,"magnitude_feet":20}]
+        correlated=shadow_rows({},components,benchmark_locomotion_speed=30);primary=next(row for row in correlated if row["Source Effect"]=="correlated_primary");secondary=next(row for row in correlated if row["Source Effect"]=="correlated_secondary")
+        self.assertAlmostEqual(float(primary["Control Value CU"]),0.20);self.assertAlmostEqual(float(secondary["Control Value CU"]),0.10);self.assertAlmostEqual(self.total(correlated),0.30);self.assertEqual(secondary["Normalization"],"partially_suppressed");self.assertIn("capped at complete movement denial",str(secondary["Suppressed By"]))
+        independent=shadow_rows({},[*components,{"source_effect":"independent","labels":[("outcome","speed_reduction")],"duration":"until_end_next_turn","application_probability":1.0,"magnitude_feet":20}],benchmark_locomotion_speed=30)
+        self.assertAlmostEqual(self.total(independent),0.50);self.assertEqual(next(row for row in independent if row["Source Effect"]=="independent")["Normalization"],"retained")
+
+    def test_benchmark_speed_uses_only_positive_unconditional_nonchoice_facts(self)->None:
+        creature={"movement":{"modes":{"walk":[{"feet":30,"qualifier":None,"choice_group_id":None}],"fly":[{"feet":80,"qualifier":"while_in_form","choice_group_id":None}],"swim":[{"feet":60,"qualifier":None,"choice_group_id":"movement_choice"}],"climb":[{"feet":20,"qualifier":None,"choice_group_id":None}],"burrow":[{"feet":0,"qualifier":None,"choice_group_id":None}]}}}
+        self.assertEqual(_benchmark_locomotion_speed(creature),30)
+        for facts in creature["movement"]["modes"].values():
+            for fact in facts:fact["qualifier"]="conditional"
+        self.assertIsNone(_benchmark_locomotion_speed(creature))
+        self.assertIsNone(target().benchmark_locomotion_speed)
+
+    def test_cumulative_displacement_uses_expected_occurrences(self)->None:
+        self.assertAlmostEqual(self.total(self.rows("forced_movement",magnitude_feet=10)),0.20)
+        repeated=self.rows("forced_movement",probability=0.875,magnitude_feet=10,expected_occurrences=_attack_action_expected_occurrences(3,0.5))
+        self.assertAlmostEqual(float(repeated[0]["Expected Occurrences"]),1.5);self.assertAlmostEqual(float(repeated[0]["Expected Exposure"]),15.0);self.assertAlmostEqual(self.total(repeated),0.30)
+        self.assertNotAlmostEqual(float(repeated[0]["Application Probability"]),float(repeated[0]["Expected Occurrences"]))
+
+    def test_condition_values_are_hand_computable(self)->None:
+        for condition,expected in (("blinded",0.65),("restrained",1.15),("stunned",2.25),("paralyzed",2.55)):
+            with self.subTest(condition=condition):self.assertAlmostEqual(self.total(self.rows(condition)),expected)
+        stunned=self.rows("stunned");self.assertFalse(any(row["Mechanical Primitive"]=="turn_movement_denial" for row in stunned))
+        paralyzed=self.rows("paralyzed");critical=next(row for row in paralyzed if row["Mechanical Primitive"]=="melee_hit_auto_critical_context");self.assertEqual(critical["Pricing Status"],"context_required");self.assertEqual(float(critical["Control Value CU"]),0.0)
+
+    def test_action_and_save_dominance(self)->None:
+        for label,expected in (("active_turn_denial",1.0),("escape_action",0.75),("bonus_action_denial",0.25),("action_bonus_exclusivity",0.25)):
+            with self.subTest(label=label):self.assertAlmostEqual(self.total(self.rows(label)),expected)
+        action_rows=shadow_rows({},[{"source_effect":label,"labels":[("outcome",label)],"duration":"until_end_next_turn","application_probability":1.0,"magnitude":1 if label=="one_attack_cap" else None} for label in ("active_turn_denial","escape_action","bonus_action_denial","action_bonus_exclusivity","one_attack_cap")])
+        self.assertAlmostEqual(self.total(action_rows),1.0)
+        bonus_rows=shadow_rows({},[{"source_effect":label,"labels":[("outcome",label)],"duration":"until_end_next_turn","application_probability":1.0} for label in ("bonus_action_denial","action_bonus_exclusivity")]);self.assertAlmostEqual(self.total(bonus_rows),0.25)
+        self.assertAlmostEqual(self.total(self.rows("save_disadvantage",qualifiers={"save_ability":"dexterity"})),0.20)
+        auto=expose_label("auto","stunned",1.0,"until_end_next_turn");dex_auto=next(item for item in auto if item.primitive_id=="save_auto_failure" and dict(item.qualifiers).get("save_ability")=="dexterity");self.assertAlmostEqual(score_exposure(dex_auto,30)[0],0.40)
+        save_rows=shadow_rows({},[{"source_effect":"auto","labels":[("condition","stunned")],"duration":"until_end_next_turn","application_probability":1.0},{"source_effect":"disadvantage","labels":[("outcome","save_disadvantage")],"duration":"until_end_next_turn","application_probability":1.0,"qualifiers":{"save_ability":"dexterity"}},{"source_effect":"flat","labels":[("outcome","save_roll_penalty")],"duration":"until_end_next_turn","application_probability":1.0,"magnitude":2,"qualifiers":{"save_ability":"dexterity"}}])
+        self.assertTrue(all(float(row["Control Value CU"])==0.0 for row in save_rows if row["Source Effect"] in {"disadvantage","flat"}))
+
+    def test_final_status_controls_scalar_and_missing_candidate_rule_fails_closed(self)->None:
+        contextual=self.rows("sight_barrier");self.assertTrue(all(row["Pricing Status"]=="context_required" and float(row["Control Value CU"])==0.0 for row in contextual))
+        resolved=self.rows("next_save_roll_penalty",magnitude=4,pricing_status="candidate",qualifiers={"save_ability":"wisdom"});self.assertEqual(resolved[0]["Pricing Status"],"candidate");self.assertEqual(resolved[0]["Scoring Transform"],"diagnostic_zero")
+        unsupported=self.rows("forced_movement");self.assertEqual(unsupported[0]["Pricing Status"],"unsupported");self.assertEqual(float(unsupported[0]["Control Value CU"]),0.0)
+        missing=PrimitiveExposure("probe","probe","invented_candidate","target_turn_window",None,1.0,(1.0,),1.0,"candidate","sentinel")
+        with self.assertRaisesRegex(ValueError,"no frozen Control Value scoring rule"):score_exposure(missing,30,{"rules":{}})
+
+    def test_value_winner_filters_eligibility_before_stable_scenario_id_tie_break(self)->None:
+        rows=[{"Scenario":"z_ineligible","Eligible":False,"Control Value CU":0.0},{"Scenario":"a_eligible","Eligible":True,"Control Value CU":0.0}]
+        self.assertEqual(_best_value(rows)["Scenario"],"a_eligible")
+        with self.assertRaisesRegex(ValueError,"no eligible scenario"):_best_value([rows[0]])
+
+
 class NormalizationTests(unittest.TestCase):
     def normalized(self,*groups:tuple[PrimitiveExposure,...])->tuple[PrimitiveExposure,...]:
         return normalize_exposures(item for group in groups for item in group)
@@ -104,11 +181,11 @@ class NormalizationTests(unittest.TestCase):
     def test_prone_recovery_is_suppressed_generically_and_never_duplicated(self)->None:
         component={"source_effect":"recoverable_prone","labels":[("condition","prone"),("outcome","standing_movement_cost")],"duration":"until_end_current_turn","application_probability":0.6}
         rows=shadow_rows({},[component],horizon=3);standing=[row for row in rows if row["Mechanical Primitive"]=="standing_movement_cost"]
-        self.assertEqual(len(standing),1);self.assertEqual(standing[0]["Normalization"],"retained")
+        self.assertEqual(sum(row["Normalization"]=="retained" for row in standing),1);self.assertEqual(sum(row["Normalization"]=="suppressed" for row in standing),1)
         explicit={**component,"labels":[("condition","prone")],"suppressed_recovery_options":["end_own_prone"]}
         suppressed=shadow_rows({},[explicit],horizon=3);self.assertFalse(any(row["Mechanical Primitive"]=="standing_movement_cost" for row in suppressed));self.assertTrue(any(row["Mechanical Primitive"]=="offensive_impairment_all_attacks" for row in suppressed))
         speed_zero={**component,"labels":[("condition","prone"),("outcome","speed_zero")]}
-        impossible=shadow_rows({},[speed_zero],horizon=3);self.assertFalse(any(row["Mechanical Primitive"]=="standing_movement_cost" for row in impossible));self.assertTrue(any(row["Mechanical Primitive"]=="mobility_loss_feet" for row in impossible))
+        impossible=shadow_rows({},[speed_zero],horizon=3);suppressed_standing=next(row for row in impossible if row["Mechanical Primitive"]=="standing_movement_cost");self.assertEqual(suppressed_standing["Normalization"],"suppressed");self.assertTrue(any(row["Mechanical Primitive"]=="turn_movement_denial" for row in impossible))
 
     def test_turn_denial_suppresses_lesser_offense(self)->None:
         rows=self.normalized(expose_label("stun","stunned",0.5,"until_end_next_turn"),expose_label("sap","attack_disadvantage",0.5,"until_end_next_turn",attack_scope="all_attacks"))
@@ -187,15 +264,15 @@ class CurrentScenarioShadowTests(unittest.TestCase):
         shove=self.rows(_kv_scenario(self.model,self.config,self.target,"psychokinesis","telekinetic_shove",2),"psychokinesis");self.assertFalse(any(str(row["Source Effect"]).startswith("mastery:") for row in shove));self.assertEqual([row["Magnitude"] for row in shove if row["Mechanical Primitive"]=="forced_displacement"],["20"])
 
     def test_glacial_tier_one_failed_save_is_speed_zero_and_success_keeps_only_its_reduction(self)->None:
-        rows=self.rows(_kv_scenario(self.model,self.config,self.target,"cryokinesis","glacial_spike",1),"cryokinesis");reductions=[row for row in rows if row["Mechanical Primitive"]=="mobility_loss_feet" and row["Magnitude"]=="10"];speed_zero=next(row for row in rows if row["Mechanical Primitive"]=="mobility_loss_feet" and row["Magnitude"]=="")
+        rows=self.rows(_kv_scenario(self.model,self.config,self.target,"cryokinesis","glacial_spike",1),"cryokinesis");reductions=[row for row in rows if row["Mechanical Primitive"]=="mobility_loss_feet" and row["Magnitude"]=="10"];speed_zero=next(row for row in rows if row["Mechanical Primitive"]=="turn_movement_denial")
         self.assertEqual([row["Source Effect"] for row in reductions],["glacial_spike:T1:effect0"]);self.assertEqual(reductions[0]["Normalization"],"partially_suppressed");self.assertEqual(speed_zero["Source Effect"],"glacial_spike:T1:effect1");self.assertFalse(any(row["Source Effect"]=="mastery:slow" for row in rows))
         successful_branch=float(reductions[0]["Application Probability"])-float(speed_zero["Application Probability"]);active=[float(str(row["Active Probabilities"]).split("=")[1]) for row in reductions];self.assertGreater(successful_branch,0)
         self.assertTrue(all(abs(value-successful_branch)<1e-10 for value in active));self.assertTrue(all(abs(float(row["Expected Exposure"])-10*value)<1e-10 for row,value in zip(reductions,active)))
 
     def test_glacial_tier_two_failed_save_is_restrained_and_success_keeps_only_its_reduction(self)->None:
         rows=self.rows(_kv_scenario(self.model,self.config,self.target,"cryokinesis","glacial_spike",2),"cryokinesis");reductions=[row for row in rows if row["Mechanical Primitive"]=="mobility_loss_feet" and row["Magnitude"]=="10"];restrained=[row for row in rows if row["Source Effect"]=="glacial_spike:T2:effect1"]
-        self.assertEqual([row["Source Effect"] for row in reductions],["glacial_spike:T2:effect0"]);self.assertTrue(restrained);self.assertTrue(any(row["Mechanical Primitive"]=="mobility_loss_feet" and row["Magnitude"]=="" for row in restrained));self.assertFalse(any(row["Source Effect"]=="mastery:slow" for row in rows))
-        speed_zero=next(row for row in restrained if row["Mechanical Primitive"]=="mobility_loss_feet");successful_branch=float(reductions[0]["Application Probability"])-float(speed_zero["Application Probability"]);active=float(str(reductions[0]["Active Probabilities"]).split("=")[1]);self.assertGreater(successful_branch,0);self.assertAlmostEqual(active,successful_branch,places=10);self.assertAlmostEqual(float(reductions[0]["Expected Exposure"]),10*active,places=10)
+        self.assertEqual([row["Source Effect"] for row in reductions],["glacial_spike:T2:effect0"]);self.assertTrue(restrained);self.assertTrue(any(row["Mechanical Primitive"]=="turn_movement_denial" for row in restrained));self.assertFalse(any(row["Source Effect"]=="mastery:slow" for row in rows))
+        speed_zero=next(row for row in restrained if row["Mechanical Primitive"]=="turn_movement_denial");successful_branch=float(reductions[0]["Application Probability"])-float(speed_zero["Application Probability"]);active=float(str(reductions[0]["Active Probabilities"]).split("=")[1]);self.assertGreater(successful_branch,0);self.assertAlmostEqual(active,successful_branch,places=10);self.assertAlmostEqual(float(reductions[0]["Expected Exposure"]),10*active,places=10)
 
     def test_electron_burst_all_attacks_only_suppresses_the_failed_save_sap_overlap(self)->None:
         rows=self.rows(_kv_scenario(self.model,self.config,self.target,"electrokinesis","electron_burst",2),"electrokinesis");all_attacks=next(row for row in rows if row["Mechanical Primitive"]=="offensive_impairment_all_attacks");sap=next(row for row in rows if row["Mechanical Primitive"]=="offensive_impairment_next_attack")
@@ -249,10 +326,10 @@ class CurrentScenarioShadowTests(unittest.TestCase):
         primer=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("hideous_laughter_after_eldritch_strike"));primer_rows=self.rows(primer,"all");primer_turn=next(row for row in primer_rows if row["Mechanical Primitive"]=="active_turn_denial");primer_p=float(primer_turn["Application Probability"]);self.assertGreater(primer_p,p);self.assertAlmostEqual(self.active(primer_turn)[1],primer_p*q);self.assertAlmostEqual(self.active(primer_turn)[2],primer_p*q*q);self.assertFalse(any(row["Mechanical Primitive"]=="standing_movement_cost" for row in primer_rows))
 
     def test_sleep_two_stage_vectors_eligibility_and_initial_only_primer(self)->None:
-        normal=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("sleep"));rows=self.rows(normal,"all");stage1=next(row for row in rows if row["Source Effect"]=="sleep:incapacitated_stage" and row["Mechanical Primitive"]=="active_turn_denial");stage2_mobility=next(row for row in rows if row["Source Effect"]=="sleep:unconscious_stage" and row["Mechanical Primitive"]=="mobility_loss_feet");p=float(stage1["Application Probability"]);dc=8+self.model.progression("proficiency_bonus",20)+int(self.comparators["control"]["eldritch_knight"]["spellcasting_ability_modifier_by_level"]["20"]);q=1-save_success_probability(self.target,"wisdom",dc,False,True)
-        self.assertFalse(any(row["Mechanical Primitive"]=="standing_movement_cost" for row in rows))
+        normal=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("sleep"));rows=self.rows(normal,"all");stage1=next(row for row in rows if row["Source Effect"]=="sleep:incapacitated_stage" and row["Mechanical Primitive"]=="active_turn_denial");stage2_mobility=next(row for row in rows if row["Source Effect"]=="sleep:unconscious_stage" and row["Mechanical Primitive"]=="turn_movement_denial");p=float(stage1["Application Probability"]);dc=8+self.model.progression("proficiency_bonus",20)+int(self.comparators["control"]["eldritch_knight"]["spellcasting_ability_modifier_by_level"]["20"]);q=1-save_success_probability(self.target,"wisdom",dc,False,True)
+        self.assertTrue(all(row["Normalization"]=="suppressed" for row in rows if row["Mechanical Primitive"]=="standing_movement_cost"))
         self.assertEqual(stage1["Normalization"],"combined_disjoint_stages");self.assertEqual(len(self.active(stage1)),3);self.assertAlmostEqual(self.active(stage1)[0],p);self.assertAlmostEqual(self.active(stage1)[1],p*q);self.assertAlmostEqual(self.active(stage1)[2],p*q);self.assertEqual(len(self.active(stage2_mobility)),3);self.assertEqual(self.active(stage2_mobility)[0],0.0);self.assertAlmostEqual(self.active(stage2_mobility)[1],p*q);self.assertAlmostEqual(self.active(stage2_mobility)[2],p*q);self.assertAlmostEqual(float(stage2_mobility["Application Probability"]),p*q)
-        primer=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("sleep_after_eldritch_strike"));primer_rows=self.rows(primer,"all");primer_stage1=next(row for row in primer_rows if row["Source Effect"]=="sleep_after_eldritch_strike:incapacitated_stage" and row["Mechanical Primitive"]=="active_turn_denial");primer_stage2=next(row for row in primer_rows if row["Source Effect"]=="sleep_after_eldritch_strike:unconscious_stage" and row["Mechanical Primitive"]=="mobility_loss_feet");primer_p=float(primer_stage1["Application Probability"]);self.assertGreater(primer_p,p);self.assertAlmostEqual(float(primer_stage2["Application Probability"]),primer_p*q)
+        primer=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("sleep_after_eldritch_strike"));primer_rows=self.rows(primer,"all");primer_stage1=next(row for row in primer_rows if row["Source Effect"]=="sleep_after_eldritch_strike:incapacitated_stage" and row["Mechanical Primitive"]=="active_turn_denial");primer_stage2=next(row for row in primer_rows if row["Source Effect"]=="sleep_after_eldritch_strike:unconscious_stage" and row["Mechanical Primitive"]=="turn_movement_denial");primer_p=float(primer_stage1["Application Probability"]);self.assertGreater(primer_p,p);self.assertAlmostEqual(float(primer_stage2["Application Probability"]),primer_p*q)
         exhaustion=_comparator_scenario(self.model,self.config,self.comparators,replace(self.target,condition_immunities=frozenset({"exhaustion"})),"eldritch_knight",self.scenario("sleep"));self.assertTrue(exhaustion["automatic_save_success"]);self.assertEqual(exhaustion["whole"],0);self.assertFalse(exhaustion["shadow_components"])
         no_sleep=SimpleNamespace(**self.target.__dict__,does_not_sleep=True);source_explicit=_comparator_scenario(self.model,self.config,self.comparators,no_sleep,"eldritch_knight",self.scenario("sleep"));self.assertTrue(source_explicit["automatic_save_success"]);self.assertFalse(source_explicit["shadow_components"])
         inferred=replace(self.target,name="Sleepless Construct",creature_type="construct");not_inferred=_comparator_scenario(self.model,self.config,self.comparators,inferred,"eldritch_knight",self.scenario("sleep"));self.assertFalse(not_inferred["automatic_save_success"]);self.assertGreater(not_inferred["whole"],0)
@@ -279,7 +356,7 @@ class CurrentScenarioShadowTests(unittest.TestCase):
                 value=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",scenario);standing=[row for row in self.rows(value,"all") if row["Mechanical Primitive"]=="standing_movement_cost"]
                 if scenario_id.startswith(("grease","sleet_storm")):
                     self.assertEqual(len(standing),1);self.assertEqual(standing[0]["Pricing Status"],"candidate");self.assertAlmostEqual(self.active(standing[0])[0],value["whole"]/100,places=12);self.assertEqual(self.active(standing[0])[1:],(0.0,0.0))
-                else:self.assertFalse(standing)
+                else:self.assertTrue(all(row["Normalization"]=="suppressed" for row in standing))
         kv=_kv_scenario(self.model,self.config,self.target,"psychokinesis","advanced_deflection_screen",2);kv_standing=next(row for row in self.rows(kv,"psychokinesis") if row["Mechanical Primitive"]=="standing_movement_cost");self.assertEqual(kv_standing["Pricing Status"],"context_required");self.assertFalse(self.active(kv_standing))
 
     def test_grease_and_sleet_storm_standing_cost_reuses_unchanged_save_probability(self)->None:
@@ -290,7 +367,7 @@ class CurrentScenarioShadowTests(unittest.TestCase):
                 self.assertAlmostEqual(value["whole"]/100,expected,places=12);self.assertAlmostEqual(float(standing["Application Probability"]),expected,places=12);self.assertEqual(self.active(standing)[1:],(0.0,0.0))
 
     def test_hypnotic_pattern_dependency_persistence_breaks_and_access(self)->None:
-        normal=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("hypnotic_pattern"));rows=self.rows(normal,"all");turn=next(row for row in rows if row["Mechanical Primitive"]=="active_turn_denial");mobility=next(row for row in rows if row["Mechanical Primitive"]=="mobility_loss_feet");p=float(turn["Application Probability"]);self.assertEqual(self.active(turn),(p,p,p));self.assertEqual(self.active(mobility),(p,p,p));self.assertTrue(all(component["repeat_survival_probability"] is None for component in normal["shadow_components"]))
+        normal=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",self.scenario("hypnotic_pattern"));rows=self.rows(normal,"all");turn=next(row for row in rows if row["Mechanical Primitive"]=="active_turn_denial");mobility=next(row for row in rows if row["Mechanical Primitive"]=="turn_movement_denial");p=float(turn["Application Probability"]);self.assertEqual(self.active(turn),(p,p,p));self.assertEqual(self.active(mobility),(p,p,p));self.assertTrue(all(component["repeat_survival_probability"] is None for component in normal["shadow_components"]))
         self.assertEqual({item["trigger"] for item in normal["breaks"]},{"damage","external_action"});self.assertTrue(all(str(item["baseline_disposition"]).startswith("inactive_") for item in normal["breaks"]))
         immune=_comparator_scenario(self.model,self.config,self.comparators,replace(self.target,condition_immunities=frozenset({"charmed"})),"eldritch_knight",self.scenario("hypnotic_pattern"));self.assertEqual(immune["whole"],0);self.assertFalse(immune["shadow_components"])
         unavailable=_comparator_scenario(self.model,self.config,self.comparators,replace(self.target,level=11),"eldritch_knight",self.scenario("hypnotic_pattern"));self.assertFalse(unavailable["eligible"]);self.assertEqual(unavailable["whole"],0)
@@ -379,7 +456,7 @@ class CurrentScenarioShadowTests(unittest.TestCase):
             self.assertAlmostEqual(attempts[0],application);self.assertAlmostEqual(attempts[1],application*(1-success));self.assertAlmostEqual(attempts[2],application*(1-success)**2)
             self.assertEqual(tuple(float(item) for item in resolution["legal_exit_probabilities"]),tuple(attempt*success for attempt in attempts))
             rows=self.rows(value,"all");escape_action=next(row for row in rows if row["Source Effect"]==f"{scenario['id']}:escape_action")
-            restrained=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="mobility_loss_feet");offense=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="offensive_impairment_all_attacks");incoming=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="defensive_attack_advantage");dexterity_save=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="save_disadvantage")
+            restrained=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="turn_movement_denial");offense=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="offensive_impairment_all_attacks");incoming=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="defensive_attack_advantage");dexterity_save=next(row for row in rows if row["Condition/Outcome"]=="restrained" and row["Mechanical Primitive"]=="save_disadvantage")
             for observed,expected in zip(self.active(escape_action),attempts):self.assertAlmostEqual(observed,expected,places=12)
             for observed,expected in zip(self.active(restrained),attempts):self.assertAlmostEqual(observed,expected,places=12)
             self.assertEqual(escape_action["Pricing Status"],"candidate");self.assertEqual(offense["Normalization"],"suppressed");self.assertTrue(all(value==0 for value in self.active(offense)));self.assertEqual(float(offense["Expected Exposure"]),0)
