@@ -140,8 +140,18 @@ calculator:
       entity_id: common_manifested_strike
       rider_repeatability: per_manifested_strike
       damage_type_source: discipline
-      holdout_damage_type: force
-      holdout_damage_divisor: 2
+      holdout:
+        damage_type: force
+        declaration_timing: before_attack_roll
+        formulas:
+          - minimum_level: 3
+            maximum_level: 17
+            kind: halve_total_rounded_down
+          - minimum_level: 18
+            maximum_level: 20
+            kind: dice_plus_psionic_ability_modifier
+            count: 1
+            sides: 6
       critical_dice_multiplier: 2
       attack_bonus:
         base: 0
@@ -160,6 +170,17 @@ calculator:
         uses_per_rest: 1
         blood_tax_divisor: 2
         minimum_per_overload: 1
+    psionic_apex:
+      minimum_level: 18
+      psychokinesis_manifested_strike_hit:
+        discipline_id: psychokinesis
+        uses_per_attack_action: 1
+        reset: start_of_each_attack_action
+        damage_type: force
+        damage: {kind: dice, count: 3, sides: 8}
+        critical_dice_multiplier: 1
+        psi_cost: 0
+        blood_tax: 0
     disciplines:
       - id: pyrokinesis
         damage_type: fire
@@ -276,8 +297,8 @@ calculator:
         ignore_resistance_tiers: [2]
         control_tiers:
           - {tier: 0, application: failed_save, save: dexterity, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
-          - {tier: 1, application: no_save, hit_gated: true, effects: [{gate: on_reach, conditions: [blinded], duration: until_end_next_turn}]}
-          - {tier: 2, application: no_save, hit_gated: true, effects: [{gate: on_reach, conditions: [blinded], duration: until_end_next_turn}]}
+          - {tier: 1, application: failed_save, save: dexterity, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
+          - {tier: 2, application: failed_save, save: dexterity, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
       - {entity_id: furnace_strike, discipline_ids: [pyrokinesis], damage_type: fire, ignore_resistance_tiers: [2]}
       - entity_id: telekinetic_shove
         discipline_ids: [psychokinesis]
@@ -372,21 +393,17 @@ calculator:
         discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
         damage_type: psychic
         control_tiers:
-          - {tier: 0, application: no_save, hit_gated: true, effects: [{gate: on_reach, conditions: [blinded], duration: until_end_next_turn}]}
+          - {tier: 0, application: failed_save, save: intelligence, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
           - tier: 1
             application: failed_save
             save: intelligence
             hit_gated: true
-            effects:
-              - {gate: on_reach, conditions: [blinded], duration: until_end_next_turn}
-              - {gate: on_failed_save, conditions: [incapacitated], duration: until_end_next_turn}
+            effects: [{gate: on_failed_save, conditions: [blinded, incapacitated], duration: until_end_next_turn}]
           - tier: 2
             application: failed_save
             save: intelligence
             hit_gated: true
-            effects:
-              - {gate: on_reach, conditions: [blinded], duration: until_end_next_turn}
-              - {gate: on_failed_save, conditions: [stunned], duration: until_end_next_turn}
+            effects: [{gate: on_failed_save, conditions: [blinded, stunned], duration: until_end_next_turn}]
       - entity_id: forked_lightning
         discipline_ids: [electrokinesis]
         damage_type: lightning
@@ -559,12 +576,14 @@ calculator:
             resolution: always
             count: 4
             sides: 10
+          save: dexterity
         - tier: 2
           damage:
             kind: dice
             resolution: always
             count: 5
             sides: 10
+          save: dexterity
     - entity_id: furnace_strike
       delivery: on_hit_rider
       tiers:
@@ -679,6 +698,11 @@ calculator:
             resolution: half_on_success
             count: 2
             sides: 8
+          secondary_damage:
+            kind: dice
+            resolution: half_on_success
+            count: 1
+            sides: 8
           save: charisma
         - tier: 1
           damage:
@@ -686,12 +710,22 @@ calculator:
             resolution: half_on_success
             count: 3
             sides: 8
+          secondary_damage:
+            kind: dice
+            resolution: half_on_success
+            count: 2
+            sides: 8
           save: charisma
         - tier: 2
           damage:
             kind: dice
             resolution: half_on_success
             count: 4
+            sides: 8
+          secondary_damage:
+            kind: dice
+            resolution: half_on_success
+            count: 3
             sides: 8
           save: charisma
     - entity_id: advanced_mind_shred
@@ -722,6 +756,7 @@ calculator:
           damage:
             kind: none
             resolution: always
+          save: intelligence
         - tier: 1
           damage:
             kind: none
@@ -746,14 +781,14 @@ calculator:
           damage:
             kind: dice
             resolution: half_on_success
-            count: 10
+            count: 9
             sides: 10
           save: constitution
         - tier: 2
           damage:
             kind: dice
             resolution: half_on_success
-            count: 12
+            count: 10
             sides: 10
           save: constitution
     - entity_id: absolute_zero
@@ -964,6 +999,13 @@ calculator:
     - id: manifested_strike
       source_entity_id: common_manifested_strike
       calculation_kind: manifested_strike
+      related_card_ids: [holdout_option]
+    - id: holdout_option
+      source_entity_id: common_manifested_strike
+      calculation_kind: holdout_option
+      context:
+        - entity_id: common_manifested_strike
+          content_block_indexes: [14, 15, 16]
     - id: blood_tax
       source_entity_id: common_overload
       calculation_kind: blood_tax
@@ -1496,12 +1538,12 @@ entities:
                   type: text
               - - text: "Attack 3: "
                   type: strong
-                - text: Rolls 5 and deals 5 + 4 = 9 strike damage. Electron Burst rolls 6 + 5 = 11 damage for each of five failed saves, so attack 3 deals 9 + (11 × 5) = 64 damage.
+                - text: Rolls 5 and deals 5 + 4 = 9 strike damage. Electron Burst rolls 6 + 5 = 11 damage for the struck creature and 6 damage for each of the other four creatures after their failed saves, so attack 3 deals 9 + 11 + (6 × 4) = 44 damage.
                   type: text
             style: ordered
             type: list
           - inlines:
-              - text: The total is 21 + 26 + 64 = 111 lightning damage.
+              - text: The total is 21 + 26 + 44 = 91 lightning damage.
                 type: text
             type: paragraph
         discipline: electrokinesis
@@ -1544,7 +1586,7 @@ entities:
                   type: text
               - - text: "Damage: "
                   type: strong
-                - text: The five creatures have taken 111 lightning damage in total.
+                - text: The five creatures have taken 91 lightning damage in total.
                   type: text
               - - text: "Conditions: "
                   type: strong
@@ -2729,7 +2771,7 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "The Holdout Option — Force Damage: When you declare a Manifested Strike, you can have it deal force damage instead of your Discipline’s damage type. The strike then deals half damage, rounded down."
+          - text: "The Holdout Option — Force Damage: When you declare a Manifested Strike, you can have the strike deal force damage instead of your Discipline’s damage type. At Fighter levels 3–17, the strike deals half damage, rounded down. At Fighter levels 18–20, Refined Holdout instead makes the strike deal 1d6 + your Psionic Ability modifier force damage; do not halve the modifier."
             type: text
         type: paragraph
       - items:
@@ -2740,9 +2782,11 @@ entities:
         style: ordered
         type: list
       - items:
-          - - text: "Riders are unchanged: Discipline riders use the Discipline’s damage type unless stated otherwise, and Advanced Training riders use the type listed in their text."
+          - - text: "Riders are unchanged: Holdout applies only to Manifested Strike itself. Discipline riders use the Discipline’s damage type unless stated otherwise, and Advanced Training riders use the type listed in their text."
               type: text
-          - - text: Psychokinesis already deals force damage and gains no benefit from this option.
+          - - text: Psychokinesis already deals force damage and normally gains no benefit from this option.
+              type: text
+          - - text: Use Holdout when your Discipline damage would be immune or otherwise unusable.
               type: text
         style: unordered
         type: list
@@ -2848,7 +2892,7 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "Graze and the Holdout Option: Graze follows the strike’s damage type and reduction. With the Holdout Option, Graze deals force damage equal to half your Psionic Ability modifier, rounded down."
+          - text: "Graze and the Holdout Option: Graze follows the strike’s damage type and Holdout formula. At Fighter levels 3–17, Holdout Graze deals force damage equal to half your Psionic Ability modifier, rounded down. At Fighter levels 18–20, Refined Holdout Graze deals force damage equal to your Psionic Ability modifier."
             type: text
         type: paragraph
       - inlines:
@@ -2989,6 +3033,14 @@ entities:
         type: paragraph
       - inlines:
           - text: "Overload Mastery: Once per Short or Long Rest, when you declare your first Overload of a turn, you can activate this feature before paying Blood Tax. Until the end of that turn, including during any additional Attack action from Action Surge, halve the Blood Tax you pay after applying Resistance or any other reduction, rounding down. Overload Mastery can reduce Blood Tax below its normal minimum, but never below 1 damage for an individual Overload."
+            type: text
+        type: paragraph
+      - inlines:
+          - text: "Refined Holdout: At Fighter level 18, when you use the Holdout Option, Manifested Strike deals 1d6 + your Psionic Ability modifier force damage instead of halving the strike’s damage. Do not halve the modifier. This applies only to Manifested Strike itself; riders retain their authored damage types and damage."
+            type: text
+        type: paragraph
+      - inlines:
+          - text: "Psychokinesis Maturation: At Fighter level 18, once during each Attack action, when you hit a creature with a Manifested Strike, deal an additional 3d8 force damage to that creature. Each new Attack action grants a new use, including an Attack action from Action Surge. This is a separate feature damage packet, so a critical hit does not double these dice. It costs no Psi and causes no Blood Tax."
             type: text
         type: paragraph
       - inlines:
@@ -3154,11 +3206,11 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The damage increases to 10d10."
+          - text: "T1 Overload: Changes from Tier 0: The damage increases to 9d10."
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: The damage increases to 12d10. On a failed save, a target is Stunned instead of Restrained until the end of your next turn."
+          - text: "T2 Overload: Changes from Tier 1: The damage increases to 10d10. On a failed save, a target is Stunned instead of Restrained until the end of your next turn."
             type: text
         type: paragraph
     id: arctic_tempest
@@ -3294,11 +3346,11 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The additional damage increases to 4d10, and the target is Blinded until the end of your next turn without a saving throw."
+          - text: "T1 Overload: Changes from Tier 0: The additional damage increases to 4d10. The target makes the same Dexterity saving throw; on a failed save, it is Blinded until the end of your next turn, and on a successful save, it is not Blinded by this feature."
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: The additional damage increases to 5d10 and ignores Resistance to fire damage. The target remains Blinded without a saving throw."
+          - text: "T2 Overload: Changes from Tier 1: The additional damage increases to 5d10 and ignores Resistance to fire damage. The target makes the same Dexterity saving throw; on a failed save, it is Blinded until the end of your next turn, and on a successful save, it is not Blinded by this feature."
             type: text
         type: paragraph
     id: flare
@@ -3765,15 +3817,15 @@ entities:
         - electrokinesis
     content:
       - inlines:
-          - text: "T0 Base: Lightning bursts through a 10-foot-radius Sphere centered on the struck target. Each creature in the Sphere, including the struck target, must make a Charisma saving throw, taking 2d8 lightning damage on a failed save or half as much on a successful one."
+          - text: "T0 Base: Lightning bursts through a 10-foot-radius Sphere centered on the struck target. Each creature in the Sphere must make a Charisma saving throw. The struck creature takes 2d8 lightning damage on a failed save or half as much on a successful one; each other creature takes 1d8 lightning damage on a failed save or half as much on a successful one."
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The damage increases to 3d8. The radius remains 10 feet."
+          - text: "T1 Overload: Changes from Tier 0: The struck creature’s damage increases to 3d8, and each other creature’s damage increases to 2d8. The radius remains 10 feet."
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: The damage increases to 4d8. A creature that fails the saving throw also cannot take reactions and has Disadvantage on attack rolls until the start of your next turn."
+          - text: "T2 Overload: Changes from Tier 1: The struck creature’s damage increases to 4d8, and each other creature’s damage increases to 3d8. A creature that fails the saving throw also cannot take reactions and has Disadvantage on attack rolls until the start of your next turn."
             type: text
         type: paragraph
     id: electron_burst
@@ -4244,15 +4296,15 @@ entities:
         - advanced_training
     content:
       - inlines:
-          - text: "T0 Base: The target is Blinded until the end of your next turn, with no saving throw."
+          - text: "T0 Base: The target must make an Intelligence saving throw. On a failed save, it is Blinded until the end of your next turn. On a successful save, it is not Blinded by this feature."
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The target must also make an Intelligence saving throw. On a failed save, it is Incapacitated until the end of your next turn."
+          - text: "T1 Overload: Changes from Tier 0: On a failed save, the target is Blinded and Incapacitated until the end of your next turn. On a successful save, it suffers neither condition from this feature."
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: On a failed save, the target is Stunned instead of Incapacitated until the end of your next turn. It remains Blinded as at Tier 0."
+          - text: "T2 Overload: Changes from Tier 1: On a failed save, the target is Blinded and Stunned instead of Incapacitated until the end of your next turn. On a successful save, it suffers neither condition from this feature."
             type: text
         type: paragraph
     id: advanced_mind_lock
@@ -4592,7 +4644,7 @@ navigation:
           title: Advanced Training Progression
   default_category_id: common_features
 rules_version: 14.3.0
-schema_version: 2.2.0
+schema_version: 2.3.0
 vocabularies:
   acquisition_modes:
     - id: granted

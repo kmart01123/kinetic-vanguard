@@ -73,7 +73,7 @@ test("calculator ownership and rider coverage derive from canonical entities",as
   const registered=authority.calculator.features;assert.equal(new Set(registered.map(feature=>feature.entity_id)).size,registered.length);
   const deckOwned=authority.entities.filter(entity=>entity.presentation_metadata.presentation_owner==="calculator_deck"||(entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area!=="common_features"));
   for(const feature of registered){const entity=entityById.get(feature.entity_id);assert.ok(entity&&deckOwned.includes(entity),feature.entity_id);}
-  for(const card of authority.calculator.utility_cards)assert.ok(entityById.has(card.source_entity_id),card.id);
+  const utilityIds=new Set(authority.calculator.utility_cards.map(card=>card.id));for(const card of authority.calculator.utility_cards){assert.ok(entityById.has(card.source_entity_id),card.id);for(const related of card.related_card_ids??[])assert.ok(utilityIds.has(related),`${card.id} -> ${related}`);}
   const authoredRiders=deckOwned.filter(entity=>entity.activation==="on_hit"&&entity.classifications.feature_role==="rider").map(entity=>entity.id).sort();
   const registeredRiders=registered.filter(feature=>feature.delivery==="on_hit_rider").map(feature=>feature.entity_id).sort();assert.deepEqual(registeredRiders,authoredRiders);
   const missing=structuredClone(authority);missing.calculator.features=missing.calculator.features.filter(feature=>feature.entity_id!==registeredRiders[0]);assert.ok(validateSemantics(missing).some(diagnostic=>diagnostic.code==="calculator.rider_coverage"));

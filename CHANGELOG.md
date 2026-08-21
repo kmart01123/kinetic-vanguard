@@ -4,6 +4,9 @@
 
 ### Changed
 
+- Updated canonical schema authority to 2.3.0 and the harness projection contract to 1.1.0; refined the Fighter 18 Holdout Option to deal 1d6 + the Psionic Ability modifier as force damage; added Psychokinesis's 3d8 force maturation once per Attack action, refreshed by a new Attack action from Action Surge; reduced Electron Burst's secondary damage to 1d8/2d8/3d8 while retaining 2d8/3d8/4d8 primary damage; and changed Arctic Tempest to 8d10/9d10/10d10.
+- Added a dedicated calculated Holdout Option utility card to the Calculator / Feature Deck.
+- Audited and intentionally retained the remaining six-target Electrokinesis and three-target Cryokinesis headline damage outliers as discipline-identity and comparator-envelope results rather than applying further reductions.
 - Modernized the development container on Ubuntu 26.04 with repository-aligned Node, npm, and Python versions, native Playwright browser support, reproducible developer-agent CLI installation, and persistent local authentication state without exposing host container sockets.
 - Added an optional local Claude Code and Grok Build bridge that validates provider-bound machine output against an exact pull-request head before posting trusted top-level GitHub review records; ordinary CI only runs mocked bridge tests and never requires provider access.
 - Hardened the external-review bridge with wrapper-side provider-content redaction, worktree-confined file tools without provider shell access, real-CLI capability preflights, neutral-prose-safe identity validation, direct trusted-header spoof coverage, and a structured findings contract that rejects empty or verdict-inconsistent review evidence.
@@ -15,6 +18,7 @@
 - Corrected the expanded Eldritch Knight shadow evaluation with production Mind Sliver and Eldritch Strike save composition, closed-form Web and Black Tentacles escape exposure, overlapping Action-denial normalization, and immunity-safe condition dependencies.
 - Implemented the audited current-PHB Battle Master comparator with separate fixed 5/7/9/9 damage- and control-forward loadouts, exact pre-roll Feinting Attack and shared Feint/Hew Bonus Action accounting, structured Menacing/Pushing/Trip control, fail-closed Goading/Disarming diagnostics, and comparator-neutral standing-cost semantics for legally recoverable Prone.
 - Corrected Control Reliability benchmark methodology so bare Kinetic Mastery receives the same legal retries across one ordinary Attack action as repeatable embedded Mastery; Action Surge remains excluded, with no changes to Kinetic Vanguard or comparator mechanics.
+- Made hostile named conditions consistently require a saving throw; Flare retains its Dexterity save at every tier, and Mind Lock uses one Intelligence save for its full condition package.
 
 ### Removed
 

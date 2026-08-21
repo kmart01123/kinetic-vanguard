@@ -378,10 +378,22 @@ test("Feature Deck computes the newly projected values and authored save metadat
   detail=clickDeckCard(document,"vectored_thrust");assert.match(normalizedDeckText(detail),/Fly Speed: 60 feet/u);assert.match(normalizedDeckText(detail),/30 \+ \(5 × Proficiency Bonus 6\) = 60 feet/u);assert.match(normalizedDeckText(detail),/Concentration.*up to 10 minutes/u);
   detail=clickDeckCard(document,"common_empathic_sense");assert.match(normalizedDeckText(detail),/Active Scan uses: 3/u);assert.match(normalizedDeckText(detail),/floor\(Proficiency Bonus 6 ÷ 2\) = 3/u);assert.match(normalizedDeckText(detail),/Passive Insight bonus: \+5/u);
   detail=clickDeckCard(document,"static_discharge");assert.match(normalizedDeckText(detail),/Total targets: 7 creatures/u);
+  detail=clickDeckCard(document,"electron_burst");assert.match(normalizedDeckText(detail),/Rider damage: 4d8 on a failed save/u);assert.match(normalizedDeckText(detail),/Secondary target damage: 3d8 on a failed save/u);
+  detail=clickDeckCard(document,"arctic_tempest");assert.match(normalizedDeckText(detail),/Damage: 10d10 on a failed save/u);
+  detail=clickDeckCard(document,"flare");assert.deepEqual([...detail.querySelectorAll<HTMLElement>(".calculator__tier")].map(tier=>/Dexterity save: DC 19/u.test(normalizedDeckText(tier))),[true,true,true]);
+  detail=clickDeckCard(document,"advanced_mind_lock");assert.deepEqual([...detail.querySelectorAll<HTMLElement>(".calculator__tier")].map(tier=>/Intelligence save: DC 19/u.test(normalizedDeckText(tier))),[true,true,true]);
   detail=clickDeckCard(document,"advanced_deflection_screen");assert.match(normalizedDeckText(detail),/Damage reduction: 7d8 \+ 5/u);assert.match(normalizedDeckText(detail),/7d8 \+ \(1 × Psionic Ability Modifier 5\) = 7d8 \+ 5/u);assert.match(normalizedDeckText(detail),/Strength save: DC 19/u);
   detail=clickDeckCard(document,"advanced_improved_phase_step");assert.match(normalizedDeckText(detail),/Damage: 4d10 on a failed save/u);assert.match(normalizedDeckText(detail),/Discipline signature save: DC 19/u);
   detail=clickDeckCard(document,"advanced_inner_reserve");assert.match(normalizedDeckText(detail),/Maximum Psi Points with Inner Reserve: 20/u);assert.match(normalizedDeckText(detail),/Base Psi Points \(16\) \+ 4 = 20/u);
   changeDeckSelect(dom,level,"9");changeDeckSelect(dom,modifier,"3");detail=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.match(normalizedDeckText(detail),/Maximum Psi Points with Inner Reserve: 13/u);
+  await settleOnboarding();dom.window.close();
+});
+
+test("Holdout Option is level-aware and directly discoverable from Manifested Strike",async()=>{
+  const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=manifested_strike&level=17&modifier=5",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!;
+  const related=root.querySelector<HTMLButtonElement>("#calculator-feature-results .calculator__related button")!;assert.equal(related.textContent,"Holdout Option");related.click();let detail=root.querySelector<HTMLElement>("#calculator-feature-results")!,text=normalizedDeckText(detail);assert.equal(detail.querySelector(":scope > h3")?.textContent,"Holdout Option");assert.match(text,/Selected-level force formula: floor\(\(1d12 \+ 5\) ÷ 2\) force/u);assert.match(text,/Expected avg damage: 6/u);assert.match(text,/Graze damage with Holdout: 2 force/u);for(const rule of [/Declare this option before the attack roll/u,/Riders are unchanged/u,/Psychokinesis already deals force damage/u,/immune or otherwise unusable/u])assert.match(text,rule);
+  changeDeckSelect(dom,level,"18");detail=root.querySelector<HTMLElement>("#calculator-feature-results")!;text=normalizedDeckText(detail);assert.match(text,/Selected-level force formula: 1d6 \+ 5 force/u);assert.match(text,/Expected avg damage: 9/u);assert.match(text,/Graze damage with Holdout: 5 force/u);assert.equal(dom.window.location.hash,"#calculator&card=holdout_option&level=18&modifier=5");
   await settleOnboarding();dom.window.close();
 });
 

@@ -1,5 +1,5 @@
 {
-  "version": 4,
+  "version": 5,
   "tokens": [
     {"id":"prototype_banner","role":"release_status_notice","placements":["banner"],"text":"NON-RELEASE PROTOTYPE"},
     {"id":"skip_to_content","role":"navigation","placements":["link"],"text":"Skip to main content"},
@@ -46,8 +46,13 @@
     {"id":"calculator_total_psi_points_label","role":"calculation_label","placements":["label"],"text":"Total Psi Points"},
     {"id":"calculator_blood_tax_label","role":"calculation_label","placements":["label"],"text":"Blood Tax"},
     {"id":"calculator_blood_tax_card_heading","role":"section_heading","placements":["heading"],"text":"Blood Tax"},
+    {"id":"calculator_holdout_card_heading","role":"section_heading","placements":["heading"],"text":"Holdout Option"},
     {"id":"calculator_manifested_strike_activation","role":"fact_value","placements":["metadata","card"],"text":"Attack action · Replaces an attack"},
+    {"id":"calculator_holdout_activation","role":"fact_value","placements":["metadata","card"],"text":"Declare before the attack roll"},
     {"id":"calculator_blood_tax_activation","role":"fact_value","placements":["metadata","card"],"text":"Overload self-damage"},
+    {"id":"calculator_holdout_formula_label","role":"calculation_label","placements":["label"],"text":"Selected-level force formula"},
+    {"id":"calculator_holdout_graze_label","role":"calculation_label","placements":["label"],"text":"Graze damage with Holdout"},
+    {"id":"calculator_related_cards_heading","role":"section_heading","placements":["heading"],"text":"Related calculations"},
     {"id":"calculator_proficiency_bonus_label","role":"calculation_label","placements":["label"],"text":"Proficiency Bonus"},
     {"id":"calculator_overload_mastery_blood_tax_label","role":"calculation_label","placements":["label"],"text":"With Overload Mastery"},
     {"id":"calculator_overload_mastery_availability_label","role":"status","placements":["label"],"text":"Overload Mastery"},
