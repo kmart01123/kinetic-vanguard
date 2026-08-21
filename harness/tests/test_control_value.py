@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from harness.authority import AuthorityModel
-from harness.control_harness import _attack_action_expected_occurrences,_comparator_scenario,_composed_eldritch_knight_scenarios,_eldritch_strike_primer_probability,_finite_penalty_save_failure_probability,_finite_penalty_with_disadvantage_probability,_kv_scenario
+from harness.control_harness import _attack_action_expected_occurrences,_best_value,_comparator_scenario,_composed_eldritch_knight_scenarios,_eldritch_strike_primer_probability,_finite_penalty_save_failure_probability,_finite_penalty_with_disadvantage_probability,_kv_scenario
 from harness.control_value import PrimitiveExposure,decompose_label,expose_label,fixed_exposure,instantaneous_exposure,load_primitive_catalog,load_scoring_config,normalize_exposures,repeat_save_exposure,score_exposure,shadow_rows
 from harness.model import Target,_benchmark_locomotion_speed,ability_check_success_probability,attack_probabilities,load_comparators,load_config,modified_save_success_probability,save_success_probability
 
@@ -119,6 +119,13 @@ class FrozenControlValueScoringTests(unittest.TestCase):
         combined=shadow_rows({},[{"source_effect":"stop","labels":[("outcome","speed_zero")],"duration":"until_end_next_turn","application_probability":1.0},{"source_effect":"slow","labels":[("outcome","speed_reduction")],"duration":"until_end_next_turn","application_probability":1.0,"magnitude_feet":10},{"source_effect":"half","labels":[("outcome","speed_multiplier")],"duration":"until_end_next_turn","application_probability":1.0,"magnitude":0.5},{"source_effect":"prone","labels":[("outcome","standing_movement_cost")],"duration":"until_end_next_turn","application_probability":1.0}],benchmark_locomotion_speed=30)
         self.assertAlmostEqual(self.total(combined),0.30);self.assertTrue(all(row["Normalization"]=="suppressed" for row in combined if row["Mechanical Primitive"] in {"mobility_loss_feet","speed_multiplier","standing_movement_cost"}))
 
+    def test_only_explicitly_correlated_flat_reductions_share_the_movement_denial_cap(self)->None:
+        components=[{"source_effect":"correlated_primary","labels":[("outcome","speed_reduction")],"duration":"until_end_next_turn","application_probability":1.0,"magnitude_feet":20,"overlapping_mobility_reduction_sources":["correlated_secondary"]},{"source_effect":"correlated_secondary","labels":[("outcome","speed_reduction")],"duration":"until_end_next_turn","application_probability":1.0,"magnitude_feet":20}]
+        correlated=shadow_rows({},components,benchmark_locomotion_speed=30);primary=next(row for row in correlated if row["Source Effect"]=="correlated_primary");secondary=next(row for row in correlated if row["Source Effect"]=="correlated_secondary")
+        self.assertAlmostEqual(float(primary["Control Value CU"]),0.20);self.assertAlmostEqual(float(secondary["Control Value CU"]),0.10);self.assertAlmostEqual(self.total(correlated),0.30);self.assertEqual(secondary["Normalization"],"partially_suppressed");self.assertIn("capped at complete movement denial",str(secondary["Suppressed By"]))
+        independent=shadow_rows({},[*components,{"source_effect":"independent","labels":[("outcome","speed_reduction")],"duration":"until_end_next_turn","application_probability":1.0,"magnitude_feet":20}],benchmark_locomotion_speed=30)
+        self.assertAlmostEqual(self.total(independent),0.50);self.assertEqual(next(row for row in independent if row["Source Effect"]=="independent")["Normalization"],"retained")
+
     def test_benchmark_speed_uses_only_positive_unconditional_nonchoice_facts(self)->None:
         creature={"movement":{"modes":{"walk":[{"feet":30,"qualifier":None,"choice_group_id":None}],"fly":[{"feet":80,"qualifier":"while_in_form","choice_group_id":None}],"swim":[{"feet":60,"qualifier":None,"choice_group_id":"movement_choice"}],"climb":[{"feet":20,"qualifier":None,"choice_group_id":None}],"burrow":[{"feet":0,"qualifier":None,"choice_group_id":None}]}}}
         self.assertEqual(_benchmark_locomotion_speed(creature),30)
@@ -156,6 +163,11 @@ class FrozenControlValueScoringTests(unittest.TestCase):
         unsupported=self.rows("forced_movement");self.assertEqual(unsupported[0]["Pricing Status"],"unsupported");self.assertEqual(float(unsupported[0]["Control Value CU"]),0.0)
         missing=PrimitiveExposure("probe","probe","invented_candidate","target_turn_window",None,1.0,(1.0,),1.0,"candidate","sentinel")
         with self.assertRaisesRegex(ValueError,"no frozen Control Value scoring rule"):score_exposure(missing,30,{"rules":{}})
+
+    def test_value_winner_filters_eligibility_before_stable_scenario_id_tie_break(self)->None:
+        rows=[{"Scenario":"z_ineligible","Eligible":False,"Control Value CU":0.0},{"Scenario":"a_eligible","Eligible":True,"Control Value CU":0.0}]
+        self.assertEqual(_best_value(rows)["Scenario"],"a_eligible")
+        with self.assertRaisesRegex(ValueError,"no eligible scenario"):_best_value([rows[0]])
 
 
 class NormalizationTests(unittest.TestCase):

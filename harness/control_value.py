@@ -55,6 +55,7 @@ class PrimitiveExposure:
     normalization_disposition: str = "retained"
     suppressed_by: str = ""
     expected_occurrences: float | None = None
+    overlapping_mobility_reduction_sources: tuple[str, ...] = ()
 
 
 def _object(value: Any, label: str) -> dict[str, Any]:
@@ -282,6 +283,7 @@ def expose_label(
     pricing_status: str | None = None,
     qualifiers: Mapping[str, Any] | None = None,
     overlapping_attack_impairment_sources: Sequence[str] = (),
+    overlapping_mobility_reduction_sources: Sequence[str] = (),
     active_probabilities_by_basis: Mapping[str, Sequence[float]] | None = None,
     suppressed_recovery_options: Sequence[str] = (),
     disjoint_stage_group: str = "",
@@ -306,6 +308,7 @@ def expose_label(
     if "end_own_prone" in suppressed_recoveries:
         specs = tuple(spec for spec in specs if spec.primitive_id != "standing_movement_cost")
     attack_overlap_sources = tuple(sorted(set(overlapping_attack_impairment_sources)))
+    mobility_overlap_sources = tuple(sorted(set(overlapping_mobility_reduction_sources)))
     result: list[PrimitiveExposure] = []
     for spec in specs:
         if expected_occurrences is not None and spec.exposure_basis != "instantaneous_occurrence":
@@ -411,6 +414,7 @@ def expose_label(
         if status == "unsupported":
             expected = None
         exposure=PrimitiveExposure(source_effect, label, spec.primitive_id, spec.exposure_basis, spec.magnitude, application_probability, active, expected, status, " ".join(reason_parts), spec.qualifiers, attack_overlap_sources, disjoint_stage_group)
+        if spec.primitive_id == "mobility_loss_feet":exposure=replace(exposure,overlapping_mobility_reduction_sources=mobility_overlap_sources)
         if spec.exposure_basis == "instantaneous_occurrence" and status != "unsupported":
             exposure=replace(exposure,expected_occurrences=application_probability if expected_occurrences is None else expected_occurrences)
         result.append(exposure)
@@ -553,6 +557,32 @@ def resolve_scoring_context(exposure: PrimitiveExposure, benchmark_locomotion_sp
     )
 
 
+def cap_correlated_flat_mobility(exposures: Sequence[PrimitiveExposure], benchmark_locomotion_speed: float | None) -> tuple[PrimitiveExposure, ...]:
+    """Cap only explicitly correlated same-window flat reductions at movement denial."""
+    if benchmark_locomotion_speed is None or benchmark_locomotion_speed <= 0:return tuple(exposures)
+    revised=list(exposures);by_source:dict[str,list[int]]={}
+    for index,item in enumerate(revised):
+        if item.primitive_id=="mobility_loss_feet" and item.pricing_status=="candidate" and item.normalization_disposition!="suppressed":by_source.setdefault(item.source_effect,[]).append(index)
+    capped:set[int]=set()
+    for capper_index,capper in enumerate(tuple(revised)):
+        named=capper.overlapping_mobility_reduction_sources
+        if not named or capper.primitive_id!="mobility_loss_feet" or capper.pricing_status!="candidate" or capper.normalization_disposition=="suppressed":continue
+        if capper.magnitude is None or not capper.active_probabilities:raise ValueError("Explicit flat-mobility correlation lacks a placed magnitude or active window")
+        budget=max(0.0,benchmark_locomotion_speed-min(capper.magnitude,benchmark_locomotion_speed))
+        for source in named:
+            matches=by_source.get(source,[])
+            if len(matches)!=1:raise ValueError(f"Explicit flat-mobility correlation must resolve exactly one source: {source}")
+            weak_index=matches[0];weaker=revised[weak_index]
+            if weak_index==capper_index or weak_index in capped:raise ValueError("Explicit flat-mobility correlation is cyclic or overlaps another cap group")
+            if weaker.magnitude is None or weaker.active_probabilities!=capper.active_probabilities:raise ValueError("Explicit flat-mobility correlation requires identical scored windows")
+            allowed_magnitude=min(weaker.magnitude,budget);budget=max(0.0,budget-allowed_magnitude);allowed_expected=allowed_magnitude*sum(weaker.active_probabilities)
+            if allowed_expected+1e-12 < float(weaker.expected_exposure or 0.0):
+                disposition="suppressed" if allowed_expected==0.0 else "partially_suppressed";rule=f"{capper.source_effect}:{capper.primitive_id} (explicitly correlated flat mobility is capped at complete movement denial)";suppressor=f"{weaker.suppressed_by}; {rule}" if weaker.suppressed_by else rule
+                revised[weak_index]=replace(weaker,expected_exposure=allowed_expected,normalization_disposition=disposition,suppressed_by=suppressor)
+            capped.add(weak_index)
+    return tuple(revised)
+
+
 def score_exposure(
     exposure: PrimitiveExposure,
     benchmark_locomotion_speed: float | None,
@@ -582,7 +612,7 @@ def score_exposure(
     elif transform == "bounded_fraction_of_benchmark_locomotion":
         if exposure.magnitude is None or benchmark_locomotion_speed is None or benchmark_locomotion_speed <= 0:
             raise ValueError("Resolved flat mobility scoring lacks magnitude or benchmark locomotion speed")
-        contribution = weight * min(exposure.magnitude / benchmark_locomotion_speed, 1.0) * sum(exposure.active_probabilities)
+        contribution = weight * min(expected / benchmark_locomotion_speed, sum(exposure.active_probabilities))
     elif transform == "remaining_speed_fraction":
         if exposure.magnitude is None or not 0.0 <= exposure.magnitude <= 1.0:
             raise ValueError("Resolved Speed multiplier must be in [0, 1]")
@@ -613,6 +643,7 @@ def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, A
                     pricing_status=component.get("pricing_status"),
                     qualifiers=component.get("qualifiers"),
                     overlapping_attack_impairment_sources=component.get("overlapping_attack_impairment_sources", ()),
+                    overlapping_mobility_reduction_sources=component.get("overlapping_mobility_reduction_sources", ()),
                     active_probabilities_by_basis=component.get("active_probabilities_by_basis"),
                     suppressed_recovery_options=component.get("suppressed_recovery_options", ()),
                     disjoint_stage_group=str(component.get("disjoint_stage_group", "")),
@@ -622,7 +653,8 @@ def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, A
             )
     rows: list[dict[str, Any]] = []
     resolved=(resolve_scoring_context(item,benchmark_locomotion_speed) for item in exposures)
-    for item in normalize_exposures(resolved):
+    normalized=normalize_exposures(resolved)
+    for item in cap_correlated_flat_mobility(normalized,benchmark_locomotion_speed):
         contribution,transform,weight=score_exposure(item,benchmark_locomotion_speed)
         probability_label="occurrence" if item.exposure_basis=="instantaneous_occurrence" else "window"
         rows.append(
@@ -634,6 +666,7 @@ def shadow_rows(metadata: Mapping[str, Any], components: Iterable[Mapping[str, A
                 "Exposure Basis": item.exposure_basis,
                 "Magnitude": "" if item.magnitude is None else f"{item.magnitude:g}",
                 "Qualifiers": ";".join(f"{key}={value}" for key,value in item.qualifiers),
+                "Correlated Mobility Sources": ";".join(item.overlapping_mobility_reduction_sources),
                 "Application Probability": f"{item.application_probability:.12f}",
                 "Active Probabilities": ";".join(f"{probability_label}_{index}={value:.12f}" for index,value in enumerate(item.active_probabilities,1)),
                 "Expected Occurrences": "" if item.expected_occurrences is None else f"{item.expected_occurrences:.12f}",

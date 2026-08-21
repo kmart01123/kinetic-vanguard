@@ -362,7 +362,9 @@ def _best(rows:list[dict[str,Any]])->dict[str,Any]:
 
 def _best_value(rows:list[dict[str,Any]])->dict[str,Any]:
     if not rows:raise ValueError("Configured Control Value scenario set is empty at this level")
-    return max(rows,key=lambda row:(float(row["Control Value CU"]),str(row["Scenario"])))
+    eligible=[row for row in rows if row.get("Eligible") is True]
+    if not eligible:raise ValueError("Configured Control Value scenario set has no eligible scenario at this level and target")
+    return max(eligible,key=lambda row:(float(row["Control Value CU"]),str(row["Scenario"])))
 
 
 def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,write_detail:bool=True,write_headline:bool=True,profile:str=DEFAULT_PROFILE,write_shadow:bool=False)->dict[str,Any]:
@@ -377,7 +379,9 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
         candidate=sum(row["Pricing Status"]=="candidate" for row in rows)
         unpriced=len(rows)-candidate
         retained_candidate=sum(row["Pricing Status"]=="candidate" and row["Normalization"] not in {"suppressed","combined_into_disjoint_stages"} for row in rows)
-        return {**metadata,"Eligible":value["eligible"],"Control Value CU":total,"Primitive Rows":len(rows),"Candidate Rows":candidate,"Context/Unsupported Rows":unpriced,"Zero Entirely Fail-Closed Context":bool(rows and total==0.0 and retained_candidate==0 and unpriced>0)}
+        zero_context=bool(rows and total==0.0 and retained_candidate==0 and unpriced>0)
+        disposition="ineligible" if not value["eligible"] else ("priced_nonzero" if total!=0.0 else ("entirely_context_required_or_unsupported" if zero_context else "legitimately_priced_zero"))
+        return {**metadata,"Eligible":value["eligible"],"Control Value CU":total,"Value Disposition":disposition,"Primitive Rows":len(rows),"Candidate Rows":candidate,"Context/Unsupported Rows":unpriced,"Zero Entirely Fail-Closed Context":zero_context}
 
     for target in targets:
         comparator_best={};comparator_value_best={}
@@ -388,7 +392,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
             values=[value for value in all_values if value["scenario"] in reliability_ids]
             detail.extend({"Level":target.level,"Target":target.name,**value} for value in values);comparator_best[build]=_best(values)
             if write_shadow:
-                scored=[value_row(target,build,"all",value) for value in all_values];value_scenarios.extend(scored);comparator_value_best[build]=_best_value(scored);value_audit.append({"Level":target.level,"Target":target.name,"Discipline":"all","Build":build,"Selected Scenario":comparator_value_best[build]["Scenario"],"Control Value CU":comparator_value_best[build]["Control Value CU"]})
+                scored=[value_row(target,build,"all",value) for value in all_values];value_scenarios.extend(scored);comparator_value_best[build]=_best_value(scored);value_audit.append({"Level":target.level,"Target":target.name,"Discipline":"all","Build":build,"Selected Scenario":comparator_value_best[build]["Scenario"],"Eligible":comparator_value_best[build]["Eligible"],"Control Value CU":comparator_value_best[build]["Control Value CU"],"Value Disposition":comparator_value_best[build]["Value Disposition"]})
             audit.append({"Level":target.level,"Target":target.name,"Discipline":"all","Build":build,"Selected Scenario":comparator_best[build]["scenario"],"Whole-package control stick %":f"{comparator_best[build]['whole']:.6f}","Eligible":comparator_best[build]["eligible"]})
         for discipline,configured in scenario_sets.items():
             values=[_mastery_scenario(model,config,target,discipline)]
@@ -402,7 +406,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
                             if "unavailable" not in str(error):raise
             best=_best(values);detail.extend({"Level":target.level,"Target":target.name,**value} for value in values)
             if write_shadow:
-                scored=[value_row(target,"kinetic_vanguard",discipline,value) for value in values];value_scenarios.extend(scored);value_best=_best_value(scored);value_audit.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"Build":"kinetic_vanguard","Selected Scenario":value_best["Scenario"],"Control Value CU":value_best["Control Value CU"]});value_envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":value_best["Control Value CU"],"Eldritch Knight":comparator_value_best["eldritch_knight"]["Control Value CU"],"Battle Master":comparator_value_best["battle_master"]["Control Value CU"]})
+                scored=[value_row(target,"kinetic_vanguard",discipline,value) for value in values];value_scenarios.extend(scored);value_best=_best_value(scored);value_audit.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"Build":"kinetic_vanguard","Selected Scenario":value_best["Scenario"],"Eligible":value_best["Eligible"],"Control Value CU":value_best["Control Value CU"],"Value Disposition":value_best["Value Disposition"]});value_envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":value_best["Control Value CU"],"Eldritch Knight":comparator_value_best["eldritch_knight"]["Control Value CU"],"Battle Master":comparator_value_best["battle_master"]["Control Value CU"]})
             audit.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"Build":"kinetic_vanguard","Selected Scenario":best["scenario"],"Whole-package control stick %":f"{best['whole']:.6f}","Eligible":best["eligible"]})
             envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":best["whole"],"Eldritch Knight":comparator_best["eldritch_knight"]["whole"],"Battle Master":comparator_best["battle_master"]["whole"]})
     slug=model.rules_version.replace(".","-");output_dir.mkdir(parents=True,exist_ok=True)

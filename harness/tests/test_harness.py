@@ -1483,7 +1483,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
                 self.assertIn(column,rows[0])
             with control["value_paths"]["selection_audit"].open(encoding="utf-8") as stream:
                 value_audit=list(csv.DictReader(stream))
-            self.assertEqual(len(value_audit),6);self.assertTrue(all(row["Selected Scenario"] for row in value_audit))
+            self.assertEqual(len(value_audit),6);self.assertTrue(all(row["Selected Scenario"] and row["Eligible"]=="True" for row in value_audit));self.assertTrue(all(row["Value Disposition"] in {"priced_nonzero","legitimately_priced_zero","entirely_context_required_or_unsupported"} for row in value_audit))
 
 
 if __name__=="__main__":unittest.main()
