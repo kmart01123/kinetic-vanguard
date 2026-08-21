@@ -20,9 +20,7 @@ Version 14.1.0 restores maintained damage and control benchmark harness source. 
 <!-- BEGIN GENERATED BALANCE MATRICES -->
 ## Balance benchmark snapshot
 
-**Published snapshot** — canonical rules **v14.2.0**.
-
-The current v14.3.0 development line contains rule changes not yet reflected in this published benchmark snapshot.
+**Unreleased development snapshot** — canonical rules **v14.3.0**; current published release **v14.2.0**.
 
 Target profile: `headline`. These are exact analytical full-roster results.
 
@@ -36,10 +34,10 @@ The front-door damage view is the single-target benchmark: primary-target DPR at
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
-| 7 | IDEAL | IDEAL | IDEAL | IDEAL |
-| 11 | COLD (-18.76%) | IDEAL | IDEAL | IDEAL |
-| 15 | COLD (-5.70%) | IDEAL | IDEAL | COLD (-5.16%) |
-| 20 | COLD (-35.69%) | IDEAL | COLD (-14.10%) | COLD (-14.08%) |
+| 7 | COLD (-6.99%) | IDEAL | COLD (-2.61%) | IDEAL |
+| 11 | COLD (-19.47%) | IDEAL | COLD (-0.20%) | IDEAL |
+| 15 | COLD (-18.10%) | IDEAL | IDEAL | COLD (-6.75%) |
+| 20 | COLD (-41.52%) | COLD (-12.76%) | COLD (-14.95%) | COLD (-26.58%) |
 
 ### Control Reliability
 
@@ -54,9 +52,9 @@ Control Reliability measures how often the configured control package takes effe
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
 | 7 | HOT (+35.64%) | COLD (-100.00%) | HOT (+13.00%) | HOT (+15.70%) |
-| 11 | HOT (+21.39%) | COLD (-100.00%) | HOT (+9.27%) | HOT (+2.17%) |
-| 15 | HOT (+30.97%) | HOT (+30.97%) | HOT (+31.62%) | HOT (+12.48%) |
-| 20 | HOT (+25.05%) | HOT (+24.84%) | HOT (+25.05%) | HOT (+2.64%) |
+| 11 | HOT (+23.78%) | COLD (-100.00%) | HOT (+11.41%) | HOT (+4.17%) |
+| 15 | HOT (+32.05%) | HOT (+32.05%) | HOT (+32.71%) | HOT (+13.41%) |
+| 20 | HOT (+50.52%) | HOT (+50.27%) | HOT (+50.52%) | HOT (+23.55%) |
 
 This snapshot is a summary, not the full evidence set. Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the [maintained harness guide](harness/README.md), [methodology configuration](harness/config/benchmark.json), [SRD creature profiles](harness/data/srd_creature_rosters.json), and [comparator assumptions](harness/comparators/fighter-subclasses.json) for the complete methodology, provenance, regeneration commands, and report paths.
 
