@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
-from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_repeat_rider_probability,run as run_control
+from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_mastery_scenario,_repeat_rider_probability,run as run_control
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_battle_master_dpr_for_schedule,_battle_master_result,_comparator_dpr,_comparator_score,_eldritch_knight_result,_kv_dpr,_rider_values,run as run_damage
 from harness.ek_damage_planner import EKDamagePlanner,EKScore,EKState,chromatic_orb_duplicate_probability
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,fighter_action_schedules,load_comparators,load_config,load_targets,save_success_probability
@@ -1031,6 +1031,47 @@ class CanonicalControlTests(unittest.TestCase):
     def target(self,*immunities:str)->Target:
         return replace(self.base,size="medium",condition_immunities=frozenset(immunities))
 
+    def level_target(self,level:int,*,size:str="medium")->Target:
+        target=next(item for item in load_targets(profile="headline",levels={level}) if not item.condition_immunities)
+        return replace(target,size=size)
+
+    def expected_mastery_retry(self,level:int,target:Target)->float:
+        profile=self.config["kv_profile"];bonus=self.model.kv_attack_bonus(level,int(profile["psionic_ability_modifier"]))+int(profile["archery_attack_bonus"]);hit=sum(attack_probabilities(bonus,target.ac)[1:]);attacks=int(self.config["fighter_progression"][str(level)]["attacks_per_action"])
+        return 100*(1-(1-hit)**attacks)
+
+    def test_bare_sap_mastery_uses_every_ordinary_attack_without_action_surge(self)->None:
+        for level,attacks in ((7,2),(11,3),(15,3),(20,4)):
+            with self.subTest(level=level):
+                target=self.level_target(level);row=_mastery_scenario(self.model,self.config,target,"electrokinesis");profile=self.config["kv_profile"];bonus=self.model.kv_attack_bonus(level,int(profile["psionic_ability_modifier"]))+int(profile["archery_attack_bonus"]);hit=sum(attack_probabilities(bonus,target.ac)[1:])
+                self.assertEqual(self.config["fighter_progression"][str(level)]["attacks_per_action"],attacks)
+                self.assertAlmostEqual(row["whole"],100*(1-(1-hit)**attacks),places=12)
+                self.assertNotAlmostEqual(row["whole"],100*(1-(1-hit)**(2*attacks)),places=12)
+
+    def test_bare_push_mastery_uses_ordinary_retries_and_preserves_size_restriction(self)->None:
+        for level in (7,11,15,20):
+            with self.subTest(level=level):
+                eligible=self.level_target(level);row=_mastery_scenario(self.model,self.config,eligible,"psychokinesis")
+                self.assertAlmostEqual(row["whole"],self.expected_mastery_retry(level,eligible),places=12)
+                excluded=_mastery_scenario(self.model,self.config,self.level_target(level,size="huge"),"psychokinesis")
+                self.assertFalse(excluded["eligible"]);self.assertEqual(excluded["whole"],0.0)
+
+    def test_bare_slow_mastery_uses_ordinary_retries_at_every_maintained_level(self)->None:
+        for level in (7,11,15,20):
+            with self.subTest(level=level):
+                target=self.level_target(level,size="gargantuan");row=_mastery_scenario(self.model,self.config,target,"cryokinesis")
+                self.assertTrue(row["eligible"]);self.assertAlmostEqual(row["whole"],self.expected_mastery_retry(level,target),places=12)
+
+    def test_embedded_and_bare_mastery_share_retry_probability_when_gates_match(self)->None:
+        for level in (7,11,15,20):
+            with self.subTest(level=level):
+                target=self.level_target(level);bare=_mastery_scenario(self.model,self.config,target,"cryokinesis");embedded=_kv_scenario(self.model,self.config,target,"cryokinesis","snow_chains",0)
+                self.assertAlmostEqual(embedded["mastery"],bare["mastery"],places=12)
+
+    def test_standalone_control_remains_one_use(self)->None:
+        target=self.level_target(15);row=_kv_scenario(self.model,self.config,target,"psychokinesis","telekinetic_slam",1);failed=1-save_success_probability(target,"strength",self.model.kv_save_dc(15,5));attacks=int(self.config["fighter_progression"]["15"]["attacks_per_action"])
+        self.assertAlmostEqual(row["whole"],100*failed,places=12)
+        self.assertNotAlmostEqual(row["whole"],100*(1-(1-failed)**attacks),places=12)
+
     def test_condition_immunity_removes_only_the_matching_canonical_effect(self)->None:
         target=self.target("stunned")
         row=_kv_scenario(self.model,self.config,target,"cryokinesis","snow_chains",2)
@@ -1110,9 +1151,11 @@ class CanonicalControlTests(unittest.TestCase):
         ordinary=_kv_scenario(self.model,self.config,target,"cryokinesis","snow_chains",2);self.assertGreater(ordinary["mastery"],0.0);self.assertTrue(any(component["source_effect"]=="mastery:slow" for component in ordinary["shadow_components"]))
 
     def test_static_discharge_tier_two_signature_control_cannot_retry(self)->None:
-        feature=self.model.features["static_discharge"]
+        feature=self.model.features["static_discharge"];target=self.target();row=_kv_scenario(self.model,self.config,target,"electrokinesis","static_discharge",2);bonus=self.model.kv_attack_bonus(20,5)+2;hit=sum(attack_probabilities(bonus,target.ac)[1:])
         self.assertEqual(feature["psi_cost"],0)
         self.assertAlmostEqual(_repeat_rider_probability(self.model,self.config,20,2,int(feature["psi_cost"]),0.25),0.25,places=12)
+        self.assertAlmostEqual(row["whole"],100*hit,places=12)
+        self.assertGreater(_mastery_scenario(self.model,self.config,target,"electrokinesis")["whole"],row["whole"])
 
 
 class ControlComparatorRetryTests(unittest.TestCase):
