@@ -51,10 +51,10 @@ Control Reliability measures how often the configured control package takes effe
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
-| 7 | HOT (+35.64%) | COLD (-100.00%) | HOT (+13.00%) | HOT (+15.70%) |
-| 11 | HOT (+23.78%) | COLD (-100.00%) | HOT (+11.41%) | HOT (+4.17%) |
-| 15 | HOT (+32.05%) | HOT (+32.05%) | HOT (+32.71%) | HOT (+13.41%) |
-| 20 | HOT (+50.52%) | HOT (+50.27%) | HOT (+50.52%) | HOT (+23.55%) |
+| 7 | HOT (+35.64%) | COLD (-100.00%) | HOT (+31.82%) | HOT (+35.64%) |
+| 11 | HOT (+23.78%) | COLD (-100.00%) | HOT (+11.41%) | HOT (+23.78%) |
+| 15 | HOT (+32.05%) | HOT (+7.07%) | HOT (+32.71%) | HOT (+32.09%) |
+| 20 | HOT (+50.52%) | HOT (+28.62%) | HOT (+50.52%) | HOT (+50.27%) |
 
 This snapshot is a summary, not the full evidence set. Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the [maintained harness guide](harness/README.md), [methodology configuration](harness/config/benchmark.json), [SRD creature profiles](harness/data/srd_creature_rosters.json), and [comparator assumptions](harness/comparators/fighter-subclasses.json) for the complete methodology, provenance, regeneration commands, and report paths.
 

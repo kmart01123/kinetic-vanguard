@@ -18,6 +18,7 @@
 - Corrected the expanded Eldritch Knight shadow evaluation with production Mind Sliver and Eldritch Strike save composition, closed-form Web and Black Tentacles escape exposure, overlapping Action-denial normalization, and immunity-safe condition dependencies.
 - Implemented the audited current-PHB Battle Master comparator with separate fixed 5/7/9/9 damage- and control-forward loadouts, exact pre-roll Feinting Attack and shared Feint/Hew Bonus Action accounting, structured Menacing/Pushing/Trip control, fail-closed Goading/Disarming diagnostics, and comparator-neutral standing-cost semantics for legally recoverable Prone.
 - Corrected Control Reliability benchmark methodology so bare Kinetic Mastery receives the same legal retries across one ordinary Attack action as repeatable embedded Mastery; Action Surge remains excluded, with no changes to Kinetic Vanguard or comparator mechanics.
+- Made hostile named conditions consistently require a saving throw; Flare retains its Dexterity save at every tier, and Mind Lock uses one Intelligence save for its full condition package.
 
 ### Removed
 

@@ -1101,6 +1101,24 @@ class CanonicalControlTests(unittest.TestCase):
         self.assertAlmostEqual(row["whole"],100*failed,places=12)
         self.assertNotAlmostEqual(row["whole"],100*(1-(1-failed)**attacks),places=12)
 
+    def test_flare_named_condition_uses_the_same_dexterity_save_at_every_tier(self)->None:
+        target=self.level_target(15);feature=self.model.features["flare"];bonus=self.model.kv_attack_bonus(15,5)+int(self.config["kv_profile"]["archery_attack_bonus"]);hit=sum(attack_probabilities(bonus,target.ac)[1:]);failed=1-save_success_probability(target,"dexterity",self.model.kv_save_dc(15,5))
+        self.assertEqual([(tier["damage"]["count"],tier["damage"]["sides"],tier["damage"]["resolution"],tier["save"]) for tier in feature["damage_tiers"]],[(3,10,"always","dexterity"),(4,10,"always","dexterity"),(5,10,"always","dexterity")]);self.assertEqual(feature["ignore_resistance_tiers"],[2]);self.assertEqual(feature["psi_cost"],3)
+        for tier in range(3):
+            with self.subTest(tier=tier):
+                control=next(item for item in feature["control_tiers"] if int(item["tier"])==tier);self.assertEqual((control["application"],control["save"]),("failed_save","dexterity"));self.assertTrue(all(effect["gate"]=="on_failed_save" for effect in control["effects"]))
+                expected=_repeat_rider_probability(self.model,self.config,15,tier,int(feature["psi_cost"]),hit*failed);row=_kv_scenario(self.model,self.config,target,"pyrokinesis","flare",tier)
+                self.assertAlmostEqual(row["named"],100*expected,places=12);self.assertAlmostEqual(row["shadow_components"][0]["application_probability"],expected,places=12)
+
+    def test_mind_lock_uses_one_intelligence_save_for_its_full_condition_package(self)->None:
+        target=self.target();feature=self.model.features["advanced_mind_lock"];bonus=self.model.kv_attack_bonus(20,5)+int(self.config["kv_profile"]["archery_attack_bonus"]);hit=sum(attack_probabilities(bonus,target.ac)[1:]);failed=1-save_success_probability(target,"intelligence",self.model.kv_save_dc(20,5));expected_conditions=(("blinded",),("blinded","incapacitated"),("blinded","stunned"))
+        self.assertTrue(all(tier["damage"]["kind"]=="none" and tier["damage"]["resolution"]=="always" and tier["save"]=="intelligence" for tier in feature["damage_tiers"]))
+        for tier,conditions in enumerate(expected_conditions):
+            with self.subTest(tier=tier):
+                control=next(item for item in feature["control_tiers"] if int(item["tier"])==tier);self.assertEqual((control["application"],control["save"]),("failed_save","intelligence"));self.assertEqual(len(control["effects"]),1);self.assertEqual(tuple(control["effects"][0]["conditions"]),conditions);self.assertEqual(control["effects"][0]["gate"],"on_failed_save")
+                expected=_repeat_rider_probability(self.model,self.config,20,tier,int(feature["psi_cost"]),hit*failed);row=_kv_scenario(self.model,self.config,target,"pyrokinesis","advanced_mind_lock",tier);component=row["shadow_components"][0]
+                self.assertAlmostEqual(row["named"],100*expected,places=12);self.assertAlmostEqual(component["application_probability"],expected,places=12);self.assertEqual(tuple(label for kind,label in component["labels"] if kind=="condition"),conditions)
+
     def test_condition_immunity_removes_only_the_matching_canonical_effect(self)->None:
         target=self.target("stunned")
         row=_kv_scenario(self.model,self.config,target,"cryokinesis","snow_chains",2)

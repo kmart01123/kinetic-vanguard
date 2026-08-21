@@ -49,10 +49,43 @@ test("harness semantic mutations fail with focused diagnostics",async()=>{
     const effect=candidate.calculator.harness_mechanics.feature_rules.flatMap((rule:any)=>rule.control_tiers??[]).flatMap((control:any)=>control.effects).find((item:any)=>item.conditions?.length&&!item.outcomes?.length);
     delete effect.conditions;delete effect.outcomes;
   });
+  expectCode("harness.named_condition_save_required",candidate=>{
+    const control=candidate.calculator.harness_mechanics.feature_rules.flatMap((rule:any)=>rule.control_tiers??[]).find((item:any)=>item.effects.some((effect:any)=>effect.conditions?.length));
+    control.effects.find((effect:any)=>effect.conditions?.length).gate="on_reach";
+  });
   expectCode("harness.control_magnitude",candidate=>{
     const effect=candidate.calculator.harness_mechanics.feature_rules.flatMap((rule:any)=>rule.control_tiers??[]).flatMap((control:any)=>control.effects).find((item:any)=>item.outcomes?.includes("forced_movement")&&item.magnitude_feet!==undefined);
     delete effect.magnitude_feet;
   });
+});
+
+test("named-condition save enforcement stays scoped to typed hostile applications",async()=>{
+  const {authority}=await loadAuthority();
+  const namedConditionDiagnostics=(candidate:any)=>validateSemantics(candidate).filter(item=>item.code==="harness.named_condition_save_required");
+  assert.deepEqual(namedConditionDiagnostics(authority),[]);
+
+  const rules=authority.calculator.harness_mechanics.feature_rules;
+  const flare=rules.find(item=>item.entity_id==="flare")!;
+  assert.ok(flare.control_tiers?.every(control=>control.application==="failed_save"&&control.save==="dexterity"&&control.effects.every(effect=>effect.gate==="on_failed_save")));
+
+  const noSaveCondition=structuredClone(authority) as any;
+  const noSaveFlare=noSaveCondition.calculator.harness_mechanics.feature_rules.find((item:any)=>item.entity_id==="flare").control_tiers[0];
+  noSaveFlare.application="no_save";delete noSaveFlare.save;noSaveFlare.effects[0].gate="on_reach";
+  assert.equal(namedConditionDiagnostics(noSaveCondition).length,1);
+
+  const missingSave=structuredClone(authority) as any;
+  delete missingSave.calculator.harness_mechanics.feature_rules.find((item:any)=>item.entity_id==="flare").control_tiers[0].save;
+  assert.equal(namedConditionDiagnostics(missingSave).length,1);
+
+  const glacialSpike=rules.find(item=>item.entity_id==="glacial_spike")!;
+  const noSaveNonCondition=glacialSpike.control_tiers?.find(control=>control.tier===0)!;
+  assert.equal(noSaveNonCondition.application,"no_save");assert.ok(noSaveNonCondition.effects.every(effect=>!effect.conditions?.length));
+
+  const masteries=authority.calculator.harness_mechanics.disciplines.map(discipline=>discipline.mastery);
+  assert.ok(masteries.every(mastery=>!Object.hasOwn(mastery,"save")&&!Object.hasOwn(mastery,"conditions")));
+  const barrier=authority.entities.find(entity=>entity.id==="advanced_barrier")!;
+  assert.match(JSON.stringify(barrier.content),/Charmed/);assert.ok(!rules.find(item=>item.entity_id==="advanced_barrier")?.control_tiers?.some(control=>control.effects.some(effect=>effect.conditions?.length)));
+  assert.deepEqual(namedConditionDiagnostics(authority),[]);
 });
 
 test("minimal comparator parameters stay isolated from all canonical KV mechanics and benchmark methodology",async()=>{

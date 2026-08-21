@@ -380,6 +380,8 @@ test("Feature Deck computes the newly projected values and authored save metadat
   detail=clickDeckCard(document,"static_discharge");assert.match(normalizedDeckText(detail),/Total targets: 7 creatures/u);
   detail=clickDeckCard(document,"electron_burst");assert.match(normalizedDeckText(detail),/Rider damage: 4d8 on a failed save/u);assert.match(normalizedDeckText(detail),/Secondary target damage: 3d8 on a failed save/u);
   detail=clickDeckCard(document,"arctic_tempest");assert.match(normalizedDeckText(detail),/Damage: 10d10 on a failed save/u);
+  detail=clickDeckCard(document,"flare");assert.deepEqual([...detail.querySelectorAll<HTMLElement>(".calculator__tier")].map(tier=>/Dexterity save: DC 19/u.test(normalizedDeckText(tier))),[true,true,true]);
+  detail=clickDeckCard(document,"advanced_mind_lock");assert.deepEqual([...detail.querySelectorAll<HTMLElement>(".calculator__tier")].map(tier=>/Intelligence save: DC 19/u.test(normalizedDeckText(tier))),[true,true,true]);
   detail=clickDeckCard(document,"advanced_deflection_screen");assert.match(normalizedDeckText(detail),/Damage reduction: 7d8 \+ 5/u);assert.match(normalizedDeckText(detail),/7d8 \+ \(1 × Psionic Ability Modifier 5\) = 7d8 \+ 5/u);assert.match(normalizedDeckText(detail),/Strength save: DC 19/u);
   detail=clickDeckCard(document,"advanced_improved_phase_step");assert.match(normalizedDeckText(detail),/Damage: 4d10 on a failed save/u);assert.match(normalizedDeckText(detail),/Discipline signature save: DC 19/u);
   detail=clickDeckCard(document,"advanced_inner_reserve");assert.match(normalizedDeckText(detail),/Maximum Psi Points with Inner Reserve: 20/u);assert.match(normalizedDeckText(detail),/Base Psi Points \(16\) \+ 4 = 20/u);

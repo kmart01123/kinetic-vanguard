@@ -297,8 +297,8 @@ calculator:
         ignore_resistance_tiers: [2]
         control_tiers:
           - {tier: 0, application: failed_save, save: dexterity, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
-          - {tier: 1, application: no_save, hit_gated: true, effects: [{gate: on_reach, conditions: [blinded], duration: until_end_next_turn}]}
-          - {tier: 2, application: no_save, hit_gated: true, effects: [{gate: on_reach, conditions: [blinded], duration: until_end_next_turn}]}
+          - {tier: 1, application: failed_save, save: dexterity, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
+          - {tier: 2, application: failed_save, save: dexterity, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
       - {entity_id: furnace_strike, discipline_ids: [pyrokinesis], damage_type: fire, ignore_resistance_tiers: [2]}
       - entity_id: telekinetic_shove
         discipline_ids: [psychokinesis]
@@ -393,21 +393,17 @@ calculator:
         discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
         damage_type: psychic
         control_tiers:
-          - {tier: 0, application: no_save, hit_gated: true, effects: [{gate: on_reach, conditions: [blinded], duration: until_end_next_turn}]}
+          - {tier: 0, application: failed_save, save: intelligence, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
           - tier: 1
             application: failed_save
             save: intelligence
             hit_gated: true
-            effects:
-              - {gate: on_reach, conditions: [blinded], duration: until_end_next_turn}
-              - {gate: on_failed_save, conditions: [incapacitated], duration: until_end_next_turn}
+            effects: [{gate: on_failed_save, conditions: [blinded, incapacitated], duration: until_end_next_turn}]
           - tier: 2
             application: failed_save
             save: intelligence
             hit_gated: true
-            effects:
-              - {gate: on_reach, conditions: [blinded], duration: until_end_next_turn}
-              - {gate: on_failed_save, conditions: [stunned], duration: until_end_next_turn}
+            effects: [{gate: on_failed_save, conditions: [blinded, stunned], duration: until_end_next_turn}]
       - entity_id: forked_lightning
         discipline_ids: [electrokinesis]
         damage_type: lightning
@@ -580,12 +576,14 @@ calculator:
             resolution: always
             count: 4
             sides: 10
+          save: dexterity
         - tier: 2
           damage:
             kind: dice
             resolution: always
             count: 5
             sides: 10
+          save: dexterity
     - entity_id: furnace_strike
       delivery: on_hit_rider
       tiers:
@@ -758,6 +756,7 @@ calculator:
           damage:
             kind: none
             resolution: always
+          save: intelligence
         - tier: 1
           damage:
             kind: none
@@ -3347,11 +3346,11 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The additional damage increases to 4d10, and the target is Blinded until the end of your next turn without a saving throw."
+          - text: "T1 Overload: Changes from Tier 0: The additional damage increases to 4d10. The target makes the same Dexterity saving throw; on a failed save, it is Blinded until the end of your next turn, and on a successful save, it is not Blinded by this feature."
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: The additional damage increases to 5d10 and ignores Resistance to fire damage. The target remains Blinded without a saving throw."
+          - text: "T2 Overload: Changes from Tier 1: The additional damage increases to 5d10 and ignores Resistance to fire damage. The target makes the same Dexterity saving throw; on a failed save, it is Blinded until the end of your next turn, and on a successful save, it is not Blinded by this feature."
             type: text
         type: paragraph
     id: flare
@@ -4297,15 +4296,15 @@ entities:
         - advanced_training
     content:
       - inlines:
-          - text: "T0 Base: The target is Blinded until the end of your next turn, with no saving throw."
+          - text: "T0 Base: The target must make an Intelligence saving throw. On a failed save, it is Blinded until the end of your next turn. On a successful save, it is not Blinded by this feature."
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: The target must also make an Intelligence saving throw. On a failed save, it is Incapacitated until the end of your next turn."
+          - text: "T1 Overload: Changes from Tier 0: On a failed save, the target is Blinded and Incapacitated until the end of your next turn. On a successful save, it suffers neither condition from this feature."
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: On a failed save, the target is Stunned instead of Incapacitated until the end of your next turn. It remains Blinded as at Tier 0."
+          - text: "T2 Overload: Changes from Tier 1: On a failed save, the target is Blinded and Stunned instead of Incapacitated until the end of your next turn. On a successful save, it suffers neither condition from this feature."
             type: text
         type: paragraph
     id: advanced_mind_lock
