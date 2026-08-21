@@ -14,9 +14,9 @@ from unittest.mock import patch
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
 from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_repeat_rider_probability,run as run_control
-from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_comparator_dpr,_comparator_score,_kv_dpr,_rider_values,run as run_damage
+from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_battle_master_dpr_for_schedule,_battle_master_result,_comparator_dpr,_comparator_score,_eldritch_knight_result,_kv_dpr,_rider_values,run as run_damage
 from harness.ek_damage_planner import EKDamagePlanner,EKScore,EKState,chromatic_orb_duplicate_probability
-from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,load_comparators,load_config,load_targets,save_success_probability
+from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,fighter_action_schedules,load_comparators,load_config,load_targets,save_success_probability
 
 
 def _leaf_paths(value:object,prefix:tuple[object,...]=())->list[tuple[object,...]]:
@@ -133,7 +133,8 @@ class FrozenInputValidationTests(unittest.TestCase):
     def test_benchmark_config_rejects_invalid_mechanics_and_progression(self)->None:
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["kv_profile"].__setitem__("weapon_damage",{}),"kv_profile keys")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["kv_profile"].__setitem__("attack_replacement_policy","mixed_weapon_and_manifested_strike"),"all-Manifested-Strike")
-        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["fighter_progression"]["7"]["action_slots_by_round"].pop(),"cover every round")
+        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["fighter_progression"]["7"].__setitem__("maximum_action_surges_per_turn",2),"maximum one Action Surge")
+        self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["fighter_progression"]["20"].__setitem__("action_surge_uses_over_horizon",4),"one-per-turn benchmark horizon")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["fighter_progression"]["7"].__setitem__("studied_attacks",True),"frozen Fighter progression")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["fighter_mechanics"]["studied_attacks"].__setitem__("expiry","indefinite"),"Studied Attacks semantics")
         self.assert_json_rejected(DEFAULT_CONFIG,load_config,lambda value:value["fighter_mechanics"]["studied_attacks"].__setitem__("trigger","attack_roll_miss"),"Studied Attacks semantics")
@@ -164,11 +165,40 @@ class FighterNumericalTests(unittest.TestCase):
     def setUpClass(cls)->None:
         cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators();cls.targets=load_targets(profile="headline")
 
+    def battle_master_dpr(self,config:dict[str,object],comparators:dict[str,object],target:Target,schedule:tuple[int,...])->float:
+        return _battle_master_dpr_for_schedule(self.model,config,comparators["damage"]["battle_master"],target,schedule)  # type: ignore[index]
+
+    def test_legal_action_surge_schedules_are_exact_and_complete(self)->None:
+        expected={
+            7:((2,1,1),(1,2,1),(1,1,2)),
+            11:((2,1,1),(1,2,1),(1,1,2)),
+            15:((2,1,1),(1,2,1),(1,1,2)),
+            20:((2,2,1),(2,1,2),(1,2,2)),
+        }
+        for level,schedules in expected.items():
+            with self.subTest(level=level):
+                progression=self.config["fighter_progression"][str(level)];actual=fighter_action_schedules(progression,3)
+                self.assertEqual(actual,schedules);self.assertTrue(all(max(schedule)<=2 for schedule in actual))
+                self.assertTrue(all(sum(schedule)==(5 if level==20 else 4) for schedule in actual))
+        self.assertEqual(max(sum(schedule)*int(self.config["fighter_progression"]["20"]["attacks_per_action"]) for schedule in expected[20]),20)
+
+    def test_all_damage_models_consume_the_shared_schedule_inventory(self)->None:
+        target=next(item for item in self.targets if item.level==7);inventory=fighter_action_schedules(self.config["fighter_progression"]["7"],3)
+        with patch("harness.damage_harness._fighter_schedules",return_value=inventory) as shared,patch("harness.damage_harness._kv_dpr_for_schedule",return_value=(1.0,1.0,"selection")) as kv_evaluate,patch("harness.damage_harness._battle_master_dpr_for_schedule",return_value=1.0) as bm_evaluate,patch("harness.damage_harness.EKDamagePlanner") as ek_planner:
+            ek_planner.return_value.solve.return_value=EKScore(1.0,1.0)
+            _kv_dpr(self.model,self.config,target,"pyrokinesis",1)
+            _battle_master_result(self.model,self.config,self.comparators["damage"]["battle_master"],target)
+            _eldritch_knight_result(self.model,self.config,self.comparators["damage"]["eldritch_knight"],target,1)
+        self.assertEqual(shared.call_count,3)
+        self.assertEqual(tuple(item.args[-1] for item in kv_evaluate.call_args_list),inventory)
+        self.assertEqual(tuple(item.args[-1] for item in bm_evaluate.call_args_list),inventory)
+        self.assertEqual(tuple(item.args[-1] for item in ek_planner.call_args_list),inventory)
+
     def test_exact_fighter_dpr_sentinels_cover_every_supported_level(self)->None:
         expected={
             7:("Air Elemental",18.816666666666663,25.019884651397450),
             11:("Deva",43.2,81.801982129598270),
-            15:("Adult Black Dragon",49.960671191473644,91.212464318445840),
+            15:("Adult Black Dragon",49.960671191473644,91.214066953875730),
             20:("Balor",135.50405069063788,168.983538568658330),
         }
         for level,(name,eldritch_knight,battle_master) in expected.items():
@@ -189,15 +219,15 @@ class FighterNumericalTests(unittest.TestCase):
             with self.subTest(mutation=mutate):
                 changed=deepcopy(self.comparators);mutate(changed["damage"]["battle_master"])
                 self.assertNotAlmostEqual(_comparator_dpr(self.model,self.config,changed,target,"battle_master"),baseline,places=9)
-        row=deepcopy(self.comparators["damage"]["eldritch_knight"]);progression=deepcopy(self.config["fighter_progression"]["7"]);progression["action_slots_by_round"]=[1]
-        planner=EKDamagePlanner(row,replace(target,level=7,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset()),progression,self.model.progression("proficiency_bonus",7),1,1);state=EKState(0,1,False,False,(0,0,0,0),True);original=planner._weapon_damage(state,False,False);row["dueling_damage_bonus"]+=1
-        changed=EKDamagePlanner(row,planner.target,progression,self.model.progression("proficiency_bonus",7),1,1)
+        row=deepcopy(self.comparators["damage"]["eldritch_knight"]);progression=deepcopy(self.config["fighter_progression"]["7"])
+        planner=EKDamagePlanner(row,replace(target,level=7,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset()),progression,self.model.progression("proficiency_bonus",7),1,(1,));state=EKState(0,1,False,False,(0,0,0,0),True);original=planner._weapon_damage(state,False,False);row["dueling_damage_bonus"]+=1
+        changed=EKDamagePlanner(row,planner.target,progression,self.model.progression("proficiency_bonus",7),1,(1,))
         self.assertNotEqual(changed._weapon_damage(state,False,False),original)
 
     def test_true_strike_choice_uses_current_studied_state_before_the_roll(self)->None:
         base=next(item for item in self.targets if item.level==15 and item.name=="Adult Black Dragon")
-        target=replace(base,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());progression=deepcopy(self.config["fighter_progression"]["15"]);progression["action_slots_by_round"]=[1]
-        planner=EKDamagePlanner(self.comparators["damage"]["eldritch_knight"],target,progression,self.model.progression("proficiency_bonus",15),1,1);studied=EKState(0,0,True,False,(0,0,0,0),False);unstudied=replace(studied,studied=False)
+        target=replace(base,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());progression=deepcopy(self.config["fighter_progression"]["15"])
+        planner=EKDamagePlanner(self.comparators["damage"]["eldritch_knight"],target,progression,self.model.progression("proficiency_bonus",15),1,(1,));studied=EKState(0,0,True,False,(0,0,0,0),False);unstudied=replace(studied,studied=False)
         probabilities=lambda _bonus,_ac,advantage=False:(0.0,0.0,1.0) if advantage else (1.0,0.0,0.0)
         def forced(current:EKState,true_strike_first:bool)->EKScore:
             if true_strike_first:return planner._cast_value(current,"true_strike",0,lambda state:planner._weapon_attack(state,False,lambda _:EKScore()))
@@ -211,9 +241,9 @@ class FighterNumericalTests(unittest.TestCase):
     def test_precision_attack_keeps_both_fifty_percent_outcomes_in_the_optimum(self)->None:
         base=next(item for item in self.targets if item.level==7 and item.name=="Air Elemental")
         target=replace(base,ac=24,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset())
-        config=deepcopy(self.config);progression=config["fighter_progression"]["7"];progression["attacks_per_action"]=1;progression["action_slots_by_round"]=[1,1,1]
+        config=deepcopy(self.config);progression=config["fighter_progression"]["7"];progression["attacks_per_action"]=1
         with patch("harness.damage_harness._natural_probabilities",return_value={10:1.0}):
-            result=_comparator_dpr(self.model,config,self.comparators,target,"battle_master")
+            result=self.battle_master_dpr(config,self.comparators,target,(1,1,1))
         self.assertEqual(result,11.0)
 
     def test_battle_master_fixed_damage_loadout_counts_and_membership(self)->None:
@@ -267,55 +297,55 @@ class FighterNumericalTests(unittest.TestCase):
 
     def test_feint_expected_value_spends_its_resource_before_a_possible_miss(self)->None:
         target=replace(next(item for item in self.targets if item.level==7),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset())
-        config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,action_slots_by_round=[1,1,1],studied_attacks=False,combat_prowess=False)
+        config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,studied_attacks=False,combat_prowess=False)
         comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["superiority_pool_by_level"]["7"]=1;row["hew_critical_bonus_attack_once_per_round"]=False
         probabilities=lambda advantage:{1:0.5,10:0.5} if advantage else {1:1.0}
         pb=self.model.progression("proficiency_bonus",7);hit=_battle_master_damage(row,target,pb,7,False,8,True);expected=(15+0.5*(hit-5))/3
-        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):result=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):result=self.battle_master_dpr(config,comparators,target,(1,1,1))
         self.assertAlmostEqual(result,expected,places=12)
 
     def test_feint_hit_and_critical_add_exactly_one_doubled_maneuver_die(self)->None:
-        target=replace(next(item for item in self.targets if item.level==7),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,action_slots_by_round=[1,0,0],studied_attacks=False,combat_prowess=False)
+        target=replace(next(item for item in self.targets if item.level==7),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,studied_attacks=False,combat_prowess=False)
         comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["superiority_pool_by_level"]["7"]=2;row["hew_critical_bonus_attack_once_per_round"]=False;pb=self.model.progression("proficiency_bonus",7)
         for natural,critical in ((10,False),(20,True)):
             probabilities=lambda advantage,natural=natural:{natural:1.0} if advantage else {1:1.0}
             with self.subTest(critical=critical),patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):
-                result=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+                result=self.battle_master_dpr(config,comparators,target,(1,0,0))
             self.assertAlmostEqual(result,_battle_master_damage(row,target,pb,7,critical,8,True)/3,places=12)
 
     def test_feinted_miss_cannot_add_precision_on_the_same_attack(self)->None:
-        base=next(item for item in self.targets if item.level==7);attack_bonus=5+self.model.progression("proficiency_bonus",7)+1;target=replace(base,ac=attack_bonus+11,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,action_slots_by_round=[1,0,0],studied_attacks=False,combat_prowess=False)
+        base=next(item for item in self.targets if item.level==7);attack_bonus=5+self.model.progression("proficiency_bonus",7)+1;target=replace(base,ac=attack_bonus+11,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,studied_attacks=False,combat_prowess=False)
         comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["superiority_pool_by_level"]["7"]=2;row["hew_critical_bonus_attack_once_per_round"]=False;pb=self.model.progression("proficiency_bonus",7)
         probabilities=lambda advantage:{10:0.5,20:0.5} if advantage else {1:1.0};expected=(5+_battle_master_damage(row,target,pb,7,True,8,True))/6
-        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):result=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):result=self.battle_master_dpr(config,comparators,target,(1,0,0))
         self.assertAlmostEqual(result,expected,places=12)
 
     def test_feint_plus_combat_prowess_applies_feint_damage_without_a_second_maneuver(self)->None:
-        target=replace(next(item for item in self.targets if item.level==20),ac=40,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["20"].update(attacks_per_action=1,action_slots_by_round=[1,0,0],studied_attacks=False,combat_prowess=True)
+        target=replace(next(item for item in self.targets if item.level==20),ac=40,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["20"].update(attacks_per_action=1,studied_attacks=False,combat_prowess=True)
         comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["superiority_pool_by_level"]["20"]=1;row["relentless_minimum_level"]=21;row["hew_critical_bonus_attack_once_per_round"]=False;pb=self.model.progression("proficiency_bonus",20)
-        with patch("harness.damage_harness._natural_probabilities",return_value={1:1.0}):result=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        with patch("harness.damage_harness._natural_probabilities",return_value={1:1.0}):result=self.battle_master_dpr(config,comparators,target,(1,0,0))
         self.assertAlmostEqual(result,_battle_master_damage(row,target,pb,20,False,12,True)/3,places=12)
 
     def test_feint_and_hew_share_one_bonus_action_in_both_directions(self)->None:
-        target=replace(next(item for item in self.targets if item.level==7),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,action_slots_by_round=[1,0,0],studied_attacks=False,combat_prowess=False)
+        target=replace(next(item for item in self.targets if item.level==7),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,studied_attacks=False,combat_prowess=False)
         comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["superiority_pool_by_level"]["7"]=1;row["hew_critical_bonus_attack_once_per_round"]=True;pb=self.model.progression("proficiency_bonus",7);probabilities=lambda advantage:{20:1.0} if advantage else {1:1.0}
-        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):feint_first=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):feint_first=self.battle_master_dpr(config,comparators,target,(1,0,0))
         self.assertAlmostEqual(feint_first,_battle_master_damage(row,target,pb,7,True,8,True)/3,places=12)
-        target=replace(next(item for item in self.targets if item.level==11),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["11"].update(attacks_per_action=2,action_slots_by_round=[1,0,0],studied_attacks=False,combat_prowess=False)
+        target=replace(next(item for item in self.targets if item.level==11),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["11"].update(attacks_per_action=2,studied_attacks=False,combat_prowess=False)
         comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["known_maneuvers_by_level"]["11"]=["feinting_attack","precision_attack","sweeping_attack","lunging_attack","riposte"];row["superiority_pool_by_level"]["11"]=1;row["hew_critical_bonus_attack_once_per_round"]=True;pb=self.model.progression("proficiency_bonus",11)
-        with patch("harness.damage_harness._natural_probabilities",return_value={20:1.0}):hew_first=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        with patch("harness.damage_harness._natural_probabilities",return_value={20:1.0}):hew_first=self.battle_master_dpr(config,comparators,target,(1,0,0))
         expected=(2*_battle_master_damage(row,target,pb,11,True,0,True)+_battle_master_damage(row,target,pb,11,True,0,False))/3;self.assertAlmostEqual(hew_first,expected,places=12)
 
     def test_bonus_action_and_relentless_feint_resources_reset_per_turn(self)->None:
-        target=replace(next(item for item in self.targets if item.level==15),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["15"].update(attacks_per_action=1,action_slots_by_round=[1,1,1],studied_attacks=False,combat_prowess=False)
+        target=replace(next(item for item in self.targets if item.level==15),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["15"].update(attacks_per_action=1,studied_attacks=False,combat_prowess=False)
         comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["known_maneuvers_by_level"]["15"]=["feinting_attack"];row["superiority_pool_by_level"]["15"]=1;row["hew_critical_bonus_attack_once_per_round"]=False;pb=self.model.progression("proficiency_bonus",15);probabilities=lambda advantage:{10:1.0} if advantage else {1:1.0}
-        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):result=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):result=self.battle_master_dpr(config,comparators,target,(1,1,1))
         expected=(_battle_master_damage(row,target,pb,15,False,10,True)+2*_battle_master_damage(row,target,pb,15,False,8,True))/3;self.assertAlmostEqual(result,expected,places=12)
 
     def test_generic_on_hit_damage_remains_exact_and_contextual_maneuvers_add_nothing_free(self)->None:
-        target=replace(next(item for item in self.targets if item.level==7),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,action_slots_by_round=[1,0,0],studied_attacks=False,combat_prowess=False)
+        target=replace(next(item for item in self.targets if item.level==7),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);config["fighter_progression"]["7"].update(attacks_per_action=1,studied_attacks=False,combat_prowess=False)
         comparators=deepcopy(self.comparators);row=comparators["damage"]["battle_master"];row["known_maneuvers_by_level"]["7"]=["pushing_attack"];row["superiority_pool_by_level"]["7"]=1;row["hew_critical_bonus_attack_once_per_round"]=False;pb=self.model.progression("proficiency_bonus",7)
-        with patch("harness.damage_harness._natural_probabilities",return_value={10:1.0}):generic=_comparator_dpr(self.model,config,comparators,target,"battle_master")
+        with patch("harness.damage_harness._natural_probabilities",return_value={10:1.0}):generic=self.battle_master_dpr(config,comparators,target,(1,0,0))
         self.assertAlmostEqual(generic,_battle_master_damage(row,target,pb,7,False,8,True)/3,places=12)
         target=replace(next(item for item in self.targets if item.level==11),damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());config=deepcopy(self.config);contextual=deepcopy(self.comparators);row=contextual["damage"]["battle_master"];row["known_maneuvers_by_level"]["11"]=["sweeping_attack","lunging_attack","riposte"];without=deepcopy(contextual);without["damage"]["battle_master"]["superiority_pool_by_level"]["11"]=0;without["damage"]["battle_master"]["relentless_minimum_level"]=21
         self.assertEqual(_comparator_dpr(self.model,config,contextual,target,"battle_master"),_comparator_dpr(self.model,config,without,target,"battle_master"))
@@ -323,49 +353,49 @@ class FighterNumericalTests(unittest.TestCase):
     def test_combat_prowess_can_be_retained_after_an_observed_miss(self)->None:
         base=next(item for item in self.targets if item.level==20 and item.name=="Balor")
         target=replace(base,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset())
-        config=deepcopy(self.config);progression=config["fighter_progression"]["20"];progression["attacks_per_action"]=2;progression["action_slots_by_round"]=[1,1,1]
+        config=deepcopy(self.config);progression=config["fighter_progression"]["20"];progression["attacks_per_action"]=2
         comparators=deepcopy(self.comparators);battle_master=comparators["damage"]["battle_master"];battle_master["superiority_pool_by_level"]["20"]=0;battle_master["relentless_minimum_level"]=21;battle_master["hew_critical_bonus_attack_once_per_round"]=False
         probabilities=lambda advantage:{20:1.0} if advantage else {1:1.0}
         with patch("harness.damage_harness._natural_probabilities",side_effect=probabilities):
-            self.assertEqual(_comparator_dpr(self.model,config,comparators,target,"battle_master"),38.0)
+            self.assertEqual(self.battle_master_dpr(config,comparators,target,(1,1,1)),38.0)
 
     def test_gwm_applies_to_each_attack_action_hit_but_not_the_single_hew_attack(self)->None:
         base=next(item for item in self.targets if item.level==7 and item.name=="Air Elemental")
         target=replace(base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset())
-        config=deepcopy(self.config);progression=config["fighter_progression"]["7"];progression.update(attacks_per_action=2,action_slots_by_round=[1,1,1],studied_attacks=False,combat_prowess=False)
+        config=deepcopy(self.config);progression=config["fighter_progression"]["7"];progression.update(attacks_per_action=2,studied_attacks=False,combat_prowess=False)
         enabled=deepcopy(self.comparators);battle_master=enabled["damage"]["battle_master"];battle_master["superiority_pool_by_level"]["7"]=0;battle_master["relentless_minimum_level"]=21;battle_master["hew_critical_bonus_attack_once_per_round"]=False
         disabled=deepcopy(enabled);disabled["damage"]["battle_master"]["great_weapon_master_attack_action_bonus"]="disabled"
         with patch("harness.damage_harness._natural_probabilities",return_value={10:1.0}):
-            main_delta=_comparator_dpr(self.model,config,enabled,target,"battle_master")-_comparator_dpr(self.model,config,disabled,target,"battle_master")
+            main_delta=self.battle_master_dpr(config,enabled,target,(1,1,1))-self.battle_master_dpr(config,disabled,target,(1,1,1))
         self.assertAlmostEqual(main_delta,6.0,places=12)
 
         progression["attacks_per_action"]=1;battle_master["hew_critical_bonus_attack_once_per_round"]=True
         disabled=deepcopy(enabled);disabled["damage"]["battle_master"]["great_weapon_master_attack_action_bonus"]="disabled"
         without_hew=deepcopy(enabled);without_hew["damage"]["battle_master"]["hew_critical_bonus_attack_once_per_round"]=False
         with patch("harness.damage_harness._natural_probabilities",return_value={20:1.0}):
-            hew_gwm_delta=_comparator_dpr(self.model,config,enabled,target,"battle_master")-_comparator_dpr(self.model,config,disabled,target,"battle_master")
-            single_hew_delta=_comparator_dpr(self.model,config,enabled,target,"battle_master")-_comparator_dpr(self.model,config,without_hew,target,"battle_master")
+            hew_gwm_delta=self.battle_master_dpr(config,enabled,target,(1,1,1))-self.battle_master_dpr(config,disabled,target,(1,1,1))
+            single_hew_delta=self.battle_master_dpr(config,enabled,target,(1,1,1))-self.battle_master_dpr(config,without_hew,target,(1,1,1))
         self.assertAlmostEqual(hew_gwm_delta,3.0,places=12)
         self.assertAlmostEqual(single_hew_delta,22.0,places=12)
 
     def test_relentless_supplies_only_one_free_die_per_turn(self)->None:
         base=next(item for item in self.targets if item.level==15 and item.name=="Adult Black Dragon")
         target=replace(base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset())
-        config=deepcopy(self.config);config["fighter_progression"]["15"].update(attacks_per_action=2,action_slots_by_round=[1,1,1],studied_attacks=False,combat_prowess=False)
+        config=deepcopy(self.config);config["fighter_progression"]["15"].update(attacks_per_action=2,studied_attacks=False,combat_prowess=False)
         enabled=deepcopy(self.comparators);battle_master=enabled["damage"]["battle_master"];battle_master["superiority_pool_by_level"]["15"]=0;battle_master["relentless_minimum_level"]=15;battle_master["hew_critical_bonus_attack_once_per_round"]=False
         disabled=deepcopy(enabled);disabled["damage"]["battle_master"]["relentless_minimum_level"]=21
         with patch("harness.damage_harness._natural_probabilities",return_value={10:1.0}):
-            delta=_comparator_dpr(self.model,config,enabled,target,"battle_master")-_comparator_dpr(self.model,config,disabled,target,"battle_master")
+            delta=self.battle_master_dpr(config,enabled,target,(1,1,1))-self.battle_master_dpr(config,disabled,target,(1,1,1))
         self.assertAlmostEqual(delta,4.5,places=12)
 
     def test_one_maneuver_die_per_attack_prevents_superiority_relentless_stacking(self)->None:
         base=next(item for item in self.targets if item.level==20 and item.name=="Balor")
         target=replace(base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset())
-        config=deepcopy(self.config);config["fighter_progression"]["20"].update(attacks_per_action=1,action_slots_by_round=[1,1,1],studied_attacks=False,combat_prowess=False)
+        config=deepcopy(self.config);config["fighter_progression"]["20"].update(attacks_per_action=1,studied_attacks=False,combat_prowess=False)
         enabled=deepcopy(self.comparators);battle_master=enabled["damage"]["battle_master"];battle_master["superiority_pool_by_level"]["20"]=3;battle_master["relentless_minimum_level"]=20;battle_master["hew_critical_bonus_attack_once_per_round"]=False
         disabled=deepcopy(enabled);battle_master=disabled["damage"]["battle_master"];battle_master["superiority_pool_by_level"]["20"]=0;battle_master["relentless_minimum_level"]=21
         with patch("harness.damage_harness._natural_probabilities",return_value={10:1.0}):
-            delta=_comparator_dpr(self.model,config,enabled,target,"battle_master")-_comparator_dpr(self.model,config,disabled,target,"battle_master")
+            delta=self.battle_master_dpr(config,enabled,target,(1,1,1))-self.battle_master_dpr(config,disabled,target,(1,1,1))
         self.assertAlmostEqual(delta,6.5,places=12)
 
     def test_failed_attack_bonus_exposes_a_new_observed_prowess_decision(self)->None:
@@ -386,9 +416,9 @@ class EldritchKnightPlannerTests(unittest.TestCase):
         return replace(self.base,**values)
 
     def planner(self,level:int=7,cluster:int=1,*,attacks:int|None=None,actions:tuple[int,...]=(1,),target:Target|None=None)->EKDamagePlanner:
-        progression=deepcopy(self.config["fighter_progression"][str(level)]);progression["action_slots_by_round"]=list(actions)
+        progression=deepcopy(self.config["fighter_progression"][str(level)])
         if attacks is not None:progression["attacks_per_action"]=attacks
-        return EKDamagePlanner(self.comparators["damage"]["eldritch_knight"],target or self.target(level),progression,self.model.progression("proficiency_bonus",level),cluster,len(actions))
+        return EKDamagePlanner(self.comparators["damage"]["eldritch_knight"],target or self.target(level),progression,self.model.progression("proficiency_bonus",level),cluster,actions)
 
     def state(self,planner:EKDamagePlanner,*,actions:int=1,slots:tuple[int,int,int,int]=(0,0,0,0),bonus:bool=True,concentration:str="",concentration_type:str="")->EKState:
         return EKState(0,actions,False,False,slots,bonus,concentration,concentration_type)
@@ -690,9 +720,9 @@ class ComparatorLeafContractTests(unittest.TestCase):
         )
 
     def ek_damage_signature(self,comparators:dict[str,object],level:int,damage_immunity:str|None=None)->tuple[object,...]:
-        target=replace(self.target(level,damage_immunity=damage_immunity),magic_resistance=False,saves={"strength":8,"dexterity":-2,"constitution":5,"intelligence":1,"wisdom":3,"charisma":0},blindsight_range=0,truesight_range=0);progression=deepcopy(self.config["fighter_progression"][str(level)]);progression["action_slots_by_round"]=[1]
+        target=replace(self.target(level,damage_immunity=damage_immunity),magic_resistance=False,saves={"strength":8,"dexterity":-2,"constitution":5,"intelligence":1,"wisdom":3,"charisma":0},blindsight_range=0,truesight_range=0);progression=deepcopy(self.config["fighter_progression"][str(level)])
         row=comparators["damage"]["eldritch_knight"]  # type: ignore[index]
-        planner=EKDamagePlanner(row,target,progression,self.model.progression("proficiency_bonus",level),6,1);state=EKState(0,0,False,False,(1,1,1,1),True)
+        planner=EKDamagePlanner(row,target,progression,self.model.progression("proficiency_bonus",level),6,(1,));state=EKState(0,0,False,False,(1,1,1,1),True)
         def continuation(next_state:EKState)->EKScore:
             value=planner._weapon_damage(next_state,False,False)+sum((index+1)*count for index,count in enumerate(next_state.slots))
             if next_state.concentration in {"witch_bolt","witch_bolt_pending"}:value+=planner._packet(planner.spells["witch_bolt"]["repeat_damage"],"lightning")
@@ -944,6 +974,12 @@ class DamagePlannerTests(unittest.TestCase):
         self.assertAlmostEqual(planner.solve().aggregate,190.0,places=12)
         self.assertEqual(planner.selection().count("branching_bolt:T2"),2)
 
+    def test_psionic_apex_covers_each_actual_attack_action_during_action_surge(self)->None:
+        target=replace(self.base,ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",2,0,12);packages=(plain,rider)
+        planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,1,(2,),False,False,0,12,self.mastery,1,1);self.addCleanup(planner.clear)
+        self.assertAlmostEqual(planner.solve().aggregate,190.0,places=12)
+        selection=planner.selection();self.assertEqual(selection.count("branching_bolt:T2"),2);self.assertEqual(selection.count(";mastery"),1)
+
     def test_same_paid_rider_can_be_selected_on_all_three_manifested_strikes(self)->None:
         target=replace(next(item for item in load_targets(profile="headline",levels={11}) if item.name=="Deva"),ac=1,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset());plain=Package(None,0,0,0);rider=Package("branching_bolt",0,2,0);packages=(plain,rider)
         planner=_KVDamagePlanner(self.model,target,packages,{plain:(0.0,0.0),rider:(100.0,100.0)},(("normal",(0.0,0.0,0.0)),),((),),0,3,(1,),False,False,6,0,self.mastery,0,1);self.addCleanup(planner.clear)
@@ -974,7 +1010,7 @@ class DamagePlannerTests(unittest.TestCase):
 
     def test_observed_state_policy_matches_current_l20_sentinel(self)->None:
         target=next(item for item in load_targets(profile="headline",levels={20}) if item.name=="Ancient White Dragon")
-        primary,aggregate,selection=_kv_dpr(self.model,self.config,target,"electrokinesis",3)
+        primary,aggregate,selection,_schedule=_kv_dpr(self.model,self.config,target,"electrokinesis",3)
         self.assertAlmostEqual(primary,116.29434009056969,places=10)
         self.assertAlmostEqual(aggregate,191.24370620676075,places=10)
         self.assertIn("electron_burst:T2",selection)
@@ -1310,6 +1346,11 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             self.assertEqual(damage_row["Target Profile"],"headline")
             self.assertAlmostEqual(float(damage_row["Eldritch Knight Primary DPR"]),18.816666666666663,places=12)
             self.assertAlmostEqual(float(damage_row["Eldritch Knight Aggregate DPR"]),18.816666666666663,places=12)
+            legal={"[2,1,1]","[1,2,1]","[1,1,2]"}
+            self.assertIn(damage_row["KV Action Slots"],legal)
+            self.assertIn(damage_row["Eldritch Knight Primary Action Slots"],legal)
+            self.assertIn(damage_row["Eldritch Knight Aggregate Action Slots"],legal)
+            self.assertIn(damage_row["Battle Master Action Slots"],legal)
             with damage["paths"]["csv"].open(encoding="utf-8") as stream:
                 matrix_rows=list(csv.DictReader(stream))
             self.assertTrue(matrix_rows);self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))

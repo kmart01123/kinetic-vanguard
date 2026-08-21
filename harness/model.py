@@ -7,6 +7,7 @@ import json
 from dataclasses import dataclass, field
 from functools import lru_cache
 from fractions import Fraction
+from itertools import combinations
 from pathlib import Path
 from typing import Any
 
@@ -50,6 +51,16 @@ def _integer(value:Any,label:str,minimum:int|None=None)->int:
     return value
 
 
+def fighter_action_schedules(progression:dict[str,Any],rounds:int)->tuple[tuple[int,...],...]:
+    """Enumerate schedules that spend every available Action Surge at most once per turn."""
+    if rounds<=0:raise ValueError("Fighter action schedule horizon must be positive")
+    uses=_integer(progression.get("action_surge_uses_over_horizon"),"fighter action_surge_uses_over_horizon",0)
+    maximum=_integer(progression.get("maximum_action_surges_per_turn"),"fighter maximum_action_surges_per_turn",1)
+    if maximum!=1:raise ValueError("Maintained Fighter schedules require maximum one Action Surge per turn")
+    if uses>rounds:raise ValueError("Fighter Action Surge uses exceed the one-per-turn benchmark horizon")
+    return tuple(tuple(2 if round_index in surge_rounds else 1 for round_index in range(rounds)) for surge_rounds in combinations(range(rounds),uses))
+
+
 def _boolean(value:Any,label:str)->bool:
     if not isinstance(value,bool):raise ValueError(f"{label} must be a boolean")
     return value
@@ -71,16 +82,17 @@ def load_config(path:Path=DEFAULT_CONFIG)->dict[str,Any]:
     for key in ("target_death","ally_turns","legal_positioning_assumed"):_boolean(methodology[key],f"methodology.{key}")
     progression=_object(data["fighter_progression"],"fighter_progression");_exact_keys(progression,{"7","11","15","20"},"fighter_progression")
     for level,row_value in progression.items():
-        row=_object(row_value,f"fighter_progression.{level}");_exact_keys(row,{"attacks_per_action","action_slots_by_round","studied_attacks","combat_prowess"},f"fighter_progression.{level}")
+        row=_object(row_value,f"fighter_progression.{level}");_exact_keys(row,{"attacks_per_action","action_surge_uses_over_horizon","maximum_action_surges_per_turn","studied_attacks","combat_prowess"},f"fighter_progression.{level}")
         _integer(row["attacks_per_action"],f"fighter_progression.{level}.attacks_per_action",1)
-        if not isinstance(row["action_slots_by_round"],list) or len(row["action_slots_by_round"])!=methodology["rounds"]:raise ValueError(f"fighter_progression.{level}.action_slots_by_round must cover every round")
-        for index,count in enumerate(row["action_slots_by_round"]):_integer(count,f"fighter_progression.{level}.action_slots_by_round[{index}]",1)
+        _integer(row["action_surge_uses_over_horizon"],f"fighter_progression.{level}.action_surge_uses_over_horizon",0)
+        _integer(row["maximum_action_surges_per_turn"],f"fighter_progression.{level}.maximum_action_surges_per_turn",1)
         _boolean(row["studied_attacks"],f"fighter_progression.{level}.studied_attacks");_boolean(row["combat_prowess"],f"fighter_progression.{level}.combat_prowess")
+        fighter_action_schedules(row,int(methodology["rounds"]))
     expected_progression={
-        "7":{"attacks_per_action":2,"action_slots_by_round":[2,1,1],"studied_attacks":False,"combat_prowess":False},
-        "11":{"attacks_per_action":3,"action_slots_by_round":[2,1,1],"studied_attacks":False,"combat_prowess":False},
-        "15":{"attacks_per_action":3,"action_slots_by_round":[2,1,1],"studied_attacks":True,"combat_prowess":False},
-        "20":{"attacks_per_action":4,"action_slots_by_round":[2,2,1],"studied_attacks":True,"combat_prowess":True},
+        "7":{"attacks_per_action":2,"action_surge_uses_over_horizon":1,"maximum_action_surges_per_turn":1,"studied_attacks":False,"combat_prowess":False},
+        "11":{"attacks_per_action":3,"action_surge_uses_over_horizon":1,"maximum_action_surges_per_turn":1,"studied_attacks":False,"combat_prowess":False},
+        "15":{"attacks_per_action":3,"action_surge_uses_over_horizon":1,"maximum_action_surges_per_turn":1,"studied_attacks":True,"combat_prowess":False},
+        "20":{"attacks_per_action":4,"action_surge_uses_over_horizon":2,"maximum_action_surges_per_turn":1,"studied_attacks":True,"combat_prowess":True},
     }
     if progression!=expected_progression:raise ValueError("Unsupported frozen Fighter progression")
     fighter_mechanics=_object(data["fighter_mechanics"],"fighter_mechanics");_exact_keys(fighter_mechanics,{"studied_attacks","combat_prowess"},"fighter_mechanics")
@@ -104,9 +116,9 @@ def load_config(path:Path=DEFAULT_CONFIG)->dict[str,Any]:
     optimization=_object(damage["optimization"],"damage_matrix.optimization");_exact_keys(optimization,{"scope","objective","decision_timing"},"damage_matrix.optimization")
     if optimization["scope"]!="per_target_discipline_cluster":raise ValueError("Unsupported damage optimization scope")
     if optimization["objective"]!=["aggregate_damage","primary_damage"]:raise ValueError("Unsupported damage optimization objective")
-    timing=_object(optimization["decision_timing"],"damage_matrix.optimization.decision_timing");_exact_keys(timing,{"pre_roll_declarations","unobserved_outcome_lookahead","post_roll_decisions"},"damage_matrix.optimization.decision_timing")
+    timing=_object(optimization["decision_timing"],"damage_matrix.optimization.decision_timing");_exact_keys(timing,{"action_surge_schedule","pre_roll_declarations","unobserved_outcome_lookahead","post_roll_decisions"},"damage_matrix.optimization.decision_timing")
     _boolean(timing["unobserved_outcome_lookahead"],"damage_matrix.optimization.decision_timing.unobserved_outcome_lookahead")
-    expected_timing={"pre_roll_declarations":"optimize_from_legally_observed_state","unobserved_outcome_lookahead":False,"post_roll_decisions":["combat_prowess"]}
+    expected_timing={"action_surge_schedule":"optimize_before_outcome_resolution","pre_roll_declarations":"optimize_from_legally_observed_state","unobserved_outcome_lookahead":False,"post_roll_decisions":["combat_prowess"]}
     if timing!=expected_timing:raise ValueError("Unsupported damage optimization decision timing")
     exclusions=damage["excluded_stateful_features"]
     if not isinstance(exclusions,list) or not exclusions:raise ValueError("damage_matrix.excluded_stateful_features must be a non-empty list")
