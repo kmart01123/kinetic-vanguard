@@ -22,41 +22,29 @@
   "fighter_progression": {
     "7": {
       "attacks_per_action": 2,
-      "action_slots_by_round": [
-        2,
-        1,
-        1
-      ],
+      "action_surge_uses_over_horizon": 1,
+      "maximum_action_surges_per_turn": 1,
       "studied_attacks": false,
       "combat_prowess": false
     },
     "11": {
       "attacks_per_action": 3,
-      "action_slots_by_round": [
-        2,
-        1,
-        1
-      ],
+      "action_surge_uses_over_horizon": 1,
+      "maximum_action_surges_per_turn": 1,
       "studied_attacks": false,
       "combat_prowess": false
     },
     "15": {
       "attacks_per_action": 3,
-      "action_slots_by_round": [
-        2,
-        1,
-        1
-      ],
+      "action_surge_uses_over_horizon": 1,
+      "maximum_action_surges_per_turn": 1,
       "studied_attacks": true,
       "combat_prowess": false
     },
     "20": {
       "attacks_per_action": 4,
-      "action_slots_by_round": [
-        2,
-        2,
-        1
-      ],
+      "action_surge_uses_over_horizon": 2,
+      "maximum_action_surges_per_turn": 1,
       "studied_attacks": true,
       "combat_prowess": true
     }
@@ -224,6 +212,7 @@
         "primary_damage"
       ],
       "decision_timing": {
+        "action_surge_schedule": "optimize_before_outcome_resolution",
         "pre_roll_declarations": "optimize_from_legally_observed_state",
         "unobserved_outcome_lookahead": false,
         "post_roll_decisions": [

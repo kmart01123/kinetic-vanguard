@@ -69,11 +69,11 @@ def chromatic_orb_duplicate_probability(dice_count:int)->float:
 class EKDamagePlanner:
     """Exact DP over the state required by issue #102's frozen EK package."""
 
-    def __init__(self,row:dict[str,Any],target:Target,progression:dict[str,Any],proficiency_bonus:int,cluster_size:int,rounds:int=3)->None:
+    def __init__(self,row:dict[str,Any],target:Target,progression:dict[str,Any],proficiency_bonus:int,cluster_size:int,action_slots_by_round:tuple[int,...])->None:
         if cluster_size<=0:raise ValueError("Eldritch Knight cluster size must be positive")
-        self.row=row;self.target=target;self.level=target.level;self.level_key=str(target.level);self.progression=progression;self.pb=proficiency_bonus;self.cluster_size=cluster_size;self.rounds=rounds
-        self.attacks=int(progression["attacks_per_action"]);self.actions_by_round=tuple(int(value) for value in progression["action_slots_by_round"])
-        if len(self.actions_by_round)!=rounds:raise ValueError("Eldritch Knight action schedule must cover the frozen horizon")
+        self.row=row;self.target=target;self.level=target.level;self.level_key=str(target.level);self.progression=progression;self.pb=proficiency_bonus;self.cluster_size=cluster_size;self.actions_by_round=tuple(int(value) for value in action_slots_by_round);self.rounds=len(self.actions_by_round)
+        self.attacks=int(progression["attacks_per_action"])
+        if not self.actions_by_round or any(value not in {1,2} for value in self.actions_by_round):raise ValueError("Eldritch Knight action schedule must contain one or two action slots per round")
         self.studied_enabled=bool(progression["studied_attacks"]);self.prowess_enabled=bool(progression["combat_prowess"])
         self.eldritch_strike_enabled=self.level>=int(row["eldritch_strike_minimum_level"])
         self.spells={str(spell["id"]):spell for spell in row["spells"]};self.cantrips=tuple(row["cantrips_by_level"][self.level_key]);self.prepared=tuple(row["prepared_spells_by_level"][self.level_key])
