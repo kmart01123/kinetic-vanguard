@@ -1471,5 +1471,19 @@ class SmokeAndBoundaryTests(unittest.TestCase):
                 matrix_rows=list(csv.DictReader(stream))
             self.assertTrue(matrix_rows);self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
 
+    def test_control_value_shadow_writes_independent_transparent_outputs(self)->None:
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);control=run_control(DEFAULT_AUTHORITY,root,{20},1,write_headline=False,profile="headline",write_shadow=True)
+            self.assertEqual(control["shadow_rows"],569);self.assertEqual(control["value_scenario_rows"],186);self.assertEqual(control["value_audit_rows"],6);self.assertEqual(control["value_matrix_rows"],4)
+            self.assertEqual(set(control["value_paths"]),{"scenario_detail","selection_audit","matrix"});self.assertTrue(all(path.is_file() for path in control["value_paths"].values()))
+            with control["shadow_path"].open(encoding="utf-8") as stream:
+                rows=list(csv.DictReader(stream))
+            self.assertTrue(rows);self.assertTrue(all(row["Pricing Status"] in {"candidate","context_required","unsupported"} for row in rows))
+            for column in ("Application Probability","Active Probabilities","Expected Exposure","Nominal Weight","Scoring Transform","Control Value CU","Normalization","Suppressed By","Control Value Config SHA-256"):
+                self.assertIn(column,rows[0])
+            with control["value_paths"]["selection_audit"].open(encoding="utf-8") as stream:
+                value_audit=list(csv.DictReader(stream))
+            self.assertEqual(len(value_audit),6);self.assertTrue(all(row["Selected Scenario"] for row in value_audit))
+
 
 if __name__=="__main__":unittest.main()

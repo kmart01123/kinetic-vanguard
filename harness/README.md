@@ -4,12 +4,13 @@ The damage and Control Reliability evaluators use exact analytical enumeration. 
 
 ## Authority and input boundaries
 
-The harness keeps four input layers separate:
+The harness keeps five input layers separate:
 
 1. Root `KineticVanguard.yaml` supplies Kinetic Vanguard mechanics through `src/harness-authority.ts`.
 2. `config/benchmark.json` supplies current benchmark levels, horizon, aggregation, target clustering, scenario policy, and SRD-derived base Fighter progression.
-3. `data/srd_creatures.json` supplies the 330-creature SRD 5.2.1 source-fact catalog; `data/srd_creature_rosters.json` supplies the `headline` and `eligible_census` memberships; and `data/control_primitives.json` keeps SRD condition definitions separate from project-authored generic analytical primitives.
-4. `comparators/fighter-subclasses.json` supplies the minimal Battle Master and Eldritch Knight packages used by the comparators. Their current-PHB packages are independently expressed mechanical abstractions from the sanitized Issue #96 and #92 rulings respectively; they are not labeled as SRD or CC content.
+3. `config/control-value.json` supplies the frozen Control Unit and explicit per-primitive Slice-2 scalar transforms. It has no family fallback.
+4. `data/srd_creatures.json` supplies the 330-creature SRD 5.2.1 source-fact catalog; `data/srd_creature_rosters.json` supplies the `headline` and `eligible_census` memberships; and `data/control_primitives.json` keeps SRD condition definitions separate from project-authored generic analytical primitives.
+5. `comparators/fighter-subclasses.json` supplies the minimal Battle Master and Eldritch Knight packages used by the comparators. Their current-PHB packages are independently expressed mechanical abstractions from the sanitized Issue #96 and #92 rulings respectively; they are not labeled as SRD or CC content.
 
 The CLIs default to the maintained 47-target `headline` profile. The 93-target `eligible_census` is the validation and sensitivity inventory and should not be run analytically without explicit authorization. Both profiles contain only SRD 5.2.1 creatures, and both damage and control consume the same `Target` projection.
 
@@ -82,9 +83,43 @@ Control Reliability uses the same dynamic comparator envelope as damage and keep
 
 ## Control Value shadow detail
 
-`--shadow-detail` adds `kv-<version>-control-value-shadow-detail.csv`. It reuses current target eligibility and hit/save/retry probabilities, decomposes conditions and outcomes into current mechanical primitives, and reports exposure bases, magnitudes, active probabilities, expected exposure, normalization, and `candidate`, `context_required`, or `unsupported` pricing state.
+Control Value remains a shadow metric during Slice 2. Control Reliability remains the default/published control metric and keeps its own winner selection unchanged. `1.0 CU` is denial of one target's normal Action + Bonus Action for one scored target-turn window.
 
-The shadow layer preserves current condition decomposition, repeat-save timing, overlap normalization, dependencies, and fail-closed behavior. Recoverable Prone generically exposes one target-turn `standing_movement_cost` at half Speed, regardless of comparator source. That recovery cost is absent while own-turn standing is explicitly suppressed or Speed 0 makes it illegal; Prone's attack-facing consequences remain separate and context-sensitive. It defines no weights, scalar, winner selection, matrix cell, or README classification. Unknown timing, magnitude, scope, or battlefield context remains contextual or unsupported.
+The frozen nominal rules are:
+
+| Mechanical primitive | Frozen scalar rule |
+| --- | --- |
+| `active_turn_denial` | `1.00 × exposure` |
+| `reaction_denial` | `0.20 × exposure` |
+| `offensive_impairment_next_attack` | `0.15 × exposure` |
+| `offensive_impairment_all_attacks` | `0.40 × exposure` |
+| `mobility_loss_feet` | `0.30 × min(flat feet / benchmark locomotion speed, 1) × summed active target-turn probability` |
+| `forced_displacement` | `0.02 × expected displaced feet` |
+| `defensive_attack_advantage` | `0.25 × exposure` |
+| `save_disadvantage` | `0.20 × exposure` |
+| `save_auto_failure` | `0.40 × exposure` |
+| `specified_action_requirement` | `0.75 × exposure` |
+| `action_bonus_exclusivity` | `0.25 × exposure` |
+| `attack_action_cap` | zero; diagnostic/context-required pending an authoritative baseline attack count |
+| `bonus_action_denial` | `0.25 × exposure` |
+| `turn_movement_denial` | `0.30 × exposure` |
+| `flat_armor_class_penalty` | `0.05 × points × placed incoming-attack opportunities` |
+| `flat_save_roll_penalty` | `0.05 × points × placed save opportunities` |
+| `speed_multiplier` | `0.30 × (1 - remaining multiplier) × summed active target-turn probability` |
+| `standing_movement_cost` | `0.15 × exposure` |
+| `finite_next_save_roll_penalty` | zero in the current scalar because established Mind Sliver packages already modify downstream delivery probability |
+
+`benchmark_locomotion_speed` is the maximum positive unconditional, nonchoice movement-mode speed in the maintained SRD target facts. It is a normalization denominator, not an encounter movement assumption. Bare Speed 0 and condition-level Speed 0 decompose to `turn_movement_denial`; only quantified flat reductions use `mobility_loss_feet`. A target without trustworthy benchmark locomotion speed downgrades flat mobility to `context_required` and contributes zero.
+
+Scalar eligibility uses the final resolved `PrimitiveExposure.pricing_status` after placement and target-context downgrades. A resolved `candidate` scores only through its explicit frozen transform; a candidate without one fails closed. Resolved `context_required` and `unsupported` rows contribute zero while retaining their source, magnitude, probability, exposure, normalization, suppressor, qualifier, and reason diagnostics.
+
+Repeatable accumulating instantaneous effects use expected successful occurrences: independent legal declaration probabilities sum, and displacement multiplies each success probability by its feet. Boolean or refresh-only conditions, Advantage/Disadvantage, Speed 0, and other nonstacking states retain union probability and ordinary normalization. This remains closed-form analysis, not mutable combat-state or timeline simulation.
+
+Normalization keeps the landed duplicate, condition-inclusion, Mastery, and explicitly correlated all-attacks-over-next-attack rules. It also applies generic dominance for active-turn denial over lesser overlapping action/offense entries, Bonus Action denial over Action/Bonus exclusivity, same-ability automatic save failure over weaker save impairments, and complete turn movement denial over flat/multiplier/standing mobility. Glacial Spike still replaces Slow, Telekinetic Shove still replaces Push where canonically projected, Electron Burst leaves Sap's successful-save residual, and Graze contributes no Control Value.
+
+`--shadow-detail` adds primitive detail, scenario detail, independent Value selection audit, and a 16-cell level/discipline Value matrix. Primitive rows report application and active probabilities, expected occurrences and exposure, relevant benchmark locomotion speed, nominal weight, transform ID, scalar CU, resolved status, and normalization disposition. These outputs do not replace the public README benchmark table.
+
+The shadow layer preserves current condition decomposition, repeat-save timing, dependencies, and fail-closed behavior. Recoverable Prone generically exposes one target-turn `standing_movement_cost` at half Speed, regardless of comparator source. That recovery cost is suppressed while own-turn standing is explicitly unavailable; Prone's attack-facing consequences remain separate and context-sensitive. Unknown timing, magnitude, scope, or battlefield context remains contextual or unsupported.
 
 The Eldritch Knight shadow inventory accounts for the 41 retained audited spells without duplicating the 110 exclusions in runtime data. Exact finite save penalties and deterministic turn branches are analytically enumerated. Reusable production composition evaluates legal prior-Attack-action Eldritch Strike and cross-turn Mind Sliver primers without changing the published Reliability IDs; only the initial qualifying save consumes either primer. Web and Evard's Black Tentacles use a three-window closed-form adversarial escape convention from explicit target Athletics facts with Strength fallback, preserving each escape Action and immediate legal exit without a combat timeline or pathfinding. Other area occupancy, two-sided visibility or isolation, transformations, and context-dependent packages remain explicitly unpriced where the maintained benchmark lacks the required geometry, opportunity, environment, behavior, or replacement-form data.
 

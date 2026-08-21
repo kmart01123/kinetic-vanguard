@@ -33,6 +33,7 @@ class Target:
     hp:int;source:str;source_page:str;source_url:str
     ability_modifiers:dict[str,int]=field(default_factory=dict);skill_bonuses:dict[str,int]=field(default_factory=dict)
     blindsight_range:int=0;truesight_range:int=0
+    benchmark_locomotion_speed:int|None=None
 
 
 def _object(value:Any,label:str)->dict[str,Any]:
@@ -582,6 +583,11 @@ def _sense_range(creature:dict[str,Any],kind:str)->int:
     return max((int(fact["range_feet"]) for fact in facts),default=0)
 
 
+def _benchmark_locomotion_speed(creature:dict[str,Any])->int|None:
+    speeds=[int(fact["feet"]) for facts in creature["movement"]["modes"].values() for fact in facts if int(fact["feet"])>0 and fact["qualifier"] is None and fact["choice_group_id"] is None]
+    return max(speeds,default=None)
+
+
 def load_targets(profile:str=DEFAULT_PROFILE,levels:set[int]|None=None,limit:int|None=None,catalog_path:Path=DEFAULT_CATALOG,profiles_path:Path=DEFAULT_ROSTERS)->list[Target]:
     catalog=load_catalog(catalog_path);profiles=load_profiles(profiles_path,catalog)
     if profile not in profiles:raise ValueError(f"Unknown target profile {profile!r}; expected one of {sorted(profiles)}")
@@ -591,7 +597,7 @@ def load_targets(profile:str=DEFAULT_PROFILE,levels:set[int]|None=None,limit:int
         if levels is not None and level not in levels:continue
         creature=by_id[member["creature_id"]];saves={**creature["ability_modifiers"],**creature["saving_throw_bonuses"]}
         skill_bonuses={str(item["skill"]):int(item["bonus"]) for item in creature["skill_bonuses"]}
-        rows.append(Target(level,creature["name"],creature["ac"],saves,creature["magic_resistance"],creature["legendary_resistance"]["uses_per_day"],creature["sizes"][0],creature["creature_type"],_defense_values(creature,"condition_immunities"),_defense_values(creature,"damage_resistances"),_defense_values(creature,"damage_immunities"),_defense_values(creature,"damage_vulnerabilities"),creature["hp"],source["ruleset"],str(creature["source"]["page"]),source["url"],dict(creature["ability_modifiers"]),skill_bonuses,_sense_range(creature,"blindsight"),_sense_range(creature,"truesight")))
+        rows.append(Target(level,creature["name"],creature["ac"],saves,creature["magic_resistance"],creature["legendary_resistance"]["uses_per_day"],creature["sizes"][0],creature["creature_type"],_defense_values(creature,"condition_immunities"),_defense_values(creature,"damage_resistances"),_defense_values(creature,"damage_immunities"),_defense_values(creature,"damage_vulnerabilities"),creature["hp"],source["ruleset"],str(creature["source"]["page"]),source["url"],dict(creature["ability_modifiers"]),skill_bonuses,_sense_range(creature,"blindsight"),_sense_range(creature,"truesight"),_benchmark_locomotion_speed(creature)))
     if limit is not None:rows=rows[:limit]
     if not rows:raise ValueError("Target selection is empty")
     return rows

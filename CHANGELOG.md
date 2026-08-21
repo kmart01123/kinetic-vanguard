@@ -19,6 +19,7 @@
 - Implemented the audited current-PHB Battle Master comparator with separate fixed 5/7/9/9 damage- and control-forward loadouts, exact pre-roll Feinting Attack and shared Feint/Hew Bonus Action accounting, structured Menacing/Pushing/Trip control, fail-closed Goading/Disarming diagnostics, and comparator-neutral standing-cost semantics for legally recoverable Prone.
 - Corrected Control Reliability benchmark methodology so bare Kinetic Mastery receives the same legal retries across one ordinary Attack action as repeatable embedded Mastery; Action Surge remains excluded, with no changes to Kinetic Vanguard or comparator mechanics.
 - Made hostile named conditions consistently require a saving throw; Flare retains its Dexterity save at every tier, and Mind Lock uses one Intelligence save for its full condition package.
+- Added the shadow Control Value scorer with its frozen Control Unit and explicit primitive transforms, resolved-status fail-closed eligibility, SRD-derived locomotion normalization, cumulative expected-occurrence displacement, transparent normalization diagnostics, and independent scenario selection while retaining Control Reliability as the default published metric.
 
 ### Removed
 
