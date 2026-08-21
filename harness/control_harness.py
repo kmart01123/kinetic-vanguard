@@ -9,7 +9,7 @@ from copy import deepcopy
 from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
-from typing import Any
+from typing import Any,Callable
 
 from .authority import AuthorityModel,DEFAULT_AUTHORITY
 from .comparison_report import NOTICE_COLUMNS,matrix_row,write_matrix
@@ -63,26 +63,36 @@ def _finite_penalty_with_disadvantage_probability(target:Target,ability:str,dc:i
     return disadvantage_probability*disadvantaged+(1-disadvantage_probability)*ordinary
 
 
+def _attack_action_retry_probability(attacks:int,attempt_success:float,*,initial_state:tuple[int,...]=(),legal_attempt_states:Callable[[tuple[int,...]],tuple[tuple[int,...],...]]|None=None)->float:
+    """Resolve repeatable attack-delivered control within one ordinary Attack action."""
+    if attacks<0:raise ValueError("Attack-action retry opportunities cannot be negative")
+    if not 0.0<=attempt_success<=1.0:raise ValueError("Attempt probability must be between zero and one")
+    @lru_cache(maxsize=None)
+    def choose(attacks_remaining:int,state:tuple[int,...])->float:
+        if attacks_remaining==0:return 0.0
+        next_states=(state,) if legal_attempt_states is None else legal_attempt_states(state)
+        return max((attempt_success+(1-attempt_success)*choose(attacks_remaining-1,next_state) for next_state in next_states),default=0.0)
+    return choose(attacks,initial_state)
+
+
 def _repeat_rider_probability(model:AuthorityModel,config:dict[str,Any],level:int,tier:int,psi_cost:int,attempt_success:float)->float:
     """Optimize retry legality for one fixed rider tier without target identity state."""
     if model.projection["core"]["manifested_strike"]["rider_repeatability"]!="per_manifested_strike":raise ValueError("Unsupported canonical rider repeatability")
-    if not 0.0<=attempt_success<=1.0:raise ValueError("Attempt probability must be between zero and one")
     progression=level_config(config,level);attacks=int(progression["attacks_per_action"]);psi_pool=model.progression("psi_points",level)
     profile=config["kv_profile"];hp=int(profile["hit_point_model"]["first_level_base"])+int(profile["constitution_modifier"])+(level-1)*(int(profile["hit_point_model"]["later_level_average"])+int(profile["constitution_modifier"]));blood_budget=int(hp*float(profile["blood_tax_hp_fraction"]))
     mastery=model.projection["core"]["overload"]["mastery"];mastery_remaining=int(mastery["uses_per_rest"]) if level>=int(mastery["minimum_level"]) else 0;tier_two_limit=int(model.projection["core"]["overload"]["tier_two_limit_per_attack_action"]);blood_tax=model.blood_tax(level,tier)
-    @lru_cache(maxsize=None)
-    def choose(attacks_remaining:int,psi_spent:int,blood_spent:int,tier_twos:int,remaining_mastery:int,mastery_mode:int)->float:
-        if attacks_remaining==0 or (tier==2 and tier_twos>=tier_two_limit):return 0.0
+    def legal_attempt_states(state:tuple[int,...])->tuple[tuple[int,...],...]:
+        psi_spent,blood_spent,tier_twos,remaining_mastery,mastery_mode=state
+        if tier==2 and tier_twos>=tier_two_limit:return ()
         next_psi=psi_spent+psi_cost
-        if next_psi>psi_pool:return 0.0
-        best=0.0
+        if next_psi>psi_pool:return ()
+        states=[]
         for paid_tax,next_mastery,next_mode,_ in model.overload_payment_options(blood_tax,remaining_mastery,mastery_mode):
             next_blood=blood_spent+paid_tax
             if next_blood>blood_budget:continue
-            continuation=choose(attacks_remaining-1,next_psi,next_blood,tier_twos+int(tier==2),next_mastery,next_mode)
-            best=max(best,attempt_success+(1-attempt_success)*continuation)
-        return best
-    return choose(attacks,0,0,0,mastery_remaining,0 if mastery_remaining else 2)
+            states.append((next_psi,next_blood,tier_twos+int(tier==2),next_mastery,next_mode))
+        return tuple(states)
+    return _attack_action_retry_probability(attacks,attempt_success,initial_state=(0,0,0,mastery_remaining,0 if mastery_remaining else 2),legal_attempt_states=legal_attempt_states)
 
 
 def _battle_master_retry_probability(attacks:int,superiority_dice:int,hit_probability:float,save_fail_probability:float)->float:
@@ -218,7 +228,7 @@ def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,di
     mastery=model.disciplines[discipline_id]["mastery"];profile=config["kv_profile"]
     bonus=model.kv_attack_bonus(target.level,int(profile["psionic_ability_modifier"]))+int(profile["archery_attack_bonus"]);probabilities=attack_probabilities(bonus,target.ac);reach=probabilities[1]+probabilities[2]
     eligible=not mastery.get("maximum_size") or target_is_eligible(target,mastery["maximum_size"])
-    whole=reach if eligible and mastery["control_outcomes"] else 0.0
+    attacks=int(level_config(config,target.level)["attacks_per_action"]);whole=_attack_action_retry_probability(attacks,reach) if eligible and mastery["control_outcomes"] else 0.0
     component=_mastery_shadow_component(mastery,discipline_id,whole)
     return {"build":discipline_id,"scenario":f"mastery:{mastery['kind']}","eligible":eligible,"reach":100*reach,"named":0.0,"mastery":100*whole,"whole":100*whole,"after_repeats":100*whole,"shadow_components":[component] if component["labels"] else []}
 

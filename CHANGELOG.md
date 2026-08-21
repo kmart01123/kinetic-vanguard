@@ -14,6 +14,7 @@
 - Expanded the Eldritch Knight benchmark comparator to the 41 control-relevant spells retained by the completed current-PHB audit, using independently expressed mechanical abstractions, reusable analytical primitives, and explicit fail-closed diagnostic packages without changing published Control Reliability selection or Control Value weights.
 - Corrected the expanded Eldritch Knight shadow evaluation with production Mind Sliver and Eldritch Strike save composition, closed-form Web and Black Tentacles escape exposure, overlapping Action-denial normalization, and immunity-safe condition dependencies.
 - Implemented the audited current-PHB Battle Master comparator with separate fixed 5/7/9/9 damage- and control-forward loadouts, exact pre-roll Feinting Attack and shared Feint/Hew Bonus Action accounting, structured Menacing/Pushing/Trip control, fail-closed Goading/Disarming diagnostics, and comparator-neutral standing-cost semantics for legally recoverable Prone.
+- Corrected Control Reliability benchmark methodology so bare Kinetic Mastery receives the same legal retries across one ordinary Attack action as repeatable embedded Mastery; Action Surge remains excluded, with no changes to Kinetic Vanguard or comparator mechanics.
 
 ### Removed
 
