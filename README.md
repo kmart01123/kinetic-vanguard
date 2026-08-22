@@ -65,6 +65,97 @@ This companion table shows the raw Kinetic Vanguard equal-weight roster mean for
 | 15 | 1.064 CU | 0.524 CU | 1.462 CU | 0.473 CU |
 | 20 | 1.204 CU | 0.555 CU | 1.672 CU | 0.469 CU |
 
+### Kinetic Vanguard control catalog
+
+This authority-driven catalog keeps every ordinary Mastery and exact rider tier separate. CU and delivery are equal-weight means across the complete maintained roster for that level; ineligible targets remain in the denominator with zero contribution. Coverage is eligible targets / total targets. `Partial` means the form has both retained priced and retained context-required or unsupported consequences; suppressed duplicate or weaker primitives do not create that label.
+
+#### Cryokinesis
+
+| Rider / form | L7 | L11 | L15 | L20 |
+|---|---|---|---|---|
+| Kinetic Mastery | 0.076 CU · 96.23% · 12/12 | 0.060 CU · 99.51% · 12/12 | 0.051 CU · 99.50% · 11/11 | 0.041 CU · 99.84% · 12/12 |
+| Glacial Spike — T0 | 0.076 CU · 96.23% · 12/12 | 0.060 CU · 99.51% · 12/12 | 0.051 CU · 99.50% · 11/11 | 0.041 CU · 99.84% · 12/12 |
+| Glacial Spike — T1 | 0.226 CU · 96.23% · 12/12 | 0.226 CU · 99.51% · 12/12 | 0.216 CU · 99.50% · 11/11 | 0.232 CU · 99.84% · 12/12 |
+| Glacial Spike — T2 | N/A | 0.397 CU · 83.75% · 12/12 | 0.422 CU · 84.09% · 11/11 | 0.374 CU · 82.08% · 12/12 |
+| Snow Chains — T0 | 0.807 CU · 96.23% · 12/12 | 0.836 CU · 99.51% · 12/12 | 0.861 CU · 99.50% · 11/11 | 0.897 CU · 99.84% · 12/12 |
+| Snow Chains — T1 | 0.943 CU · 96.23% · 12/12 | 0.975 CU · 99.51% · 12/12 | 0.993 CU · 99.50% · 11/11 | 1.045 CU · 99.84% · 12/12 |
+| Snow Chains — T2 | N/A | 1.033 CU (partial) · 83.75% · 12/12 | 1.025 CU (partial) · 84.09% · 11/11 | 0.964 CU (partial) · 82.08% · 12/12 |
+| Frozen Ground — T0 | N/A | 0.125 CU · 41.54% · 12/12 | 0.124 CU · 41.23% · 11/11 | 0.119 CU · 39.52% · 12/12 |
+| Frozen Ground — T1 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Frozen Ground — T2 | N/A | 0.435 CU · 37.79% · 12/12 | 0.474 CU · 41.23% · 11/11 | 0.440 CU · 38.27% · 12/12 |
+| Arctic Tempest — T0 | N/A | N/A | 0.474 CU · 41.23% · 11/11 | 0.440 CU · 38.27% · 12/12 |
+| Arctic Tempest — T1 | N/A | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Arctic Tempest — T2 | N/A | N/A | 0.928 CU (partial) · 41.23% · 11/11 | 0.889 CU (partial) · 39.52% · 12/12 |
+| Absolute Zero — T0 | N/A | N/A | N/A | 0.119 CU · 39.52% · 12/12 |
+| Absolute Zero — T1 | N/A | N/A | N/A | 0.444 CU · 39.52% · 12/12 |
+| Absolute Zero — T2 | N/A | N/A | N/A | 1.189 CU (partial) · 100.00% · 12/12 |
+
+#### Pyrokinesis
+
+| Rider / form | L7 | L11 | L15 | L20 |
+|---|---|---|---|---|
+| Kinetic Mastery | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Ember Bolt — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Ember Bolt — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Ember Bolt — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Thermal Fracture — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Thermal Fracture — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Thermal Fracture — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Cinder Lance — T0 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Cinder Lance — T1 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Cinder Lance — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Flare — T0 | N/A | N/A | 0.524 CU (partial) · 80.68% · 11/11 | 0.555 CU (partial) · 85.45% · 12/12 |
+| Flare — T1 | N/A | N/A | 0.524 CU (partial) · 80.68% · 11/11 | 0.555 CU (partial) · 85.45% · 12/12 |
+| Flare — T2 | N/A | N/A | 0.300 CU (partial) · 46.16% · 11/11 | 0.266 CU (partial) · 40.91% · 12/12 |
+| Furnace Strike — T0 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
+| Furnace Strike — T1 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
+| Furnace Strike — T2 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
+
+#### Psychokinesis
+
+| Rider / form | L7 | L11 | L15 | L20 |
+|---|---|---|---|---|
+| Kinetic Mastery | 0.297 CU · 87.92% · 11/12 | 0.375 CU · 74.61% · 9/12 | 0.191 CU · 36.25% · 4/11 | 0.163 CU · 24.97% · 3/12 |
+| Telekinetic Shove — T0 | 0.167 CU · 64.53% · 12/12 | 0.220 CU · 70.93% · 12/12 | 0.205 CU · 68.21% · 11/11 | 0.268 CU · 73.69% · 12/12 |
+| Telekinetic Shove — T1 | 0.250 CU · 64.53% · 12/12 | 0.330 CU · 70.93% · 12/12 | 0.308 CU · 68.21% · 11/11 | 0.403 CU · 73.69% · 12/12 |
+| Telekinetic Shove — T2 | N/A | 0.257 CU · 36.65% · 12/12 | 0.239 CU · 34.19% · 11/11 | 0.235 CU · 33.54% · 12/12 |
+| Vectored Thrust — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Vectored Thrust — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Vectored Thrust — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Explosion/Implosion — T0 — primary | N/A | 1.108 CU · 89.57% · 12/12 | 0.975 CU · 86.63% · 11/11 | 0.994 CU · 79.04% · 12/12 |
+| Explosion/Implosion — T0 — secondary | N/A | 1.063 CU · 70.93% · 12/12 | 1.092 CU · 68.21% · 11/11 | 1.233 CU · 73.69% · 12/12 |
+| Explosion/Implosion — T1 — primary | N/A | 1.108 CU · 89.57% · 12/12 | 0.975 CU · 86.63% · 11/11 | 0.994 CU · 79.04% · 12/12 |
+| Explosion/Implosion — T1 — secondary | N/A | 1.393 CU · 70.93% · 12/12 | 1.400 CU · 68.21% · 11/11 | 1.636 CU · 73.69% · 12/12 |
+| Explosion/Implosion — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Telekinetic Slam — T0 | N/A | N/A | 0.082 CU · 40.95% · 11/11 | 0.083 CU · 41.25% · 12/12 |
+| Telekinetic Slam — T1 | N/A | N/A | 0.164 CU · 40.95% · 11/11 | 0.165 CU · 41.25% · 12/12 |
+| Telekinetic Slam — T2 | N/A | N/A | 0.487 CU · 100.00% · 11/11 | 0.489 CU · 100.00% · 12/12 |
+| Mass Levitation — T0 | N/A | N/A | N/A | 0.138 CU (partial) · 11.67% · 3/12 |
+| Mass Levitation — T1 | N/A | N/A | N/A | 0.180 CU (partial) · 11.67% · 3/12 |
+| Mass Levitation — T2 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
+
+#### Electrokinesis
+
+| Rider / form | L7 | L11 | L15 | L20 |
+|---|---|---|---|---|
+| Kinetic Mastery | 0.144 CU · 96.23% · 12/12 | 0.149 CU · 99.51% · 12/12 | 0.149 CU · 99.50% · 11/11 | 0.150 CU · 99.84% · 12/12 |
+| Static Discharge — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Static Discharge — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Static Discharge — T2 | N/A | 0.208 CU · 83.75% · 12/12 | 0.210 CU · 84.09% · 11/11 | 0.209 CU · 82.08% · 12/12 |
+| Branching Bolt — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Branching Bolt — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Branching Bolt — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Electron Burst — T0 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Electron Burst — T1 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Electron Burst — T2 | N/A | 0.311 CU · 83.75% · 12/12 | 0.315 CU · 84.09% · 11/11 | 0.316 CU · 82.08% · 12/12 |
+| Forked Lightning — T0 | N/A | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Forked Lightning — T1 | N/A | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Forked Lightning — T2 — primary | N/A | N/A | 0.453 CU · 50.32% · 11/11 | 0.467 CU · 51.85% · 12/12 |
+| Forked Lightning — T2 — secondary | N/A | N/A | 0.302 CU · 50.32% · 11/11 | 0.311 CU · 51.85% · 12/12 |
+| Ball Lightning — T0 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
+| Ball Lightning — T1 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
+| Ball Lightning — T2 | N/A | N/A | N/A | Unpriced · 51.85% delivery · 12/12 |
+
 ### How Control Value is calculated
 
 1.0 CU = denial of one target's normal Action + Bonus Action for one scored target-turn window.

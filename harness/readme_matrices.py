@@ -9,8 +9,9 @@ import os
 import re
 import stat
 import tempfile
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Sequence
+from typing import Mapping, Sequence
 
 from .authority import AuthorityModel, DEFAULT_AUTHORITY, PROJECT_ROOT
 from .comparison_report import (
@@ -109,6 +110,73 @@ VALUE_AUDIT_COLUMNS = (
     "Control Primitive Catalog SHA-256",
     "Control Value Config SHA-256",
 )
+VALUE_SCENARIO_COLUMNS = (
+    "Build",
+    "Discipline",
+    "Level",
+    "Target",
+    "Scenario",
+    "Eligible",
+    "Control Value CU",
+    "Whole-package control stick %",
+    "Value Disposition",
+    "Primitive Rows",
+    "Candidate Rows",
+    "Context/Unsupported Rows",
+    "Retained Candidate Rows",
+    "Retained Context/Unsupported Rows",
+    "Zero Entirely Fail-Closed Context",
+    "Rules Version",
+    "Authority SHA-256",
+    "Catalog SHA-256",
+    "Roster SHA-256",
+    "Target Profile",
+    "Config SHA-256",
+    "Comparator Config SHA-256",
+    *NOTICE_COLUMNS,
+    "Control Primitive Catalog SHA-256",
+    "Control Value Config SHA-256",
+)
+
+PRICED = "priced"
+PARTIALLY_PRICED = "partially_priced"
+UNPRICED = "unpriced"
+NO_MODELED_CONTROL = "no_modeled_control"
+UNAVAILABLE = "unavailable"
+
+
+@dataclass(frozen=True)
+class ControlCatalogForm:
+    discipline_id: str
+    title: str
+    entity_id: str | None
+    tier: int | None
+    target_role: str
+    minimum_level: int
+    feature_minimum_level: int
+    tier_minimum_level: int
+    modeled_control: bool
+    scenario_id: str
+
+    @property
+    def identity(self) -> tuple[str, str]:
+        return self.discipline_id, self.scenario_id
+
+    @property
+    def is_mastery(self) -> bool:
+        return self.entity_id is None
+
+    def available(self, level: int) -> bool:
+        return level >= self.minimum_level
+
+
+@dataclass(frozen=True)
+class ControlCatalogCell:
+    state: str
+    mean_cu: float | None = None
+    mean_delivery: float | None = None
+    eligible_targets: int | None = None
+    total_targets: int | None = None
 
 
 class MatrixSyncError(ValueError):
@@ -176,6 +244,326 @@ def _key_difference(actual: set[tuple[str, ...]], expected: set[tuple[str, ...]]
     missing = sorted(expected - actual)
     extra = sorted(actual - expected)
     raise MatrixSyncError(f"{kind} row identities differ; missing={missing}, extra={extra}")
+
+
+def build_kv_control_catalog(
+    model: AuthorityModel | None = None,
+) -> tuple[ControlCatalogForm, ...]:
+    """Project every ordinary KV Mastery/rider form from canonical authority."""
+    model = model or AuthorityModel.load(DEFAULT_AUTHORITY)
+    tier_minimums = {
+        int(row["tier"]): int(row["minimum_level"])
+        for row in model.projection["progressions"]["tier_minimum_levels"]
+    }
+    if len(tier_minimums) != len(
+        model.projection["progressions"]["tier_minimum_levels"]
+    ):
+        raise MatrixSyncError("Canonical tier minimum levels contain duplicates")
+
+    forms: list[ControlCatalogForm] = []
+    supported_minimum = int(model.projection["supported_level_range"]["minimum"])
+    for discipline_id, discipline in model.disciplines.items():
+        mastery = discipline["mastery"]
+        kind = str(mastery["kind"])
+        forms.append(
+            ControlCatalogForm(
+                discipline_id=discipline_id,
+                title="Kinetic Mastery",
+                entity_id=None,
+                tier=None,
+                target_role="primary",
+                minimum_level=supported_minimum,
+                feature_minimum_level=supported_minimum,
+                tier_minimum_level=supported_minimum,
+                modeled_control=bool(mastery["control_outcomes"]),
+                scenario_id=f"mastery:{kind}",
+            )
+        )
+
+    for feature in model.features.values():
+        if feature.get("advanced_training"):
+            continue
+        discipline_ids = tuple(str(item) for item in feature["discipline_ids"])
+        if len(discipline_ids) != 1 or discipline_ids[0] not in model.disciplines:
+            raise MatrixSyncError(
+                f"Ordinary discipline feature {feature['entity_id']} has ambiguous membership"
+            )
+        discipline_id = discipline_ids[0]
+        canonical_tiers = tuple(int(row["tier"]) for row in feature["damage_tiers"])
+        if canonical_tiers != tuple(sorted(set(canonical_tiers))):
+            raise MatrixSyncError(
+                f"Canonical tiers for {feature['entity_id']} are duplicated or out of order"
+            )
+        control_rows = feature.get("control_tiers", [])
+        controls = {int(row["tier"]): row for row in control_rows}
+        if len(controls) != len(control_rows) or not set(controls).issubset(canonical_tiers):
+            raise MatrixSyncError(
+                f"Control tiers for {feature['entity_id']} do not map uniquely to canonical tiers"
+            )
+        feature_minimum = int(feature["minimum_level"])
+        for tier in canonical_tiers:
+            if tier not in tier_minimums:
+                raise MatrixSyncError(
+                    f"Canonical tier T{tier} has no Overload minimum level"
+                )
+            control = controls.get(tier)
+            roles = ("primary",)
+            if control is not None:
+                declared_roles = {
+                    str(effect.get("target_role", "all"))
+                    for effect in control["effects"]
+                }
+                if not declared_roles.issubset({"all", "primary", "secondary"}):
+                    raise MatrixSyncError(
+                        f"Control tier {feature['entity_id']}:T{tier} has an unknown target role"
+                    )
+                if declared_roles & {"primary", "secondary"}:
+                    roles = ("primary", "secondary")
+            for role in roles:
+                suffix = f":{role}" if role != "primary" else ""
+                forms.append(
+                    ControlCatalogForm(
+                        discipline_id=discipline_id,
+                        title=str(feature["title"]),
+                        entity_id=str(feature["entity_id"]),
+                        tier=tier,
+                        target_role=role,
+                        minimum_level=max(feature_minimum, tier_minimums[tier]),
+                        feature_minimum_level=feature_minimum,
+                        tier_minimum_level=tier_minimums[tier],
+                        modeled_control=control is not None,
+                        scenario_id=f"{feature['entity_id']}:T{tier}{suffix}",
+                    )
+                )
+
+    identities = [form.identity for form in forms]
+    if len(identities) != len(set(identities)):
+        raise MatrixSyncError("Canonical KV control catalog contains duplicate exact forms")
+    discipline_order = {value: index for index, value in enumerate(model.disciplines)}
+    feature_order = {
+        entity_id: index for index, entity_id in enumerate(model.features)
+    }
+    return tuple(
+        sorted(
+            forms,
+            key=lambda form: (
+                discipline_order[form.discipline_id],
+                -1 if form.is_mastery else feature_order[form.entity_id or ""],
+                -1 if form.tier is None else form.tier,
+                0 if form.target_role == "primary" else 1,
+            ),
+        )
+    )
+
+
+def publication_only_kv_scenarios(
+    catalog: Sequence[ControlCatalogForm],
+    scenario_sets: Mapping[str, object],
+) -> tuple[dict[str, object], ...]:
+    """Return authority forms absent from headline selection without mutating it."""
+    canonical = {
+        form.identity: form
+        for form in catalog
+        if form.modeled_control and not form.is_mastery
+    }
+    configured: set[tuple[str, str]] = set()
+    for discipline_id, raw_entries in scenario_sets.items():
+        if not isinstance(raw_entries, list):
+            raise MatrixSyncError(
+                f"Headline KV scenarios for {discipline_id} are not a list"
+            )
+        for entry in raw_entries:
+            if not isinstance(entry, dict):
+                raise MatrixSyncError("Headline KV scenario entry is not an object")
+            roles = entry.get("target_roles", ["primary"])
+            for tier in entry.get("tiers", []):
+                for role in roles:
+                    suffix = f":{role}" if role != "primary" else ""
+                    identity = (
+                        str(discipline_id),
+                        f"{entry.get('entity_id')}:T{int(tier)}{suffix}",
+                    )
+                    if identity in configured:
+                        raise MatrixSyncError(
+                            f"Headline scenario inventory duplicates exact form {identity}"
+                        )
+                    if identity not in canonical:
+                        raise MatrixSyncError(
+                            f"Headline scenario inventory has unknown exact form {identity}"
+                        )
+                    configured.add(identity)
+    return tuple(
+        {
+            "discipline_id": form.discipline_id,
+            "entity_id": form.entity_id,
+            "tier": form.tier,
+            "target_role": form.target_role,
+        }
+        for form in catalog
+        if form.identity in canonical and form.identity not in configured
+    )
+
+
+def classify_catalog_pricing(
+    retained_candidates: int, retained_context_or_unsupported: int
+) -> str:
+    if retained_candidates < 0 or retained_context_or_unsupported < 0:
+        raise MatrixSyncError("Control pricing row counts cannot be negative")
+    if retained_candidates and retained_context_or_unsupported:
+        return PARTIALLY_PRICED
+    if retained_candidates:
+        return PRICED
+    if retained_context_or_unsupported:
+        return UNPRICED
+    raise MatrixSyncError("Control-bearing form has no retained meaningful consequence")
+
+
+def validate_control_catalog_scenarios(
+    scenario_rows: Sequence[MatrixRow],
+    catalog: Sequence[ControlCatalogForm],
+    levels: Sequence[int],
+) -> dict[tuple[str, str, int], ControlCatalogCell]:
+    """Validate exact scenario evidence and aggregate complete-roster catalog cells."""
+    _require_fields(scenario_rows, VALUE_SCENARIO_COLUMNS, "Control Value scenario detail")
+    model = AuthorityModel.load(DEFAULT_AUTHORITY)
+    expected_source = {
+        "Rules Version": model.rules_version,
+        "Authority SHA-256": model.authority_sha256,
+        "Catalog SHA-256": file_sha256(DEFAULT_CATALOG),
+        "Roster SHA-256": file_sha256(DEFAULT_ROSTERS),
+        "Target Profile": DEFAULT_PROFILE,
+        "Config SHA-256": file_sha256(DEFAULT_CONFIG),
+        "Comparator Config SHA-256": file_sha256(DEFAULT_COMPARATORS),
+        "Control Primitive Catalog SHA-256": file_sha256(DEFAULT_PRIMITIVES),
+        "Control Value Config SHA-256": file_sha256(DEFAULT_SCORING),
+    }
+    canonical = {form.identity: form for form in catalog}
+    parsed: dict[tuple[str, str, str, str], dict[str, object]] = {}
+    allowed_dispositions = {
+        "ineligible",
+        "priced_nonzero",
+        "legitimately_priced_zero",
+        "entirely_context_required_or_unsupported",
+    }
+    for index, row in enumerate(scenario_rows):
+        _validate_value_source(
+            row, index, "Control Value scenario detail", expected_source
+        )
+        if row["Build"] != "kinetic_vanguard":
+            continue
+        form = canonical.get((row["Discipline"], row["Scenario"]))
+        if form is None:
+            raise MatrixSyncError(
+                "Control Value scenario detail has unknown exact KV scenario "
+                f"{(row['Discipline'], row['Scenario'])}"
+            )
+        identity = (row["Level"], row["Target"], *form.identity)
+        if identity in parsed:
+            raise MatrixSyncError(
+                f"Control Value scenario detail duplicates exact scenario identity {identity}"
+            )
+        try:
+            level = int(row["Level"])
+            cu = float(row["Control Value CU"])
+            delivery = float(row["Whole-package control stick %"])
+            primitive_rows = int(row["Primitive Rows"])
+            candidate_rows = int(row["Candidate Rows"])
+            context_rows = int(row["Context/Unsupported Rows"])
+            retained_candidates = int(row["Retained Candidate Rows"])
+            retained_context = int(row["Retained Context/Unsupported Rows"])
+        except (TypeError, ValueError) as error:
+            raise MatrixSyncError(
+                f"Control Value scenario detail row {index} has non-numeric evidence"
+            ) from error
+        if (
+            level not in levels
+            or not math.isfinite(cu)
+            or cu < 0
+            or not math.isfinite(delivery)
+            or not 0 <= delivery <= 100
+            or min(
+                primitive_rows,
+                candidate_rows,
+                context_rows,
+                retained_candidates,
+                retained_context,
+            )
+            < 0
+            or primitive_rows != candidate_rows + context_rows
+            or retained_candidates > candidate_rows
+            or retained_context > context_rows
+        ):
+            raise MatrixSyncError(
+                f"Control Value scenario detail row {index} has invalid evidence"
+            )
+        if row["Eligible"] not in {"True", "False"}:
+            raise MatrixSyncError(
+                f"Control Value scenario detail row {index} has invalid eligibility"
+            )
+        eligible = row["Eligible"] == "True"
+        if row["Value Disposition"] not in allowed_dispositions:
+            raise MatrixSyncError(
+                f"Control Value scenario detail row {index} has invalid disposition"
+            )
+        if not eligible and (cu != 0.0 or delivery != 0.0):
+            raise MatrixSyncError(
+                f"Ineligible exact scenario {identity} must contribute zero"
+            )
+        parsed[identity] = {
+            "cu": cu,
+            "delivery": delivery,
+            "eligible": eligible,
+            "retained_candidates": retained_candidates,
+            "retained_context": retained_context,
+        }
+
+    targets = load_targets(profile=DEFAULT_PROFILE, levels=set(levels))
+    targets_by_level = {
+        level: tuple(target for target in targets if target.level == level)
+        for level in levels
+    }
+    expected = {
+        (str(level), target.name, *form.identity)
+        for form in catalog
+        if form.is_mastery or form.modeled_control
+        for level in levels
+        if form.available(level)
+        for target in targets_by_level[level]
+    }
+    _key_difference(set(parsed), expected, "Control Value exact scenario detail")
+
+    cells: dict[tuple[str, str, int], ControlCatalogCell] = {}
+    for form in catalog:
+        for level in levels:
+            key = (*form.identity, level)
+            if not form.available(level):
+                cells[key] = ControlCatalogCell(UNAVAILABLE)
+                continue
+            if not form.modeled_control:
+                cells[key] = ControlCatalogCell(NO_MODELED_CONTROL, mean_cu=0.0)
+                continue
+            rows = [
+                parsed[(str(level), target.name, *form.identity)]
+                for target in targets_by_level[level]
+            ]
+            total = len(rows)
+            if total != PROFILE_LEVEL_COUNTS[DEFAULT_PROFILE][level]:
+                raise MatrixSyncError(
+                    f"Exact scenario {form.identity} has an incomplete level-{level} roster"
+                )
+            eligible = sum(bool(row["eligible"]) for row in rows)
+            state = classify_catalog_pricing(
+                sum(int(row["retained_candidates"]) for row in rows),
+                sum(int(row["retained_context"]) for row in rows),
+            )
+            cells[key] = ControlCatalogCell(
+                state=state,
+                mean_cu=sum(float(row["cu"]) for row in rows) / total,
+                mean_delivery=sum(float(row["delivery"]) for row in rows) / total,
+                eligible_targets=eligible,
+                total_targets=total,
+            )
+    return cells
 
 
 def validate_reliability_rows(
@@ -807,6 +1195,102 @@ def render_raw_kv_reliability_table(
     return _raw_kv_table(reliability_rows, disciplines, decimals=2, suffix="%")
 
 
+def _render_catalog_cell(cell: ControlCatalogCell) -> str:
+    if cell.state == UNAVAILABLE:
+        return "N/A"
+    if cell.state == NO_MODELED_CONTROL:
+        return "0.000 CU · — · no modeled control"
+    if (
+        cell.mean_cu is None
+        or cell.mean_delivery is None
+        or cell.eligible_targets is None
+        or cell.total_targets is None
+        or not math.isfinite(cell.mean_cu)
+        or not math.isfinite(cell.mean_delivery)
+        or not 0 <= cell.eligible_targets <= cell.total_targets
+    ):
+        raise MatrixSyncError("Control catalog cell is missing aggregate evidence")
+    coverage = f"{cell.eligible_targets}/{cell.total_targets}"
+    if cell.state == PRICED:
+        return f"{cell.mean_cu:.3f} CU · {cell.mean_delivery:.2f}% · {coverage}"
+    if cell.state == PARTIALLY_PRICED:
+        return (
+            f"{cell.mean_cu:.3f} CU (partial) · "
+            f"{cell.mean_delivery:.2f}% · {coverage}"
+        )
+    if cell.state == UNPRICED:
+        return f"Unpriced · {cell.mean_delivery:.2f}% delivery · {coverage}"
+    raise MatrixSyncError(f"Unknown control catalog pricing state: {cell.state}")
+
+
+def render_kv_control_catalog(
+    catalog: Sequence[ControlCatalogForm],
+    cells: Mapping[tuple[str, str, int], ControlCatalogCell],
+    levels: Sequence[int],
+    disciplines: Sequence[str] = README_DISCIPLINES,
+) -> str:
+    expected_keys = {
+        (*form.identity, int(level)) for form in catalog for level in levels
+    }
+    _key_difference(set(cells), expected_keys, "README KV control catalog")
+    if {form.discipline_id for form in catalog} != set(disciplines):
+        raise MatrixSyncError("KV control catalog disciplines differ from README columns")
+    variant_counts: dict[tuple[str, str | None, int | None], int] = {}
+    for form in catalog:
+        key = (form.discipline_id, form.entity_id, form.tier)
+        variant_counts[key] = variant_counts.get(key, 0) + 1
+
+    sections = [
+        "### Kinetic Vanguard control catalog",
+        "",
+        (
+            "This authority-driven catalog keeps every ordinary Mastery and exact rider tier "
+            "separate. CU and delivery are equal-weight means across the complete maintained "
+            "roster for that level; ineligible targets remain in the denominator with zero "
+            "contribution. Coverage is eligible targets / total targets. `Partial` means the "
+            "form has both retained priced and retained context-required or unsupported "
+            "consequences; suppressed duplicate or weaker primitives do not create that label."
+        ),
+    ]
+    labels = {
+        "cryokinesis": "Cryokinesis",
+        "pyrokinesis": "Pyrokinesis",
+        "psychokinesis": "Psychokinesis",
+        "electrokinesis": "Electrokinesis",
+    }
+    for discipline_id in disciplines:
+        rows: list[list[str]] = []
+        for form in catalog:
+            if form.discipline_id != discipline_id:
+                continue
+            if form.is_mastery:
+                label = form.title
+            else:
+                label = f"{form.title} — T{form.tier}"
+                if variant_counts[(form.discipline_id, form.entity_id, form.tier)] > 1:
+                    label += f" — {form.target_role}"
+            rows.append(
+                [
+                    label,
+                    *[
+                        _render_catalog_cell(cells[(*form.identity, int(level))])
+                        for level in levels
+                    ],
+                ]
+            )
+        sections.extend(
+            (
+                "",
+                f"#### {labels[discipline_id]}",
+                "",
+                _markdown_table(
+                    ("Rider / form", *(f"L{level}" for level in levels)), rows
+                ),
+            )
+        )
+    return "\n".join(sections)
+
+
 def _scoring_rule(
     scoring: dict[str, object], primitive_id: str, transform: str
 ) -> tuple[str, float]:
@@ -1018,6 +1502,8 @@ def render_balance_region(
     damage_section: str,
     reliability_rows: Sequence[MatrixRow],
     value_rows: Sequence[MatrixRow],
+    catalog: Sequence[ControlCatalogForm],
+    catalog_cells: Mapping[tuple[str, str, int], ControlCatalogCell],
     rules_version: str,
     profile: str,
     disciplines: Sequence[str] = README_DISCIPLINES,
@@ -1090,6 +1576,13 @@ def render_balance_region(
             ),
             "",
             render_raw_kv_value_table(value_rows, disciplines),
+            "",
+            render_kv_control_catalog(
+                catalog,
+                catalog_cells,
+                tuple(int(value) for value in load_config()["methodology"]["levels"]),
+                disciplines,
+            ),
             "",
             render_control_value_explanation(),
             "",
@@ -1222,7 +1715,11 @@ def replace_generated_region(readme: str, region: str) -> str:
 
 def _control_publication_rows(
     root: Path, levels: set[int]
-) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
+) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
+    catalog = build_kv_control_catalog()
+    publication_scenarios = publication_only_kv_scenarios(
+        catalog, load_config()["control_matrix"]["kv_scenarios"]
+    )
     control = run_control(
         DEFAULT_AUTHORITY,
         root,
@@ -1232,16 +1729,18 @@ def _control_publication_rows(
         write_headline=True,
         profile=DEFAULT_PROFILE,
         write_shadow=True,
+        publication_scenarios=publication_scenarios,
     )
     return (
         read_matrix_rows(control["paths"]["csv"]),
         read_matrix_rows(control["value_paths"]["matrix"]),
         read_matrix_rows(control["value_paths"]["selection_audit"]),
+        read_matrix_rows(control["value_paths"]["scenario_detail"]),
     )
 
 
 def generate_control_publication_rows(
-) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
+) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
     config = load_config()
     levels = {int(value) for value in config["methodology"]["levels"]}
     with tempfile.TemporaryDirectory(prefix="kv-readme-control-") as directory:
@@ -1250,7 +1749,13 @@ def generate_control_publication_rows(
 
 def generate_authoritative_rows(
     workers: int,
-) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
+) -> tuple[
+    list[MatrixRow],
+    list[MatrixRow],
+    list[MatrixRow],
+    list[MatrixRow],
+    list[MatrixRow],
+]:
     config = load_config()
     levels = {int(value) for value in config["methodology"]["levels"]}
     with tempfile.TemporaryDirectory(prefix="kv-readme-matrices-") as directory:
@@ -1264,14 +1769,18 @@ def generate_authoritative_rows(
             True,
             workers,
         )
-        reliability_rows, value_rows, value_audit_rows = _control_publication_rows(
-            root / "control", levels
-        )
+        (
+            reliability_rows,
+            value_rows,
+            value_audit_rows,
+            value_scenario_rows,
+        ) = _control_publication_rows(root / "control", levels)
         return (
             read_matrix_rows(damage["paths"]["csv"]),
             reliability_rows,
             value_rows,
             value_audit_rows,
+            value_scenario_rows,
         )
 
 
@@ -1296,14 +1805,20 @@ def main() -> None:
     generated_region_span(readme)
     if args.control_only:
         damage_section = extract_damage_section(readme)
-        reliability_rows, value_rows, value_audit_rows = (
+        reliability_rows, value_rows, value_audit_rows, value_scenario_rows = (
             generate_control_publication_rows()
         )
         rules_version, profile, _, disciplines = validate_reliability_rows(
             reliability_rows
         )
     else:
-        damage_rows, reliability_rows, value_rows, value_audit_rows = (
+        (
+            damage_rows,
+            reliability_rows,
+            value_rows,
+            value_audit_rows,
+            value_scenario_rows,
+        ) = (
             generate_authoritative_rows(args.workers)
         )
         rules_version, profile, _, disciplines = validate_authoritative_rows(
@@ -1314,11 +1829,19 @@ def main() -> None:
     reliability_public_rows = validate_reliability_alignment(
         reliability_rows, value_audit_rows
     )
+    catalog = build_kv_control_catalog()
+    catalog_cells = validate_control_catalog_scenarios(
+        value_scenario_rows,
+        catalog,
+        tuple(int(value) for value in load_config()["methodology"]["levels"]),
+    )
     region = render_balance_region(
         readme,
         damage_section,
         reliability_public_rows,
         value_public_rows,
+        catalog,
+        catalog_cells,
         rules_version,
         profile,
         disciplines,

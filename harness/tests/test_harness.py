@@ -59,7 +59,7 @@ class AuthorityProjectionTests(unittest.TestCase):
 
     def test_real_root_authority_and_complete_stable_id_inventory(self)->None:
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
-        self.assertEqual(self.model.projection["projection_version"],"1.1.0")
+        self.assertEqual(self.model.projection["projection_version"],"1.2.0")
         self.assertEqual(self.model.rules_version,"14.3.0")
         self.assertEqual(self.model.projection["schema_version"],"2.3.0")
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":1,"action_surge_allows_additional_standalone_psionic_action":False})
@@ -71,7 +71,8 @@ class AuthorityProjectionTests(unittest.TestCase):
         self.assertEqual(len(feature_ids),len(set(feature_ids)))
         self.assertEqual(set(self.model.disciplines),{"pyrokinesis","cryokinesis","psychokinesis","electrokinesis"})
         self.assertTrue(all(feature["minimum_level"]>=3 and feature["psi_cost"]>=0 for feature in self.model.features.values()))
-        self.assertTrue(all("entity_id" in feature for feature in self.model.features.values()))
+        self.assertTrue(all("entity_id" in feature and feature["title"] for feature in self.model.features.values()))
+        self.assertTrue(self.model.features["advanced_phase_step"]["advanced_training"])
 
     def test_structural_yaml_mutation_changes_projection_without_python_edit(self)->None:
         source=DEFAULT_AUTHORITY.read_text(encoding="utf-8")
@@ -1517,6 +1518,24 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             identity=lambda row:(row["Level"],row["Target"],row["Discipline"],row["Build"],row["Selected Scenario"])
             self.assertEqual({identity(row) for row in reliability_audit},{identity(row) for row in value_audit})
             self.assertNotIn("reliability_scenario_ids",load_comparators()["control"]["eldritch_knight"])
+
+    def test_publication_only_control_scenario_never_enters_headline_selection(self)->None:
+        with tempfile.TemporaryDirectory() as directory:
+            control=run_control(
+                DEFAULT_AUTHORITY,Path(directory),{15},1,
+                write_headline=False,profile="headline",write_shadow=True,
+                publication_scenarios=(
+                    {"discipline_id":"pyrokinesis","entity_id":"advanced_mind_lock","tier":2,"target_role":"primary"},
+                ),
+            )
+            with control["value_paths"]["scenario_detail"].open(encoding="utf-8") as stream:
+                scenarios=list(csv.DictReader(stream))
+            extra=[row for row in scenarios if row["Build"]=="kinetic_vanguard" and row["Discipline"]=="pyrokinesis" and row["Scenario"]=="advanced_mind_lock:T2"]
+            self.assertEqual(len(extra),1)
+            self.assertIn("Retained Candidate Rows",extra[0]);self.assertIn("Retained Context/Unsupported Rows",extra[0])
+            with control["value_paths"]["selection_audit"].open(encoding="utf-8") as stream:
+                winners=list(csv.DictReader(stream))
+            self.assertFalse(any(row["Selected Scenario"]=="advanced_mind_lock:T2" for row in winners))
 
 
 if __name__=="__main__":unittest.main()

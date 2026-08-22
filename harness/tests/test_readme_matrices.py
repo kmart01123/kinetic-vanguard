@@ -29,24 +29,35 @@ from harness.model import (
 from harness.readme_matrices import (
     BEGIN_MARKER,
     END_MARKER,
+    NO_MODELED_CONTROL,
+    PARTIALLY_PRICED,
+    PRICED,
+    UNAVAILABLE,
+    UNPRICED,
+    ControlCatalogCell,
     MatrixSyncError,
     README_DISCIPLINES,
     _markdown_table,
     _public_result,
     atomic_replace_text,
+    build_kv_control_catalog,
+    classify_catalog_pricing,
     extract_damage_section,
     generate_control_publication_rows,
     generated_region_span,
+    publication_only_kv_scenarios,
     release_state_line,
     render_balance_region,
     render_control_value_explanation,
     render_control_table,
     render_damage_section,
+    render_kv_control_catalog,
     render_raw_kv_reliability_table,
     render_raw_kv_value_table,
     render_single_target_damage,
     replace_generated_region,
     validate_authoritative_rows,
+    validate_control_catalog_scenarios,
     validate_damage_rows,
     validate_reliability_alignment,
     validate_reliability_rows,
@@ -99,6 +110,7 @@ def _control_row(
 
 
 def _full_authoritative_rows() -> tuple[
+    list[dict[str, str]],
     list[dict[str, str]],
     list[dict[str, str]],
     list[dict[str, str]],
@@ -230,7 +242,44 @@ def _full_authoritative_rows() -> tuple[
         for level in methodology["levels"]
         for discipline in README_DISCIPLINES
     ]
-    return damage_rows, control_rows, value_rows, value_audit_rows
+    catalog = build_kv_control_catalog(model)
+    value_scenario_rows: list[dict[str, str]] = []
+    for target in targets:
+        for form in catalog:
+            if not form.available(target.level) or not (
+                form.is_mastery or form.modeled_control
+            ):
+                continue
+            modeled = form.modeled_control
+            value_scenario_rows.append(
+                {
+                    "Build": "kinetic_vanguard",
+                    "Discipline": form.discipline_id,
+                    "Level": str(target.level),
+                    "Target": target.name,
+                    "Scenario": form.scenario_id,
+                    "Eligible": "True",
+                    "Control Value CU": "1.0" if modeled else "0.0",
+                    "Whole-package control stick %": "50.0" if modeled else "0.0",
+                    "Value Disposition": (
+                        "priced_nonzero" if modeled else "legitimately_priced_zero"
+                    ),
+                    "Primitive Rows": "1" if modeled else "0",
+                    "Candidate Rows": "1" if modeled else "0",
+                    "Context/Unsupported Rows": "0",
+                    "Retained Candidate Rows": "1" if modeled else "0",
+                    "Retained Context/Unsupported Rows": "0",
+                    "Zero Entirely Fail-Closed Context": "False",
+                    **raw_common,
+                }
+            )
+    return (
+        damage_rows,
+        control_rows,
+        value_rows,
+        value_audit_rows,
+        value_scenario_rows,
+    )
 
 
 class ReadmeMatrixRenderingTests(unittest.TestCase):
@@ -316,8 +365,20 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             _public_result(retired)
 
     def test_complete_region_is_deterministic_transposed_and_minimal(self) -> None:
-        damage_rows,control_rows,value_rows,value_audit_rows=_full_authoritative_rows()
+        (
+            damage_rows,
+            control_rows,
+            value_rows,
+            value_audit_rows,
+            value_scenario_rows,
+        ) = _full_authoritative_rows()
         value_public_rows=validate_value_rows(value_rows,value_audit_rows)
+        catalog = build_kv_control_catalog()
+        catalog_cells = validate_control_catalog_scenarios(
+            value_scenario_rows,
+            catalog,
+            tuple(int(value) for value in load_config()["methodology"]["levels"]),
+        )
         damage_section=render_damage_section(damage_rows)
         readme="\n".join(
             (
@@ -327,13 +388,14 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             )
         )
         arguments=(
-            readme,damage_section,control_rows,value_public_rows,
+            readme,damage_section,control_rows,value_public_rows,catalog,catalog_cells,
             "14.1.0",DEFAULT_PROFILE,
         )
         rendered=render_balance_region(*arguments)
         reordered=render_balance_region(
             readme,damage_section,list(reversed(control_rows)),
-            list(reversed(value_public_rows)),"14.1.0",DEFAULT_PROFILE,
+            list(reversed(value_public_rows)),catalog,catalog_cells,
+            "14.1.0",DEFAULT_PROFILE,
         )
         self.assertEqual(rendered,reordered)
         self.assertTrue(rendered.startswith(BEGIN_MARKER))
@@ -343,6 +405,7 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             "### Single-Target Damage",
             "### Control Value",
             "### Kinetic Vanguard mean Control Value",
+            "### Kinetic Vanguard control catalog",
             "### How Control Value is calculated",
             "#### Worked example: Sap-style next-attack Disadvantage",
             "#### Worked example: Stunned",
@@ -358,6 +421,7 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             "**Secondary diagnostic:**",
             "selects the legal package with the highest Control Value",
             "same CU-selected package",
+            "ineligible targets remain in the denominator with zero contribution",
             "1.0 CU = denial of one target's normal Action + Bonus Action for one scored target-turn window.",
             "0.15 × 0.95 = 0.1425 CU",
             "**2.25 CU**",
@@ -372,9 +436,12 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
         self.assertIn(COMPARATOR_NOTICE,rendered)
         self.assertIn("LICENSE.md",rendered)
         self.assertIn("NOTICE.md",rendered)
+        self.assertEqual(rendered.count("| Rider / form | L7 | L11 | L15 | L20 |"),4)
+        self.assertIn("Forked Lightning — T2 — primary",rendered)
+        self.assertIn("Forked Lightning — T2 — secondary",rendered)
 
     def test_raw_companion_tables_use_validated_common_winner_rows(self) -> None:
-        _, reliability_rows, value_rows, value_audit_rows = _full_authoritative_rows()
+        _, reliability_rows, value_rows, value_audit_rows, _ = _full_authoritative_rows()
         value_public_rows = validate_value_rows(value_rows, value_audit_rows)
         reliability_public_rows = validate_reliability_alignment(
             reliability_rows, value_audit_rows
@@ -429,6 +496,180 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             _markdown_table(("First","Second"),(("only one cell",),))
 
 
+class ControlCatalogTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        (
+            _,
+            _,
+            _,
+            _,
+            cls.scenario_rows,
+        ) = _full_authoritative_rows()
+        cls.catalog = build_kv_control_catalog()
+        cls.levels = tuple(
+            int(value) for value in load_config()["methodology"]["levels"]
+        )
+
+    def test_inventory_is_canonical_complete_and_ordered(self) -> None:
+        masteries = [form for form in self.catalog if form.is_mastery]
+        self.assertEqual(len(masteries),4)
+        self.assertEqual(
+            {form.discipline_id for form in masteries}, set(README_DISCIPLINES)
+        )
+        model = AuthorityModel.load(DEFAULT_AUTHORITY)
+        ordinary = [
+            feature
+            for feature in model.features.values()
+            if not feature["advanced_training"]
+        ]
+        expected = {
+            (str(feature["entity_id"]),int(tier["tier"]))
+            for feature in ordinary
+            for tier in feature["damage_tiers"]
+        }
+        actual = {
+            (str(form.entity_id),int(form.tier))
+            for form in self.catalog
+            if not form.is_mastery
+        }
+        self.assertEqual(actual,expected)
+        self.assertFalse(
+            any(
+                form.entity_id and form.entity_id.startswith("advanced_")
+                for form in self.catalog
+            )
+        )
+        for feature in ordinary:
+            tiers = [
+                form.tier
+                for form in self.catalog
+                if form.entity_id == feature["entity_id"]
+                and form.target_role == "primary"
+            ]
+            self.assertEqual(
+                tiers,[int(item["tier"]) for item in feature["damage_tiers"]]
+            )
+
+    def test_target_role_variants_remain_exact_forms(self) -> None:
+        secondary = {
+            form.scenario_id
+            for form in self.catalog
+            if form.target_role == "secondary"
+        }
+        self.assertEqual(
+            secondary,
+            {
+                "explosion_implosion:T0:secondary",
+                "explosion_implosion:T1:secondary",
+                "forked_lightning:T2:secondary",
+            },
+        )
+        for scenario in secondary:
+            self.assertTrue(
+                any(
+                    form.scenario_id == scenario.removesuffix(":secondary")
+                    for form in self.catalog
+                )
+            )
+
+    def test_pricing_states_and_suppressed_rows_are_distinct(self) -> None:
+        self.assertEqual(classify_catalog_pricing(1,0),PRICED)
+        self.assertEqual(classify_catalog_pricing(1,1),PARTIALLY_PRICED)
+        self.assertEqual(classify_catalog_pricing(0,1),UNPRICED)
+        with self.assertRaisesRegex(MatrixSyncError,"no retained meaningful"):
+            classify_catalog_pricing(0,0)
+        cells = validate_control_catalog_scenarios(
+            self.scenario_rows,self.catalog,self.levels
+        )
+        self.assertEqual(
+            cells[("pyrokinesis","mastery:graze",7)].state,
+            NO_MODELED_CONTROL,
+        )
+        rows = deepcopy(self.scenario_rows)
+        for row in rows:
+            if row["Discipline"] == "cryokinesis" and row["Scenario"] == "glacial_spike:T0":
+                row["Primitive Rows"] = "2"
+                row["Context/Unsupported Rows"] = "1"
+                row["Retained Context/Unsupported Rows"] = "0"
+        suppressed = validate_control_catalog_scenarios(rows,self.catalog,self.levels)
+        self.assertEqual(suppressed[("cryokinesis","glacial_spike:T0",7)].state,PRICED)
+
+    def test_availability_raw_evidence_denominator_and_coverage(self) -> None:
+        rows = deepcopy(self.scenario_rows)
+        changed = next(
+            row for row in rows
+            if row["Level"] == "7"
+            and row["Discipline"] == "cryokinesis"
+            and row["Scenario"] == "glacial_spike:T0"
+        )
+        changed.update(
+            {
+                "Eligible":"False",
+                "Control Value CU":"0.0",
+                "Whole-package control stick %":"0.0",
+                "Value Disposition":"ineligible",
+                "Primitive Rows":"0",
+                "Candidate Rows":"0",
+                "Context/Unsupported Rows":"0",
+                "Retained Candidate Rows":"0",
+                "Retained Context/Unsupported Rows":"0",
+            }
+        )
+        cells = validate_control_catalog_scenarios(rows,self.catalog,self.levels)
+        total = PROFILE_LEVEL_COUNTS[DEFAULT_PROFILE][7]
+        cell = cells[("cryokinesis","glacial_spike:T0",7)]
+        self.assertEqual((cell.eligible_targets,cell.total_targets),(total-1,total))
+        self.assertAlmostEqual(cell.mean_cu,(total-1)/total)
+        self.assertAlmostEqual(cell.mean_delivery,50*(total-1)/total)
+        self.assertEqual(
+            cells[("cryokinesis","glacial_spike:T2",7)].state,UNAVAILABLE
+        )
+        self.assertEqual(
+            cells[("pyrokinesis","ember_bolt:T0",7)].state,
+            NO_MODELED_CONTROL,
+        )
+
+    def test_scenario_schema_provenance_duplicates_and_unknowns_fail_closed(self) -> None:
+        missing = deepcopy(self.scenario_rows)
+        del missing[0]["Retained Candidate Rows"]
+        with self.assertRaisesRegex(MatrixSyncError,"schema differences"):
+            validate_control_catalog_scenarios(missing,self.catalog,self.levels)
+        stale = deepcopy(self.scenario_rows)
+        stale[0]["Authority SHA-256"] = "wrong-authority"
+        with self.assertRaisesRegex(MatrixSyncError,"Authority SHA-256"):
+            validate_control_catalog_scenarios(stale,self.catalog,self.levels)
+        duplicate = deepcopy(self.scenario_rows)
+        duplicate.append(deepcopy(duplicate[0]))
+        with self.assertRaisesRegex(MatrixSyncError,"duplicates exact scenario identity"):
+            validate_control_catalog_scenarios(duplicate,self.catalog,self.levels)
+        unknown = deepcopy(self.scenario_rows)
+        unknown[0]["Scenario"] = "unknown:T0"
+        with self.assertRaisesRegex(MatrixSyncError,"unknown exact KV scenario"):
+            validate_control_catalog_scenarios(unknown,self.catalog,self.levels)
+
+    def test_publication_only_gap_detection_preserves_headline_inventory(self) -> None:
+        scenario_sets = deepcopy(load_config()["control_matrix"]["kv_scenarios"])
+        flare = next(
+            entry for entry in scenario_sets["pyrokinesis"]
+            if entry["entity_id"] == "flare"
+        )
+        flare["tiers"].remove(2)
+        before = deepcopy(scenario_sets)
+        gaps = publication_only_kv_scenarios(self.catalog,scenario_sets)
+        self.assertEqual(scenario_sets,before)
+        self.assertEqual(
+            gaps,
+            ({"discipline_id":"pyrokinesis","entity_id":"flare","tier":2,"target_role":"primary"},),
+        )
+        self.assertEqual(
+            publication_only_kv_scenarios(
+                self.catalog,load_config()["control_matrix"]["kv_scenarios"]
+            ),
+            (),
+        )
+
+
 class ReadmeMatrixDelimiterTests(unittest.TestCase):
     def test_missing_duplicate_and_reversed_markers_fail_closed(self) -> None:
         malformed = {
@@ -455,7 +696,19 @@ class ReadmeMatrixDelimiterTests(unittest.TestCase):
     def test_control_render_preserves_damage_subsection_byte_for_byte(self) -> None:
         readme = readme_matrices.README_PATH.read_text(encoding="utf-8")
         original_damage = extract_damage_section(readme)
-        _, reliability_rows, value_rows, value_audit_rows = _full_authoritative_rows()
+        (
+            _,
+            reliability_rows,
+            value_rows,
+            value_audit_rows,
+            value_scenario_rows,
+        ) = _full_authoritative_rows()
+        catalog = build_kv_control_catalog()
+        catalog_cells = validate_control_catalog_scenarios(
+            value_scenario_rows,
+            catalog,
+            tuple(int(value) for value in load_config()["methodology"]["levels"]),
+        )
         rules_version, profile, _, disciplines = validate_reliability_rows(
             reliability_rows
         )
@@ -464,6 +717,8 @@ class ReadmeMatrixDelimiterTests(unittest.TestCase):
             original_damage,
             reliability_rows,
             validate_value_rows(value_rows, value_audit_rows),
+            catalog,
+            catalog_cells,
             rules_version,
             profile,
             disciplines,
@@ -566,6 +821,7 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
             cls.control_rows,
             cls.value_rows,
             cls.value_audit_rows,
+            _,
         ) = _full_authoritative_rows()
 
     def test_full_current_shape_synthetic_rows_pass(self) -> None:
@@ -680,6 +936,7 @@ class ControlValueRowValidationTests(unittest.TestCase):
             cls.reliability_rows,
             cls.value_rows,
             cls.value_audit_rows,
+            _,
         ) = _full_authoritative_rows()
 
     def test_full_winner_derived_value_shape_passes(self) -> None:
@@ -784,9 +1041,15 @@ class ControlOnlyGenerationTests(unittest.TestCase):
             "value_paths": {
                 "matrix": Path("value.csv"),
                 "selection_audit": Path("audit.csv"),
+                "scenario_detail": Path("scenario.csv"),
             },
         }
-        expected = ([{"kind": "reliability"}], [{"kind": "value"}], [{"kind": "audit"}])
+        expected = (
+            [{"kind": "reliability"}],
+            [{"kind": "value"}],
+            [{"kind": "audit"}],
+            [{"kind": "scenario"}],
+        )
         with (
             patch.object(readme_matrices, "run_control", return_value=paths) as control,
             patch.object(readme_matrices, "run_damage") as damage,
@@ -801,6 +1064,7 @@ class ControlOnlyGenerationTests(unittest.TestCase):
         self.assertTrue(control.call_args.kwargs["write_shadow"])
         self.assertTrue(control.call_args.kwargs["write_headline"])
         self.assertFalse(control.call_args.kwargs["write_detail"])
+        self.assertEqual(control.call_args.kwargs["publication_scenarios"],())
         damage.assert_not_called()
 
 if __name__ == "__main__":

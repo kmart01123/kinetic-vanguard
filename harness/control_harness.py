@@ -9,7 +9,7 @@ from copy import deepcopy
 from fractions import Fraction
 from functools import lru_cache
 from pathlib import Path
-from typing import Any,Callable
+from typing import Any,Callable,Sequence
 
 from .authority import AuthorityModel,DEFAULT_AUTHORITY
 from .comparison_report import NOTICE_COLUMNS,matrix_row,write_matrix
@@ -361,9 +361,16 @@ def _select_control_value(rows:list[dict[str,Any]])->dict[str,Any]:
     return min(eligible,key=lambda row:(-float(row["Control Value CU"]),-float(row["Whole-package control stick %"]),str(row["Scenario"])))
 
 
-def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,write_detail:bool=True,write_headline:bool=True,profile:str=DEFAULT_PROFILE,write_shadow:bool=False)->dict[str,Any]:
+def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,write_detail:bool=True,write_headline:bool=True,profile:str=DEFAULT_PROFILE,write_shadow:bool=False,publication_scenarios:Sequence[dict[str,Any]]=())->dict[str,Any]:
     model=AuthorityModel.load(authority);config=load_config();comparators=load_comparators();targets=load_targets(profile=profile,levels=levels,limit=target_limit);detail=[];audit=[];envelopes=[];shadow_detail=[];value_scenarios=[];value_audit=[];value_envelopes=[]
     scenario_sets=config["control_matrix"]["kv_scenarios"]
+    if publication_scenarios and not write_shadow:raise ValueError("Publication-only scenarios require Control Value scenario detail")
+    publication_by_discipline:dict[str,list[dict[str,Any]]]=defaultdict(list);publication_identities:set[tuple[str,str,int,str]]=set()
+    for index,entry in enumerate(publication_scenarios):
+        if set(entry)!={"discipline_id","entity_id","tier","target_role"}:raise ValueError(f"Publication-only scenario {index} has invalid keys")
+        identity=(str(entry["discipline_id"]),str(entry["entity_id"]),int(entry["tier"]),str(entry["target_role"]))
+        if identity in publication_identities:raise ValueError(f"Duplicate publication-only scenario identity: {identity}")
+        publication_identities.add(identity);publication_by_discipline[identity[0]].append({"entity_id":identity[1],"tier":identity[2],"target_role":identity[3]})
 
     def value_row(target:Target,build:str,discipline:str,value:dict[str,Any],*,collect_detail:bool)->dict[str,Any]:
         metadata={"Build":build,"Discipline":discipline,"Level":target.level,"Target":target.name,"Scenario":value["scenario"]}
@@ -373,9 +380,10 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
         candidate=sum(row["Pricing Status"]=="candidate" for row in rows)
         unpriced=len(rows)-candidate
         retained_candidate=sum(row["Pricing Status"]=="candidate" and row["Normalization"] not in {"suppressed","combined_into_disjoint_stages"} for row in rows)
+        retained_unpriced=sum(row["Pricing Status"]!="candidate" and row["Normalization"] not in {"suppressed","combined_into_disjoint_stages"} for row in rows)
         zero_context=bool(rows and total==0.0 and retained_candidate==0 and unpriced>0)
         disposition="ineligible" if not value["eligible"] else ("priced_nonzero" if total!=0.0 else ("entirely_context_required_or_unsupported" if zero_context else "legitimately_priced_zero"))
-        return {**metadata,"Eligible":value["eligible"],"Control Value CU":total,"Whole-package control stick %":value["whole"],"Value Disposition":disposition,"Primitive Rows":len(rows),"Candidate Rows":candidate,"Context/Unsupported Rows":unpriced,"Zero Entirely Fail-Closed Context":zero_context}
+        return {**metadata,"Eligible":value["eligible"],"Control Value CU":total,"Whole-package control stick %":value["whole"],"Value Disposition":disposition,"Primitive Rows":len(rows),"Candidate Rows":candidate,"Context/Unsupported Rows":unpriced,"Retained Candidate Rows":retained_candidate,"Retained Context/Unsupported Rows":retained_unpriced,"Zero Entirely Fail-Closed Context":zero_context}
 
     def selected_audit_row(winner:dict[str,Any])->dict[str,Any]:
         return {"Level":winner["Level"],"Target":winner["Target"],"Discipline":winner["Discipline"],"Build":winner["Build"],"Selected Scenario":winner["Scenario"],"Eligible":winner["Eligible"],"Selection Basis":"Control Value","Control Value CU":winner["Control Value CU"],"Whole-package control stick %":winner["Whole-package control stick %"],"Value Disposition":winner["Value Disposition"]}
@@ -407,6 +415,12 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
             winner=_select_control_value(scored);selected=selected_audit_row(winner);audit.append(selected)
             if write_shadow:
                 value_audit.append(selected);value_envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":winner["Control Value CU"],"Eldritch Knight":comparator_winners["eldritch_knight"]["Control Value CU"],"Battle Master":comparator_winners["battle_master"]["Control Value CU"]})
+                for entry in publication_by_discipline.get(discipline,[]):
+                    try:publication_value=_kv_scenario(model,config,target,discipline,entry["entity_id"],entry["tier"],entry["target_role"])
+                    except Exception as error:
+                        if "unavailable" in str(error):continue
+                        raise
+                    value_scenarios.append(value_row(target,"kinetic_vanguard",discipline,publication_value,collect_detail=True))
             envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":winner["Whole-package control stick %"],"Eldritch Knight":comparator_winners["eldritch_knight"]["Whole-package control stick %"],"Battle Master":comparator_winners["battle_master"]["Whole-package control stick %"]})
     slug=model.rules_version.replace(".","-");output_dir.mkdir(parents=True,exist_ok=True)
     source_columns={"Rules Version":model.rules_version,"Authority SHA-256":model.authority_sha256,"Catalog SHA-256":file_sha256(DEFAULT_CATALOG),"Roster SHA-256":file_sha256(DEFAULT_ROSTERS),"Target Profile":profile,"Config SHA-256":file_sha256(DEFAULT_CONFIG),"Comparator Config SHA-256":file_sha256(DEFAULT_COMPARATORS),**NOTICE_COLUMNS}
