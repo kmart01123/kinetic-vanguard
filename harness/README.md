@@ -58,6 +58,8 @@ npm run readme:control
 npm run readme:control:check
 ```
 
+The generated control publication keeps the compact comparator-band tables and adds raw Kinetic Vanguard companion tables from the same validated common-winner evidence. Its Sap and Stunned arithmetic is resolved from the maintained primitive catalog and frozen scoring config during rendering, so catalog or weight drift fails the publication contracts instead of leaving hand-maintained examples behind.
+
 The writer atomically replaces only the delimited balance region and refuses to overwrite a concurrently changed README. Use it only after an intentional authority, methodology, roster, comparator, or release-state change and review the numerical diff.
 
 ## Damage methodology

@@ -9,7 +9,12 @@ from unittest.mock import patch
 from harness import readme_matrices
 from harness.authority import AuthorityModel, DEFAULT_AUTHORITY
 from harness.comparison_report import COMPARATOR_NOTICE, NOTICE_COLUMNS, matrix_row
-from harness.control_value import DEFAULT_PRIMITIVES, DEFAULT_SCORING
+from harness.control_value import (
+    DEFAULT_PRIMITIVES,
+    DEFAULT_SCORING,
+    decompose_label,
+    load_scoring_config,
+)
 from harness.model import (
     DEFAULT_CATALOG,
     DEFAULT_COMPARATORS,
@@ -34,8 +39,11 @@ from harness.readme_matrices import (
     generated_region_span,
     release_state_line,
     render_balance_region,
+    render_control_value_explanation,
     render_control_table,
     render_damage_section,
+    render_raw_kv_reliability_table,
+    render_raw_kv_value_table,
     render_single_target_damage,
     replace_generated_region,
     validate_authoritative_rows,
@@ -330,11 +338,17 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
         self.assertEqual(rendered,reordered)
         self.assertTrue(rendered.startswith(BEGIN_MARKER))
         self.assertTrue(rendered.endswith(END_MARKER))
-        self.assertEqual(rendered.count("| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |"),3)
+        self.assertEqual(rendered.count("| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |"),5)
         for heading in (
             "### Single-Target Damage",
             "### Control Value",
+            "### Kinetic Vanguard mean Control Value",
+            "### How Control Value is calculated",
+            "#### Worked example: Sap-style next-attack Disadvantage",
+            "#### Worked example: Stunned",
             "### Control Reliability — delivery diagnostic",
+            "### Kinetic Vanguard mean Reliability",
+            "### Why Control Value and Reliability can disagree",
             "### Control methodology",
         ):
             self.assertIn(heading,rendered)
@@ -344,8 +358,11 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             "**Secondary diagnostic:**",
             "selects the legal package with the highest Control Value",
             "same CU-selected package",
-            "different properties of the same selected package",
-            "`1.0 CU`",
+            "1.0 CU = denial of one target's normal Action + Bonus Action for one scored target-turn window.",
+            "0.15 × 0.95 = 0.1425 CU",
+            "**2.25 CU**",
+            "does **not** mean a 46.97% chance to apply control",
+            "soft control that lands consistently",
             "Stunned does **not** gain Speed 0",
             "does **not** mean that a mechanic has no value in actual play",
         ):
@@ -355,6 +372,55 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
         self.assertIn(COMPARATOR_NOTICE,rendered)
         self.assertIn("LICENSE.md",rendered)
         self.assertIn("NOTICE.md",rendered)
+
+    def test_raw_companion_tables_use_validated_common_winner_rows(self) -> None:
+        _, reliability_rows, value_rows, value_audit_rows = _full_authoritative_rows()
+        value_public_rows = validate_value_rows(value_rows, value_audit_rows)
+        reliability_public_rows = validate_reliability_alignment(
+            reliability_rows, value_audit_rows
+        )
+        value_table = render_raw_kv_value_table(value_public_rows)
+        reliability_table = render_raw_kv_reliability_table(reliability_public_rows)
+        self.assertIn("| 7 | 15.000 CU | 15.000 CU | 15.000 CU | 15.000 CU |", value_table)
+        self.assertIn("| 20 | 15.00% | 15.00% | 15.00% | 15.00% |", reliability_table)
+        with self.assertRaisesRegex(MatrixSyncError, "row identities differ"):
+            render_raw_kv_value_table(value_public_rows[1:])
+
+    def test_control_examples_resolve_the_maintained_catalog_and_scoring(self) -> None:
+        scoring = load_scoring_config()
+        sap = decompose_label("attack_disadvantage", attack_scope="next_attack")
+        self.assertEqual(
+            [item.primitive_id for item in sap],
+            ["offensive_impairment_next_attack"],
+        )
+        self.assertEqual(
+            scoring["rules"]["offensive_impairment_next_attack"]["nominal_weight"],
+            0.15,
+        )
+        stunned = [
+            item for item in decompose_label("stunned") if item.pricing_status == "candidate"
+        ]
+        self.assertEqual(
+            [item.primitive_id for item in stunned],
+            [
+                "active_turn_denial",
+                "reaction_denial",
+                "save_auto_failure",
+                "save_auto_failure",
+                "defensive_attack_advantage",
+            ],
+        )
+        total = sum(
+            float(scoring["rules"][item.primitive_id]["nominal_weight"])
+            for item in stunned
+        )
+        self.assertEqual(total, 2.25)
+        explanation = render_control_value_explanation()
+        self.assertIn(scoring["control_unit"], explanation)
+        self.assertIn("0.15 × 0.95 = 0.1425 CU", explanation)
+        self.assertIn("**2.25 CU**", explanation)
+        self.assertIn("Stunned does **not** gain Speed 0", explanation)
+        self.assertNotIn("Stunned gains Speed 0", explanation)
 
     def test_markdown_table_has_exact_header_width_and_escaping(self) -> None:
         rendered=_markdown_table(("First","Second"),(("a|b","line\nbreak"),))

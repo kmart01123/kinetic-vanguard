@@ -21,6 +21,7 @@
 - Made hostile named conditions consistently require a saving throw; Flare retains its Dexterity save at every tier, and Mind Lock uses one Intelligence save for its full condition package.
 - Added the shadow Control Value scorer with its frozen Control Unit and explicit primitive transforms, resolved-status fail-closed eligibility, SRD-derived locomotion normalization, cumulative expected-occurrence displacement, correlated flat-mobility capping, transparent normalization diagnostics, and eligible-only independent scenario selection while leaving publication unchanged in that Slice-2 step.
 - Promoted Control Value from shadow-only output to the primary public control-balance metric and common package-selection methodology, with Control Value reporting mechanical consequence and Control Reliability reporting delivery of that same selected package; also added compact public methodology and control-only README regeneration without changing damage or control mechanics.
+- Added reader-facing raw Control Value and Reliability companion tables, maintained CU worked examples, and clearer comparator-distance guidance to the generated README benchmark without changing mechanics, scoring, or package selection.
 
 ### Removed
 

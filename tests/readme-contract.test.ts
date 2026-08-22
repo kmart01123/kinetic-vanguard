@@ -53,20 +53,23 @@ test("README exposes one structurally valid headline balance snapshot",async()=>
   const begin=readme.indexOf(beginMarker),end=readme.indexOf(endMarker);assert.ok(begin>=0&&end>begin);const region=readme.slice(begin,end+endMarker.length);
   assertBalanceSnapshotState(readBalanceSnapshot(region),readReleaseStatus(readme),authority.rules_version);
   assert.ok(region.includes("Target profile: `headline`."));assert.match(region,/exact analytical full-roster results/i);
-  for(const heading of ["Balance benchmark snapshot","Single-Target Damage","Control Value","Control Reliability — delivery diagnostic","Control methodology"])assert.match(region,new RegExp("^#{2,4} "+heading.replace(/[.*+?^$(){}|[\]\\]/g,"\\$&")+"$","m"));
-  const tableHeader="| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |";assert.equal(occurrences(region,tableHeader),3);
+  for(const heading of ["Balance benchmark snapshot","Single-Target Damage","Control Value","Kinetic Vanguard mean Control Value","How Control Value is calculated","Worked example: Sap-style next-attack Disadvantage","Worked example: Stunned","Control Reliability — delivery diagnostic","Kinetic Vanguard mean Reliability","Why Control Value and Reliability can disagree","Control methodology"])assert.match(region,new RegExp("^#{2,4} "+heading.replace(/[.*+?^$(){}|[\]\\]/g,"\\$&")+"$","m"));
+  const tableHeader="| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |";assert.equal(occurrences(region,tableHeader),5);
   const lines=region.split("\n"),headerIndexes=lines.flatMap((line,index)=>line===tableHeader?[index]:[]),expectedLevels=benchmarkConfig.methodology.levels.map(String),publicResult=/^(?:IDEAL|N\/A|COLD \(-\d+(?:\.\d+)?%\)|HOT \(\+\d+(?:\.\d+)?%\))$/;
-  for(const headerIndex of headerIndexes){assert.equal(lines[headerIndex+1],"|---|---|---|---|---|");const rows=lines.slice(headerIndex+2,headerIndex+2+expectedLevels.length);assert.equal(rows.length,expectedLevels.length);rows.forEach((row,rowIndex)=>{const cells=row.split("|").slice(1,-1).map(cell=>cell.trim());assert.equal(cells.length,5);assert.equal(cells[0],expectedLevels[rowIndex]);for(const cell of cells.slice(1))assert.match(cell,publicResult);});}
+  for(const [tableIndex,headerIndex] of headerIndexes.entries()){assert.equal(lines[headerIndex+1],"|---|---|---|---|---|");const rows=lines.slice(headerIndex+2,headerIndex+2+expectedLevels.length);assert.equal(rows.length,expectedLevels.length);rows.forEach((row,rowIndex)=>{const cells=row.split("|").slice(1,-1).map(cell=>cell.trim());assert.equal(cells.length,5);assert.equal(cells[0],expectedLevels[rowIndex]);const cellPattern=tableIndex===2?/^\d+\.\d{3} CU$/:tableIndex===4?/^\d+\.\d{2}%$/:publicResult;for(const cell of cells.slice(1))assert.match(cell,cellPattern);});}
   assert.match(region,/47 creature profiles from SRD 5\.2\.1 at levels 7, 11, 15, and 20/);assert.match(region,/weighted equally within their level/);
   assert.match(region,/Battle Master and Eldritch Knight define the comparison envelope/);assert.match(region,/comparator-envelope benchmark, not a universal real-play balance tolerance/);
-  assert.match(region,/\*\*Primary control-balance metric:\*\* how much useful control/);assert.match(region,/\*\*Secondary diagnostic:\*\* how reliably/);
+  assert.match(region,/\*\*Primary control-balance metric:\*\* how much mechanically useful control/);assert.match(region,/\*\*Secondary diagnostic:\*\* how reliably/);
   assert.match(region,/selects the legal package with the highest Control Value/);assert.match(region,/exact CU tie is resolved by higher whole-package Control Reliability, then by ascending stable scenario ID/);
   assert.match(region,/Control Reliability measures delivery probability for the same CU-selected package/);
-  assert.match(region,/different public bands because they measure different properties of the same selected package/);
-  assert.match(region,/`1\.0 CU` is denial of one target's normal Action \+ Bonus Action.*not a D&D rules quantity/s);
-  assert.match(region,/Stunned decomposes into active-turn denial.*Stunned does \*\*not\*\* gain Speed 0/s);
+  assert.match(region,/1\.0 CU = denial of one target's normal Action \+ Bonus Action for one scored target-turn window\./);
+  assert.match(region,/offensive_impairment_next_attack.*0\.15 CU per expected placed attack opportunity.*0\.15 × 0\.95 = 0\.1425 CU/s);
+  assert.match(region,/active-turn denial.*reaction denial.*Strength save automatic failure.*Dexterity save automatic failure.*incoming attack Advantage.*\*\*2\.25 CU\*\*/s);
+  assert.match(region,/Stunned does \*\*not\*\* gain Speed 0/);
   assert.match(region,/Zero Control Value from missing context does \*\*not\*\* mean that a mechanic has no value in actual play/);
-  assert.match(region,/Reliability `HOT` result means unusually high delivery.*does not by itself mean.*severity is excessive/s);
+  assert.match(region,/HOT \(\+46\.97%\).*does \*\*not\*\* mean a 46\.97% chance to apply control.*signed distance outside the nearest Battle Master \/ Eldritch Knight Reliability comparator boundary/s);
+  assert.match(region,/High Reliability \+ low Value.*soft control that lands consistently.*Lower Reliability \+ high Value/s);
+  assert.doesNotMatch(region,/Reliability-selected|independent Reliability selection/i);
   for(const path of ["harness/README.md","harness/config/benchmark.json","harness/config/control-value.json","harness/data/control_primitives.json","harness/comparators/fighter-subclasses.json"])assert.ok(region.includes(`](${path})`));
   assert.match(region,/independently expressed analytical abstractions under the reviewed comparator source policy/);assert.doesNotMatch(region,/Eldritch Knight[^\n.]*SRD(?: |-)only/i);
   assert.doesNotMatch(region,/ORDER CHECK|KV DPR|KV control %|KV as % of EK|KV as % of BM/);assert.doesNotMatch(region,/IDEAL \([^)]*%\)|COLD \(\+|HOT \(-/);

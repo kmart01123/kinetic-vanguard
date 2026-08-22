@@ -41,11 +41,11 @@ The front-door damage view is the single-target benchmark: primary-target DPR at
 
 ### Control Value
 
-**Primary control-balance metric:** how much useful control the configured package delivers. Control Value asks: “How much useful control does the configured package deliver?”
-
-Control Value combines delivery probability, persistence or active windows, established attack/save/reaction opportunities, mechanical consequences, and legal repeatable accumulating instantaneous effects. `1.0 CU` is denial of one target's normal Action + Bonus Action for one scored target-turn window. A Control Unit is a project analytical benchmark unit, **not a D&D rules quantity**.
+**Primary control-balance metric:** how much mechanically useful control the selected package delivers. A Control Unit is a project analytical benchmark unit, **not a D&D rules quantity**.
 
 For each target, build, and discipline, the benchmark filters out ineligible packages and selects the legal package with the highest Control Value. An exact CU tie is resolved by higher whole-package Control Reliability, then by ascending stable scenario ID. Control Value reports what that selected package delivers mechanically; CU is the common package-selection methodology for both readouts.
+
+The band table compares Kinetic Vanguard against the Battle Master / Eldritch Knight Control Value envelope.
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
@@ -54,13 +54,61 @@ For each target, build, and discipline, the benchmark filters out ineligible pac
 | 15 | IDEAL | IDEAL | IDEAL | IDEAL |
 | 20 | IDEAL | IDEAL | IDEAL | IDEAL |
 
+### Kinetic Vanguard mean Control Value
+
+This companion table shows the raw Kinetic Vanguard equal-weight roster mean for the same CU-selected packages represented by the band table.
+
+| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
+|---|---|---|---|---|
+| 7 | 0.943 CU | 0.000 CU | 0.324 CU | 0.144 CU |
+| 11 | 1.074 CU | 0.000 CU | 1.407 CU | 0.311 CU |
+| 15 | 1.064 CU | 0.524 CU | 1.462 CU | 0.473 CU |
+| 20 | 1.204 CU | 0.555 CU | 1.672 CU | 0.469 CU |
+
+### How Control Value is calculated
+
+1.0 CU = denial of one target's normal Action + Bonus Action for one scored target-turn window.
+
+The calculation pipeline is: condition/outcome → mechanical primitives → expected delivery/persistence/opportunities → overlap normalization → primitive CU contributions → total Control Value.
+
+General arithmetic: `primitive contribution = frozen weight × expected exposure`.
+
+Expected exposure is where delivery probability, persistence, placed attack, save, and reaction opportunities, and repeatable instantaneous occurrences enter the calculation. Overlap normalization then prevents the same mechanical consequence from being counted twice.
+
+Special transforms keep their maintained meanings. A flat Speed reduction is normalized against the target's benchmark locomotion Speed and capped at complete movement denial; a Speed multiplier prices the lost fraction of Speed. Forced movement contributes 0.02 CU × expected displaced feet. Flat Armor Class and save penalties price penalty points multiplied by established attack or save opportunities. `context_required` and `unsupported` primitives remain visible but contribute 0 CU when the benchmark cannot establish the needed battlefield fact.
+
+#### Worked example: Sap-style next-attack Disadvantage
+
+The maintained next-attack Disadvantage outcome resolves to `offensive_impairment_next_attack`, weighted at 0.15 CU per expected placed attack opportunity.
+
+Illustrative arithmetic: `0.15 × 0.95 = 0.1425 CU`.
+
+The 95% expected exposure is an instructional example, not a published target or roster result. Even at very high delivery, the effect remains low-Control-Value because it impairs only one attack. Repeated legal attack attempts can make this kind of rider highly reliable without making its consequence more severe; Sap is not assumed to be the selected package in every Electrokinesis matrix cell.
+
+#### Worked example: Stunned
+
+For one synthetic, fully active scored window, the maintained condition catalog and frozen scoring config produce these candidate priced pieces:
+
+| Priced piece | Arithmetic | Contribution |
+|---|---|---|
+| active-turn denial | 1.00 × 1.00 | 1.00 CU |
+| reaction denial | 0.20 × 1.00 | 0.20 CU |
+| Strength save automatic failure | 0.40 × 1.00 | 0.40 CU |
+| Dexterity save automatic failure | 0.40 × 1.00 | 0.40 CU |
+| incoming attack Advantage | 0.25 × 1.00 | 0.25 CU |
+| **Total** |  | **2.25 CU** |
+
+Incapacitated supplies the active-turn and reaction pieces; Stunned adds the two save automatic failures and incoming attack Advantage. Stunned does **not** gain Speed 0. Concentration, speech, fall, and other context-sensitive consequences remain diagnostic rather than receiving invented headline CU. This synthetic one-window decomposition teaches the weighting model; it does not claim that every real Stunned benchmark row equals 2.25 CU.
+
 ### Control Reliability — delivery diagnostic
 
 **Secondary diagnostic:** how reliably the Value-selected control package lands and, where applicable, persists. Control Reliability asks: “How reliably is that selected package delivered?”
 
 Configured Reliability metric: **roster-adjusted whole-package control stick %**.
 
-Control Reliability measures delivery probability for the same CU-selected package, not effect severity. It includes legal repeatable attack-delivered opportunities within one ordinary Attack action when the rules permit them, excludes Action Surge from the headline control comparison, and applies the maintained repeat-save and persistence treatment where relevant. A Reliability `HOT` result means unusually high delivery relative to the Reliability comparator envelope; it does not by itself mean that the control's mechanical severity is excessive.
+Control Reliability measures delivery probability for the same CU-selected package, not effect severity. It includes legal repeatable attack-delivered opportunities within one ordinary Attack action when the rules permit them, excludes Action Surge from the headline control comparison, and applies the maintained repeat-save and persistence treatment where relevant.
+
+A cell such as `HOT (+46.97%)` does **not** mean a 46.97% chance to apply control. The percentage is the signed distance outside the nearest Battle Master / Eldritch Knight Reliability comparator boundary. `IDEAL` means the raw value falls within that comparator envelope. `COLD` and `HOT` describe relative comparator position, not an absolute real-play balance verdict.
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
@@ -69,19 +117,30 @@ Control Reliability measures delivery probability for the same CU-selected packa
 | 15 | HOT (+8.81%) | HOT (+5.71%) | HOT (+6.75%) | COLD (-3.09%) |
 | 20 | HOT (+34.32%) | HOT (+14.81%) | HOT (+17.36%) | COLD (-13.92%) |
 
+### Kinetic Vanguard mean Reliability
+
+This companion table shows the raw Kinetic Vanguard whole-package stick probability reconstructed from the same common CU-selected winner audit. The band percentage above is comparator distance, not this raw application probability.
+
+| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
+|---|---|---|---|---|
+| 7 | 96.23% | 0.00% | 92.85% | 96.23% |
+| 11 | 91.04% | 0.00% | 78.52% | 83.75% |
+| 15 | 83.05% | 80.68% | 81.47% | 72.56% |
+| 20 | 99.97% | 85.45% | 87.35% | 57.19% |
+
+### Why Control Value and Reliability can disagree
+
+Control Value asks: “How much mechanically useful control does the selected package deliver?” Reliability asks: “How often does that same selected package land and persist?” Both readouts use the same CU-selected package.
+
+Sap can be very reliable because legal repeated attack opportunities can give a next-attack Disadvantage rider multiple chances to land. Its priced consequence is still only one impaired attack, so its Control Value remains small. Restrained- and Stunned-style control affects much more of a target's turn, movement, attacks, defenses, saves, or reactions, so one successful application can carry substantially more Control Value even when it is less reliable.
+
+**High Reliability + low Value** means soft control that lands consistently. **Lower Reliability + high Value** means harder control that is less dependable but more consequential when it lands. High Reliability alone is not evidence that a feature is too strong, and low Value alone is not evidence that delivery is poor.
+
 ### Control methodology
-
-Control Value follows a transparent pipeline: canonical condition or outcome → mechanical consequences → expected exposure or opportunities → overlap normalization → weighted Control Units. It prices what an effect mechanically does rather than assigning value only from its name.
-
-For example, Stunned decomposes into active-turn denial through Incapacitated, reaction denial, automatic failure of Strength and Dexterity saves, and Advantage on incoming attacks. Stunned does **not** gain Speed 0. Restrained includes complete movement denial plus its separately scored consequences. Forced movement is valued from expected displaced feet, and repeatable legal displacement can accrue multiple successful occurrences.
-
-Value and Reliability can still receive different public bands because they measure different properties of the same selected package. A consequence-aware Value readout can differ from delivery: a soft effect such as Sap can land very reliably without carrying the same mechanical consequence as Stunned or Restrained. Equal stick probabilities do not imply equal control power.
 
 Normalization prevents double counting. Identical boolean consequences do not stack. Complete turn denial suppresses overlapping lesser action or offensive effects; automatic save failure supersedes weaker impairment to the same save; and complete movement denial supersedes overlapping lesser mobility loss. All-attacks Disadvantage suppresses only an explicitly overlapping next-attack Disadvantage share. Correlated flat movement reductions are capped at complete movement denial, while unrelated mechanical consequences remain independently valued.
 
 Some mechanics require battlefield or opportunity facts that this benchmark cannot neutrally establish, such as geometry-dependent restrictions, sight or sense interactions, cliffs or hazards, unspecified ally opportunities, and open-ended behavioral effects. They remain visible in detailed diagnostics but contribute zero CU unless the required context is explicitly established. Zero Control Value from missing context does **not** mean that a mechanic has no value in actual play.
-
-Speed 0 is complete turn movement denial. Flat Speed reductions normalize against the target's maintained unconditional locomotion Speed; conditional or choice movement modes are not assumed, and missing trustworthy movement data fails closed. Forced displacement uses expected feet moved.
 
 Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). Full methodology and reproducibility details are in the [maintained harness guide](harness/README.md), [benchmark configuration](harness/config/benchmark.json), [frozen Control Value configuration](harness/config/control-value.json), [control primitive catalog](harness/data/control_primitives.json), and [comparator assumptions](harness/comparators/fighter-subclasses.json).
 

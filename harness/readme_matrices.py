@@ -20,7 +20,12 @@ from .comparison_report import (
     matrix_row,
 )
 from .control_harness import run as run_control
-from .control_value import DEFAULT_PRIMITIVES, DEFAULT_SCORING
+from .control_value import (
+    DEFAULT_PRIMITIVES,
+    DEFAULT_SCORING,
+    decompose_label,
+    load_scoring_config,
+)
 from .damage_harness import run as run_damage
 from .model import (
     DEFAULT_CATALOG,
@@ -745,6 +750,229 @@ def render_control_table(
     return _heat_table(control_rows, disciplines)
 
 
+def _raw_kv_table(
+    rows: Sequence[MatrixRow],
+    disciplines: Sequence[str],
+    *,
+    decimals: int,
+    suffix: str,
+) -> str:
+    grouped: dict[tuple[str, str], MatrixRow] = {}
+    for row in rows:
+        key = (row["Level"], row["Discipline"])
+        if key in grouped:
+            raise MatrixSyncError(f"README raw KV table has duplicate row {key}")
+        grouped[key] = row
+    levels = tuple(int(value) for value in load_config()["methodology"]["levels"])
+    expected = {
+        (str(level), discipline) for level in levels for discipline in disciplines
+    }
+    _key_difference(set(grouped), expected, "README raw KV table")
+    table_rows: list[list[str]] = []
+    for level in levels:
+        rendered = [str(level)]
+        for discipline in disciplines:
+            try:
+                value = float(grouped[(str(level), discipline)]["KV"])
+            except (KeyError, ValueError) as error:
+                raise MatrixSyncError(
+                    f"README raw KV table has non-numeric KV for {(level, discipline)}"
+                ) from error
+            if not math.isfinite(value):
+                raise MatrixSyncError(
+                    f"README raw KV table has non-finite KV for {(level, discipline)}"
+                )
+            rendered.append(f"{value:.{decimals}f}{suffix}")
+        table_rows.append(rendered)
+    headers = (
+        "Level",
+        *(discipline.replace("_", " ").title() for discipline in disciplines),
+    )
+    return _markdown_table(headers, table_rows)
+
+
+def render_raw_kv_value_table(
+    value_rows: Sequence[MatrixRow],
+    disciplines: Sequence[str] = README_DISCIPLINES,
+) -> str:
+    """Render raw KV CU from validated public Value rows."""
+    return _raw_kv_table(value_rows, disciplines, decimals=3, suffix=" CU")
+
+
+def render_raw_kv_reliability_table(
+    reliability_rows: Sequence[MatrixRow],
+    disciplines: Sequence[str] = README_DISCIPLINES,
+) -> str:
+    """Render raw KV stick probability from CU-winner-aligned Reliability rows."""
+    return _raw_kv_table(reliability_rows, disciplines, decimals=2, suffix="%")
+
+
+def _scoring_rule(
+    scoring: dict[str, object], primitive_id: str, transform: str
+) -> tuple[str, float]:
+    rules = scoring["rules"]
+    if not isinstance(rules, dict) or primitive_id not in rules:
+        raise MatrixSyncError(
+            f"README Control Value explanation has no scoring rule for {primitive_id}"
+        )
+    rule = rules[primitive_id]
+    if not isinstance(rule, dict) or rule.get("transform") != transform:
+        raise MatrixSyncError(
+            f"README Control Value explanation has stale transform for {primitive_id}"
+        )
+    weight = rule.get("nominal_weight")
+    if isinstance(weight, bool) or not isinstance(weight, (int, float)):
+        raise MatrixSyncError(
+            f"README Control Value explanation has invalid weight for {primitive_id}"
+        )
+    return transform, float(weight)
+
+
+def render_control_value_explanation() -> str:
+    """Render reader-facing CU arithmetic from the maintained scoring contracts."""
+    scoring = load_scoring_config()
+    definition = scoring["control_unit"]
+    if not isinstance(definition, str):
+        raise MatrixSyncError("README Control Unit definition is not text")
+
+    sap_specs = decompose_label("attack_disadvantage", attack_scope="next_attack")
+    if (
+        len(sap_specs) != 1
+        or sap_specs[0].primitive_id != "offensive_impairment_next_attack"
+        or sap_specs[0].pricing_status != "candidate"
+    ):
+        raise MatrixSyncError("README Sap example no longer matches the primitive catalog")
+    _, sap_weight = _scoring_rule(
+        scoring, sap_specs[0].primitive_id, "linear_expected_exposure"
+    )
+    sap_exposure = 0.95
+    sap_total = sap_weight * sap_exposure
+
+    stunned_specs = tuple(
+        spec for spec in decompose_label("stunned") if spec.pricing_status == "candidate"
+    )
+    expected_stunned = (
+        (
+            "active_turn_denial",
+            (("denied_turn_options", "action_and_bonus_action"),),
+        ),
+        ("reaction_denial", ()),
+        ("save_auto_failure", (("save_ability", "strength"),)),
+        ("save_auto_failure", (("save_ability", "dexterity"),)),
+        ("defensive_attack_advantage", ()),
+    )
+    actual_stunned = tuple(
+        (spec.primitive_id, spec.qualifiers) for spec in stunned_specs
+    )
+    if actual_stunned != expected_stunned:
+        raise MatrixSyncError(
+            "README Stunned example no longer matches the priced candidate catalog"
+        )
+    stunned_labels = (
+        "active-turn denial",
+        "reaction denial",
+        "Strength save automatic failure",
+        "Dexterity save automatic failure",
+        "incoming attack Advantage",
+    )
+    stunned_rows: list[tuple[str, str, str]] = []
+    stunned_total = 0.0
+    for label, spec in zip(stunned_labels, stunned_specs, strict=True):
+        _, weight = _scoring_rule(
+            scoring, spec.primitive_id, "linear_expected_exposure"
+        )
+        stunned_total += weight
+        stunned_rows.append((label, f"{weight:.2f} × 1.00", f"{weight:.2f} CU"))
+
+    _scoring_rule(
+        scoring, "mobility_loss_feet", "bounded_fraction_of_benchmark_locomotion"
+    )
+    _scoring_rule(scoring, "speed_multiplier", "remaining_speed_fraction")
+    _, displacement_weight = _scoring_rule(
+        scoring, "forced_displacement", "expected_displaced_feet"
+    )
+    _scoring_rule(
+        scoring, "flat_armor_class_penalty", "points_times_placed_opportunities"
+    )
+    _scoring_rule(
+        scoring, "flat_save_roll_penalty", "points_times_placed_opportunities"
+    )
+
+    stunned_table = _markdown_table(
+        ("Priced piece", "Arithmetic", "Contribution"),
+        (*stunned_rows, ("**Total**", "", f"**{stunned_total:.2f} CU**")),
+    )
+    return "\n".join(
+        (
+            "### How Control Value is calculated",
+            "",
+            definition,
+            "",
+            (
+                "The calculation pipeline is: condition/outcome → mechanical primitives → "
+                "expected delivery/persistence/opportunities → overlap normalization → "
+                "primitive CU contributions → total Control Value."
+            ),
+            "",
+            "General arithmetic: `primitive contribution = frozen weight × expected exposure`.",
+            "",
+            (
+                "Expected exposure is where delivery probability, persistence, placed attack, "
+                "save, and reaction opportunities, and repeatable instantaneous occurrences "
+                "enter the calculation. Overlap normalization then prevents the same mechanical "
+                "consequence from being counted twice."
+            ),
+            "",
+            (
+                "Special transforms keep their maintained meanings. A flat Speed reduction is "
+                "normalized against the target's benchmark locomotion Speed and capped at "
+                "complete movement denial; a Speed multiplier prices the lost fraction of Speed. "
+                f"Forced movement contributes {displacement_weight:.2f} CU × expected displaced "
+                "feet. Flat Armor Class and save penalties price penalty points multiplied by "
+                "established attack or save opportunities. `context_required` and `unsupported` "
+                "primitives remain visible but contribute 0 CU when the benchmark cannot establish "
+                "the needed battlefield fact."
+            ),
+            "",
+            "#### Worked example: Sap-style next-attack Disadvantage",
+            "",
+            (
+                "The maintained next-attack Disadvantage outcome resolves to "
+                f"`{sap_specs[0].primitive_id}`, weighted at {sap_weight:.2f} CU per expected "
+                "placed attack opportunity."
+            ),
+            "",
+            f"Illustrative arithmetic: `{sap_weight:.2f} × {sap_exposure:.2f} = {sap_total:.4f} CU`.",
+            "",
+            (
+                "The 95% expected exposure is an instructional example, not a published target "
+                "or roster result. Even at very high delivery, the effect remains low-Control-Value "
+                "because it impairs only one attack. Repeated legal attack attempts can make this "
+                "kind of rider highly reliable without making its consequence more severe; Sap is "
+                "not assumed to be the selected package in every Electrokinesis matrix cell."
+            ),
+            "",
+            "#### Worked example: Stunned",
+            "",
+            (
+                "For one synthetic, fully active scored window, the maintained condition catalog "
+                "and frozen scoring config produce these candidate priced pieces:"
+            ),
+            "",
+            stunned_table,
+            "",
+            (
+                "Incapacitated supplies the active-turn and reaction pieces; Stunned adds the two "
+                "save automatic failures and incoming attack Advantage. Stunned does **not** gain "
+                "Speed 0. Concentration, speech, fall, and other context-sensitive consequences "
+                "remain diagnostic rather than receiving invented headline CU. This synthetic "
+                "one-window decomposition teaches the weighting model; it does not claim that "
+                f"every real Stunned benchmark row equals {stunned_total:.2f} CU."
+            ),
+        )
+    )
+
+
 def release_state_line(readme: str, rules_version: str) -> str:
     published_lines = re.findall(r"^- Current published release:.*$", readme, re.MULTILINE)
     development_lines = re.findall(r"^- Current development line:.*$", readme, re.MULTILINE)
@@ -834,18 +1062,9 @@ def render_balance_region(
             "### Control Value",
             "",
             (
-                "**Primary control-balance metric:** how much useful control the configured "
-                "package delivers. Control Value asks: “How much useful control does the "
-                "configured package deliver?”"
-            ),
-            "",
-            (
-                "Control Value combines delivery probability, persistence or active windows, "
-                "established attack/save/reaction opportunities, mechanical consequences, and "
-                "legal repeatable accumulating instantaneous effects. `1.0 CU` is denial of "
-                "one target's normal Action + Bonus Action for one scored target-turn window. "
-                "A Control Unit is a project analytical benchmark unit, **not a D&D rules "
-                "quantity**."
+                "**Primary control-balance metric:** how much mechanically useful control the "
+                "selected package delivers. A Control Unit is a project analytical benchmark "
+                "unit, **not a D&D rules quantity**."
             ),
             "",
             (
@@ -856,7 +1075,23 @@ def render_balance_region(
                 "mechanically; CU is the common package-selection methodology for both readouts."
             ),
             "",
+            (
+                "The band table compares Kinetic Vanguard against the Battle Master / Eldritch "
+                "Knight Control Value envelope."
+            ),
+            "",
             render_control_table(value_rows, disciplines),
+            "",
+            "### Kinetic Vanguard mean Control Value",
+            "",
+            (
+                "This companion table shows the raw Kinetic Vanguard equal-weight roster mean for "
+                "the same CU-selected packages represented by the band table."
+            ),
+            "",
+            render_raw_kv_value_table(value_rows, disciplines),
+            "",
+            render_control_value_explanation(),
             "",
             "### Control Reliability — delivery diagnostic",
             "",
@@ -874,39 +1109,56 @@ def render_balance_region(
                 "includes legal repeatable attack-delivered opportunities within one ordinary "
                 "Attack action when the rules permit them, excludes Action Surge from the "
                 "headline control comparison, and applies the maintained repeat-save and "
-                "persistence treatment where relevant. A Reliability `HOT` result means "
-                "unusually high delivery relative to the Reliability comparator envelope; it "
-                "does not by itself mean that the control's mechanical severity is excessive."
+                "persistence treatment where relevant."
+            ),
+            "",
+            (
+                "A cell such as `HOT (+46.97%)` does **not** mean a 46.97% chance to apply "
+                "control. The percentage is the signed distance outside the nearest Battle "
+                "Master / Eldritch Knight Reliability comparator boundary. `IDEAL` means the "
+                "raw value falls within that comparator envelope. `COLD` and `HOT` describe "
+                "relative comparator position, not an absolute real-play balance verdict."
             ),
             "",
             render_control_table(reliability_rows, disciplines),
             "",
+            "### Kinetic Vanguard mean Reliability",
+            "",
+            (
+                "This companion table shows the raw Kinetic Vanguard whole-package stick "
+                "probability reconstructed from the same common CU-selected winner audit. The "
+                "band percentage above is comparator distance, not this raw application "
+                "probability."
+            ),
+            "",
+            render_raw_kv_reliability_table(reliability_rows, disciplines),
+            "",
+            "### Why Control Value and Reliability can disagree",
+            "",
+            (
+                "Control Value asks: “How much mechanically useful control does the selected "
+                "package deliver?” Reliability asks: “How often does that same selected package "
+                "land and persist?” Both readouts use the same CU-selected package."
+            ),
+            "",
+            (
+                "Sap can be very reliable because legal repeated attack opportunities can give "
+                "a next-attack Disadvantage rider multiple chances to land. Its priced consequence "
+                "is still only one impaired attack, so its Control Value remains small. "
+                "Restrained- and Stunned-style control affects much more of a target's turn, "
+                "movement, attacks, defenses, saves, or reactions, so one successful application "
+                "can carry substantially more Control Value even when it is less reliable."
+            ),
+            "",
+            (
+                "**High Reliability + low Value** means soft control that lands consistently. "
+                "**Lower Reliability + high Value** means harder control that is less dependable "
+                "but more consequential when it lands. High Reliability alone is not evidence "
+                "that a feature is too strong, and low Value alone is not evidence that delivery "
+                "is poor."
+            ),
+            "",
             "### Control methodology",
-            "",
-            (
-                "Control Value follows a transparent pipeline: canonical condition or outcome "
-                "→ mechanical consequences → expected exposure or opportunities → overlap "
-                "normalization → weighted Control Units. It prices what an effect mechanically "
-                "does rather than assigning value only from its name."
-            ),
-            "",
-            (
-                "For example, Stunned decomposes into active-turn denial through Incapacitated, "
-                "reaction denial, automatic failure of Strength and Dexterity saves, and "
-                "Advantage on incoming attacks. Stunned does **not** gain Speed 0. Restrained "
-                "includes complete movement denial plus its separately scored consequences. "
-                "Forced movement is valued from expected displaced feet, and repeatable legal "
-                "displacement can accrue multiple successful occurrences."
-            ),
-            "",
-            (
-                "Value and Reliability can still receive different public bands because they "
-                "measure different properties of the same selected package. A consequence-aware "
-                "Value readout can differ from delivery: "
-                "a soft effect such as Sap can land very reliably without carrying the same "
-                "mechanical consequence as Stunned or Restrained. Equal stick probabilities "
-                "do not imply equal control power."
-            ),
             "",
             (
                 "Normalization prevents double counting. Identical boolean consequences do not "
@@ -927,13 +1179,6 @@ def render_balance_region(
                 "contribute zero CU unless the required context is explicitly established. Zero "
                 "Control Value from missing context does **not** mean that a mechanic has no value "
                 "in actual play."
-            ),
-            "",
-            (
-                "Speed 0 is complete turn movement denial. Flat Speed reductions normalize "
-                "against the target's maintained unconditional locomotion Speed; conditional or "
-                "choice movement modes are not assumed, and missing trustworthy movement data "
-                "fails closed. Forced displacement uses expected feet moved."
             ),
             "",
             (
