@@ -67,7 +67,15 @@ This companion table shows the raw Kinetic Vanguard equal-weight roster mean for
 
 ### Kinetic Vanguard control catalog
 
-This authority-driven catalog keeps every ordinary Mastery and exact rider tier separate. CU and delivery are equal-weight means across the complete maintained roster for that level; ineligible targets remain in the denominator with zero contribution. Coverage is eligible targets / total targets. `Partial` means the form has both retained priced and retained context-required or unsupported consequences; suppressed duplicate or weaker primitives do not create that label.
+This authority-driven catalog keeps every ordinary Mastery and exact rider tier separate. Each rider row is its whole legal control package: retained Kinetic Mastery plus any rider-specific control. An on-hit rider with no separate control therefore publishes its retained control-bearing Mastery; standalone moves, Graze, and features that replace Mastery do not inherit control.
+
+**Cell format:** `CU · delivery · eligible/roster`
+
+Example: `0.143 CU · 95.00% · 12/12` means `0.143 CU` average Control Value and `95.00%` average initial control-delivery probability across the full benchmark roster at that fighter level; `12/12` means the exact form is legally eligible against all 12 targets. The ratio is **eligible targets / roster targets**.
+
+If a cell says `9/12`, only 9 of 12 targets are legally eligible. The other 3 are not removed: they remain in the roster denominator and contribute `0 CU` and `0% delivery`. This makes maintained size, creature-type, immunity/effect-eligibility, and other explicit legality restrictions reduce the roster-wide means instead of being hidden by eligible-only averaging. Eligibility is not a save result, hit count, successful application count, or probability.
+
+`Partial` means retained priced and retained context-required or unsupported consequences coexist; suppressed duplicate or weaker primitives do not create that label. `Unpriced` retains measurable delivery and eligibility without reporting zero CU. `No modeled control` means `0.000 CU` and no control delivery (`—`). `N/A` means the exact form is unavailable at that level.
 
 #### Cryokinesis
 
@@ -126,7 +134,7 @@ This authority-driven catalog keeps every ordinary Mastery and exact rider tier 
 | Explosion/Implosion — T0 — secondary | N/A | 1.063 CU · 70.93% · 12/12 | 1.092 CU · 68.21% · 11/11 | 1.233 CU · 73.69% · 12/12 |
 | Explosion/Implosion — T1 — primary | N/A | 1.108 CU · 89.57% · 12/12 | 0.975 CU · 86.63% · 11/11 | 0.994 CU · 79.04% · 12/12 |
 | Explosion/Implosion — T1 — secondary | N/A | 1.393 CU · 70.93% · 12/12 | 1.400 CU · 68.21% · 11/11 | 1.636 CU · 73.69% · 12/12 |
-| Explosion/Implosion — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Explosion/Implosion — T2 | N/A | 0.125 CU · 62.50% · 9/12 | 0.064 CU · 31.82% · 4/11 | 0.041 CU · 20.42% · 3/12 |
 | Telekinetic Slam — T0 | N/A | N/A | 0.082 CU · 40.95% · 11/11 | 0.083 CU · 41.25% · 12/12 |
 | Telekinetic Slam — T1 | N/A | N/A | 0.164 CU · 40.95% · 11/11 | 0.165 CU · 41.25% · 12/12 |
 | Telekinetic Slam — T2 | N/A | N/A | 0.487 CU · 100.00% · 11/11 | 0.489 CU · 100.00% · 12/12 |
@@ -139,14 +147,14 @@ This authority-driven catalog keeps every ordinary Mastery and exact rider tier 
 | Rider / form | L7 | L11 | L15 | L20 |
 |---|---|---|---|---|
 | Kinetic Mastery | 0.144 CU · 96.23% · 12/12 | 0.149 CU · 99.51% · 12/12 | 0.149 CU · 99.50% · 11/11 | 0.150 CU · 99.84% · 12/12 |
-| Static Discharge — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Static Discharge — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Static Discharge — T0 | 0.144 CU · 96.23% · 12/12 | 0.149 CU · 99.51% · 12/12 | 0.149 CU · 99.50% · 11/11 | 0.150 CU · 99.84% · 12/12 |
+| Static Discharge — T1 | 0.144 CU · 96.23% · 12/12 | 0.149 CU · 99.51% · 12/12 | 0.149 CU · 99.50% · 11/11 | 0.150 CU · 99.84% · 12/12 |
 | Static Discharge — T2 | N/A | 0.208 CU · 83.75% · 12/12 | 0.210 CU · 84.09% · 11/11 | 0.209 CU · 82.08% · 12/12 |
-| Branching Bolt — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Branching Bolt — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Branching Bolt — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Electron Burst — T0 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Electron Burst — T1 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Branching Bolt — T0 | 0.144 CU · 96.23% · 12/12 | 0.149 CU · 99.51% · 12/12 | 0.149 CU · 99.50% · 11/11 | 0.150 CU · 99.84% · 12/12 |
+| Branching Bolt — T1 | 0.144 CU · 96.23% · 12/12 | 0.149 CU · 99.51% · 12/12 | 0.149 CU · 99.50% · 11/11 | 0.150 CU · 99.84% · 12/12 |
+| Branching Bolt — T2 | N/A | 0.126 CU · 83.75% · 12/12 | 0.126 CU · 84.09% · 11/11 | 0.123 CU · 82.08% · 12/12 |
+| Electron Burst — T0 | N/A | 0.149 CU · 99.51% · 12/12 | 0.149 CU · 99.50% · 11/11 | 0.150 CU · 99.84% · 12/12 |
+| Electron Burst — T1 | N/A | 0.149 CU · 99.51% · 12/12 | 0.149 CU · 99.50% · 11/11 | 0.150 CU · 99.84% · 12/12 |
 | Electron Burst — T2 | N/A | 0.311 CU · 83.75% · 12/12 | 0.315 CU · 84.09% · 11/11 | 0.316 CU · 82.08% · 12/12 |
 | Forked Lightning — T0 | N/A | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
 | Forked Lightning — T1 | N/A | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |

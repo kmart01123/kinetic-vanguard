@@ -1522,20 +1522,26 @@ class SmokeAndBoundaryTests(unittest.TestCase):
     def test_publication_only_control_scenario_never_enters_headline_selection(self)->None:
         with tempfile.TemporaryDirectory() as directory:
             control=run_control(
-                DEFAULT_AUTHORITY,Path(directory),{15},1,
+                DEFAULT_AUTHORITY,Path(directory),{7},1,
                 write_headline=False,profile="headline",write_shadow=True,
                 publication_scenarios=(
-                    {"discipline_id":"pyrokinesis","entity_id":"advanced_mind_lock","tier":2,"target_role":"primary"},
+                    {"discipline_id":"electrokinesis","entity_id":"branching_bolt","tier":0,"target_role":"primary","mastery_only":True},
                 ),
             )
             with control["value_paths"]["scenario_detail"].open(encoding="utf-8") as stream:
                 scenarios=list(csv.DictReader(stream))
-            extra=[row for row in scenarios if row["Build"]=="kinetic_vanguard" and row["Discipline"]=="pyrokinesis" and row["Scenario"]=="advanced_mind_lock:T2"]
+            extra=[row for row in scenarios if row["Build"]=="kinetic_vanguard" and row["Discipline"]=="electrokinesis" and row["Scenario"]=="branching_bolt:T0"]
             self.assertEqual(len(extra),1)
             self.assertIn("Retained Candidate Rows",extra[0]);self.assertIn("Retained Context/Unsupported Rows",extra[0])
+            mastery=next(row for row in scenarios if row["Build"]=="kinetic_vanguard" and row["Discipline"]=="electrokinesis" and row["Scenario"]=="mastery:sap")
+            self.assertEqual((extra[0]["Control Value CU"],extra[0]["Whole-package control stick %"],extra[0]["Eligible"]),(mastery["Control Value CU"],mastery["Whole-package control stick %"],mastery["Eligible"]))
             with control["value_paths"]["selection_audit"].open(encoding="utf-8") as stream:
                 winners=list(csv.DictReader(stream))
-            self.assertFalse(any(row["Selected Scenario"]=="advanced_mind_lock:T2" for row in winners))
+            self.assertFalse(any(row["Selected Scenario"]=="branching_bolt:T0" for row in winners))
+            model=AuthorityModel.load();config=load_config();target=load_targets(profile="headline",levels={7},limit=1)[0]
+            with self.assertRaisesRegex(ValueError,"lacks canonical control mechanics"):_kv_scenario(model,config,target,"electrokinesis","branching_bolt",0)
+            published=_kv_scenario(model,config,target,"electrokinesis","branching_bolt",0,publication_mastery_only=True)
+            self.assertEqual((published["scenario"],published["whole"]),("branching_bolt:T0",float(extra[0]["Whole-package control stick %"])))
 
 
 if __name__=="__main__":unittest.main()

@@ -155,7 +155,7 @@ class ControlCatalogForm:
     minimum_level: int
     feature_minimum_level: int
     tier_minimum_level: int
-    modeled_control: bool
+    package_kind: str
     scenario_id: str
 
     @property
@@ -165,6 +165,14 @@ class ControlCatalogForm:
     @property
     def is_mastery(self) -> bool:
         return self.entity_id is None
+
+    @property
+    def modeled_control(self) -> bool:
+        return self.package_kind != NO_MODELED_CONTROL
+
+    @property
+    def mastery_only(self) -> bool:
+        return self.package_kind == "mastery_only"
 
     def available(self, level: int) -> bool:
         return level >= self.minimum_level
@@ -275,7 +283,7 @@ def build_kv_control_catalog(
                 minimum_level=supported_minimum,
                 feature_minimum_level=supported_minimum,
                 tier_minimum_level=supported_minimum,
-                modeled_control=bool(mastery["control_outcomes"]),
+                package_kind=("mastery" if mastery["control_outcomes"] else NO_MODELED_CONTROL),
                 scenario_id=f"mastery:{kind}",
             )
         )
@@ -307,6 +315,7 @@ def build_kv_control_catalog(
                     f"Canonical tier T{tier} has no Overload minimum level"
                 )
             control = controls.get(tier)
+            package_kind = _catalog_package_kind(feature, control, model.disciplines[discipline_id]["mastery"])
             roles = ("primary",)
             if control is not None:
                 declared_roles = {
@@ -331,7 +340,7 @@ def build_kv_control_catalog(
                         minimum_level=max(feature_minimum, tier_minimums[tier]),
                         feature_minimum_level=feature_minimum,
                         tier_minimum_level=tier_minimums[tier],
-                        modeled_control=control is not None,
+                        package_kind=package_kind,
                         scenario_id=f"{feature['entity_id']}:T{tier}{suffix}",
                     )
                 )
@@ -354,6 +363,23 @@ def build_kv_control_catalog(
             ),
         )
     )
+
+
+def _catalog_package_kind(
+    feature: Mapping[str, object],
+    control: Mapping[str, object] | None,
+    mastery: Mapping[str, object],
+) -> str:
+    """Classify the whole legal control package for one exact rider tier."""
+    if control is not None:
+        return "rider_control"
+    retains_control_mastery = (
+        feature.get("damage_delivery") == "on_hit_rider"
+        and feature.get("activation") == "on_hit"
+        and not feature.get("replaces_mastery", False)
+        and bool(mastery.get("control_outcomes"))
+    )
+    return "mastery_only" if retains_control_mastery else NO_MODELED_CONTROL
 
 
 def publication_only_kv_scenarios(
@@ -398,6 +424,7 @@ def publication_only_kv_scenarios(
             "entity_id": form.entity_id,
             "tier": form.tier,
             "target_role": form.target_role,
+            "mastery_only": form.mastery_only,
         }
         for form in catalog
         if form.identity in canonical and form.identity not in configured
@@ -1245,11 +1272,36 @@ def render_kv_control_catalog(
         "",
         (
             "This authority-driven catalog keeps every ordinary Mastery and exact rider tier "
-            "separate. CU and delivery are equal-weight means across the complete maintained "
-            "roster for that level; ineligible targets remain in the denominator with zero "
-            "contribution. Coverage is eligible targets / total targets. `Partial` means the "
-            "form has both retained priced and retained context-required or unsupported "
-            "consequences; suppressed duplicate or weaker primitives do not create that label."
+            "separate. Each rider row is its whole legal control package: retained Kinetic "
+            "Mastery plus any rider-specific control. An on-hit rider with no separate control "
+            "therefore publishes its retained control-bearing Mastery; standalone moves, Graze, "
+            "and features that replace Mastery do not inherit control."
+        ),
+        "",
+        "**Cell format:** `CU · delivery · eligible/roster`",
+        "",
+        (
+            "Example: `0.143 CU · 95.00% · 12/12` means `0.143 CU` average Control "
+            "Value and `95.00%` average initial control-delivery probability across the full "
+            "benchmark roster at that fighter level; `12/12` means the exact form is legally "
+            "eligible against all 12 targets. The ratio is **eligible targets / roster targets**."
+        ),
+        "",
+        (
+            "If a cell says `9/12`, only 9 of 12 targets are legally eligible. The other 3 are "
+            "not removed: they remain in the roster denominator and contribute `0 CU` and `0% "
+            "delivery`. This makes maintained size, creature-type, immunity/effect-eligibility, "
+            "and other explicit legality restrictions reduce the roster-wide means instead of "
+            "being hidden by eligible-only averaging. Eligibility is not a save result, hit "
+            "count, successful application count, or probability."
+        ),
+        "",
+        (
+            "`Partial` means retained priced and retained context-required or unsupported "
+            "consequences coexist; suppressed duplicate or weaker primitives do not create that "
+            "label. `Unpriced` retains measurable delivery and eligibility without reporting zero "
+            "CU. `No modeled control` means `0.000 CU` and no control delivery (`—`). `N/A` means "
+            "the exact form is unavailable at that level."
         ),
     ]
     labels = {

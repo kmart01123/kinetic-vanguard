@@ -229,9 +229,27 @@ def _mastery_shadow_component(mastery:dict[str,Any],discipline_id:str,applicatio
     return component
 
 
-def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int,target_role:str="primary")->dict[str,Any]:
+def _mastery_only_kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int,target_role:str)->dict[str,Any]:
+    feature=model.feature(entity_id,target.level,tier)
+    if any(int(item["tier"])==tier for item in feature.get("control_tiers",[])):raise ValueError(f"Publication-only Mastery package {entity_id} Tier {tier} already has canonical rider control")
+    mastery=model.disciplines[discipline_id]["mastery"]
+    if feature.get("damage_delivery")!="on_hit_rider" or feature.get("activation")!="on_hit" or feature.get("replaces_mastery") or not mastery["control_outcomes"]:raise ValueError(f"Publication-only Mastery package {entity_id} Tier {tier} is not canonically retained")
+    if target_role!="primary":raise ValueError("Publication-only Mastery packages support only the primary target role")
+    profile=config["kv_profile"];psi_modifier=int(profile["psionic_ability_modifier"]);bonus=model.kv_attack_bonus(target.level,psi_modifier)+int(profile["archery_attack_bonus"]);probabilities=attack_probabilities(bonus,target.ac);reach=probabilities[1]+probabilities[2]
+    eligible=not mastery.get("maximum_size") or target_is_eligible(target,mastery["maximum_size"])
+    mastery_single=reach if eligible else 0.0;psi_cost=int(feature["psi_cost"])
+    whole=_repeat_rider_probability(model,config,target.level,tier,psi_cost,mastery_single)
+    occurrences=_repeat_rider_expected_occurrences(model,config,target.level,tier,psi_cost,mastery_single)
+    component=_mastery_shadow_component(mastery,discipline_id,whole,occurrences)
+    return {"build":discipline_id,"scenario":f"{entity_id}:T{tier}","eligible":eligible,"reach":100*reach,"named":0.0,"mastery":100*whole,"whole":100*whole,"after_repeats":100*whole,"shadow_components":[component]}
+
+
+def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int,target_role:str="primary",*,publication_mastery_only:bool=False)->dict[str,Any]:
     feature=model.feature(entity_id,target.level,tier);control=next((item for item in feature.get("control_tiers",[]) if int(item["tier"])==tier),None)
-    if control is None:raise ValueError(f"Configured control scenario {entity_id} Tier {tier} lacks canonical control mechanics")
+    if control is None:
+        if publication_mastery_only:return _mastery_only_kv_scenario(model,config,target,discipline_id,entity_id,tier,target_role)
+        raise ValueError(f"Configured control scenario {entity_id} Tier {tier} lacks canonical control mechanics")
+    if publication_mastery_only:raise ValueError(f"Publication-only Mastery package {entity_id} Tier {tier} has canonical rider control")
     eligible=target_is_eligible(target,control.get("maximum_size"),control.get("required_creature_type"))
     profile=config["kv_profile"];psi_modifier=int(profile["psionic_ability_modifier"]);bonus=model.kv_attack_bonus(target.level,psi_modifier)+int(profile["archery_attack_bonus"])
     probabilities=attack_probabilities(bonus,target.ac);reach=probabilities[1]+probabilities[2] if control.get("hit_gated") else 1.0;failed=0.0;repeat_failed=0.0
@@ -367,10 +385,10 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
     if publication_scenarios and not write_shadow:raise ValueError("Publication-only scenarios require Control Value scenario detail")
     publication_by_discipline:dict[str,list[dict[str,Any]]]=defaultdict(list);publication_identities:set[tuple[str,str,int,str]]=set()
     for index,entry in enumerate(publication_scenarios):
-        if set(entry)!={"discipline_id","entity_id","tier","target_role"}:raise ValueError(f"Publication-only scenario {index} has invalid keys")
+        if set(entry)!={"discipline_id","entity_id","tier","target_role","mastery_only"} or not isinstance(entry["mastery_only"],bool):raise ValueError(f"Publication-only scenario {index} has invalid keys")
         identity=(str(entry["discipline_id"]),str(entry["entity_id"]),int(entry["tier"]),str(entry["target_role"]))
         if identity in publication_identities:raise ValueError(f"Duplicate publication-only scenario identity: {identity}")
-        publication_identities.add(identity);publication_by_discipline[identity[0]].append({"entity_id":identity[1],"tier":identity[2],"target_role":identity[3]})
+        publication_identities.add(identity);publication_by_discipline[identity[0]].append({"entity_id":identity[1],"tier":identity[2],"target_role":identity[3],"mastery_only":entry["mastery_only"]})
 
     def value_row(target:Target,build:str,discipline:str,value:dict[str,Any],*,collect_detail:bool)->dict[str,Any]:
         metadata={"Build":build,"Discipline":discipline,"Level":target.level,"Target":target.name,"Scenario":value["scenario"]}
@@ -416,7 +434,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
             if write_shadow:
                 value_audit.append(selected);value_envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":winner["Control Value CU"],"Eldritch Knight":comparator_winners["eldritch_knight"]["Control Value CU"],"Battle Master":comparator_winners["battle_master"]["Control Value CU"]})
                 for entry in publication_by_discipline.get(discipline,[]):
-                    try:publication_value=_kv_scenario(model,config,target,discipline,entry["entity_id"],entry["tier"],entry["target_role"])
+                    try:publication_value=_kv_scenario(model,config,target,discipline,entry["entity_id"],entry["tier"],entry["target_role"],publication_mastery_only=entry["mastery_only"])
                     except Exception as error:
                         if "unavailable" in str(error):continue
                         raise
