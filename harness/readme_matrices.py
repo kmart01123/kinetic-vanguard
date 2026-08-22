@@ -52,6 +52,7 @@ from .model import (
 BEGIN_MARKER = "<!-- BEGIN GENERATED BALANCE MATRICES -->"
 END_MARKER = "<!-- END GENERATED BALANCE MATRICES -->"
 README_PATH = PROJECT_ROOT / "README.md"
+CONTROL_DETAIL_PATH = PROJECT_ROOT / "CONTROL_BENCHMARK_DETAIL.md"
 DAMAGE_SECTION_START = "The front-door damage view is the single-target benchmark:"
 DAMAGE_SCOPES = ("primary-target DPR", "aggregate cluster DPR")
 README_DISCIPLINES = (
@@ -231,6 +232,36 @@ def atomic_replace_text(path: Path, expected: str, replacement: str) -> None:
         if path.read_text(encoding="utf-8") != expected:
             raise MatrixSyncError(f"Refusing to overwrite concurrently changed file: {path}")
         temporary_path.replace(path)
+    finally:
+        if temporary_path is not None:
+            temporary_path.unlink(missing_ok=True)
+
+
+def atomic_create_text(path: Path, replacement: str) -> None:
+    """Create a generated file without overwriting a concurrently created path."""
+    if path.exists():
+        raise MatrixSyncError(f"Refusing to overwrite concurrently created file: {path}")
+    temporary_path: Path | None = None
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="",
+            prefix=f".{path.name}.",
+            dir=path.parent,
+            delete=False,
+        ) as stream:
+            stream.write(replacement)
+            stream.flush()
+            os.fsync(stream.fileno())
+            temporary_path = Path(stream.name)
+        temporary_path.chmod(0o644)
+        try:
+            os.link(temporary_path, path)
+        except FileExistsError as error:
+            raise MatrixSyncError(
+                f"Refusing to overwrite concurrently created file: {path}"
+            ) from error
     finally:
         if temporary_path is not None:
             temporary_path.unlink(missing_ok=True)
@@ -2060,13 +2091,85 @@ def release_state_line(readme: str, rules_version: str) -> str:
     )
 
 
+def render_control_benchmark_detail(
+    reliability_rows: Sequence[MatrixRow],
+    value_rows: Sequence[MatrixRow],
+    catalog: Sequence[ControlCatalogForm],
+    catalog_cells: Mapping[tuple[str, str, int], ControlCatalogCell],
+    disciplines: Sequence[str] = README_DISCIPLINES,
+) -> str:
+    """Render the exhaustive control companion from the validated publication run."""
+    levels = tuple(int(value) for value in load_config()["methodology"]["levels"])
+    return "\n".join(
+        (
+            "# Kinetic Vanguard Control Benchmark Detail",
+            "",
+            (
+                "This is the exhaustive public companion to the README control benchmark. "
+                "Control Value measures the mechanical consequence of the selected package; "
+                "Control Reliability measures delivery and persistence of that same "
+                "CU-selected package. Damage analysis is outside this page's scope."
+            ),
+            "",
+            "## Current Kinetic Vanguard results",
+            "",
+            "### Kinetic Vanguard mean Control Value",
+            "",
+            (
+                "This table shows the raw Kinetic Vanguard equal-weight roster mean for the "
+                "packages selected by Control Value."
+            ),
+            "",
+            render_raw_kv_value_table(value_rows, disciplines),
+            "",
+            "### Kinetic Vanguard mean Reliability",
+            "",
+            (
+                "This table shows the raw whole-package delivery/persistence probability for "
+                "those same CU-selected winners."
+            ),
+            "",
+            render_raw_kv_reliability_table(reliability_rows, disciplines),
+            "",
+            "## Exact-form catalog and effective coverage",
+            "",
+            render_kv_control_catalog(catalog, catalog_cells, levels, disciplines),
+            "",
+            render_control_coverage_exceptions(catalog, catalog_cells, levels),
+            "",
+            render_benchmark_roster_methodology(),
+            "",
+            "## Control Value methodology",
+            "",
+            render_control_value_explanation(),
+            "",
+            "## Reproducibility and maintained sources",
+            "",
+            "- [Kinetic Vanguard rules](KineticVanguard.yaml)",
+            "- [Harness methodology](harness/README.md)",
+            "- [Benchmark configuration](harness/config/benchmark.json)",
+            "- [Control Value scoring configuration](harness/config/control-value.json)",
+            "- [Control primitive catalog](harness/data/control_primitives.json)",
+            "- [Comparator assumptions](harness/comparators/fighter-subclasses.json)",
+            "",
+            (
+                "Creature benchmark data is SRD 5.2.1. Maintained comparator mechanics are "
+                "independently expressed analytical abstractions under the reviewed comparator "
+                "source policy; they are not Kinetic Vanguard rules. "
+                + COMPARATOR_NOTICE
+                + " See [LICENSE.md](LICENSE.md) for component boundaries and "
+                "[NOTICE.md](NOTICE.md) for attribution and notices."
+            ),
+            "",
+        )
+    )
+
+
 def render_balance_region(
     readme: str,
     damage_section: str,
     reliability_rows: Sequence[MatrixRow],
     value_rows: Sequence[MatrixRow],
-    catalog: Sequence[ControlCatalogForm],
-    catalog_cells: Mapping[tuple[str, str, int], ControlCatalogCell],
     rules_version: str,
     profile: str,
     disciplines: Sequence[str] = README_DISCIPLINES,
@@ -2140,22 +2243,10 @@ def render_balance_region(
             "",
             render_raw_kv_value_table(value_rows, disciplines),
             "",
-            render_kv_control_catalog(
-                catalog,
-                catalog_cells,
-                tuple(int(value) for value in load_config()["methodology"]["levels"]),
-                disciplines,
+            (
+                "[Full control benchmark, catalog, and methodology]"
+                "(CONTROL_BENCHMARK_DETAIL.md)"
             ),
-            "",
-            render_control_coverage_exceptions(
-                catalog,
-                catalog_cells,
-                tuple(int(value) for value in load_config()["methodology"]["levels"]),
-            ),
-            "",
-            render_benchmark_roster_methodology(),
-            "",
-            render_control_value_explanation(),
             "",
             "### Control Reliability — delivery diagnostic",
             "",
@@ -2353,6 +2444,20 @@ def generate_authoritative_rows(
         )
 
 
+def stale_control_publication_paths(
+    readme: str,
+    synchronized_readme: str,
+    detail: str | None,
+    synchronized_detail: str,
+) -> tuple[str, ...]:
+    stale = []
+    if synchronized_readme != readme:
+        stale.append("README.md")
+    if synchronized_detail != detail:
+        stale.append("CONTROL_BENCHMARK_DETAIL.md")
+    return tuple(stale)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser(
         description="Synchronize README balance matrices with the exact analytical harness"
@@ -2371,6 +2476,11 @@ def main() -> None:
         parser.error("--workers must be positive")
 
     readme = README_PATH.read_text(encoding="utf-8")
+    detail = (
+        CONTROL_DETAIL_PATH.read_text(encoding="utf-8")
+        if CONTROL_DETAIL_PATH.exists()
+        else None
+    )
     generated_region_span(readme)
     if args.control_only:
         damage_section = extract_damage_section(readme)
@@ -2409,29 +2519,55 @@ def main() -> None:
         damage_section,
         reliability_public_rows,
         value_public_rows,
-        catalog,
-        catalog_cells,
         rules_version,
         profile,
         disciplines,
     )
     synchronized = replace_generated_region(readme, region)
+    synchronized_detail = render_control_benchmark_detail(
+        reliability_public_rows,
+        value_public_rows,
+        catalog,
+        catalog_cells,
+        disciplines,
+    )
     if README_PATH.read_text(encoding="utf-8") != readme:
         raise MatrixSyncError("README changed during analytical evaluation; retry synchronization")
+    current_detail = (
+        CONTROL_DETAIL_PATH.read_text(encoding="utf-8")
+        if CONTROL_DETAIL_PATH.exists()
+        else None
+    )
+    if current_detail != detail:
+        raise MatrixSyncError(
+            "CONTROL_BENCHMARK_DETAIL.md changed during analytical evaluation; "
+            "retry synchronization"
+        )
 
     if args.check:
-        if synchronized != readme:
+        stale = stale_control_publication_paths(
+            readme, synchronized, detail, synchronized_detail
+        )
+        if stale:
             command = (
                 "npm run readme:control"
                 if args.control_only
                 else "npm run readme:benchmarks"
             )
             raise SystemExit(
-                f"README balance benchmark snapshot is stale; run {command}"
+                f"Control publication is stale ({', '.join(stale)}); run {command}"
             )
-        print(f"README balance benchmark snapshot is synchronized for v{rules_version}")
+        print(f"Control publication is synchronized for v{rules_version}")
         return
 
+    if synchronized_detail != detail:
+        if detail is None:
+            atomic_create_text(CONTROL_DETAIL_PATH, synchronized_detail)
+        else:
+            atomic_replace_text(CONTROL_DETAIL_PATH, detail, synchronized_detail)
+        print(f"Updated CONTROL_BENCHMARK_DETAIL.md for v{rules_version}")
+    else:
+        print(f"CONTROL_BENCHMARK_DETAIL.md was already current for v{rules_version}")
     if synchronized != readme:
         atomic_replace_text(README_PATH, readme, synchronized)
         print(f"Updated README balance benchmark snapshot for v{rules_version}")

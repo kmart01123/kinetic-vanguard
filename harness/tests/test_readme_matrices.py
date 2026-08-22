@@ -43,6 +43,7 @@ from harness.readme_matrices import (
     README_DISCIPLINES,
     _markdown_table,
     _public_result,
+    atomic_create_text,
     atomic_replace_text,
     build_kv_control_catalog,
     catalog_rider_scenarios,
@@ -54,6 +55,7 @@ from harness.readme_matrices import (
     render_balance_region,
     render_benchmark_roster_methodology,
     render_control_value_explanation,
+    render_control_benchmark_detail,
     render_control_normalization_methodology,
     render_control_primitive_pricing_rubric,
     render_control_coverage_exceptions,
@@ -66,6 +68,7 @@ from harness.readme_matrices import (
     render_movement_methodology,
     render_unpriced_primitive_menu,
     replace_generated_region,
+    stale_control_publication_paths,
     validate_authoritative_rows,
     validate_control_catalog_scenarios,
     validate_damage_rows,
@@ -403,14 +406,12 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             )
         )
         arguments=(
-            readme,damage_section,control_rows,value_public_rows,catalog,catalog_cells,
-            "14.1.0",DEFAULT_PROFILE,
+            readme,damage_section,control_rows,value_public_rows,"14.1.0",DEFAULT_PROFILE,
         )
         rendered=render_balance_region(*arguments)
         reordered=render_balance_region(
             readme,damage_section,list(reversed(control_rows)),
-            list(reversed(value_public_rows)),catalog,catalog_cells,
-            "14.1.0",DEFAULT_PROFILE,
+            list(reversed(value_public_rows)),"14.1.0",DEFAULT_PROFILE,
         )
         self.assertEqual(rendered,reordered)
         self.assertTrue(rendered.startswith(BEGIN_MARKER))
@@ -420,17 +421,6 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             "### Single-Target Damage",
             "### Control Value",
             "### Kinetic Vanguard mean Control Value",
-            "### Kinetic Vanguard control catalog",
-            "### Control coverage exceptions",
-            "### Benchmark roster, effectiveness, and coverage",
-            "### How Control Value is calculated",
-            "#### Worked example: Sap-style next-attack Disadvantage",
-            "#### Worked example: Stunned",
-            "### Control Unit primitive pricing rubric",
-            "#### Maintained transform definitions",
-            "#### How movement control is normalized",
-            "### Context-dependent and unpriced control primitives",
-            "### Control Value normalization rules",
             "### Control Reliability — delivery diagnostic",
             "### Kinetic Vanguard mean Reliability",
             "### Why Control Value and Reliability can disagree",
@@ -443,18 +433,8 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             "**Secondary diagnostic:**",
             "selects the legal package with the highest Control Value",
             "same CU-selected package",
-            "ineffective target remains in the aggregate denominator",
-            "**Cell format:** `CU · delivery · effective/roster`",
-            "Each Kinetic Mastery row reports only that Mastery's control",
-            "each rider/tier/role row reports only control produced by that exact rider form",
-            "Columns are benchmark snapshots at Fighter levels 7, 11, 15, and 20",
-            "[Benchmark roster, effectiveness, and coverage](#benchmark-roster-effectiveness-and-coverage)",
-            "1.0 CU = denial of one target's normal Action + Bonus Action for one scored target-turn window.",
-            "0.15 × 0.95 = 0.1425 CU",
-            "**2.25 CU**",
             "does **not** mean a 46.97% chance to apply control",
             "soft control that lands consistently",
-            "Stunned does **not** gain Speed 0",
             "does **not** mean that a mechanic has no value in actual play",
         ):
             self.assertIn(required,rendered)
@@ -463,9 +443,44 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
         self.assertIn(COMPARATOR_NOTICE,rendered)
         self.assertIn("LICENSE.md",rendered)
         self.assertIn("NOTICE.md",rendered)
-        self.assertEqual(rendered.count("| Rider / form | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |"),4)
-        self.assertIn("Forked Lightning — T2 — primary",rendered)
-        self.assertIn("Forked Lightning — T2 — secondary",rendered)
+        self.assertEqual(
+            rendered.count(
+                "[Full control benchmark, catalog, and methodology]"
+                "(CONTROL_BENCHMARK_DETAIL.md)"
+            ),
+            1,
+        )
+        for detailed_heading in (
+            "### Kinetic Vanguard control catalog",
+            "### Control coverage exceptions",
+            "### Control Unit primitive pricing rubric",
+            "### Context-dependent and unpriced control primitives",
+            "### Control Value normalization rules",
+        ):
+            self.assertNotIn(detailed_heading, rendered)
+
+        detail = render_control_benchmark_detail(
+            control_rows,
+            value_public_rows,
+            catalog,
+            catalog_cells,
+        )
+        self.assertTrue(detail.startswith("# Kinetic Vanguard Control Benchmark Detail\n"))
+        self.assertEqual(
+            detail.count("| Rider / form | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |"),
+            4,
+        )
+        self.assertIn("Forked Lightning — T2 — primary", detail)
+        self.assertIn("Forked Lightning — T2 — secondary", detail)
+        for required in (
+            "**Cell format:** `CU · delivery · effective/roster`",
+            "0.15 × 0.95 = 0.1425 CU",
+            "**2.25 CU**",
+            "Stunned does **not** gain Speed 0",
+            "[Kinetic Vanguard rules](KineticVanguard.yaml)",
+            "[Comparator assumptions](harness/comparators/fighter-subclasses.json)",
+        ):
+            self.assertIn(required, detail)
 
     def test_raw_companion_tables_use_validated_common_winner_rows(self) -> None:
         _, reliability_rows, value_rows, value_audit_rows, _ = _full_authoritative_rows()
@@ -1087,14 +1102,8 @@ class ReadmeMatrixDelimiterTests(unittest.TestCase):
             reliability_rows,
             value_rows,
             value_audit_rows,
-            value_scenario_rows,
+            _,
         ) = _full_authoritative_rows()
-        catalog = build_kv_control_catalog()
-        catalog_cells = validate_control_catalog_scenarios(
-            value_scenario_rows,
-            catalog,
-            tuple(int(value) for value in load_config()["methodology"]["levels"]),
-        )
         rules_version, profile, _, disciplines = validate_reliability_rows(
             reliability_rows
         )
@@ -1103,8 +1112,6 @@ class ReadmeMatrixDelimiterTests(unittest.TestCase):
             original_damage,
             reliability_rows,
             validate_value_rows(value_rows, value_audit_rows),
-            catalog,
-            catalog_cells,
             rules_version,
             profile,
             disciplines,
@@ -1179,6 +1186,15 @@ class ReadmeMatrixReleaseStateTests(unittest.TestCase):
 
 
 class ReadmeMatrixAtomicWriteTests(unittest.TestCase):
+    def test_atomic_create_refuses_existing_destination(self) -> None:
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "CONTROL_BENCHMARK_DETAIL.md"
+            atomic_create_text(path, "generated\n")
+            self.assertEqual(path.read_text(encoding="utf-8"), "generated\n")
+            with self.assertRaisesRegex(MatrixSyncError, "concurrently created"):
+                atomic_create_text(path, "replacement\n")
+            self.assertEqual(path.read_text(encoding="utf-8"), "generated\n")
+
     def test_atomic_replace_refuses_stale_expected_source(self) -> None:
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "README.md"
@@ -1421,6 +1437,30 @@ class ControlValueRowValidationTests(unittest.TestCase):
 
 
 class ControlOnlyGenerationTests(unittest.TestCase):
+    def test_check_mode_detects_stale_or_missing_detail_and_stale_readme(self) -> None:
+        self.assertEqual(
+            stale_control_publication_paths(
+                "readme", "readme", "detail", "detail"
+            ),
+            (),
+        )
+        self.assertEqual(
+            stale_control_publication_paths(
+                "readme", "readme", "stale detail", "detail"
+            ),
+            ("CONTROL_BENCHMARK_DETAIL.md",),
+        )
+        self.assertEqual(
+            stale_control_publication_paths("readme", "readme", None, "detail"),
+            ("CONTROL_BENCHMARK_DETAIL.md",),
+        )
+        self.assertEqual(
+            stale_control_publication_paths(
+                "stale readme", "readme", "detail", "detail"
+            ),
+            ("README.md",),
+        )
+
     def test_control_only_runs_control_once_and_never_runs_damage(self) -> None:
         paths = {
             "paths": {"csv": Path("reliability.csv")},
