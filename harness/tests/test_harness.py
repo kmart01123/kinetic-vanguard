@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
-from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
+from harness.control_harness import _battle_master_retry_probability,_catalog_rider_scenario,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
 from harness.control_value import DEFAULT_PRIMITIVES,DEFAULT_SCORING
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_battle_master_dpr_for_schedule,_battle_master_result,_comparator_dpr,_comparator_score,_eldritch_knight_result,_kv_dpr,_psionic_apex_packet,_rider_values,_strike_packet_options,run as run_damage
 from harness.ek_damage_planner import EKDamagePlanner,EKScore,EKState,chromatic_orb_duplicate_probability
@@ -1503,8 +1503,8 @@ class SmokeAndBoundaryTests(unittest.TestCase):
     def test_control_value_detail_writes_common_transparent_outputs(self)->None:
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);control=run_control(DEFAULT_AUTHORITY,root,{20},1,write_headline=False,profile="headline",write_shadow=True)
-            self.assertEqual(control["shadow_rows"],569);self.assertEqual(control["value_scenario_rows"],186);self.assertEqual(control["value_audit_rows"],6);self.assertEqual(control["value_matrix_rows"],4)
-            self.assertEqual(set(control["value_paths"]),{"scenario_detail","selection_audit","matrix"});self.assertTrue(all(path.is_file() for path in control["value_paths"].values()))
+            self.assertEqual(control["shadow_rows"],569);self.assertEqual(control["value_scenario_rows"],186);self.assertEqual(control["catalog_scenario_rows"],4);self.assertEqual(control["value_audit_rows"],6);self.assertEqual(control["value_matrix_rows"],4)
+            self.assertEqual(set(control["value_paths"]),{"scenario_detail","catalog_scenario_detail","selection_audit","matrix"});self.assertTrue(all(path.is_file() for path in control["value_paths"].values()))
             with control["shadow_path"].open(encoding="utf-8") as stream:
                 rows=list(csv.DictReader(stream))
             self.assertTrue(rows);self.assertTrue(all(row["Pricing Status"] in {"candidate","context_required","unsupported"} for row in rows))
@@ -1519,29 +1519,37 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             self.assertEqual({identity(row) for row in reliability_audit},{identity(row) for row in value_audit})
             self.assertNotIn("reliability_scenario_ids",load_comparators()["control"]["eldritch_knight"])
 
-    def test_publication_only_control_scenario_never_enters_headline_selection(self)->None:
+    def test_rider_only_catalog_evidence_is_isolated_from_headline_selection(self)->None:
         with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);baseline_root=root/"baseline";catalog_root=root/"catalog"
+            baseline=run_control(DEFAULT_AUTHORITY,baseline_root,{7},1,write_headline=True,profile="headline",write_shadow=True)
             control=run_control(
-                DEFAULT_AUTHORITY,Path(directory),{7},1,
-                write_headline=False,profile="headline",write_shadow=True,
+                DEFAULT_AUTHORITY,catalog_root,{7},1,
+                write_headline=True,profile="headline",write_shadow=True,
                 publication_scenarios=(
-                    {"discipline_id":"electrokinesis","entity_id":"branching_bolt","tier":0,"target_role":"primary","mastery_only":True},
+                    {"discipline_id":"cryokinesis","entity_id":"snow_chains","tier":0,"target_role":"primary"},
                 ),
             )
-            with control["value_paths"]["scenario_detail"].open(encoding="utf-8") as stream:
+            self.assertEqual(baseline["paths"]["csv"].read_bytes(),control["paths"]["csv"].read_bytes())
+            self.assertEqual(baseline["value_paths"]["matrix"].read_bytes(),control["value_paths"]["matrix"].read_bytes())
+            self.assertEqual(baseline["value_paths"]["selection_audit"].read_bytes(),control["value_paths"]["selection_audit"].read_bytes())
+            with control["value_paths"]["catalog_scenario_detail"].open(encoding="utf-8") as stream:
                 scenarios=list(csv.DictReader(stream))
-            extra=[row for row in scenarios if row["Build"]=="kinetic_vanguard" and row["Discipline"]=="electrokinesis" and row["Scenario"]=="branching_bolt:T0"]
+            extra=[row for row in scenarios if row["Build"]=="kinetic_vanguard" and row["Discipline"]=="cryokinesis" and row["Scenario"]=="snow_chains:T0"]
             self.assertEqual(len(extra),1)
             self.assertIn("Retained Candidate Rows",extra[0]);self.assertIn("Retained Context/Unsupported Rows",extra[0])
-            mastery=next(row for row in scenarios if row["Build"]=="kinetic_vanguard" and row["Discipline"]=="electrokinesis" and row["Scenario"]=="mastery:sap")
-            self.assertEqual((extra[0]["Control Value CU"],extra[0]["Whole-package control stick %"],extra[0]["Eligible"]),(mastery["Control Value CU"],mastery["Whole-package control stick %"],mastery["Eligible"]))
             with control["value_paths"]["selection_audit"].open(encoding="utf-8") as stream:
                 winners=list(csv.DictReader(stream))
-            self.assertFalse(any(row["Selected Scenario"]=="branching_bolt:T0" for row in winners))
+            with baseline["value_paths"]["selection_audit"].open(encoding="utf-8") as stream:
+                baseline_winners=list(csv.DictReader(stream))
+            self.assertEqual(winners,baseline_winners)
             model=AuthorityModel.load();config=load_config();target=load_targets(profile="headline",levels={7},limit=1)[0]
+            full=_kv_scenario(model,config,target,"cryokinesis","snow_chains",0);rider=_catalog_rider_scenario(model,config,target,"cryokinesis","snow_chains",0);mastery=_mastery_scenario(model,config,target,"cryokinesis")
+            self.assertGreater(full["mastery"],0.0);self.assertEqual(rider["mastery"],0.0);self.assertEqual(rider["whole"],full["named"]);self.assertTrue(all(not component["source_effect"].startswith("mastery:") for component in rider["shadow_components"]));self.assertTrue(all(component["source_effect"].startswith("mastery:") for component in mastery["shadow_components"]))
+            projection=deepcopy(model.projection);next(item for item in projection["disciplines"] if item["id"]=="cryokinesis")["mastery"]["control_outcomes"]=[]
+            without_mastery=_catalog_rider_scenario(AuthorityModel(projection),config,target,"cryokinesis","snow_chains",0)
+            self.assertEqual((rider["named"],rider["whole"],rider["shadow_components"]),(without_mastery["named"],without_mastery["whole"],without_mastery["shadow_components"]))
             with self.assertRaisesRegex(ValueError,"lacks canonical control mechanics"):_kv_scenario(model,config,target,"electrokinesis","branching_bolt",0)
-            published=_kv_scenario(model,config,target,"electrokinesis","branching_bolt",0,publication_mastery_only=True)
-            self.assertEqual((published["scenario"],published["whole"]),("branching_bolt:T0",float(extra[0]["Whole-package control stick %"])))
 
 
 if __name__=="__main__":unittest.main()

@@ -155,7 +155,7 @@ class ControlCatalogForm:
     minimum_level: int
     feature_minimum_level: int
     tier_minimum_level: int
-    package_kind: str
+    modeled_control: bool
     scenario_id: str
 
     @property
@@ -165,14 +165,6 @@ class ControlCatalogForm:
     @property
     def is_mastery(self) -> bool:
         return self.entity_id is None
-
-    @property
-    def modeled_control(self) -> bool:
-        return self.package_kind != NO_MODELED_CONTROL
-
-    @property
-    def mastery_only(self) -> bool:
-        return self.package_kind == "mastery_only"
 
     def available(self, level: int) -> bool:
         return level >= self.minimum_level
@@ -283,7 +275,7 @@ def build_kv_control_catalog(
                 minimum_level=supported_minimum,
                 feature_minimum_level=supported_minimum,
                 tier_minimum_level=supported_minimum,
-                package_kind=("mastery" if mastery["control_outcomes"] else NO_MODELED_CONTROL),
+                modeled_control=bool(mastery["control_outcomes"]),
                 scenario_id=f"mastery:{kind}",
             )
         )
@@ -315,7 +307,6 @@ def build_kv_control_catalog(
                     f"Canonical tier T{tier} has no Overload minimum level"
                 )
             control = controls.get(tier)
-            package_kind = _catalog_package_kind(feature, control, model.disciplines[discipline_id]["mastery"])
             roles = ("primary",)
             if control is not None:
                 declared_roles = {
@@ -340,7 +331,7 @@ def build_kv_control_catalog(
                         minimum_level=max(feature_minimum, tier_minimums[tier]),
                         feature_minimum_level=feature_minimum,
                         tier_minimum_level=tier_minimums[tier],
-                        package_kind=package_kind,
+                        modeled_control=control is not None,
                         scenario_id=f"{feature['entity_id']}:T{tier}{suffix}",
                     )
                 )
@@ -365,69 +356,19 @@ def build_kv_control_catalog(
     )
 
 
-def _catalog_package_kind(
-    feature: Mapping[str, object],
-    control: Mapping[str, object] | None,
-    mastery: Mapping[str, object],
-) -> str:
-    """Classify the whole legal control package for one exact rider tier."""
-    if control is not None:
-        return "rider_control"
-    retains_control_mastery = (
-        feature.get("damage_delivery") == "on_hit_rider"
-        and feature.get("activation") == "on_hit"
-        and not feature.get("replaces_mastery", False)
-        and bool(mastery.get("control_outcomes"))
-    )
-    return "mastery_only" if retains_control_mastery else NO_MODELED_CONTROL
-
-
-def publication_only_kv_scenarios(
+def catalog_rider_scenarios(
     catalog: Sequence[ControlCatalogForm],
-    scenario_sets: Mapping[str, object],
 ) -> tuple[dict[str, object], ...]:
-    """Return authority forms absent from headline selection without mutating it."""
-    canonical = {
-        form.identity: form
-        for form in catalog
-        if form.modeled_control and not form.is_mastery
-    }
-    configured: set[tuple[str, str]] = set()
-    for discipline_id, raw_entries in scenario_sets.items():
-        if not isinstance(raw_entries, list):
-            raise MatrixSyncError(
-                f"Headline KV scenarios for {discipline_id} are not a list"
-            )
-        for entry in raw_entries:
-            if not isinstance(entry, dict):
-                raise MatrixSyncError("Headline KV scenario entry is not an object")
-            roles = entry.get("target_roles", ["primary"])
-            for tier in entry.get("tiers", []):
-                for role in roles:
-                    suffix = f":{role}" if role != "primary" else ""
-                    identity = (
-                        str(discipline_id),
-                        f"{entry.get('entity_id')}:T{int(tier)}{suffix}",
-                    )
-                    if identity in configured:
-                        raise MatrixSyncError(
-                            f"Headline scenario inventory duplicates exact form {identity}"
-                        )
-                    if identity not in canonical:
-                        raise MatrixSyncError(
-                            f"Headline scenario inventory has unknown exact form {identity}"
-                        )
-                    configured.add(identity)
+    """Return every rider form whose own authority declares modeled control."""
     return tuple(
         {
             "discipline_id": form.discipline_id,
             "entity_id": form.entity_id,
             "tier": form.tier,
             "target_role": form.target_role,
-            "mastery_only": form.mastery_only,
         }
         for form in catalog
-        if form.identity in canonical and form.identity not in configured
+        if form.modeled_control and not form.is_mastery
     )
 
 
@@ -1271,11 +1212,17 @@ def render_kv_control_catalog(
         "### Kinetic Vanguard control catalog",
         "",
         (
-            "This authority-driven catalog keeps every ordinary Mastery and exact rider tier "
-            "separate. Each rider row is its whole legal control package: retained Kinetic "
-            "Mastery plus any rider-specific control. An on-hit rider with no separate control "
-            "therefore publishes its retained control-bearing Mastery; standalone moves, Graze, "
-            "and features that replace Mastery do not inherit control."
+            "This authority-driven catalog is a decomposition view: Kinetic Mastery and every "
+            "exact rider tier are separate control sources. Each Kinetic Mastery row reports "
+            "only that Mastery's control; each rider/tier/role row reports only control produced "
+            "by that exact rider form. Mastery that may legally coexist during actual play is "
+            "excluded from rider CU and delivery. The headline discipline benchmark above "
+            "remains a separate whole-legal-package view."
+        ),
+        "",
+        (
+            "Columns are benchmark snapshots at Fighter levels 7, 11, 15, and 20. Each "
+            "column uses the complete maintained roster for that level."
         ),
         "",
         "**Cell format:** `CU · delivery · eligible/roster`",
@@ -1302,6 +1249,12 @@ def render_kv_control_catalog(
             "label. `Unpriced` retains measurable delivery and eligibility without reporting zero "
             "CU. `No modeled control` means `0.000 CU` and no control delivery (`—`). `N/A` means "
             "the exact form is unavailable at that level."
+        ),
+        "",
+        (
+            "Full denominator and state methodology: "
+            "[Benchmark roster, eligibility, and coverage]"
+            "(#benchmark-roster-eligibility-and-coverage)"
         ),
     ]
     labels = {
@@ -1336,11 +1289,75 @@ def render_kv_control_catalog(
                 f"#### {labels[discipline_id]}",
                 "",
                 _markdown_table(
-                    ("Rider / form", *(f"L{level}" for level in levels)), rows
+                    ("Rider / form", *(f"Fighter {level}" for level in levels)), rows
                 ),
             )
         )
     return "\n".join(sections)
+
+
+def render_benchmark_roster_methodology() -> str:
+    """Render the maintained full-roster aggregation and catalog state contract."""
+    return "\n".join(
+        (
+            "### Benchmark roster, eligibility, and coverage",
+            "",
+            (
+                "Every Fighter level uses the complete maintained headline roster for that "
+                "level. `eligible/roster` means **legally eligible targets / total maintained "
+                "benchmark targets**."
+            ),
+            "",
+            (
+                "`12/12` means the exact form is legally applicable to all 12 roster targets. "
+                "`9/12` means it is legally applicable to 9 of 12 roster targets. Eligibility "
+                "is not a success roll or delivery probability. In particular, `12/12` does "
+                "not mean 12 successful saves, 12 successful attacks, 100% delivery, or 12 "
+                "successful applications."
+            ),
+            "",
+            (
+                "An ineligible target remains in the aggregate denominator. For a priced or "
+                "partially priced form, that target contributes `CU = 0` and `delivery = 0%`."
+            ),
+            "",
+            "`mean CU = sum(per-target CU across the complete roster) / total roster targets`",
+            "",
+            (
+                "`mean delivery = sum(per-target initial-delivery probability across the "
+                "complete roster) / total roster targets`"
+            ),
+            "",
+            (
+                "Do not divide only by eligible targets. Eligible-only averaging would hide "
+                "practical restrictions and could make a narrowly applicable control look "
+                "stronger or more reliable than it is across the maintained benchmark roster."
+            ),
+            "",
+            (
+                "Restrictions that may reduce coverage are maintained facts such as maximum "
+                "creature size, required creature type, condition or effect immunity where it "
+                "makes the package ineffective, and other explicit scenario-legality "
+                "requirements."
+            ),
+            "",
+            (
+                "**Instructional example (not a published scenario):** if a form has 80% "
+                "delivery against 9 legal targets and is ineligible against 3, its full-roster "
+                "delivery mean is `(9 × 0.80 + 3 × 0) / 12 = 0.60 = 60%`. The eligible-only "
+                "80% is not the roster-wide result."
+            ),
+            "",
+            (
+                "`Priced` and `Partial` use the complete-roster denominator above. `Unpriced` "
+                "can still show coverage and independently measurable delivery, but its CU "
+                "field remains `Unpriced`, not zero. `No modeled control` is `0.000 CU` because "
+                "that catalog source declares no modeled control, with delivery `—` because no "
+                "control establishment is measured. `N/A` means the exact form is unavailable "
+                "at that Fighter level and does not participate in that level's aggregate."
+            ),
+        )
+    )
 
 
 def _scoring_rule(
@@ -1636,6 +1653,8 @@ def render_balance_region(
                 disciplines,
             ),
             "",
+            render_benchmark_roster_methodology(),
+            "",
             render_control_value_explanation(),
             "",
             "### Control Reliability — delivery diagnostic",
@@ -1769,9 +1788,7 @@ def _control_publication_rows(
     root: Path, levels: set[int]
 ) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
     catalog = build_kv_control_catalog()
-    publication_scenarios = publication_only_kv_scenarios(
-        catalog, load_config()["control_matrix"]["kv_scenarios"]
-    )
+    publication_scenarios = catalog_rider_scenarios(catalog)
     control = run_control(
         DEFAULT_AUTHORITY,
         root,
@@ -1787,7 +1804,7 @@ def _control_publication_rows(
         read_matrix_rows(control["paths"]["csv"]),
         read_matrix_rows(control["value_paths"]["matrix"]),
         read_matrix_rows(control["value_paths"]["selection_audit"]),
-        read_matrix_rows(control["value_paths"]["scenario_detail"]),
+        read_matrix_rows(control["value_paths"]["catalog_scenario_detail"]),
     )
 
 

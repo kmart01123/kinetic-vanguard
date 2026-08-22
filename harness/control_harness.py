@@ -229,27 +229,16 @@ def _mastery_shadow_component(mastery:dict[str,Any],discipline_id:str,applicatio
     return component
 
 
-def _mastery_only_kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int,target_role:str)->dict[str,Any]:
-    feature=model.feature(entity_id,target.level,tier)
-    if any(int(item["tier"])==tier for item in feature.get("control_tiers",[])):raise ValueError(f"Publication-only Mastery package {entity_id} Tier {tier} already has canonical rider control")
-    mastery=model.disciplines[discipline_id]["mastery"]
-    if feature.get("damage_delivery")!="on_hit_rider" or feature.get("activation")!="on_hit" or feature.get("replaces_mastery") or not mastery["control_outcomes"]:raise ValueError(f"Publication-only Mastery package {entity_id} Tier {tier} is not canonically retained")
-    if target_role!="primary":raise ValueError("Publication-only Mastery packages support only the primary target role")
-    profile=config["kv_profile"];psi_modifier=int(profile["psionic_ability_modifier"]);bonus=model.kv_attack_bonus(target.level,psi_modifier)+int(profile["archery_attack_bonus"]);probabilities=attack_probabilities(bonus,target.ac);reach=probabilities[1]+probabilities[2]
-    eligible=not mastery.get("maximum_size") or target_is_eligible(target,mastery["maximum_size"])
-    mastery_single=reach if eligible else 0.0;psi_cost=int(feature["psi_cost"])
-    whole=_repeat_rider_probability(model,config,target.level,tier,psi_cost,mastery_single)
-    occurrences=_repeat_rider_expected_occurrences(model,config,target.level,tier,psi_cost,mastery_single)
-    component=_mastery_shadow_component(mastery,discipline_id,whole,occurrences)
-    return {"build":discipline_id,"scenario":f"{entity_id}:T{tier}","eligible":eligible,"reach":100*reach,"named":0.0,"mastery":100*whole,"whole":100*whole,"after_repeats":100*whole,"shadow_components":[component]}
+def _catalog_rider_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int,target_role:str="primary")->dict[str,Any]:
+    """Project rider-only catalog evidence without changing headline packages."""
+    package=_kv_scenario(model,config,target,discipline_id,entity_id,tier,target_role)
+    rider_components=[component for component in package["shadow_components"] if not str(component["source_effect"]).startswith("mastery:")]
+    return {**package,"mastery":0.0,"whole":package["named"],"after_repeats":package["named"],"shadow_components":rider_components}
 
 
-def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int,target_role:str="primary",*,publication_mastery_only:bool=False)->dict[str,Any]:
+def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int,target_role:str="primary")->dict[str,Any]:
     feature=model.feature(entity_id,target.level,tier);control=next((item for item in feature.get("control_tiers",[]) if int(item["tier"])==tier),None)
-    if control is None:
-        if publication_mastery_only:return _mastery_only_kv_scenario(model,config,target,discipline_id,entity_id,tier,target_role)
-        raise ValueError(f"Configured control scenario {entity_id} Tier {tier} lacks canonical control mechanics")
-    if publication_mastery_only:raise ValueError(f"Publication-only Mastery package {entity_id} Tier {tier} has canonical rider control")
+    if control is None:raise ValueError(f"Configured control scenario {entity_id} Tier {tier} lacks canonical control mechanics")
     eligible=target_is_eligible(target,control.get("maximum_size"),control.get("required_creature_type"))
     profile=config["kv_profile"];psi_modifier=int(profile["psionic_ability_modifier"]);bonus=model.kv_attack_bonus(target.level,psi_modifier)+int(profile["archery_attack_bonus"])
     probabilities=attack_probabilities(bonus,target.ac);reach=probabilities[1]+probabilities[2] if control.get("hit_gated") else 1.0;failed=0.0;repeat_failed=0.0
@@ -380,15 +369,15 @@ def _select_control_value(rows:list[dict[str,Any]])->dict[str,Any]:
 
 
 def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,write_detail:bool=True,write_headline:bool=True,profile:str=DEFAULT_PROFILE,write_shadow:bool=False,publication_scenarios:Sequence[dict[str,Any]]=())->dict[str,Any]:
-    model=AuthorityModel.load(authority);config=load_config();comparators=load_comparators();targets=load_targets(profile=profile,levels=levels,limit=target_limit);detail=[];audit=[];envelopes=[];shadow_detail=[];value_scenarios=[];value_audit=[];value_envelopes=[]
+    model=AuthorityModel.load(authority);config=load_config();comparators=load_comparators();targets=load_targets(profile=profile,levels=levels,limit=target_limit);detail=[];audit=[];envelopes=[];shadow_detail=[];value_scenarios=[];catalog_scenarios=[];value_audit=[];value_envelopes=[]
     scenario_sets=config["control_matrix"]["kv_scenarios"]
     if publication_scenarios and not write_shadow:raise ValueError("Publication-only scenarios require Control Value scenario detail")
     publication_by_discipline:dict[str,list[dict[str,Any]]]=defaultdict(list);publication_identities:set[tuple[str,str,int,str]]=set()
     for index,entry in enumerate(publication_scenarios):
-        if set(entry)!={"discipline_id","entity_id","tier","target_role","mastery_only"} or not isinstance(entry["mastery_only"],bool):raise ValueError(f"Publication-only scenario {index} has invalid keys")
+        if set(entry)!={"discipline_id","entity_id","tier","target_role"}:raise ValueError(f"Publication-only scenario {index} has invalid keys")
         identity=(str(entry["discipline_id"]),str(entry["entity_id"]),int(entry["tier"]),str(entry["target_role"]))
         if identity in publication_identities:raise ValueError(f"Duplicate publication-only scenario identity: {identity}")
-        publication_identities.add(identity);publication_by_discipline[identity[0]].append({"entity_id":identity[1],"tier":identity[2],"target_role":identity[3],"mastery_only":entry["mastery_only"]})
+        publication_identities.add(identity);publication_by_discipline[identity[0]].append({"entity_id":identity[1],"tier":identity[2],"target_role":identity[3]})
 
     def value_row(target:Target,build:str,discipline:str,value:dict[str,Any],*,collect_detail:bool)->dict[str,Any]:
         metadata={"Build":build,"Discipline":discipline,"Level":target.level,"Target":target.name,"Scenario":value["scenario"]}
@@ -432,13 +421,16 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
             if write_shadow:value_scenarios.extend(scored)
             winner=_select_control_value(scored);selected=selected_audit_row(winner);audit.append(selected)
             if write_shadow:
+                catalog_scenarios.append(
+                    next(row for row in scored if str(row["Scenario"]).startswith("mastery:"))
+                )
                 value_audit.append(selected);value_envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":winner["Control Value CU"],"Eldritch Knight":comparator_winners["eldritch_knight"]["Control Value CU"],"Battle Master":comparator_winners["battle_master"]["Control Value CU"]})
                 for entry in publication_by_discipline.get(discipline,[]):
-                    try:publication_value=_kv_scenario(model,config,target,discipline,entry["entity_id"],entry["tier"],entry["target_role"],publication_mastery_only=entry["mastery_only"])
+                    try:publication_value=_catalog_rider_scenario(model,config,target,discipline,entry["entity_id"],entry["tier"],entry["target_role"])
                     except Exception as error:
                         if "unavailable" in str(error):continue
                         raise
-                    value_scenarios.append(value_row(target,"kinetic_vanguard",discipline,publication_value,collect_detail=True))
+                    catalog_scenarios.append(value_row(target,"kinetic_vanguard",discipline,publication_value,collect_detail=False))
             envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":winner["Whole-package control stick %"],"Eldritch Knight":comparator_winners["eldritch_knight"]["Whole-package control stick %"],"Battle Master":comparator_winners["battle_master"]["Whole-package control stick %"]})
     slug=model.rules_version.replace(".","-");output_dir.mkdir(parents=True,exist_ok=True)
     source_columns={"Rules Version":model.rules_version,"Authority SHA-256":model.authority_sha256,"Catalog SHA-256":file_sha256(DEFAULT_CATALOG),"Roster SHA-256":file_sha256(DEFAULT_ROSTERS),"Target Profile":profile,"Config SHA-256":file_sha256(DEFAULT_CONFIG),"Comparator Config SHA-256":file_sha256(DEFAULT_COMPARATORS),**NOTICE_COLUMNS}
@@ -457,19 +449,19 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
         with shadow_path.open("w",newline="",encoding="utf-8") as stream:
             if shadow_output:
                 writer=csv.DictWriter(stream,fieldnames=list(shadow_output[0]));writer.writeheader();writer.writerows(shadow_output)
-        value_scenario_path=output_dir/f"kv-{slug}-control-value-scenario-detail.csv";value_audit_path=output_dir/f"kv-{slug}-control-value-selection-audit.csv";value_matrix_path=output_dir/f"kv-{slug}-control-value-matrix.csv"
-        scenario_output=[{**row,**shadow_source} for row in value_scenarios];audit_output=[{**row,**shadow_source} for row in value_audit]
+        value_scenario_path=output_dir/f"kv-{slug}-control-value-scenario-detail.csv";catalog_scenario_path=output_dir/f"kv-{slug}-control-catalog-scenario-detail.csv";value_audit_path=output_dir/f"kv-{slug}-control-value-selection-audit.csv";value_matrix_path=output_dir/f"kv-{slug}-control-value-matrix.csv"
+        scenario_output=[{**row,**shadow_source} for row in value_scenarios];catalog_output=[{**row,**shadow_source} for row in catalog_scenarios];audit_output=[{**row,**shadow_source} for row in value_audit]
         value_groups:dict[tuple[int,str],list[dict[str,Any]]]=defaultdict(list)
         for row in value_envelopes:value_groups[(int(row["Level"]),str(row["Discipline"]))].append(row)
         value_matrix=[]
         for (level,discipline),values in sorted(value_groups.items()):
             mean=lambda key:sum(float(item[key]) for item in values)/len(values)
             value_matrix.append({"Level":level,"Discipline":discipline,"Kinetic Vanguard Control Value CU":f"{mean('KV'):.12f}","Eldritch Knight Control Value CU":f"{mean('Eldritch Knight'):.12f}","Battle Master Control Value CU":f"{mean('Battle Master'):.12f}","Targets":len(values),**shadow_source})
-        for path,output in ((value_scenario_path,scenario_output),(value_audit_path,audit_output),(value_matrix_path,value_matrix)):
+        for path,output in ((value_scenario_path,scenario_output),(catalog_scenario_path,catalog_output),(value_audit_path,audit_output),(value_matrix_path,value_matrix)):
             with path.open("w",newline="",encoding="utf-8") as stream:
                 if output:
                     writer=csv.DictWriter(stream,fieldnames=list(output[0]));writer.writeheader();writer.writerows(output)
-        value_paths={"scenario_detail":value_scenario_path,"selection_audit":value_audit_path,"matrix":value_matrix_path}
+        value_paths={"scenario_detail":value_scenario_path,"catalog_scenario_detail":catalog_scenario_path,"selection_audit":value_audit_path,"matrix":value_matrix_path}
     groups:dict[tuple[int,str],list[dict[str,Any]]]=defaultdict(list)
     for row in envelopes:groups[(int(row["Level"]),str(row["Discipline"]))].append(row)
     rows=[]
@@ -478,7 +470,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
         rows.append(matrix_row({"Level":level,"Discipline":discipline,"Metric":config["control_matrix"]["metric"],"Profile":config["kv_profile"]["id"]},mean("KV"),mean("Eldritch Knight"),mean("Battle Master"),"control"))
     provenance={"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"catalog_sha256":file_sha256(DEFAULT_CATALOG),"roster_sha256":file_sha256(DEFAULT_ROSTERS),"target_profile":profile,"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"control_primitive_catalog_sha256":file_sha256(DEFAULT_PRIMITIVES),"control_value_config_sha256":file_sha256(DEFAULT_SCORING),"evaluator":"exact_analytical_enumeration","aggregation":config["control_matrix"]["aggregation"]}
     paths=write_matrix(output_dir,model.rules_version,"control",rows,provenance) if write_headline else {}
-    return {"rules_version":model.rules_version,"detail_rows":len(detail),"audit_rows":len(audit),"matrix_rows":len(rows),"paths":paths,"shadow_rows":len(shadow_detail),"shadow_path":shadow_path,"value_scenario_rows":len(value_scenarios),"value_audit_rows":len(value_audit),"value_matrix_rows":len(value_matrix) if write_shadow else 0,"value_paths":value_paths}
+    return {"rules_version":model.rules_version,"detail_rows":len(detail),"audit_rows":len(audit),"matrix_rows":len(rows),"paths":paths,"shadow_rows":len(shadow_detail),"shadow_path":shadow_path,"value_scenario_rows":len(value_scenarios),"catalog_scenario_rows":len(catalog_scenarios),"value_audit_rows":len(value_audit),"value_matrix_rows":len(value_matrix) if write_shadow else 0,"value_paths":value_paths}
 
 
 def main()->None:

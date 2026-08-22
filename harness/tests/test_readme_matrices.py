@@ -37,18 +37,18 @@ from harness.readme_matrices import (
     ControlCatalogCell,
     MatrixSyncError,
     README_DISCIPLINES,
-    _catalog_package_kind,
     _markdown_table,
     _public_result,
     atomic_replace_text,
     build_kv_control_catalog,
+    catalog_rider_scenarios,
     classify_catalog_pricing,
     extract_damage_section,
     generate_control_publication_rows,
     generated_region_span,
-    publication_only_kv_scenarios,
     release_state_line,
     render_balance_region,
+    render_benchmark_roster_methodology,
     render_control_value_explanation,
     render_control_table,
     render_damage_section,
@@ -407,6 +407,7 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             "### Control Value",
             "### Kinetic Vanguard mean Control Value",
             "### Kinetic Vanguard control catalog",
+            "### Benchmark roster, eligibility, and coverage",
             "### How Control Value is calculated",
             "#### Worked example: Sap-style next-attack Disadvantage",
             "#### Worked example: Stunned",
@@ -424,6 +425,10 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             "same CU-selected package",
             "remain in the roster denominator and contribute `0 CU` and `0% delivery`",
             "**Cell format:** `CU · delivery · eligible/roster`",
+            "Each Kinetic Mastery row reports only that Mastery's control",
+            "each rider/tier/role row reports only control produced by that exact rider form",
+            "Columns are benchmark snapshots at Fighter levels 7, 11, 15, and 20",
+            "[Benchmark roster, eligibility, and coverage](#benchmark-roster-eligibility-and-coverage)",
             "1.0 CU = denial of one target's normal Action + Bonus Action for one scored target-turn window.",
             "0.15 × 0.95 = 0.1425 CU",
             "**2.25 CU**",
@@ -438,7 +443,7 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
         self.assertIn(COMPARATOR_NOTICE,rendered)
         self.assertIn("LICENSE.md",rendered)
         self.assertIn("NOTICE.md",rendered)
-        self.assertEqual(rendered.count("| Rider / form | L7 | L11 | L15 | L20 |"),4)
+        self.assertEqual(rendered.count("| Rider / form | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |"),4)
         self.assertIn("Forked Lightning — T2 — primary",rendered)
         self.assertIn("Forked Lightning — T2 — secondary",rendered)
 
@@ -650,30 +655,37 @@ class ControlCatalogTests(unittest.TestCase):
         with self.assertRaisesRegex(MatrixSyncError,"unknown exact KV scenario"):
             validate_control_catalog_scenarios(unknown,self.catalog,self.levels)
 
-    def test_publication_only_gap_detection_preserves_headline_inventory(self) -> None:
-        configured = load_config()["control_matrix"]["kv_scenarios"]
-        baseline = publication_only_kv_scenarios(self.catalog,configured)
-        self.assertEqual(len(baseline),8)
-        self.assertTrue(all(item["mastery_only"] is True for item in baseline))
-        scenario_sets = deepcopy(configured)
-        flare = next(
-            entry for entry in scenario_sets["pyrokinesis"]
-            if entry["entity_id"] == "flare"
-        )
-        flare["tiers"].remove(2)
-        before = deepcopy(scenario_sets)
-        gaps = publication_only_kv_scenarios(self.catalog,scenario_sets)
-        self.assertEqual(scenario_sets,before)
+    def test_catalog_rider_evidence_inventory_is_independent_of_headline_inventory(self) -> None:
+        publication = catalog_rider_scenarios(self.catalog)
+        self.assertEqual(len(publication),33)
+        published_identities = {
+            (
+                str(item["discipline_id"]),
+                f"{item['entity_id']}:T{item['tier']}"
+                + (f":{item['target_role']}" if item["target_role"] != "primary" else ""),
+            )
+            for item in publication
+        }
         self.assertEqual(
+            published_identities,
             {
-                (item["discipline_id"],item["entity_id"],item["tier"],item["target_role"],item["mastery_only"])
-                for item in gaps
+                form.identity
+                for form in self.catalog
+                if form.modeled_control and not form.is_mastery
             },
+        )
+        self.assertFalse(
             {
-                (item["discipline_id"],item["entity_id"],item["tier"],item["target_role"],item["mastery_only"])
-                for item in baseline
+                "explosion_implosion:T2",
+                "static_discharge:T0",
+                "static_discharge:T1",
+                "branching_bolt:T0",
+                "branching_bolt:T1",
+                "branching_bolt:T2",
+                "electron_burst:T0",
+                "electron_burst:T1",
             }
-            | {("pyrokinesis","flare",2,"primary",False)},
+            & {identity[1] for identity in published_identities}
         )
 
     def test_catalog_legend_explains_cells_and_full_roster_denominator(self) -> None:
@@ -697,6 +709,8 @@ class ControlCatalogTests(unittest.TestCase):
             "`Unpriced` retains measurable delivery and eligibility without reporting zero CU",
             "`No modeled control` means `0.000 CU` and no control delivery (`—`)",
             "`N/A` means the exact form is unavailable",
+            "Columns are benchmark snapshots at Fighter levels 7, 11, 15, and 20",
+            "[Benchmark roster, eligibility, and coverage](#benchmark-roster-eligibility-and-coverage)",
         ):
             self.assertIn(required,catalog)
         for forbidden in (
@@ -705,44 +719,13 @@ class ControlCatalogTests(unittest.TestCase):
         ):
             self.assertNotIn(forbidden,catalog)
 
-    def test_whole_package_kind_is_authority_driven(self) -> None:
-        on_hit = {"damage_delivery":"on_hit_rider","activation":"on_hit"}
-        for outcome in ("speed_reduction","forced_movement","attack_disadvantage"):
-            with self.subTest(outcome=outcome):
-                self.assertEqual(
-                    _catalog_package_kind(on_hit,None,{"control_outcomes":[outcome]}),
-                    "mastery_only",
-                )
-        self.assertEqual(
-            _catalog_package_kind(on_hit,None,{"control_outcomes":[]}),
-            NO_MODELED_CONTROL,
-        )
-        self.assertEqual(
-            _catalog_package_kind(
-                {"damage_delivery":"standalone_psionic_action","activation":"action"},
-                None,
-                {"control_outcomes":["forced_movement"]},
-            ),
-            NO_MODELED_CONTROL,
-        )
-        self.assertEqual(
-            _catalog_package_kind(
-                {**on_hit,"replaces_mastery":True},
-                None,
-                {"control_outcomes":["forced_movement"]},
-            ),
-            NO_MODELED_CONTROL,
-        )
-        self.assertEqual(
-            _catalog_package_kind(on_hit,{"tier":0},{"control_outcomes":["attack_disadvantage"]}),
-            "rider_control",
-        )
-
-        mastery_only = {
-            form.scenario_id for form in self.catalog if form.mastery_only
+    def test_rider_only_control_classification_is_authority_driven(self) -> None:
+        no_rider_control = {
+            form.scenario_id
+            for form in self.catalog
+            if not form.is_mastery and not form.modeled_control
         }
         self.assertEqual(
-            mastery_only,
             {
                 "explosion_implosion:T2",
                 "static_discharge:T0",
@@ -752,11 +735,49 @@ class ControlCatalogTests(unittest.TestCase):
                 "branching_bolt:T2",
                 "electron_burst:T0",
                 "electron_burst:T1",
-            },
+            }.issubset(no_rider_control),
+            True,
         )
+        self.assertIn("vectored_thrust:T0",no_rider_control)
+        self.assertIn("ember_bolt:T0",no_rider_control)
+        self.assertNotIn("electron_burst:T2",no_rider_control)
+        self.assertNotIn("snow_chains:T2",no_rider_control)
+        projection = deepcopy(AuthorityModel.load(DEFAULT_AUTHORITY).projection)
+        snow_chains = next(
+            feature
+            for feature in projection["features"]
+            if feature["entity_id"] == "snow_chains"
+        )
+        snow_chains["control_tiers"] = [
+            row for row in snow_chains["control_tiers"] if int(row["tier"]) != 0
+        ]
+        slow_without_rider_control = next(
+            form
+            for form in build_kv_control_catalog(AuthorityModel(projection))
+            if form.scenario_id == "snow_chains:T0"
+        )
+        self.assertFalse(slow_without_rider_control.modeled_control)
         self.assertEqual(len(self.catalog),67)
         self.assertEqual(len({form.identity for form in self.catalog}),67)
-        self.assertEqual(sum(not form.modeled_control for form in self.catalog),23)
+        self.assertEqual(sum(not form.modeled_control for form in self.catalog),31)
+
+    def test_roster_methodology_is_stable_and_computes_instructional_mean(self) -> None:
+        methodology = render_benchmark_roster_methodology()
+        self.assertEqual(methodology.count("### Benchmark roster, eligibility, and coverage"),1)
+        for required in (
+            "legally eligible targets / total maintained benchmark targets",
+            "An ineligible target remains in the aggregate denominator",
+            "`CU = 0` and `delivery = 0%`",
+            "Do not divide only by eligible targets",
+            "Eligible-only averaging would hide practical restrictions",
+            "**Instructional example (not a published scenario):**",
+            "(9 × 0.80 + 3 × 0) / 12 = 0.60 = 60%",
+            "eligible-only 80% is not the roster-wide result",
+            "`Unpriced`, not zero",
+            "`No modeled control` is `0.000 CU`",
+            "does not participate in that level's aggregate",
+        ):
+            self.assertIn(required,methodology)
 
 
 class ReadmeMatrixDelimiterTests(unittest.TestCase):
@@ -1131,6 +1152,7 @@ class ControlOnlyGenerationTests(unittest.TestCase):
                 "matrix": Path("value.csv"),
                 "selection_audit": Path("audit.csv"),
                 "scenario_detail": Path("scenario.csv"),
+                "catalog_scenario_detail": Path("catalog-scenario.csv"),
             },
         }
         expected = (
@@ -1154,8 +1176,8 @@ class ControlOnlyGenerationTests(unittest.TestCase):
         self.assertTrue(control.call_args.kwargs["write_headline"])
         self.assertFalse(control.call_args.kwargs["write_detail"])
         publication = control.call_args.kwargs["publication_scenarios"]
-        self.assertEqual(len(publication),8)
-        self.assertTrue(all(item["mastery_only"] is True for item in publication))
+        self.assertEqual(len(publication),33)
+        self.assertTrue(all(set(item)=={"discipline_id","entity_id","tier","target_role"} for item in publication))
         damage.assert_not_called()
 
 if __name__ == "__main__":
