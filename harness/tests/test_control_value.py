@@ -217,8 +217,9 @@ class NormalizationTests(unittest.TestCase):
         self.assertEqual(standalone.normalization_disposition,"retained");self.assertEqual(standalone.active_probabilities,(0.7,));self.assertEqual(standalone.expected_exposure,0.7)
 
     def test_auto_failure_speed_zero_and_condition_inclusion_normalize(self)->None:
-        save_rows=self.normalized(expose_label("stun","stunned",0.5,"until_end_next_turn"),expose_label("restrain","restrained",0.5,"until_end_next_turn"))
-        dex_disadvantage=next(item for item in save_rows if item.primitive_id=="save_disadvantage");self.assertEqual(dex_disadvantage.normalization_disposition,"suppressed")
+        save_rows=self.normalized(expose_label("stun","stunned",0.5,"until_end_next_turn"),expose_label("restrain","restrained",0.5,"until_end_next_turn"),expose_label("wisdom","save_disadvantage",0.5,"until_end_next_turn",qualifiers={"save_ability":"wisdom"}))
+        dex_disadvantage=next(item for item in save_rows if item.primitive_id=="save_disadvantage" and dict(item.qualifiers).get("save_ability")=="dexterity");self.assertEqual(dex_disadvantage.normalization_disposition,"suppressed")
+        wisdom_disadvantage=next(item for item in save_rows if item.primitive_id=="save_disadvantage" and dict(item.qualifiers).get("save_ability")=="wisdom");self.assertEqual(wisdom_disadvantage.normalization_disposition,"retained");self.assertEqual(wisdom_disadvantage.active_probabilities,(0.5,))
         mobility=self.normalized(expose_label("slow","speed_reduction",0.8,"until_end_next_turn",magnitude_feet=10),expose_label("stop","speed_zero",0.4,"until_end_next_turn"))
         slow=next(item for item in mobility if item.source_effect=="slow");self.assertEqual(slow.normalization_disposition,"partially_suppressed");self.assertEqual(slow.active_probabilities,(0.4,));self.assertEqual(slow.expected_exposure,4)
         included=self.normalized(expose_label("stun","stunned",0.5,"until_end_next_turn"),expose_label("incap","incapacitated",0.5,"until_end_next_turn"))

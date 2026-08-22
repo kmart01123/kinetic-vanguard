@@ -229,8 +229,6 @@ General arithmetic: `primitive contribution = frozen weight × expected exposure
 
 Expected exposure is where delivery probability, persistence, placed attack, save, and reaction opportunities, and repeatable instantaneous occurrences enter the calculation. Overlap normalization then prevents the same mechanical consequence from being counted twice.
 
-Special transforms keep their maintained meanings. A flat Speed reduction is normalized against the target's benchmark locomotion Speed and capped at complete movement denial; a Speed multiplier prices the lost fraction of Speed. Forced movement contributes 0.02 CU × expected displaced feet. Flat Armor Class and save penalties price penalty points multiplied by established attack or save opportunities. `context_required` and `unsupported` primitives remain visible but contribute 0 CU when the benchmark cannot establish the needed battlefield fact.
-
 #### Worked example: Sap-style next-attack Disadvantage
 
 The maintained next-attack Disadvantage outcome resolves to `offensive_impairment_next_attack`, weighted at 0.15 CU per expected placed attack opportunity.
@@ -241,18 +239,137 @@ The 95% expected exposure is an instructional example, not a published target or
 
 #### Worked example: Stunned
 
-For one synthetic, fully active scored window, the maintained condition catalog and frozen scoring config produce these candidate priced pieces:
+This is an **opportunity-normalized synthetic example**. It assumes 1.00 expected exposure independently on every displayed priced basis; it does not treat those different opportunity types as one shared target-turn window.
 
-| Priced piece | Arithmetic | Contribution |
+| Priced piece | Exposure basis | Nominal weight | Example exposure | Contribution |
+|---|---|---|---|---|
+| active-turn denial | `target_turn_window` | 1.00 CU | 1.00 | 1.00 CU |
+| reaction denial | `reaction_window` | 0.20 CU | 1.00 | 0.20 CU |
+| Strength save automatic failure | `save_opportunity` | 0.40 CU | 1.00 | 0.40 CU |
+| Dexterity save automatic failure | `save_opportunity` | 0.40 CU | 1.00 | 0.40 CU |
+| incoming attack Advantage | `incoming_attack_opportunity` | 0.25 CU | 1.00 | 0.25 CU |
+| **Total** |  |  |  | **2.25 CU** |
+
+Incapacitated supplies the active-turn and reaction pieces; Stunned adds the two save automatic failures and incoming attack Advantage. Stunned does **not** gain Speed 0. Concentration, speech, fall, and other context-sensitive consequences remain diagnostic rather than receiving invented headline CU. Real Stunned benchmark rows do **not** automatically equal 2.25 CU because target-turn, reaction, save, and incoming-attack opportunity counts and probabilities can differ.
+
+### Control Unit primitive pricing rubric
+
+This is the complete maintained scoring-rule inventory. Primitive basis and default pricing status come from the primitive catalog; nominal weights and transform IDs come from the frozen scoring config.
+
+| Primitive | Exposure basis | Default pricing status | Nominal weight | Scoring rule |
+|---|---|---|---|---|
+| `active_turn_denial` | `target_turn_window` | `candidate` | 1.00 CU | `linear_expected_exposure` |
+| `reaction_denial` | `reaction_window` | `candidate` | 0.20 CU | `linear_expected_exposure` |
+| `offensive_impairment_next_attack` | `attack_opportunity` | `candidate` | 0.15 CU | `linear_expected_exposure` |
+| `offensive_impairment_all_attacks` | `target_turn_window` | `candidate` | 0.40 CU | `linear_expected_exposure` |
+| `mobility_loss_feet` | `target_turn_window` | `candidate` | 0.30 CU | `bounded_fraction_of_benchmark_locomotion` |
+| `forced_displacement` | `instantaneous_occurrence` | `candidate` | 0.02 CU | `expected_displaced_feet` |
+| `defensive_attack_advantage` | `incoming_attack_opportunity` | `candidate` | 0.25 CU | `linear_expected_exposure` |
+| `save_disadvantage` | `save_opportunity` | `candidate` | 0.20 CU | `linear_expected_exposure` |
+| `save_auto_failure` | `save_opportunity` | `candidate` | 0.40 CU | `linear_expected_exposure` |
+| `specified_action_requirement` | `target_turn_window` | `candidate` | 0.75 CU | `linear_expected_exposure` |
+| `action_bonus_exclusivity` | `target_turn_window` | `candidate` | 0.25 CU | `linear_expected_exposure` |
+| `attack_action_cap` | `attack_opportunity` | `context_required` | 0.00 CU | `diagnostic_zero` |
+| `bonus_action_denial` | `target_turn_window` | `candidate` | 0.25 CU | `linear_expected_exposure` |
+| `turn_movement_denial` | `target_turn_window` | `candidate` | 0.30 CU | `linear_expected_exposure` |
+| `flat_armor_class_penalty` | `incoming_attack_opportunity` | `candidate` | 0.05 CU | `points_times_placed_opportunities` |
+| `flat_save_roll_penalty` | `save_opportunity` | `candidate` | 0.05 CU | `points_times_placed_opportunities` |
+| `speed_multiplier` | `target_turn_window` | `candidate` | 0.30 CU | `remaining_speed_fraction` |
+| `standing_movement_cost` | `target_turn_window` | `candidate` | 0.15 CU | `linear_expected_exposure` |
+| `finite_next_save_roll_penalty` | `save_opportunity` | `context_required` | 0.00 CU | `diagnostic_zero` |
+
+#### Maintained transform definitions
+
+| Transform | Formula | Meaning |
 |---|---|---|
-| active-turn denial | 1.00 × 1.00 | 1.00 CU |
-| reaction denial | 0.20 × 1.00 | 0.20 CU |
-| Strength save automatic failure | 0.40 × 1.00 | 0.40 CU |
-| Dexterity save automatic failure | 0.40 × 1.00 | 0.40 CU |
-| incoming attack Advantage | 0.25 × 1.00 | 0.25 CU |
-| **Total** |  | **2.25 CU** |
+| `linear_expected_exposure` | `CU = nominal weight × expected exposure` | Expected exposure is the placed probability/opportunity exposure for the primitive's maintained basis. |
+| `bounded_fraction_of_benchmark_locomotion` | `CU = nominal weight × min(expected lost feet / benchmark locomotion Speed, active-window exposure)` | For one fully active window: CU = nominal weight × min(flat feet lost / benchmark locomotion Speed, 1). |
+| `expected_displaced_feet` | `CU = nominal weight × expected displaced feet` | Displacement uses expected intrinsic feet only; it does not invent terrain or collision value. |
+| `diagnostic_zero` | `CU = 0 headline CU` | This is a deliberate non-scalar/context diagnostic rule, not a claim that the mechanic has zero real-play value. |
+| `points_times_placed_opportunities` | `CU = nominal weight × expected penalty-points/opportunities` | The placed exposure already combines the exact penalty magnitude with established attack or save opportunities. |
+| `remaining_speed_fraction` | `CU = nominal weight × (1 - remaining Speed fraction) × active-window exposure` | The magnitude is the exact fraction of Speed that remains. |
 
-Incapacitated supplies the active-turn and reaction pieces; Stunned adds the two save automatic failures and incoming attack Advantage. Stunned does **not** gain Speed 0. Concentration, speech, fall, and other context-sensitive consequences remain diagnostic rather than receiving invented headline CU. This synthetic one-window decomposition teaches the weighting model; it does not claim that every real Stunned benchmark row equals 2.25 CU.
+#### How movement control is normalized
+
+There is **no universal 30-foot target assumption**.
+
+**Complete movement denial.** `turn_movement_denial` (Speed 0) is valued at `0.30 CU × active exposure`, independent of ordinary Speed. A creature with 10, 30, 60, or 80 feet of ordinary benchmark locomotion loses all movement capacity when rooted.
+
+**Flat Speed loss.** `mobility_loss_feet` uses `0.30 CU × min(expected lost feet / benchmark locomotion Speed, active-window exposure)`. For one fully active window this is `weight × min(flat feet lost / benchmark locomotion Speed, 1)`.
+
+**Illustrative calculations (not current aggregate results):**
+
+| Illustrative case | Calculation | Result |
+|---|---|---|
+| -10 ft against benchmark Speed 10 | 0.30 × min(10 / 10, 1) | 0.30 CU |
+| -10 ft against benchmark Speed 30 | 0.30 × min(10 / 30, 1) | 0.10 CU |
+| -10 ft against benchmark Speed 60 | 0.30 × min(10 / 60, 1) | 0.05 CU |
+| -30 ft against benchmark Speed 60 | 0.30 × min(30 / 60, 1) | 0.15 CU |
+| Speed 0 against any ordinary Speed | 0.30 × 1.00 active exposure | 0.30 CU |
+
+**Benchmark locomotion assumption.** `benchmark_locomotion_speed` is the fastest positive movement mode in the maintained SRD target record that is unconditional, unqualified, and not choice-dependent. Qualified or choice-dependent modes are excluded; walking Speed is not privileged. If no trustworthy positive mode exists, flat `mobility_loss_feet` fails closed to `context_required`.
+
+Using the fastest unconditionally available listed mode supplies a neutral, target-specific denominator without inventing encounter geometry. It can conservatively understate a flat reduction in a fight where that fastest mode cannot be used. For example, an unconditional Fly Speed remains the maintained denominator even if a particular room prevents flight; the benchmark does not silently substitute walking Speed for an unmodeled battlefield.
+
+**Correlated flat movement cap.** Multiple flat reductions are capped at complete movement denial only when explicit maintained correlation metadata connects their sources for the same scored windows. The cap never exceeds the target's benchmark locomotion Speed. Sharing a package, a primitive, or the fact that both reduce Speed does not establish correlation; unrelated mobility effects remain independent.
+
+### Context-dependent and unpriced control primitives
+
+Every primitive below defaults to `context_required` or `unsupported`, including entries with no scalar scoring rule. It contributes 0 headline CU when the benchmark cannot establish the required context. That fail-closed zero does **not** mean the mechanic is worthless in actual play.
+
+| Primitive | Exposure basis | Status | Why it is not assigned headline CU |
+|---|---|---|---|
+| `target_choice_restriction` | `contextual_opportunity` | `context_required` | Value depends on the restricted source and available target choices. |
+| `sight_option_denial` | `contextual_opportunity` | `context_required` | Value depends on sight-dependent options and alternative senses. |
+| `movement_mode_denial` | `contextual_opportunity` | `context_required` | Value depends on the target's usable movement modes. |
+| `geometry_sensitive_approach_restriction` | `contextual_opportunity` | `context_required` | Requires source geometry and a willing movement choice. |
+| `ability_check_impairment` | `contextual_opportunity` | `context_required` | Requires a relevant ability-check opportunity and any stated predicate. |
+| `speech_denial` | `contextual_opportunity` | `context_required` | Requires a communication-dependent opportunity. |
+| `social_interaction_advantage` | `contextual_opportunity` | `context_required` | Requires a social interaction check involving the source. |
+| `concentration_break` | `instantaneous_occurrence` | `context_required` | Requires the target to be concentrating. |
+| `fall_transition` | `instantaneous_occurrence` | `context_required` | Requires airborne state and lack of hover or fall prevention. |
+| `prone_incoming_attack_context` | `incoming_attack_opportunity` | `context_required` | Incoming attack effect depends on attacker distance. |
+| `melee_hit_auto_critical_context` | `contextual_opportunity` | `context_required` | Automatic critical hits require a hit from an attacker within 5 feet. |
+| `awareness_denial` | `contextual_opportunity` | `context_required` | Value depends on encounter information and awareness-sensitive opportunities. |
+| `opportunity_attack_denial` | `contextual_opportunity` | `context_required` | Only a qualifying Opportunity Attack is denied; other Reactions remain available. |
+| `terrain_movement_tax` | `target_turn_window` | `context_required` | Movement through the affected terrain costs additional movement without changing the Speed statistic. |
+| `directional_movement_tax` | `contextual_opportunity` | `context_required` | The movement cost applies only in a specified direction and requires geometry. |
+| `attack_action_cap` | `attack_opportunity` | `context_required` | The target's Attack action is capped, but the maintained target catalog does not establish a baseline attack count. |
+| `restricted_attack_choice` | `contextual_opportunity` | `context_required` | The available attack and target depend on creatures within reach. |
+| `finite_next_save_roll_penalty` | `save_opportunity` | `context_required` | The next qualifying save uses an exact finite penalty die and requires a downstream save opportunity. |
+| `somatic_spell_failure` | `contextual_opportunity` | `context_required` | Value requires a qualifying spell with a Somatic component. |
+| `damage_roll_penalty` | `contextual_opportunity` | `context_required` | Damage rolls are reduced without changing attack accuracy; value requires an offensive-output convention. |
+| `two_sided_isolation` | `contextual_opportunity` | `context_required` | Interaction is blocked in both directions and cannot be valued as unilateral denial. |
+| `target_protection` | `contextual_opportunity` | `context_required` | The controlled target is also protected from outside effects or attacks. |
+| `retained_action_option` | `contextual_opportunity` | `context_required` | The target retains a specified Action or movement option that limits net control value. |
+| `spellcasting_interruption` | `contextual_opportunity` | `context_required` | Value requires a qualifying observable enemy spellcasting opportunity. |
+| `ongoing_spell_removal` | `contextual_opportunity` | `context_required` | Value requires a qualifying ongoing spell state and its established consequence. |
+| `hostile_transformation` | `contextual_opportunity` | `context_required` | Value depends on an approved replacement-form inventory and its exact statistics. |
+| `attitude_change` | `contextual_opportunity` | `context_required` | Behavioral value depends on encounter choices and is not inferred. |
+| `size_change` | `contextual_opportunity` | `context_required` | Size change has value only when another established mechanic depends on size. |
+| `open_ended_behavior` | `contextual_opportunity` | `context_required` | Behavioral consequences depend on an encounter-specific choice that the benchmark does not invent. |
+| `held_item_loss` | `contextual_opportunity` | `context_required` | Value depends on whether the target holds relevant items and can recover or replace them. |
+| `damage_output_change` | `contextual_opportunity` | `context_required` | Damage-output changes remain visible but outside the current Control Value scalar boundary. |
+| `hearing_option_denial` | `contextual_opportunity` | `context_required` | Value requires a hearing-dependent option or communication opportunity. |
+
+`unsupported` can also arise dynamically when a known mechanic lacks a trustworthy required magnitude, timing, or placement/exposure basis. Maintained examples of unresolved context include Ball Lightning future area occupancy, Mass Levitation recurring displacement cadence, and condition-context facts such as sight, concentration, speech, fall state, or attacker distance. The benchmark does not manufacture encounter facts to turn these diagnostics into numbers.
+
+### Control Value normalization rules
+
+Normalization prevents double charging while preserving independently established consequences. These statements describe `normalize_exposures()` and the explicit correlated-flat-mobility cap; they are not a second scoring engine.
+
+| Rule | Maintained behavior |
+|---|---|
+| Duplicates | Identical primitive/basis/qualifier/magnitude consequences do not double count. `mobility_loss_feet` and `forced_displacement` remain source-specific so distinct legitimate sources are not automatically collapsed. |
+| Disjoint sequential stages | Explicitly declared disjoint stages combine probabilities instead of becoming duplicate overlap; their combined probability may not exceed 1. |
+| Action-economy dominance | Overlapping `active_turn_denial` dominates `bonus_action_denial`, `action_bonus_exclusivity`, `specified_action_requirement`, `attack_action_cap`, and offensive impairment. `bonus_action_denial` also dominates overlapping `action_bonus_exclusivity`. |
+| Specified Action interaction | `specified_action_requirement` consumes overlapping all-attacks impairment on the same target-turn exposure instead of charging both at full value. |
+| Attack impairment | All-attacks impairment dominates next-attack impairment only when maintained source-overlap metadata identifies the same attack share. An unrelated next-attack effect survives. |
+| Save impairment | For the same save ability, `save_auto_failure` dominates `save_disadvantage`, `flat_save_roll_penalty`, and `finite_next_save_roll_penalty`. Impairment of a different save ability survives. |
+| Movement dominance | `turn_movement_denial` dominates overlapping `mobility_loss_feet`, `speed_multiplier`, and `standing_movement_cost`. |
+| Correlated flat mobility | Only explicit same-window correlation metadata invokes the target-specific complete-movement cap; unrelated flat reductions are not implicitly capped or merged. |
+| Partial overlap | When a stronger effect covers only part of the weaker effect's active exposure, the residual weaker exposure is preserved. |
+| Unrelated consequences | Unrelated surviving primitives add independently. |
 
 ### Control Reliability — delivery diagnostic
 

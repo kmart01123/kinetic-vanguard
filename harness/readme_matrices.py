@@ -33,6 +33,7 @@ from .control_value import (
     DEFAULT_PRIMITIVES,
     DEFAULT_SCORING,
     decompose_label,
+    load_primitive_catalog,
     load_scoring_config,
 )
 from .damage_harness import run as run_damage
@@ -1611,6 +1612,276 @@ def _scoring_rule(
     return transform, float(weight)
 
 
+CONTROL_VALUE_TRANSFORM_FORMULAS = {
+    "linear_expected_exposure": (
+        "CU = nominal weight × expected exposure",
+        "Expected exposure is the placed probability/opportunity exposure for the primitive's maintained basis.",
+    ),
+    "expected_displaced_feet": (
+        "CU = nominal weight × expected displaced feet",
+        "Displacement uses expected intrinsic feet only; it does not invent terrain or collision value.",
+    ),
+    "points_times_placed_opportunities": (
+        "CU = nominal weight × expected penalty-points/opportunities",
+        "The placed exposure already combines the exact penalty magnitude with established attack or save opportunities.",
+    ),
+    "bounded_fraction_of_benchmark_locomotion": (
+        "CU = nominal weight × min(expected lost feet / benchmark locomotion Speed, active-window exposure)",
+        "For one fully active window: CU = nominal weight × min(flat feet lost / benchmark locomotion Speed, 1).",
+    ),
+    "remaining_speed_fraction": (
+        "CU = nominal weight × (1 - remaining Speed fraction) × active-window exposure",
+        "The magnitude is the exact fraction of Speed that remains.",
+    ),
+    "diagnostic_zero": (
+        "CU = 0 headline CU",
+        "This is a deliberate non-scalar/context diagnostic rule, not a claim that the mechanic has zero real-play value.",
+    ),
+}
+
+
+def _control_value_publication_contract(
+    scoring: Mapping[str, object] | None = None,
+    catalog: Mapping[str, object] | None = None,
+) -> tuple[Mapping[str, object], tuple[Mapping[str, object], ...]]:
+    """Join the frozen scoring rules to catalog authority and fail closed on drift."""
+    scoring = load_scoring_config() if scoring is None else scoring
+    catalog = load_primitive_catalog() if catalog is None else catalog
+    rules = scoring.get("rules")
+    primitive_rows = catalog.get("primitives")
+    if not isinstance(rules, dict) or not isinstance(primitive_rows, list):
+        raise MatrixSyncError("README Control Value publication inputs are malformed")
+    if not all(isinstance(row, dict) for row in primitive_rows):
+        raise MatrixSyncError("README Control Value primitive catalog rows are malformed")
+    by_id = {str(row.get("id")): row for row in primitive_rows}
+    unknown = sorted(set(rules) - set(by_id))
+    if unknown:
+        raise MatrixSyncError(
+            "Control Value scoring rules reference unknown primitives: " + ", ".join(unknown)
+        )
+    missing_candidates = sorted(
+        primitive_id
+        for primitive_id, row in by_id.items()
+        if row.get("default_status") == "candidate" and primitive_id not in rules
+    )
+    if missing_candidates:
+        raise MatrixSyncError(
+            "Default-candidate primitives lack scalar scoring rules: "
+            + ", ".join(missing_candidates)
+        )
+    for primitive_id, raw_rule in rules.items():
+        if not isinstance(raw_rule, dict):
+            raise MatrixSyncError(f"Control Value scoring rule {primitive_id} is malformed")
+        transform = raw_rule.get("transform")
+        if transform not in CONTROL_VALUE_TRANSFORM_FORMULAS:
+            raise MatrixSyncError(
+                f"README has no formula for Control Value transform: {transform}"
+            )
+        weight = raw_rule.get("nominal_weight")
+        if isinstance(weight, bool) or not isinstance(weight, (int, float)):
+            raise MatrixSyncError(f"Control Value scoring rule {primitive_id} has invalid weight")
+        row = by_id[primitive_id]
+        if not all(
+            isinstance(row.get(field), str)
+            for field in ("exposure_basis", "default_status", "reason")
+        ):
+            raise MatrixSyncError(f"Primitive catalog contract is incomplete for {primitive_id}")
+    return rules, tuple(primitive_rows)
+
+
+def render_control_primitive_pricing_rubric(
+    scoring: Mapping[str, object] | None = None,
+    catalog: Mapping[str, object] | None = None,
+) -> str:
+    """Publish every maintained scoring rule and every transform it uses."""
+    rules, primitive_rows = _control_value_publication_contract(scoring, catalog)
+    by_id = {str(row["id"]): row for row in primitive_rows}
+    rubric_rows = []
+    transforms: list[str] = []
+    for primitive_id, raw_rule in rules.items():
+        assert isinstance(raw_rule, dict)
+        contract = by_id[primitive_id]
+        transform = str(raw_rule["transform"])
+        if transform not in transforms:
+            transforms.append(transform)
+        rubric_rows.append(
+            (
+                f"`{primitive_id}`",
+                f"`{contract['exposure_basis']}`",
+                f"`{contract['default_status']}`",
+                f"{float(raw_rule['nominal_weight']):.2f} CU",
+                f"`{transform}`",
+            )
+        )
+    transform_rows = [
+        (f"`{transform}`", f"`{CONTROL_VALUE_TRANSFORM_FORMULAS[transform][0]}`", CONTROL_VALUE_TRANSFORM_FORMULAS[transform][1])
+        for transform in transforms
+    ]
+    return "\n".join(
+        (
+            "### Control Unit primitive pricing rubric",
+            "",
+            (
+                "This is the complete maintained scoring-rule inventory. Primitive basis and "
+                "default pricing status come from the primitive catalog; nominal weights and "
+                "transform IDs come from the frozen scoring config."
+            ),
+            "",
+            _markdown_table(
+                ("Primitive", "Exposure basis", "Default pricing status", "Nominal weight", "Scoring rule"),
+                rubric_rows,
+            ),
+            "",
+            "#### Maintained transform definitions",
+            "",
+            _markdown_table(("Transform", "Formula", "Meaning"), transform_rows),
+        )
+    )
+
+
+def render_unpriced_primitive_menu(
+    scoring: Mapping[str, object] | None = None,
+    catalog: Mapping[str, object] | None = None,
+) -> str:
+    """Publish every primitive whose catalog default is not scalar-candidate."""
+    _, primitive_rows = _control_value_publication_contract(scoring, catalog)
+    unpriced_rows = [
+        (
+            f"`{row['id']}`",
+            f"`{row['exposure_basis']}`",
+            f"`{row['default_status']}`",
+            str(row["reason"]),
+        )
+        for row in primitive_rows
+        if row["default_status"] != "candidate"
+    ]
+    return "\n".join(
+        (
+            "### Context-dependent and unpriced control primitives",
+            "",
+            (
+                "Every primitive below defaults to `context_required` or `unsupported`, including "
+                "entries with no scalar scoring rule. It contributes 0 headline CU when the "
+                "benchmark cannot establish the required context. That fail-closed zero does "
+                "**not** mean the mechanic is worthless in actual play."
+            ),
+            "",
+            _markdown_table(
+                ("Primitive", "Exposure basis", "Status", "Why it is not assigned headline CU"),
+                unpriced_rows,
+            ),
+            "",
+            (
+                "`unsupported` can also arise dynamically when a known mechanic lacks a trustworthy "
+                "required magnitude, timing, or placement/exposure basis. Maintained examples of "
+                "unresolved context include Ball Lightning future area occupancy, Mass Levitation "
+                "recurring displacement cadence, and condition-context facts such as sight, "
+                "concentration, speech, fall state, or attacker distance. The benchmark does not "
+                "manufacture encounter facts to turn these diagnostics into numbers."
+            ),
+        )
+    )
+
+
+def render_movement_methodology(
+    scoring: Mapping[str, object] | None = None,
+    catalog: Mapping[str, object] | None = None,
+) -> str:
+    """Render target-specific movement pricing directly from maintained weights."""
+    rules, _ = _control_value_publication_contract(scoring, catalog)
+    denial = rules["turn_movement_denial"]
+    flat = rules["mobility_loss_feet"]
+    assert isinstance(denial, dict) and isinstance(flat, dict)
+    denial_weight = float(denial["nominal_weight"])
+    flat_weight = float(flat["nominal_weight"])
+    examples = (
+        ("-10 ft against benchmark Speed 10", f"{flat_weight:.2f} × min(10 / 10, 1)", f"{flat_weight * min(10 / 10, 1):.2f} CU"),
+        ("-10 ft against benchmark Speed 30", f"{flat_weight:.2f} × min(10 / 30, 1)", f"{flat_weight * min(10 / 30, 1):.2f} CU"),
+        ("-10 ft against benchmark Speed 60", f"{flat_weight:.2f} × min(10 / 60, 1)", f"{flat_weight * min(10 / 60, 1):.2f} CU"),
+        ("-30 ft against benchmark Speed 60", f"{flat_weight:.2f} × min(30 / 60, 1)", f"{flat_weight * min(30 / 60, 1):.2f} CU"),
+        ("Speed 0 against any ordinary Speed", f"{denial_weight:.2f} × 1.00 active exposure", f"{denial_weight:.2f} CU"),
+    )
+    return "\n".join(
+        (
+            "#### How movement control is normalized",
+            "",
+            "There is **no universal 30-foot target assumption**.",
+            "",
+            (
+                "**Complete movement denial.** `turn_movement_denial` (Speed 0) is valued "
+                f"at `{denial_weight:.2f} CU × active exposure`, independent of ordinary Speed. "
+                "A creature with 10, 30, 60, or 80 feet of ordinary benchmark locomotion loses "
+                "all movement capacity when rooted."
+            ),
+            "",
+            (
+                f"**Flat Speed loss.** `mobility_loss_feet` uses `{flat_weight:.2f} CU × "
+                "min(expected lost feet / benchmark locomotion Speed, active-window exposure)`. "
+                "For one fully active window this is `weight × min(flat feet lost / benchmark "
+                "locomotion Speed, 1)`."
+            ),
+            "",
+            "**Illustrative calculations (not current aggregate results):**",
+            "",
+            _markdown_table(("Illustrative case", "Calculation", "Result"), examples),
+            "",
+            (
+                "**Benchmark locomotion assumption.** `benchmark_locomotion_speed` is the fastest "
+                "positive movement mode in the maintained SRD target record that is unconditional, "
+                "unqualified, and not choice-dependent. Qualified or choice-dependent modes are "
+                "excluded; walking Speed is not privileged. If no trustworthy positive mode exists, "
+                "flat `mobility_loss_feet` fails closed to `context_required`."
+            ),
+            "",
+            (
+                "Using the fastest unconditionally available listed mode supplies a neutral, "
+                "target-specific denominator without inventing encounter geometry. It can "
+                "conservatively understate a flat reduction in a fight where that fastest mode "
+                "cannot be used. For example, an unconditional Fly Speed remains the maintained "
+                "denominator even if a particular room prevents flight; the benchmark does not "
+                "silently substitute walking Speed for an unmodeled battlefield."
+            ),
+            "",
+            (
+                "**Correlated flat movement cap.** Multiple flat reductions are capped at complete "
+                "movement denial only when explicit maintained correlation metadata connects their "
+                "sources for the same scored windows. The cap never exceeds the target's benchmark "
+                "locomotion Speed. Sharing a package, a primitive, or the fact that both reduce Speed "
+                "does not establish correlation; unrelated mobility effects remain independent."
+            ),
+        )
+    )
+
+
+def render_control_normalization_methodology() -> str:
+    """Describe the evaluator's maintained duplicate and dominance contracts."""
+    rows = (
+        ("Duplicates", "Identical primitive/basis/qualifier/magnitude consequences do not double count. `mobility_loss_feet` and `forced_displacement` remain source-specific so distinct legitimate sources are not automatically collapsed."),
+        ("Disjoint sequential stages", "Explicitly declared disjoint stages combine probabilities instead of becoming duplicate overlap; their combined probability may not exceed 1."),
+        ("Action-economy dominance", "Overlapping `active_turn_denial` dominates `bonus_action_denial`, `action_bonus_exclusivity`, `specified_action_requirement`, `attack_action_cap`, and offensive impairment. `bonus_action_denial` also dominates overlapping `action_bonus_exclusivity`."),
+        ("Specified Action interaction", "`specified_action_requirement` consumes overlapping all-attacks impairment on the same target-turn exposure instead of charging both at full value."),
+        ("Attack impairment", "All-attacks impairment dominates next-attack impairment only when maintained source-overlap metadata identifies the same attack share. An unrelated next-attack effect survives."),
+        ("Save impairment", "For the same save ability, `save_auto_failure` dominates `save_disadvantage`, `flat_save_roll_penalty`, and `finite_next_save_roll_penalty`. Impairment of a different save ability survives."),
+        ("Movement dominance", "`turn_movement_denial` dominates overlapping `mobility_loss_feet`, `speed_multiplier`, and `standing_movement_cost`."),
+        ("Correlated flat mobility", "Only explicit same-window correlation metadata invokes the target-specific complete-movement cap; unrelated flat reductions are not implicitly capped or merged."),
+        ("Partial overlap", "When a stronger effect covers only part of the weaker effect's active exposure, the residual weaker exposure is preserved."),
+        ("Unrelated consequences", "Unrelated surviving primitives add independently."),
+    )
+    return "\n".join(
+        (
+            "### Control Value normalization rules",
+            "",
+            (
+                "Normalization prevents double charging while preserving independently established "
+                "consequences. These statements describe `normalize_exposures()` and the explicit "
+                "correlated-flat-mobility cap; they are not a second scoring engine."
+            ),
+            "",
+            _markdown_table(("Rule", "Maintained behavior"), rows),
+        )
+    )
+
+
 def render_control_value_explanation() -> str:
     """Render reader-facing CU arithmetic from the maintained scoring contracts."""
     scoring = load_scoring_config()
@@ -1658,32 +1929,26 @@ def render_control_value_explanation() -> str:
         "Dexterity save automatic failure",
         "incoming attack Advantage",
     )
-    stunned_rows: list[tuple[str, str, str]] = []
+    stunned_rows: list[tuple[str, str, str, str, str]] = []
     stunned_total = 0.0
     for label, spec in zip(stunned_labels, stunned_specs, strict=True):
         _, weight = _scoring_rule(
             scoring, spec.primitive_id, "linear_expected_exposure"
         )
         stunned_total += weight
-        stunned_rows.append((label, f"{weight:.2f} × 1.00", f"{weight:.2f} CU"))
-
-    _scoring_rule(
-        scoring, "mobility_loss_feet", "bounded_fraction_of_benchmark_locomotion"
-    )
-    _scoring_rule(scoring, "speed_multiplier", "remaining_speed_fraction")
-    _, displacement_weight = _scoring_rule(
-        scoring, "forced_displacement", "expected_displaced_feet"
-    )
-    _scoring_rule(
-        scoring, "flat_armor_class_penalty", "points_times_placed_opportunities"
-    )
-    _scoring_rule(
-        scoring, "flat_save_roll_penalty", "points_times_placed_opportunities"
-    )
+        stunned_rows.append(
+            (
+                label,
+                f"`{spec.exposure_basis}`",
+                f"{weight:.2f} CU",
+                "1.00",
+                f"{weight:.2f} CU",
+            )
+        )
 
     stunned_table = _markdown_table(
-        ("Priced piece", "Arithmetic", "Contribution"),
-        (*stunned_rows, ("**Total**", "", f"**{stunned_total:.2f} CU**")),
+        ("Priced piece", "Exposure basis", "Nominal weight", "Example exposure", "Contribution"),
+        (*stunned_rows, ("**Total**", "", "", "", f"**{stunned_total:.2f} CU**")),
     )
     return "\n".join(
         (
@@ -1704,17 +1969,6 @@ def render_control_value_explanation() -> str:
                 "save, and reaction opportunities, and repeatable instantaneous occurrences "
                 "enter the calculation. Overlap normalization then prevents the same mechanical "
                 "consequence from being counted twice."
-            ),
-            "",
-            (
-                "Special transforms keep their maintained meanings. A flat Speed reduction is "
-                "normalized against the target's benchmark locomotion Speed and capped at "
-                "complete movement denial; a Speed multiplier prices the lost fraction of Speed. "
-                f"Forced movement contributes {displacement_weight:.2f} CU × expected displaced "
-                "feet. Flat Armor Class and save penalties price penalty points multiplied by "
-                "established attack or save opportunities. `context_required` and `unsupported` "
-                "primitives remain visible but contribute 0 CU when the benchmark cannot establish "
-                "the needed battlefield fact."
             ),
             "",
             "#### Worked example: Sap-style next-attack Disadvantage",
@@ -1738,8 +1992,9 @@ def render_control_value_explanation() -> str:
             "#### Worked example: Stunned",
             "",
             (
-                "For one synthetic, fully active scored window, the maintained condition catalog "
-                "and frozen scoring config produce these candidate priced pieces:"
+                "This is an **opportunity-normalized synthetic example**. It assumes 1.00 expected "
+                "exposure independently on every displayed priced basis; it does not treat those "
+                "different opportunity types as one shared target-turn window."
             ),
             "",
             stunned_table,
@@ -1748,10 +2003,19 @@ def render_control_value_explanation() -> str:
                 "Incapacitated supplies the active-turn and reaction pieces; Stunned adds the two "
                 "save automatic failures and incoming attack Advantage. Stunned does **not** gain "
                 "Speed 0. Concentration, speech, fall, and other context-sensitive consequences "
-                "remain diagnostic rather than receiving invented headline CU. This synthetic "
-                "one-window decomposition teaches the weighting model; it does not claim that "
-                f"every real Stunned benchmark row equals {stunned_total:.2f} CU."
+                "remain diagnostic rather than receiving invented headline CU. Real Stunned "
+                "benchmark rows do **not** automatically equal "
+                f"{stunned_total:.2f} CU because target-turn, reaction, save, and incoming-attack "
+                "opportunity counts and probabilities can differ."
             ),
+            "",
+            render_control_primitive_pricing_rubric(scoring),
+            "",
+            render_movement_methodology(scoring),
+            "",
+            render_unpriced_primitive_menu(scoring),
+            "",
+            render_control_normalization_methodology(),
         )
     )
 

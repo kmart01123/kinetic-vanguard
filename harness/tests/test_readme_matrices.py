@@ -12,8 +12,11 @@ from harness.comparison_report import COMPARATOR_NOTICE, NOTICE_COLUMNS, matrix_
 from harness.control_value import (
     DEFAULT_PRIMITIVES,
     DEFAULT_SCORING,
+    PrimitiveExposure,
     decompose_label,
+    load_primitive_catalog,
     load_scoring_config,
+    score_exposure,
 )
 from harness.model import (
     DEFAULT_CATALOG,
@@ -35,6 +38,7 @@ from harness.readme_matrices import (
     UNAVAILABLE,
     UNPRICED,
     ControlCatalogCell,
+    CONTROL_VALUE_TRANSFORM_FORMULAS,
     MatrixSyncError,
     README_DISCIPLINES,
     _markdown_table,
@@ -50,6 +54,8 @@ from harness.readme_matrices import (
     render_balance_region,
     render_benchmark_roster_methodology,
     render_control_value_explanation,
+    render_control_normalization_methodology,
+    render_control_primitive_pricing_rubric,
     render_control_coverage_exceptions,
     render_control_table,
     render_damage_section,
@@ -57,6 +63,8 @@ from harness.readme_matrices import (
     render_raw_kv_reliability_table,
     render_raw_kv_value_table,
     render_single_target_damage,
+    render_movement_methodology,
+    render_unpriced_primitive_menu,
     replace_generated_region,
     validate_authoritative_rows,
     validate_control_catalog_scenarios,
@@ -418,6 +426,11 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             "### How Control Value is calculated",
             "#### Worked example: Sap-style next-attack Disadvantage",
             "#### Worked example: Stunned",
+            "### Control Unit primitive pricing rubric",
+            "#### Maintained transform definitions",
+            "#### How movement control is normalized",
+            "### Context-dependent and unpriced control primitives",
+            "### Control Value normalization rules",
             "### Control Reliability — delivery diagnostic",
             "### Kinetic Vanguard mean Reliability",
             "### Why Control Value and Reliability can disagree",
@@ -500,8 +513,168 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
         self.assertIn(scoring["control_unit"], explanation)
         self.assertIn("0.15 × 0.95 = 0.1425 CU", explanation)
         self.assertIn("**2.25 CU**", explanation)
+        for basis in (
+            "target_turn_window",
+            "reaction_window",
+            "save_opportunity",
+            "incoming_attack_opportunity",
+        ):
+            self.assertIn(f"`{basis}`", explanation)
+        self.assertIn("1.00 expected exposure independently", explanation)
+        self.assertIn("Real Stunned benchmark rows do **not** automatically equal 2.25 CU", explanation)
         self.assertIn("Stunned does **not** gain Speed 0", explanation)
         self.assertNotIn("Stunned gains Speed 0", explanation)
+
+    def test_pricing_rubric_is_an_exact_join_of_scoring_and_primitive_authority(self) -> None:
+        scoring = load_scoring_config()
+        catalog = load_primitive_catalog()
+        rendered = render_control_primitive_pricing_rubric(scoring, catalog)
+        rubric = rendered.split("#### Maintained transform definitions", 1)[0]
+        rows = [
+            line.split("|")[1:-1]
+            for line in rubric.splitlines()
+            if line.startswith("| `")
+        ]
+        observed_ids = [cells[0].strip().strip("`") for cells in rows]
+        self.assertEqual(observed_ids, list(scoring["rules"]))
+        self.assertEqual(len(observed_ids), len(set(observed_ids)))
+        by_id = {row["id"]: row for row in catalog["primitives"]}
+        for cells in rows:
+            primitive_id = cells[0].strip().strip("`")
+            rule = scoring["rules"][primitive_id]
+            contract = by_id[primitive_id]
+            self.assertEqual(cells[1].strip(), f"`{contract['exposure_basis']}`")
+            self.assertEqual(cells[2].strip(), f"`{contract['default_status']}`")
+            self.assertEqual(cells[3].strip(), f"{float(rule['nominal_weight']):.2f} CU")
+            self.assertEqual(cells[4].strip(), f"`{rule['transform']}`")
+        for transform in dict.fromkeys(
+            str(rule["transform"]) for rule in scoring["rules"].values()
+        ):
+            formula, meaning = CONTROL_VALUE_TRANSFORM_FORMULAS[transform]
+            self.assertEqual(rendered.count(f"| `{transform}` | `{formula}` | {meaning} |"), 1)
+
+    def test_pricing_publication_fails_closed_on_rule_or_transform_drift(self) -> None:
+        scoring = deepcopy(load_scoring_config())
+        catalog = deepcopy(load_primitive_catalog())
+        scoring["rules"]["invented_primitive"] = {
+            "transform": "linear_expected_exposure",
+            "nominal_weight": 1.0,
+        }
+        with self.assertRaisesRegex(MatrixSyncError, "unknown primitives"):
+            render_control_primitive_pricing_rubric(scoring, catalog)
+        del scoring["rules"]["invented_primitive"]
+        scoring["rules"]["active_turn_denial"]["transform"] = "invented_transform"
+        with self.assertRaisesRegex(MatrixSyncError, "no formula"):
+            render_control_primitive_pricing_rubric(scoring, catalog)
+        scoring = deepcopy(load_scoring_config())
+        del scoring["rules"]["active_turn_denial"]
+        with self.assertRaisesRegex(MatrixSyncError, "Default-candidate primitives"):
+            render_control_primitive_pricing_rubric(scoring, catalog)
+
+    def test_published_transform_formulas_match_score_exposure_behavior(self) -> None:
+        scoring = load_scoring_config()
+
+        def exposure(
+            primitive_id: str,
+            *,
+            magnitude: float | None,
+            active: tuple[float, ...],
+            expected: float,
+        ) -> PrimitiveExposure:
+            return PrimitiveExposure(
+                "publication_contract",
+                primitive_id,
+                primitive_id,
+                "target_turn_window",
+                magnitude,
+                1.0,
+                active,
+                expected,
+                "candidate",
+                "publication contract test",
+            )
+
+        cases = (
+            ("active_turn_denial", exposure("active_turn_denial", magnitude=None, active=(0.5,), expected=0.5), 30, "linear_expected_exposure", 0.5),
+            ("forced_displacement", exposure("forced_displacement", magnitude=10, active=(1.0,), expected=15.0), 30, "expected_displaced_feet", 0.3),
+            ("flat_armor_class_penalty", exposure("flat_armor_class_penalty", magnitude=2, active=(1.0,), expected=6.0), 30, "points_times_placed_opportunities", 0.3),
+            ("mobility_loss_feet", exposure("mobility_loss_feet", magnitude=10, active=(0.5, 0.25), expected=7.5), 30, "bounded_fraction_of_benchmark_locomotion", 0.075),
+            ("speed_multiplier", exposure("speed_multiplier", magnitude=0.4, active=(0.5, 0.25), expected=0.3), 30, "remaining_speed_fraction", 0.135),
+            ("finite_next_save_roll_penalty", exposure("finite_next_save_roll_penalty", magnitude=4, active=(1.0,), expected=4.0), 30, "diagnostic_zero", 0.0),
+        )
+        for primitive_id, item, speed, transform, expected in cases:
+            with self.subTest(transform=transform):
+                contribution, observed_transform, _ = score_exposure(item, speed, scoring)
+                self.assertEqual(observed_transform, transform)
+                self.assertAlmostEqual(contribution, expected)
+                self.assertIn(transform, CONTROL_VALUE_TRANSFORM_FORMULAS)
+
+    def test_unpriced_menu_is_complete_catalog_authority_including_ruleless_rows(self) -> None:
+        scoring = load_scoring_config()
+        catalog = load_primitive_catalog()
+        rendered = render_unpriced_primitive_menu(scoring, catalog)
+        rows = [
+            line.split("|")[1:-1]
+            for line in rendered.splitlines()
+            if line.startswith("| `")
+        ]
+        expected = [
+            row for row in catalog["primitives"] if row["default_status"] != "candidate"
+        ]
+        self.assertEqual(
+            [cells[0].strip().strip("`") for cells in rows],
+            [row["id"] for row in expected],
+        )
+        for cells, contract in zip(rows, expected, strict=True):
+            self.assertEqual(cells[1].strip(), f"`{contract['exposure_basis']}`")
+            self.assertEqual(cells[2].strip(), f"`{contract['default_status']}`")
+            self.assertEqual(cells[3].strip(), contract["reason"])
+        candidate_ids = {
+            row["id"] for row in catalog["primitives"] if row["default_status"] == "candidate"
+        }
+        self.assertTrue(candidate_ids.isdisjoint(cells[0].strip().strip("`") for cells in rows))
+        self.assertIn("`target_choice_restriction`", rendered)
+        self.assertNotIn("target_choice_restriction", scoring["rules"])
+
+    def test_movement_methodology_derives_examples_from_frozen_weights(self) -> None:
+        scoring = deepcopy(load_scoring_config())
+        rendered = render_movement_methodology(scoring, load_primitive_catalog())
+        for expected in (
+            "no universal 30-foot target assumption",
+            "-10 ft against benchmark Speed 10 | 0.30 × min(10 / 10, 1) | 0.30 CU",
+            "-10 ft against benchmark Speed 30 | 0.30 × min(10 / 30, 1) | 0.10 CU",
+            "-10 ft against benchmark Speed 60 | 0.30 × min(10 / 60, 1) | 0.05 CU",
+            "-30 ft against benchmark Speed 60 | 0.30 × min(30 / 60, 1) | 0.15 CU",
+            "Speed 0 against any ordinary Speed | 0.30 × 1.00 active exposure | 0.30 CU",
+            "fastest positive movement mode",
+            "unconditional, unqualified, and not choice-dependent",
+            "fails closed to `context_required`",
+        ):
+            self.assertIn(expected, rendered)
+        scoring["rules"]["mobility_loss_feet"]["nominal_weight"] = 0.6
+        scoring["rules"]["turn_movement_denial"]["nominal_weight"] = 0.4
+        derived = render_movement_methodology(scoring, load_primitive_catalog())
+        self.assertIn("-10 ft against benchmark Speed 30 | 0.60 × min(10 / 30, 1) | 0.20 CU", derived)
+        self.assertIn("Speed 0 against any ordinary Speed | 0.40 × 1.00 active exposure | 0.40 CU", derived)
+
+    def test_normalization_publication_exposes_every_maintained_rule_family(self) -> None:
+        rendered = render_control_normalization_methodology()
+        for label in (
+            "Duplicates",
+            "Disjoint sequential stages",
+            "Action-economy dominance",
+            "Specified Action interaction",
+            "Attack impairment",
+            "Save impairment",
+            "Movement dominance",
+            "Correlated flat mobility",
+            "Partial overlap",
+            "Unrelated consequences",
+        ):
+            self.assertEqual(rendered.count(f"| {label} |"), 1)
+        self.assertIn("only when maintained source-overlap metadata", rendered)
+        self.assertIn("Impairment of a different save ability survives", rendered)
+        self.assertIn("unrelated flat reductions are not implicitly capped or merged", rendered)
 
     def test_markdown_table_has_exact_header_width_and_escaping(self) -> None:
         rendered=_markdown_table(("First","Second"),(("a|b","line\nbreak"),))
