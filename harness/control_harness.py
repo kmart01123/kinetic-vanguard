@@ -28,6 +28,21 @@ DELIVERY_RECIPE_IDS=frozenset({
     "kv_attack_action_hit_failed_save_retry",
 })
 
+BATTLE_MASTER_REFERENCE_SCENARIOS=(
+    ("menacing_attack","Menacing Attack"),
+    ("pushing_attack","Pushing Attack"),
+    ("trip_attack","Trip Attack"),
+)
+ELDRITCH_KNIGHT_REFERENCE_FAMILIES=(
+    ("ray_of_frost","Ray of Frost"),
+    ("thunderwave","Thunderwave"),
+    ("blindness_deafness","Blindness/Deafness — Blinded mode"),
+    ("hold_person","Hold Person"),
+    ("web","Web"),
+    ("hypnotic_pattern","Hypnotic Pattern"),
+    ("slow","Slow"),
+)
+
 
 def _delivery_recipe(recipe_id:str,gate:str,retry_model:str,save_ability:str="",additional_control_gate:str="")->dict[str,str]:
     """Return fail-closed, diagnostic-only delivery metadata."""
@@ -87,6 +102,70 @@ def _effect_available(target:Target,effect:dict[str,Any],target_role:str)->bool:
     if dependency and dependency.lower() in target.condition_immunities:return False
     conditions=list(effect.get("conditions",[]));outcomes=list(effect.get("outcomes",[]))
     return bool(outcomes) or any(condition.lower() not in target.condition_immunities for condition in conditions)
+
+
+def _comparator_scenario_available_at_level(comparators:dict[str,Any],target:Target,build_id:str,scenario:dict[str,Any])->bool:
+    """Resolve target-independent comparator access from maintained configuration."""
+    row=comparators["control"][build_id]
+    if target.level<int(row["minimum_level"]):return False
+    if build_id=="battle_master":return scenario["id"] in set(row["known_maneuvers_by_level"][str(target.level)])
+    highest_slot=int(row["spell_access"]["highest_slot_level_by_fighter_level"][str(target.level)])
+    access_legal=int(scenario["spell_level"])==0 or int(scenario["spell_level"])<=highest_slot
+    primers=set(str(item) for item in scenario.get("_composed_save_primers",[]))
+    uses_eldritch_strike=bool(scenario.get("primer_hit_disadvantage")) or "eldritch_strike" in primers
+    return access_legal and (not uses_eldritch_strike or target.level>=int(row["eldritch_strike_minimum_level"]))
+
+
+def _is_eldritch_knight_reference_scenario(family_id:str,scenario:dict[str,Any])->bool:
+    """Group reference candidates by stable spell identity and the approved Blinded mode."""
+    if scenario.get("spell_id")!=family_id:return False
+    if family_id!="blindness_deafness":return True
+    return any(
+        "blinded" in {str(condition).lower() for condition in effect.get("conditions",[])}
+        for effect in scenario["effects"]
+    )
+
+
+def _comparator_effectiveness(target:Target,scenario:dict[str,Any],evaluated:dict[str,Any])->dict[str,Any]:
+    """Derive reference coverage from structural eligibility and resolved components."""
+    declared=[]
+    for effect in scenario["effects"]:
+        declared.extend(f"condition:{str(condition).lower()}" for condition in effect.get("conditions",[]))
+        declared.extend(f"outcome:{str(outcome).lower()}" for outcome in effect.get("outcomes",[]))
+    declared=list(dict.fromkeys(declared))
+    if not declared:raise ValueError("Comparator reference scenario has no modeled control consequences")
+    if not evaluated.get("available_at_level"):
+        return {"status":EFFECTIVENESS_NOT_APPLICABLE,"effective":False,"declared":[],"surviving":[],"reasons":[]}
+    if not evaluated["eligible"]:
+        reasons=[]
+        maximum_size=scenario.get("maximum_size");required_type=scenario.get("required_creature_type")
+        if maximum_size and not target_is_eligible(target,maximum_size):reasons.append(f"exceeds_maximum_size:{str(maximum_size).lower()}")
+        if required_type and target.creature_type.lower()!=str(required_type).lower():reasons.append(f"requires_creature_type:{str(required_type).lower()}")
+        if not reasons:raise ValueError("Available comparator reference is ineligible without a maintained structural reason")
+        return {"status":INEFFECTIVE_STRUCTURAL,"effective":False,"declared":declared,"surviving":[],"reasons":reasons}
+    surviving=[]
+    for component in evaluated["shadow_components"]:
+        for kind,label in component.get("labels",[]):
+            token=f"{kind}:{str(label).lower()}"
+            if token in declared and token not in surviving:surviving.append(token)
+    reasons=[]
+    for effect in scenario["effects"]:
+        dependency=effect.get("requires_condition_effective")
+        if dependency and str(dependency).lower() in target.condition_immunities:
+            token=f"dependency_condition_immune:{str(dependency).lower()}"
+            if token not in reasons:reasons.append(token)
+        for condition in effect.get("conditions",[]):
+            if str(condition).lower() in target.condition_immunities:
+                token=f"immune_condition:{str(condition).lower()}"
+                if token not in reasons:reasons.append(token)
+    if evaluated.get("automatic_save_success"):
+        reasons.append("automatic_save_success:maintained_target_fact")
+    if surviving and len(surviving)==len(declared):status=EFFECTIVE
+    elif surviving:status=PARTIALLY_EFFECTIVE
+    else:status=INEFFECTIVE_NULLIFIED
+    if status==EFFECTIVE and reasons:raise ValueError("Fully effective comparator reference retains nullification reasons")
+    if status!=EFFECTIVE and not reasons:raise ValueError("Reduced comparator reference effectiveness lacks a maintained reason")
+    return {"status":status,"effective":bool(surviving),"declared":declared,"surviving":surviving,"reasons":reasons}
 
 
 EFFECTIVE="effective"
@@ -408,7 +487,7 @@ def _catalog_mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:T
 def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,build_id:str,scenario:dict[str,Any])->dict[str,Any]:
     row=comparators["control"][build_id];pb=model.progression("proficiency_bonus",target.level);weapon_bonus=int(row["magic_weapon_bonus_by_level"][str(target.level)]);weapon_bonus_total=pb+int(row["attack_ability_modifier"])+weapon_bonus;reach=1.0
     if build_id=="battle_master":
-        known=set(row["known_maneuvers_by_level"][str(target.level)]);legal=scenario["id"] in known;eligible=target.level>=int(row["minimum_level"]) and legal and target_is_eligible(target,scenario.get("maximum_size"))
+        available_at_level=_comparator_scenario_available_at_level(comparators,target,build_id,scenario);eligible=available_at_level and target_is_eligible(target,scenario.get("maximum_size"))
         if scenario.get("hit_gated"):probabilities=attack_probabilities(weapon_bonus_total,target.ac);reach=probabilities[1]+probabilities[2]
         dc=int(row["save_dc_base"])+pb+int(row["save_ability_modifier"]);normal_fail=1-save_success_probability(target,scenario["save"],dc,False,bool(row["magic_resistance_applies"]))
         attacks=int(level_config(config,target.level)["attacks_per_action"]);superiority_dice=int(comparators["damage"]["battle_master"]["superiority_pool_by_level"][str(target.level)]);application=_battle_master_retry_probability(attacks,superiority_dice,reach,normal_fail) if eligible else 0.0
@@ -428,12 +507,12 @@ def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:d
             if any(label=="forced_movement" for _,label in labels):component["expected_occurrences"]=_battle_master_expected_occurrences(attacks,superiority_dice,reach,normal_fail) if eligible else 0.0
             components.append(component)
         value=max(applications,default=0.0)
-        return {"build":build_id,"scenario":scenario["id"],"spell_id":None,"audit_comment_id":scenario["audit_comment_id"],"source_scope":scenario["source_scope"],"disposition":scenario["disposition"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*value,"shadow_components":components,"targeting":None,"breaks":[],"escapes":[],"escape_resolution":None,"context_predicates":list(scenario.get("context_predicates",[])),"area_exit_policy":None,"turn_branches":[],"save_composition":{"primers":[],"initial_failure_probability":application,"repeat_failure_probability":None},"automatic_save_success":False,"automatic_success_rules":[]}
+        return {"build":build_id,"scenario":scenario["id"],"spell_id":None,"audit_comment_id":scenario["audit_comment_id"],"source_scope":scenario["source_scope"],"disposition":scenario["disposition"],"available_at_level":available_at_level,"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*value,"shadow_components":components,"targeting":None,"breaks":[],"escapes":[],"escape_resolution":None,"context_predicates":list(scenario.get("context_predicates",[])),"area_exit_policy":None,"turn_branches":[],"save_composition":{"primers":[],"initial_failure_probability":application,"repeat_failure_probability":None},"automatic_save_success":False,"automatic_success_rules":[]}
 
     if not scenario.get("spell_attack") and "save" not in scenario and not scenario.get("automatic_effect"):raise ValueError("Eldritch Knight scenario requires a spell attack, saving throw, or automatic effect")
     composed_primers=set(str(item) for item in scenario.get("_composed_save_primers",[]));uses_eldritch_strike=bool(scenario.get("primer_hit_disadvantage")) or "eldritch_strike" in composed_primers
-    highest_slot=int(row["spell_access"]["highest_slot_level_by_fighter_level"][str(target.level)]);access_legal=int(scenario["spell_level"])==0 or int(scenario["spell_level"])<=highest_slot;primer_legal=not uses_eldritch_strike or target.level>=int(row["eldritch_strike_minimum_level"])
-    eligible=target.level>=int(row["minimum_level"]) and access_legal and primer_legal and target_is_eligible(target,scenario.get("maximum_size"),scenario.get("required_creature_type"));automatic_success=_automatic_save_success(target,scenario)
+    available_at_level=_comparator_scenario_available_at_level(comparators,target,build_id,scenario)
+    eligible=available_at_level and target_is_eligible(target,scenario.get("maximum_size"),scenario.get("required_creature_type"));automatic_success=_automatic_save_success(target,scenario)
     if scenario.get("hit_gated"):
         attack_bonus=pb+_eldritch_knight_spellcasting_modifier(row,target.level) if scenario.get("spell_attack") else weapon_bonus_total;probabilities=attack_probabilities(attack_bonus,target.ac);reach=probabilities[1]+probabilities[2]
     normal_fail=None;normal_success=None;initial_success=None;save_composition={"primers":[],"initial_failure_probability":None,"repeat_failure_probability":None};initial_probability=reach if scenario.get("spell_attack") else (1.0 if scenario.get("automatic_effect") else 0.0)
@@ -475,7 +554,7 @@ def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:d
         if escape_resolution is not None:
             attempts=escape_resolution["attempt_probabilities"];components.append({"source_effect":f"{scenario['id']}:escape_action","labels":[("outcome","escape_action")],"duration":"one_minute_concentration","application_probability":float(attempts[0]),"repeat_survival_probability":None,"repeat_checkpoint":None,"magnitude_feet":None,"magnitude":None,"attack_scope":None,"pricing_status":None,"qualifiers":{"check":escape_resolution["check"],"dc":"spell_save_dc","timing":"earliest_useful_legal_turn"},"active_probabilities_by_basis":{"target_turn_window":attempts},"disjoint_stage_group":"","breaks":[],"escapes":scenario.get("escapes",[]),"reason":"Closed-form adversarial escape attempts use explicit target skill facts with ability fallback; a successful attempt ends Restrained and invokes the standing legal-exit policy."})
     value=max(applications,default=0.0);after_repeats=max(terminals,default=0.0)
-    return {"build":build_id,"scenario":scenario["id"],"spell_id":scenario["spell_id"],"audit_comment_id":scenario["audit_comment_id"],"source_scope":scenario["source_scope"],"disposition":scenario["disposition"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*after_repeats,"shadow_components":components,"targeting":_resolved_targeting(row,scenario,target.level),"breaks":list(scenario.get("breaks",[])),"escapes":list(scenario.get("escapes",[])),"escape_resolution":escape_resolution,"context_predicates":list(scenario.get("context_predicates",[])),"area_exit_policy":scenario.get("area_exit_policy"),"turn_branches":deepcopy(scenario.get("turn_branches",[])),"save_composition":save_composition,"automatic_save_success":automatic_success,"automatic_success_rules":list(scenario.get("automatic_success_if",[]))}
+    return {"build":build_id,"scenario":scenario["id"],"spell_id":scenario["spell_id"],"audit_comment_id":scenario["audit_comment_id"],"source_scope":scenario["source_scope"],"disposition":scenario["disposition"],"available_at_level":available_at_level,"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*after_repeats,"shadow_components":components,"targeting":_resolved_targeting(row,scenario,target.level),"breaks":list(scenario.get("breaks",[])),"escapes":list(scenario.get("escapes",[])),"escape_resolution":escape_resolution,"context_predicates":list(scenario.get("context_predicates",[])),"area_exit_policy":scenario.get("area_exit_policy"),"turn_branches":deepcopy(scenario.get("turn_branches",[])),"save_composition":save_composition,"automatic_save_success":automatic_success,"automatic_success_rules":list(scenario.get("automatic_success_if",[]))}
 
 
 def _select_control_value(rows:list[dict[str,Any]])->dict[str,Any]:
@@ -486,7 +565,7 @@ def _select_control_value(rows:list[dict[str,Any]])->dict[str,Any]:
 
 
 def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,write_detail:bool=True,write_headline:bool=True,profile:str=DEFAULT_PROFILE,write_shadow:bool=False,publication_scenarios:Sequence[dict[str,Any]]=())->dict[str,Any]:
-    model=AuthorityModel.load(authority);config=load_config();comparators=load_comparators();targets=load_targets(profile=profile,levels=levels,limit=target_limit);detail=[];audit=[];envelopes=[];shadow_detail=[];value_scenarios=[];catalog_scenarios=[];value_audit=[];value_envelopes=[]
+    model=AuthorityModel.load(authority);config=load_config();comparators=load_comparators();targets=load_targets(profile=profile,levels=levels,limit=target_limit);detail=[];audit=[];envelopes=[];shadow_detail=[];value_scenarios=[];catalog_scenarios=[];comparator_references=[];value_audit=[];value_envelopes=[]
     scenario_sets=config["control_matrix"]["kv_scenarios"]
     if publication_scenarios and not write_shadow:raise ValueError("Publication-only scenarios require Control Value scenario detail")
     publication_by_discipline:dict[str,list[dict[str,Any]]]=defaultdict(list);publication_identities:set[tuple[str,str,int,str]]=set()
@@ -519,6 +598,13 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
     def selected_audit_row(winner:dict[str,Any])->dict[str,Any]:
         return {"Level":winner["Level"],"Target":winner["Target"],"Discipline":winner["Discipline"],"Build":winner["Build"],"Selected Scenario":winner["Scenario"],"Eligible":winner["Eligible"],"Selection Basis":"Control Value","Control Value CU":winner["Control Value CU"],"Whole-package control stick %":winner["Whole-package control stick %"],"Value Disposition":winner["Value Disposition"]}
 
+    def reference_row(target:Target,build:str,family_id:str,display_name:str,scenario:dict[str,Any]|None,value:dict[str,Any]|None,scored:dict[str,Any]|None,candidate_count:int)->dict[str,Any]:
+        available=scenario is not None and value is not None and scored is not None
+        if not available:
+            return {"Build":build,"Family ID":family_id,"Display Name":display_name,"Spell ID":family_id if build=="eldritch_knight" else "","Level":target.level,"Target":target.name,"Scenario":"","Family Available At Level":False,"Eligible":False,"Control Value CU":0.0,"Whole-package control stick %":0.0,"Effective":False,"Effectiveness Status":EFFECTIVENESS_NOT_APPLICABLE,"Declared Consequences":"","Surviving Consequences":"","Effectiveness Reasons":"","Value Disposition":"unavailable","Primitive Rows":0,"Candidate Rows":0,"Context/Unsupported Rows":0,"Retained Candidate Rows":0,"Retained Context/Unsupported Rows":0,"Zero Entirely Fail-Closed Context":False,"Family Candidate Scenarios":0,"Save Primers":"","Primer Timing":"","Selection Basis":"Control Value CU -> Whole-package control stick % -> Scenario ID"}
+        effectiveness=_comparator_effectiveness(target,scenario,value)
+        return {"Build":build,"Family ID":family_id,"Display Name":display_name,"Spell ID":str(value.get("spell_id") or ""),"Level":target.level,"Target":target.name,"Scenario":scored["Scenario"],"Family Available At Level":True,"Eligible":scored["Eligible"],"Control Value CU":scored["Control Value CU"],"Whole-package control stick %":scored["Whole-package control stick %"],"Effective":effectiveness["effective"],"Effectiveness Status":effectiveness["status"],"Declared Consequences":";".join(effectiveness["declared"]),"Surviving Consequences":";".join(effectiveness["surviving"]),"Effectiveness Reasons":";".join(effectiveness["reasons"]),"Value Disposition":scored["Value Disposition"],"Primitive Rows":scored["Primitive Rows"],"Candidate Rows":scored["Candidate Rows"],"Context/Unsupported Rows":scored["Context/Unsupported Rows"],"Retained Candidate Rows":scored["Retained Candidate Rows"],"Retained Context/Unsupported Rows":scored["Retained Context/Unsupported Rows"],"Zero Entirely Fail-Closed Context":scored["Zero Entirely Fail-Closed Context"],"Family Candidate Scenarios":candidate_count,"Save Primers":";".join(str(item) for item in value["save_composition"]["primers"]),"Primer Timing":str(value["save_composition"].get("timing","none")),"Selection Basis":"Control Value CU -> Whole-package control stick % -> Scenario ID"}
+
     for target in targets:
         comparator_winners={}
         for build in ("battle_master","eldritch_knight"):
@@ -527,6 +613,20 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
             detail.extend({"Level":target.level,"Target":target.name,**value} for value in all_values)
             scored=[value_row(target,build,"all",value,collect_detail=write_shadow) for value in all_values]
             if write_shadow:value_scenarios.extend(scored)
+            if write_shadow and build=="battle_master":
+                by_id={str(scenario["id"]):(scenario,value,score) for scenario,value,score in zip(scenarios,all_values,scored,strict=True)}
+                for scenario_id,display_name in BATTLE_MASTER_REFERENCE_SCENARIOS:
+                    try:scenario,value,score=by_id[scenario_id]
+                    except KeyError as error:raise ValueError(f"Maintained Battle Master reference scenario is missing: {scenario_id}") from error
+                    comparator_references.append(reference_row(target,build,scenario_id,display_name,scenario,value,score,1))
+            if write_shadow and build=="eldritch_knight":
+                for family_id,display_name in ELDRITCH_KNIGHT_REFERENCE_FAMILIES:
+                    candidates=[(scenario,value,score) for scenario,value,score in zip(scenarios,all_values,scored,strict=True) if _is_eldritch_knight_reference_scenario(family_id,scenario) and value["available_at_level"]]
+                    if not candidates:
+                        comparator_references.append(reference_row(target,build,family_id,display_name,None,None,None,0));continue
+                    winner=_select_control_value([{**score,"Eligible":True} for _,_,score in candidates])
+                    scenario,value,score=next(item for item in candidates if item[2]["Scenario"]==winner["Scenario"])
+                    comparator_references.append(reference_row(target,build,family_id,display_name,scenario,value,score,len(candidates)))
             comparator_winners[build]=_select_control_value(scored)
             selected=selected_audit_row(comparator_winners[build]);audit.append(selected)
             if write_shadow:value_audit.append(selected)
@@ -571,19 +671,19 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
         with shadow_path.open("w",newline="",encoding="utf-8") as stream:
             if shadow_output:
                 writer=csv.DictWriter(stream,fieldnames=list(shadow_output[0]));writer.writeheader();writer.writerows(shadow_output)
-        value_scenario_path=output_dir/f"kv-{slug}-control-value-scenario-detail.csv";catalog_scenario_path=output_dir/f"kv-{slug}-control-catalog-scenario-detail.csv";value_audit_path=output_dir/f"kv-{slug}-control-value-selection-audit.csv";value_matrix_path=output_dir/f"kv-{slug}-control-value-matrix.csv"
-        scenario_output=[{**row,**shadow_source} for row in value_scenarios];catalog_output=[{**row,**shadow_source} for row in catalog_scenarios];audit_output=[{**row,**shadow_source} for row in value_audit]
+        value_scenario_path=output_dir/f"kv-{slug}-control-value-scenario-detail.csv";catalog_scenario_path=output_dir/f"kv-{slug}-control-catalog-scenario-detail.csv";comparator_reference_path=output_dir/f"kv-{slug}-control-comparator-reference-scenario-detail.csv";value_audit_path=output_dir/f"kv-{slug}-control-value-selection-audit.csv";value_matrix_path=output_dir/f"kv-{slug}-control-value-matrix.csv"
+        scenario_output=[{**row,**shadow_source} for row in value_scenarios];catalog_output=[{**row,**shadow_source} for row in catalog_scenarios];comparator_output=[{**row,**shadow_source} for row in comparator_references];audit_output=[{**row,**shadow_source} for row in value_audit]
         value_groups:dict[tuple[int,str],list[dict[str,Any]]]=defaultdict(list)
         for row in value_envelopes:value_groups[(int(row["Level"]),str(row["Discipline"]))].append(row)
         value_matrix=[]
         for (level,discipline),values in sorted(value_groups.items()):
             mean=lambda key:sum(float(item[key]) for item in values)/len(values)
             value_matrix.append({"Level":level,"Discipline":discipline,"Kinetic Vanguard Control Value CU":f"{mean('KV'):.12f}","Eldritch Knight Control Value CU":f"{mean('Eldritch Knight'):.12f}","Battle Master Control Value CU":f"{mean('Battle Master'):.12f}","Targets":len(values),**shadow_source})
-        for path,output in ((value_scenario_path,scenario_output),(catalog_scenario_path,catalog_output),(value_audit_path,audit_output),(value_matrix_path,value_matrix)):
+        for path,output in ((value_scenario_path,scenario_output),(catalog_scenario_path,catalog_output),(comparator_reference_path,comparator_output),(value_audit_path,audit_output),(value_matrix_path,value_matrix)):
             with path.open("w",newline="",encoding="utf-8") as stream:
                 if output:
                     writer=csv.DictWriter(stream,fieldnames=list(output[0]));writer.writeheader();writer.writerows(output)
-        value_paths={"scenario_detail":value_scenario_path,"catalog_scenario_detail":catalog_scenario_path,"selection_audit":value_audit_path,"matrix":value_matrix_path}
+        value_paths={"scenario_detail":value_scenario_path,"catalog_scenario_detail":catalog_scenario_path,"comparator_reference":comparator_reference_path,"selection_audit":value_audit_path,"matrix":value_matrix_path}
     groups:dict[tuple[int,str],list[dict[str,Any]]]=defaultdict(list)
     for row in envelopes:groups[(int(row["Level"]),str(row["Discipline"]))].append(row)
     rows=[]
@@ -592,7 +692,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
         rows.append(matrix_row({"Level":level,"Discipline":discipline,"Metric":config["control_matrix"]["metric"],"Profile":config["kv_profile"]["id"]},mean("KV"),mean("Eldritch Knight"),mean("Battle Master"),"control"))
     provenance={"rules_version":model.rules_version,"authority_sha256":model.authority_sha256,"catalog_sha256":file_sha256(DEFAULT_CATALOG),"roster_sha256":file_sha256(DEFAULT_ROSTERS),"target_profile":profile,"config_sha256":file_sha256(DEFAULT_CONFIG),"comparator_config_sha256":file_sha256(DEFAULT_COMPARATORS),"control_primitive_catalog_sha256":file_sha256(DEFAULT_PRIMITIVES),"control_value_config_sha256":file_sha256(DEFAULT_SCORING),"evaluator":"exact_analytical_enumeration","aggregation":config["control_matrix"]["aggregation"]}
     paths=write_matrix(output_dir,model.rules_version,"control",rows,provenance) if write_headline else {}
-    return {"rules_version":model.rules_version,"detail_rows":len(detail),"audit_rows":len(audit),"matrix_rows":len(rows),"paths":paths,"shadow_rows":len(shadow_detail),"shadow_path":shadow_path,"value_scenario_rows":len(value_scenarios),"catalog_scenario_rows":len(catalog_scenarios),"value_audit_rows":len(value_audit),"value_matrix_rows":len(value_matrix) if write_shadow else 0,"value_paths":value_paths}
+    return {"rules_version":model.rules_version,"detail_rows":len(detail),"audit_rows":len(audit),"matrix_rows":len(rows),"paths":paths,"shadow_rows":len(shadow_detail),"shadow_path":shadow_path,"value_scenario_rows":len(value_scenarios),"catalog_scenario_rows":len(catalog_scenarios),"comparator_reference_rows":len(comparator_references),"value_audit_rows":len(value_audit),"value_matrix_rows":len(value_matrix) if write_shadow else 0,"value_paths":value_paths}
 
 
 def main()->None:

@@ -9,7 +9,7 @@ from unittest.mock import patch
 from harness import readme_matrices
 from harness.authority import AuthorityModel, DEFAULT_AUTHORITY
 from harness.comparison_report import NOTICE_COLUMNS, matrix_row
-from harness.control_harness import _kv_rider_delivery_recipe
+from harness.control_harness import BATTLE_MASTER_REFERENCE_SCENARIOS,ELDRITCH_KNIGHT_REFERENCE_FAMILIES,_kv_rider_delivery_recipe
 from harness.control_value import (
     DEFAULT_PRIMITIVES,
     DEFAULT_SCORING,
@@ -58,6 +58,7 @@ from harness.readme_matrices import (
     render_benchmark_roster_methodology,
     render_control_value_explanation,
     render_control_benchmark_detail,
+    render_comparator_reference_scale,
     render_control_normalization_methodology,
     render_control_reliability_methodology,
     render_control_primitive_pricing_rubric,
@@ -75,6 +76,7 @@ from harness.readme_matrices import (
     stale_control_publication_paths,
     validate_authoritative_rows,
     validate_control_catalog_scenarios,
+    validate_comparator_reference_scenarios,
     validate_damage_rows,
     validate_reliability_alignment,
     validate_reliability_rows,
@@ -343,6 +345,32 @@ def _full_authoritative_rows() -> tuple[
     )
 
 
+def _synthetic_comparator_reference_rows() -> list[dict[str,str]]:
+    model=AuthorityModel.load(DEFAULT_AUTHORITY);config=load_config()
+    common={
+        "Rules Version":model.rules_version,
+        "Authority SHA-256":model.authority_sha256,
+        "Catalog SHA-256":file_sha256(DEFAULT_CATALOG),
+        "Roster SHA-256":file_sha256(DEFAULT_ROSTERS),
+        "Target Profile":DEFAULT_PROFILE,
+        "Config SHA-256":file_sha256(DEFAULT_CONFIG),
+        "Comparator Config SHA-256":file_sha256(DEFAULT_COMPARATORS),
+        **NOTICE_COLUMNS,
+        "Control Primitive Catalog SHA-256":file_sha256(DEFAULT_PRIMITIVES),
+        "Control Value Config SHA-256":file_sha256(DEFAULT_SCORING),
+    }
+    rows=[]
+    for target in load_targets(profile=DEFAULT_PROFILE,levels=set(config["methodology"]["levels"])):
+        for build,inventory in (("battle_master",BATTLE_MASTER_REFERENCE_SCENARIOS),("eldritch_knight",ELDRITCH_KNIGHT_REFERENCE_FAMILIES)):
+            for family_id,display_name in inventory:
+                available=not (build=="eldritch_knight" and family_id in {"hypnotic_pattern","slow"} and target.level<15)
+                declared="condition:blinded" if family_id=="blindness_deafness" else "outcome:synthetic_control"
+                rows.append({
+                    "Build":build,"Family ID":family_id,"Display Name":display_name,"Spell ID":family_id if build=="eldritch_knight" else "","Level":str(target.level),"Target":target.name,"Scenario":family_id if available else "","Family Available At Level":str(available),"Eligible":str(available),"Control Value CU":"1.0" if available else "0.0","Whole-package control stick %":"50.0" if available else "0.0","Effective":str(available),"Effectiveness Status":"effective" if available else "not_applicable","Declared Consequences":declared if available else "","Surviving Consequences":declared if available else "","Effectiveness Reasons":"","Value Disposition":"priced_nonzero" if available else "unavailable","Primitive Rows":"1" if available else "0","Candidate Rows":"1" if available else "0","Context/Unsupported Rows":"0","Retained Candidate Rows":"1" if available else "0","Retained Context/Unsupported Rows":"0","Zero Entirely Fail-Closed Context":"False","Family Candidate Scenarios":"1" if available else "0","Save Primers":"","Primer Timing":"none" if available else "","Selection Basis":"Control Value CU -> Whole-package control stick % -> Scenario ID",**common,
+                })
+    return rows
+
+
 class ReadmeMatrixRenderingTests(unittest.TestCase):
     def setUp(self) -> None:
         primary_values = {
@@ -440,6 +468,10 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             catalog,
             tuple(int(value) for value in load_config()["methodology"]["levels"]),
         )
+        comparator_cells=validate_comparator_reference_scenarios(
+            _synthetic_comparator_reference_rows(),
+            tuple(int(value) for value in load_config()["methodology"]["levels"]),
+        )
         damage_section=render_damage_section(damage_rows)
         readme="\n".join(
             (
@@ -505,6 +537,7 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             value_public_rows,
             catalog,
             catalog_cells,
+            comparator_cells,
         )
         self.assertTrue(detail.startswith("# Kinetic Vanguard Control Benchmark Detail\n"))
         self.assertEqual(
@@ -520,6 +553,11 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             "Stunned does **not** gain Speed 0",
             "[Kinetic Vanguard rules](KineticVanguard.yaml)",
             "[Comparator assumptions](harness/comparators/fighter-subclasses.json)",
+            "## Comparator reference scale",
+            "### Battle Master reference maneuvers",
+            "### Eldritch Knight reference spell families",
+            "### How to interpret comparator references",
+            "Best maintained legal setup for each spell family per target",
         ):
             self.assertIn(required, detail)
 
@@ -1624,6 +1662,43 @@ class ControlValueRowValidationTests(unittest.TestCase):
             validate_reliability_alignment(self.reliability_rows, audit)
 
 
+class ComparatorReferencePublicationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls)->None:
+        cls.levels=tuple(int(value) for value in load_config()["methodology"]["levels"])
+        cls.rows=_synthetic_comparator_reference_rows()
+        cls.cells=validate_comparator_reference_scenarios(cls.rows,cls.levels)
+
+    def test_full_roster_cells_inventory_and_unavailability_are_exact(self)->None:
+        self.assertEqual(len(self.cells),40)
+        for family_id,_ in BATTLE_MASTER_REFERENCE_SCENARIOS:
+            for level in self.levels:
+                cell=self.cells[("battle_master",family_id,level)];self.assertTrue(cell.available);self.assertEqual(cell.total_targets,PROFILE_LEVEL_COUNTS[DEFAULT_PROFILE][level])
+        for family_id,_ in ELDRITCH_KNIGHT_REFERENCE_FAMILIES:
+            for level in self.levels:
+                cell=self.cells[("eldritch_knight",family_id,level)]
+                self.assertEqual(cell.available,not (family_id in {"hypnotic_pattern","slow"} and level<15))
+
+    def test_reference_render_is_raw_compact_and_interpretable(self)->None:
+        rendered=render_comparator_reference_scale(self.cells,self.levels)
+        battle=rendered[rendered.index("### Battle Master reference maneuvers"):rendered.index("### Eldritch Knight reference spell families")]
+        eldritch=rendered[rendered.index("### Eldritch Knight reference spell families"):rendered.index("### How to interpret comparator references")]
+        self.assertEqual(sum(line.startswith("| ") and not line.startswith(("| Maneuver","|---")) for line in battle.splitlines()),3)
+        self.assertEqual(sum(line.startswith("| ") and not line.startswith(("| Spell family","|---")) for line in eldritch.splitlines()),7)
+        for required in ("**Cell format:** `CU · initial delivery · effective/roster`","Best maintained legal setup for each spell family per target","grouped by stable `spell_id`","Goading Attack and Disarming Attack remain maintained context-required diagnostics","not assert that the Eldritch Knight control inventory is SRD-only"):
+            self.assertIn(required,rendered)
+        self.assertIn("N/A",eldritch);self.assertNotRegex(rendered,r"\b(?:HOT|IDEAL|COLD)\b")
+        self.assertNotIn("eligible/roster",rendered)
+
+    def test_reference_schema_selection_and_spell_identity_fail_closed(self)->None:
+        missing=deepcopy(self.rows);del missing[0]["Family Candidate Scenarios"]
+        with self.assertRaisesRegex(MatrixSyncError,"schema differences"):validate_comparator_reference_scenarios(missing,self.levels)
+        alternate=deepcopy(self.rows);alternate[0]["Selection Basis"]="fuzzy CU tolerance"
+        with self.assertRaisesRegex(MatrixSyncError,"alternate selection ordering"):validate_comparator_reference_scenarios(alternate,self.levels)
+        spell=deepcopy(self.rows);next(row for row in spell if row["Build"]=="eldritch_knight")["Spell ID"]="string_prefix_guess"
+        with self.assertRaisesRegex(MatrixSyncError,"grouped by spell_id"):validate_comparator_reference_scenarios(spell,self.levels)
+
+
 class ControlOnlyGenerationTests(unittest.TestCase):
     def test_check_mode_detects_stale_or_missing_detail_and_stale_readme(self) -> None:
         self.assertEqual(
@@ -1657,6 +1732,7 @@ class ControlOnlyGenerationTests(unittest.TestCase):
                 "selection_audit": Path("audit.csv"),
                 "scenario_detail": Path("scenario.csv"),
                 "catalog_scenario_detail": Path("catalog-scenario.csv"),
+                "comparator_reference": Path("comparator-reference.csv"),
             },
         }
         expected = (
@@ -1664,6 +1740,7 @@ class ControlOnlyGenerationTests(unittest.TestCase):
             [{"kind": "value"}],
             [{"kind": "audit"}],
             [{"kind": "scenario"}],
+            [{"kind": "comparator"}],
         )
         with (
             patch.object(readme_matrices, "run_control", return_value=paths) as control,

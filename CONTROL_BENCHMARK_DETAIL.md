@@ -200,6 +200,46 @@ Do not divide only by effective targets. Effective-only averaging would hide pra
 
 `Priced` and `Partial` use the complete-roster denominator above. `Unpriced` can still be effectively covered and show independently measurable delivery, but its CU field remains `Unpriced`, not zero. `No modeled control` is `0.000 CU` because that catalog source declares no modeled control, with delivery `—` because no control establishment is measured. `N/A` means the exact form is unavailable at that Fighter level and does not participate in that level's aggregate.
 
+## Comparator reference scale
+
+These raw rows provide a familiar Fighter comparison scale beside the exact-form Kinetic Vanguard catalog. They are reference measurements, not Kinetic Vanguard rules.
+
+**Cell format:** `CU · initial delivery · effective/roster`
+
+`CU` is complete-roster mean Control Value. `Initial delivery` is the complete-roster mean initial establishment probability after maintained legal retries and primer logic. `Effective/roster` counts targets for which at least one modeled control consequence survives structural restrictions, maintained immunities, and effect dependencies. Zero and nullified targets remain in both means; coverage is not derived from CU, pricing state, or delivery probability.
+
+### Battle Master reference maneuvers
+
+| Maneuver | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |
+|---|---|---|---|---|
+| Menacing Attack | 0.000 CU · 68.71% · 12/12 | 0.000 CU · 55.72% · 9/12 | 0.000 CU · 62.57% · 9/11 | 0.000 CU · 50.60% · 8/12 |
+| Pushing Attack | 0.222 CU · 58.28% · 11/12 | 0.295 CU · 61.00% · 9/12 | 0.121 CU · 26.13% · 4/11 | 0.137 CU · 21.93% · 3/12 |
+| Trip Attack | 0.078 CU · 52.14% · 10/12 | 0.092 CU · 61.00% · 9/12 | 0.039 CU · 26.13% · 4/11 | 0.033 CU · 21.93% · 3/12 |
+
+Goading Attack and Disarming Attack remain maintained context-required diagnostics; they are not scalar reference rows.
+
+### Eldritch Knight reference spell families
+
+**Best maintained legal setup for each spell family per target.** Candidates are grouped by stable `spell_id`; the exact selector orders them by highest CU, then highest initial Reliability on an exact CU tie, then lexicographically ascending stable Scenario ID on an exact tie. Different targets may select different setups.
+
+| Spell family | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |
+|---|---|---|---|---|
+| Ray of Frost | 0.046 CU · 57.92% · 12/12 | 0.033 CU · 53.75% · 12/12 | 0.033 CU · 64.09% · 11/11 | 0.024 CU · 57.08% · 12/12 |
+| Thunderwave | 0.104 CU · 52.02% · 12/12 | 0.118 CU · 59.20% · 12/12 | 0.139 CU · 69.44% · 11/11 | 0.138 CU · 69.21% · 12/12 |
+| Blindness/Deafness — Blinded mode | 0.360 CU · 52.02% · 12/12 | 0.352 CU · 59.20% · 12/12 | 0.479 CU · 69.44% · 11/11 | 0.454 CU · 69.21% · 12/12 |
+| Hold Person | 0.265 CU · 12.55% · 3/12 | 0.051 CU · 3.30% · 1/12 | 0.000 CU · 0.00% · 0/11 | 0.000 CU · 0.00% · 0/12 |
+| Web | 1.201 CU · 48.55% · 12/12 | 1.479 CU · 61.73% · 12/12 | 2.189 CU · 80.32% · 11/11 | 1.915 CU · 71.73% · 12/12 |
+| Hypnotic Pattern | N/A | N/A | 2.813 CU · 62.50% · 9/11 | 2.421 CU · 53.80% · 9/12 |
+| Slow | N/A | N/A | 0.469 CU · 69.49% · 11/11 | 0.432 CU · 68.90% · 12/12 |
+
+`N/A` means the family is not spell-accessible at that Fighter level. When a family is available, target-specific restrictions such as Hold Person's Humanoid requirement contribute zero and remain in the complete-roster denominator.
+
+### How to interpret comparator references
+
+These rows do not mean Kinetic Vanguard should equal each reference, that every source is equally severe or broadly applicable, that higher Reliability implies greater severity, or that higher CU implies higher delivery. Control Value and Reliability retain the separate meanings documented below.
+
+Creature and roster facts come from SRD 5.2.1. Battle Master and Eldritch Knight mechanics come from reviewed, independently expressed current-PHB-derived analytical abstractions in `harness/comparators/fighter-subclasses.json`. This unofficial comparative scale is not Wizards-endorsed project content, is not Kinetic Vanguard rules, and does not assert that the Eldritch Knight control inventory is SRD-only.
+
 ## Control Reliability methodology
 
 ### What Reliability measures

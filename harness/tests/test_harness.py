@@ -13,8 +13,8 @@ from unittest.mock import patch
 
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
-from harness.control_harness import EFFECTIVE,INEFFECTIVE_NULLIFIED,INEFFECTIVE_STRUCTURAL,PARTIALLY_EFFECTIVE,_attack_action_retry_probability,_battle_master_retry_probability,_catalog_effectiveness,_catalog_rider_scenario,_comparator_scenario,_composed_eldritch_knight_scenarios,_delivery_recipe,_effect_available,_eldritch_strike_primer_probability,_kv_retry_resources,_kv_rider_delivery_recipe,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
-from harness.control_value import DEFAULT_PRIMITIVES,DEFAULT_SCORING
+from harness.control_harness import BATTLE_MASTER_REFERENCE_SCENARIOS,ELDRITCH_KNIGHT_REFERENCE_FAMILIES,EFFECTIVE,INEFFECTIVE_NULLIFIED,INEFFECTIVE_STRUCTURAL,PARTIALLY_EFFECTIVE,_attack_action_retry_probability,_battle_master_retry_probability,_catalog_effectiveness,_catalog_rider_scenario,_comparator_scenario,_comparator_scenario_available_at_level,_composed_eldritch_knight_scenarios,_delivery_recipe,_effect_available,_eldritch_strike_primer_probability,_is_eldritch_knight_reference_scenario,_kv_retry_resources,_kv_rider_delivery_recipe,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
+from harness.control_value import DEFAULT_PRIMITIVES,DEFAULT_SCORING,shadow_rows
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_battle_master_dpr_for_schedule,_battle_master_result,_comparator_dpr,_comparator_score,_eldritch_knight_result,_kv_dpr,_psionic_apex_packet,_rider_values,_strike_packet_options,run as run_damage
 from harness.ek_damage_planner import EKDamagePlanner,EKScore,EKState,chromatic_orb_duplicate_probability
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,file_sha256,fighter_action_schedules,load_comparators,load_config,load_targets,save_success_probability
@@ -1581,6 +1581,87 @@ class CommonControlSelectionTests(unittest.TestCase):
         self.assertEqual(winner["Scenario"],"eligible")
 
 
+class ComparatorReferenceEvidenceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls)->None:
+        cls.directory=tempfile.TemporaryDirectory();cls.root=Path(cls.directory.name)
+        cls.result=run_control(DEFAULT_AUTHORITY,cls.root,{7,11,15,20},None,write_headline=True,profile="headline",write_shadow=True)
+        with cls.result["value_paths"]["comparator_reference"].open(encoding="utf-8") as stream:cls.rows=list(csv.DictReader(stream))
+        cls.targets=load_targets(profile="headline",levels={7,11,15,20});cls.target_by_identity={(target.level,target.name):target for target in cls.targets}
+        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators()
+
+    @classmethod
+    def tearDownClass(cls)->None:cls.directory.cleanup()
+
+    def test_fixed_reference_inventories_and_config_sources_are_exact(self)->None:
+        self.assertEqual(tuple(item[0] for item in BATTLE_MASTER_REFERENCE_SCENARIOS),("menacing_attack","pushing_attack","trip_attack"))
+        self.assertEqual(tuple(item[0] for item in ELDRITCH_KNIGHT_REFERENCE_FAMILIES),("ray_of_frost","thunderwave","blindness_deafness","hold_person","web","hypnotic_pattern","slow"))
+        bm_config={scenario["id"] for scenario in self.comparators["control"]["battle_master"]["scenarios"]}
+        self.assertTrue(set(dict(BATTLE_MASTER_REFERENCE_SCENARIOS))<=bm_config)
+        self.assertFalse({"goading_attack","disarming_attack"}&{row["Family ID"] for row in self.rows if row["Build"]=="battle_master"})
+        self.assertEqual({(row["Build"],row["Family ID"]) for row in self.rows},{*(('battle_master',item[0]) for item in BATTLE_MASTER_REFERENCE_SCENARIOS),*(('eldritch_knight',item[0]) for item in ELDRITCH_KNIGHT_REFERENCE_FAMILIES)})
+
+    def test_battle_master_reference_values_are_exact_evaluator_outputs(self)->None:
+        target=next(item for item in self.targets if item.level==7 and item.name=="Gladiator")
+        for scenario_id,_ in BATTLE_MASTER_REFERENCE_SCENARIOS:
+            scenario=next(item for item in self.comparators["control"]["battle_master"]["scenarios"] if item["id"]==scenario_id)
+            evaluated=_comparator_scenario(self.model,self.config,self.comparators,target,"battle_master",scenario)
+            primitive=shadow_rows({"Build":"battle_master","Discipline":"all","Level":target.level,"Target":target.name,"Scenario":scenario_id},evaluated["shadow_components"],horizon=int(self.config["methodology"]["rounds"]),benchmark_locomotion_speed=target.benchmark_locomotion_speed)
+            published=next(row for row in self.rows if row["Build"]=="battle_master" and row["Family ID"]==scenario_id and row["Level"]=="7" and row["Target"]==target.name)
+            with self.subTest(scenario=scenario_id):
+                self.assertAlmostEqual(float(published["Control Value CU"]),sum(float(row["Control Value CU"]) for row in primitive))
+                self.assertAlmostEqual(float(published["Whole-package control stick %"]),float(evaluated["whole"]))
+                self.assertEqual(published["Scenario"],scenario_id)
+
+    def test_battle_master_effectiveness_tracks_immunity_size_and_prone(self)->None:
+        keyed={(row["Level"],row["Target"],row["Family ID"]):row for row in self.rows if row["Build"]=="battle_master"}
+        frightened=[target for target in self.targets if "frightened" in target.condition_immunities]
+        oversized=[target for target in self.targets if target.size in {"huge","gargantuan"}]
+        prone=[target for target in self.targets if "prone" in target.condition_immunities]
+        self.assertTrue(frightened and oversized and prone)
+        for target in frightened:self.assertEqual(keyed[(str(target.level),target.name,"menacing_attack")]["Effectiveness Status"],INEFFECTIVE_NULLIFIED)
+        for target in oversized:
+            self.assertEqual(keyed[(str(target.level),target.name,"pushing_attack")]["Effectiveness Status"],INEFFECTIVE_STRUCTURAL)
+            self.assertEqual(keyed[(str(target.level),target.name,"trip_attack")]["Effectiveness Status"],INEFFECTIVE_STRUCTURAL)
+        for target in prone:
+            if target.size not in {"huge","gargantuan"}:self.assertEqual(keyed[(str(target.level),target.name,"trip_attack")]["Effectiveness Status"],INEFFECTIVE_NULLIFIED)
+
+    def test_eldritch_knight_grouping_modes_access_and_primers_are_semantic(self)->None:
+        synthetic={"id":"unrelated_identifier","spell_id":"web","effects":[]}
+        impostor={"id":"web","spell_id":"slow","effects":[]}
+        self.assertTrue(_is_eldritch_knight_reference_scenario("web",synthetic));self.assertFalse(_is_eldritch_knight_reference_scenario("web",impostor))
+        blindness=[row for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]=="blindness_deafness" and row["Family Available At Level"]=="True"]
+        self.assertTrue(blindness);self.assertTrue(all("condition:blinded" in row["Declared Consequences"] and "hearing_option_denial" not in row["Declared Consequences"] for row in blindness))
+        ray=[row for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]=="ray_of_frost"]
+        self.assertTrue(all(row["Family Candidate Scenarios"]=="1" for row in ray))
+        thunder=[row for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]=="thunderwave"]
+        self.assertTrue(any(int(row["Family Candidate Scenarios"])>1 for row in thunder))
+        self.assertTrue(all("eldritch_strike" not in row["Save Primers"] for row in thunder if row["Level"]=="7"))
+        self.assertTrue(all(row["Primer Timing"]=="cross_turn" for row in self.rows if "mind_sliver" in row["Save Primers"]))
+        slow=next(item for item in self.comparators["control"]["eldritch_knight"]["scenarios"] if item["id"]=="slow");target=replace(self.targets[0],level=11)
+        self.assertFalse(_comparator_scenario_available_at_level(self.comparators,target,"eldritch_knight",slow))
+        changed=deepcopy(self.comparators);changed["control"]["eldritch_knight"]["spell_access"]["highest_slot_level_by_fighter_level"]["11"]=3
+        self.assertTrue(_comparator_scenario_available_at_level(changed,target,"eldritch_knight",slow))
+
+    def test_eldritch_knight_availability_target_zeros_and_per_target_selection(self)->None:
+        for family in ("hypnotic_pattern","slow"):
+            early=[row for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]==family and row["Level"] in {"7","11"}]
+            self.assertTrue(early);self.assertTrue(all(row["Family Available At Level"]=="False" and row["Scenario"]=="" for row in early))
+            self.assertTrue(all(row["Family Available At Level"]=="True" for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]==family and row["Level"] in {"15","20"}))
+        hold=[row for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]=="hold_person"]
+        nonhumanoids=[row for row in hold if self.target_by_identity[(int(row["Level"]),row["Target"])].creature_type!="humanoid"]
+        self.assertTrue(nonhumanoids);self.assertTrue(all(row["Family Available At Level"]=="True" and row["Eligible"]=="False" and float(row["Control Value CU"])==0 and float(row["Whole-package control stick %"])==0 for row in nonhumanoids))
+        web={row["Scenario"] for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]=="web"}
+        self.assertGreater(len(web),1)
+
+    def test_reference_derivative_does_not_change_headline_or_common_selection(self)->None:
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);plain=run_control(DEFAULT_AUTHORITY,root/"plain",{7},1,write_headline=True,profile="headline",write_shadow=False);reference=run_control(DEFAULT_AUTHORITY,root/"reference",{7},1,write_headline=True,profile="headline",write_shadow=True)
+            self.assertEqual(plain["paths"]["csv"].read_bytes(),reference["paths"]["csv"].read_bytes())
+            for name in ("kv-14-3-0-control-detail.csv","kv-14-3-0-control-selection-audit.csv"):
+                self.assertEqual((root/"plain"/name).read_bytes(),(root/"reference"/name).read_bytes())
+
+
 class SmokeAndBoundaryTests(unittest.TestCase):
     def test_damage_smoke_writes_current_detail_and_matrix_outputs(self)->None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1636,8 +1717,8 @@ class SmokeAndBoundaryTests(unittest.TestCase):
     def test_control_value_detail_writes_common_transparent_outputs(self)->None:
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);control=run_control(DEFAULT_AUTHORITY,root,{20},1,write_headline=False,profile="headline",write_shadow=True)
-            self.assertEqual(control["shadow_rows"],569);self.assertEqual(control["value_scenario_rows"],186);self.assertEqual(control["catalog_scenario_rows"],4);self.assertEqual(control["value_audit_rows"],6);self.assertEqual(control["value_matrix_rows"],4)
-            self.assertEqual(set(control["value_paths"]),{"scenario_detail","catalog_scenario_detail","selection_audit","matrix"});self.assertTrue(all(path.is_file() for path in control["value_paths"].values()))
+            self.assertEqual(control["shadow_rows"],569);self.assertEqual(control["value_scenario_rows"],186);self.assertEqual(control["catalog_scenario_rows"],4);self.assertEqual(control["comparator_reference_rows"],10);self.assertEqual(control["value_audit_rows"],6);self.assertEqual(control["value_matrix_rows"],4)
+            self.assertEqual(set(control["value_paths"]),{"scenario_detail","catalog_scenario_detail","comparator_reference","selection_audit","matrix"});self.assertTrue(all(path.is_file() for path in control["value_paths"].values()))
             with control["shadow_path"].open(encoding="utf-8") as stream:
                 rows=list(csv.DictReader(stream))
             self.assertTrue(rows);self.assertTrue(all(row["Pricing Status"] in {"candidate","context_required","unsupported"} for row in rows))

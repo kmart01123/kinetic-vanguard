@@ -22,7 +22,9 @@ from .comparison_report import (
     matrix_row,
 )
 from .control_harness import (
+    BATTLE_MASTER_REFERENCE_SCENARIOS,
     DELIVERY_RECIPE_IDS,
+    ELDRITCH_KNIGHT_REFERENCE_FAMILIES,
     EFFECTIVE,
     EFFECTIVENESS_NOT_APPLICABLE,
     INEFFECTIVE_NULLIFIED,
@@ -169,6 +171,45 @@ CATALOG_SCENARIO_COLUMNS = (
     *CATALOG_EFFECTIVENESS_COLUMNS,
     *CATALOG_DELIVERY_RECIPE_COLUMNS,
 )
+COMPARATOR_REFERENCE_COLUMNS = (
+    "Build",
+    "Family ID",
+    "Display Name",
+    "Spell ID",
+    "Level",
+    "Target",
+    "Scenario",
+    "Family Available At Level",
+    "Eligible",
+    "Control Value CU",
+    "Whole-package control stick %",
+    "Effective",
+    "Effectiveness Status",
+    "Declared Consequences",
+    "Surviving Consequences",
+    "Effectiveness Reasons",
+    "Value Disposition",
+    "Primitive Rows",
+    "Candidate Rows",
+    "Context/Unsupported Rows",
+    "Retained Candidate Rows",
+    "Retained Context/Unsupported Rows",
+    "Zero Entirely Fail-Closed Context",
+    "Family Candidate Scenarios",
+    "Save Primers",
+    "Primer Timing",
+    "Selection Basis",
+    "Rules Version",
+    "Authority SHA-256",
+    "Catalog SHA-256",
+    "Roster SHA-256",
+    "Target Profile",
+    "Config SHA-256",
+    "Comparator Config SHA-256",
+    *NOTICE_COLUMNS,
+    "Control Primitive Catalog SHA-256",
+    "Control Value Config SHA-256",
+)
 
 PRICED = "priced"
 PARTIALLY_PRICED = "partially_priced"
@@ -228,6 +269,16 @@ class ControlCatalogCell:
     total_targets: int | None = None
     exceptions: tuple[ControlCoverageException, ...] = ()
     delivery_recipe: ControlDeliveryRecipe | None = None
+
+
+@dataclass(frozen=True)
+class ComparatorReferenceCell:
+    available: bool
+    mean_cu: float | None = None
+    mean_delivery: float | None = None
+    effective_targets: int | None = None
+    total_targets: int | None = None
+    selections: tuple[tuple[str, str], ...] = ()
 
 
 class MatrixSyncError(ValueError):
@@ -802,6 +853,157 @@ def validate_control_catalog_scenarios(
                 ),
                 delivery_recipe=next(iter(recipes)),
             )
+    return cells
+
+
+def validate_comparator_reference_scenarios(
+    rows: Sequence[MatrixRow], levels: Sequence[int]
+) -> dict[tuple[str, str, int], ComparatorReferenceCell]:
+    """Validate target-selected comparator references and aggregate full rosters."""
+    _require_fields(rows, COMPARATOR_REFERENCE_COLUMNS, "Comparator reference detail")
+    model = AuthorityModel.load(DEFAULT_AUTHORITY)
+    expected_source = {
+        "Rules Version": model.rules_version,
+        "Authority SHA-256": model.authority_sha256,
+        "Catalog SHA-256": file_sha256(DEFAULT_CATALOG),
+        "Roster SHA-256": file_sha256(DEFAULT_ROSTERS),
+        "Target Profile": DEFAULT_PROFILE,
+        "Config SHA-256": file_sha256(DEFAULT_CONFIG),
+        "Comparator Config SHA-256": file_sha256(DEFAULT_COMPARATORS),
+        "Control Primitive Catalog SHA-256": file_sha256(DEFAULT_PRIMITIVES),
+        "Control Value Config SHA-256": file_sha256(DEFAULT_SCORING),
+    }
+    inventories = {
+        "battle_master": dict(BATTLE_MASTER_REFERENCE_SCENARIOS),
+        "eldritch_knight": dict(ELDRITCH_KNIGHT_REFERENCE_FAMILIES),
+    }
+    targets = load_targets(profile=DEFAULT_PROFILE, levels=set(levels))
+    target_identities = {(str(target.level), target.name) for target in targets}
+    expected = {
+        (str(target.level), target.name, build, family_id)
+        for target in targets
+        for build, inventory in inventories.items()
+        for family_id in inventory
+    }
+    parsed: dict[tuple[str, str, str, str], dict[str, object]] = {}
+    allowed_dispositions = {
+        "unavailable",
+        "ineligible",
+        "priced_nonzero",
+        "legitimately_priced_zero",
+        "entirely_context_required_or_unsupported",
+    }
+    selection_basis = "Control Value CU -> Whole-package control stick % -> Scenario ID"
+    for index, row in enumerate(rows):
+        _validate_value_source(row, index, "Comparator reference detail", expected_source)
+        build = row["Build"]
+        inventory = inventories.get(build)
+        if inventory is None or row["Family ID"] not in inventory:
+            raise MatrixSyncError(f"Comparator reference row {index} has unknown inventory identity")
+        family_id = row["Family ID"]
+        if row["Display Name"] != inventory[family_id]:
+            raise MatrixSyncError(f"Comparator reference row {index} has stale display name")
+        if (row["Level"], row["Target"]) not in target_identities:
+            raise MatrixSyncError(f"Comparator reference row {index} has unknown target identity")
+        identity = (row["Level"], row["Target"], build, family_id)
+        if identity in parsed:
+            raise MatrixSyncError(f"Comparator reference detail duplicates target identity {identity}")
+        if row["Selection Basis"] != selection_basis:
+            raise MatrixSyncError(f"Comparator reference row {index} has alternate selection ordering")
+        if row["Family Available At Level"] not in {"True", "False"} or row["Eligible"] not in {"True", "False"} or row["Effective"] not in {"True", "False"}:
+            raise MatrixSyncError(f"Comparator reference row {index} has invalid boolean evidence")
+        available = row["Family Available At Level"] == "True"
+        eligible = row["Eligible"] == "True"
+        effective = row["Effective"] == "True"
+        try:
+            level = int(row["Level"])
+            cu = float(row["Control Value CU"])
+            delivery = float(row["Whole-package control stick %"])
+            primitive_rows = int(row["Primitive Rows"])
+            candidate_rows = int(row["Candidate Rows"])
+            context_rows = int(row["Context/Unsupported Rows"])
+            retained_candidates = int(row["Retained Candidate Rows"])
+            retained_context = int(row["Retained Context/Unsupported Rows"])
+            family_candidates = int(row["Family Candidate Scenarios"])
+        except (TypeError, ValueError) as error:
+            raise MatrixSyncError(f"Comparator reference row {index} has non-numeric evidence") from error
+        if (
+            level not in levels
+            or not math.isfinite(cu)
+            or cu < 0
+            or not math.isfinite(delivery)
+            or not 0 <= delivery <= 100
+            or min(primitive_rows,candidate_rows,context_rows,retained_candidates,retained_context,family_candidates) < 0
+            or primitive_rows != candidate_rows + context_rows
+            or retained_candidates > candidate_rows
+            or retained_context > context_rows
+        ):
+            raise MatrixSyncError(f"Comparator reference row {index} has invalid numeric evidence")
+        if row["Value Disposition"] not in allowed_dispositions:
+            raise MatrixSyncError(f"Comparator reference row {index} has invalid disposition")
+        declared = _catalog_tokens(row["Declared Consequences"],r"(?:condition|outcome):[a-z0-9_]+","consequence token",index)
+        surviving = _catalog_tokens(row["Surviving Consequences"],r"(?:condition|outcome):[a-z0-9_]+","consequence token",index)
+        reasons = _catalog_tokens(row["Effectiveness Reasons"],r"(?:exceeds_maximum_size|requires_creature_type|immune_condition|dependency_condition_immune|automatic_save_success):[a-z0-9_]+","effectiveness reason",index)
+        if Counter(surviving)-Counter(declared):
+            raise MatrixSyncError(f"Comparator reference row {index} has undeclared surviving control")
+        status = row["Effectiveness Status"]
+        structural = any(reason.startswith(("exceeds_maximum_size:","requires_creature_type:")) for reason in reasons)
+        effect_loss = any(reason.startswith(("immune_condition:","dependency_condition_immune:","automatic_save_success:")) for reason in reasons)
+        if not available:
+            valid = not eligible and not effective and cu==0 and delivery==0 and not row["Scenario"] and family_candidates==0 and row["Value Disposition"]=="unavailable" and status==EFFECTIVENESS_NOT_APPLICABLE and not declared and not surviving and not reasons
+        elif status==EFFECTIVE:
+            valid = eligible and effective and bool(declared) and Counter(declared)==Counter(surviving) and not reasons
+        elif status==PARTIALLY_EFFECTIVE:
+            valid = eligible and effective and bool(surviving) and Counter(declared)!=Counter(surviving) and effect_loss and not structural
+        elif status==INEFFECTIVE_STRUCTURAL:
+            valid = not eligible and not effective and bool(declared) and not surviving and structural and not effect_loss and cu==0 and delivery==0
+        elif status==INEFFECTIVE_NULLIFIED:
+            valid = eligible and not effective and bool(declared) and not surviving and effect_loss and not structural and cu==0 and delivery==0
+        else:
+            valid = False
+        if not valid:
+            raise MatrixSyncError(f"Comparator reference row {index} has inconsistent effectiveness or availability evidence")
+        if available and (not row["Scenario"] or family_candidates<1 or row["Value Disposition"]=="unavailable"):
+            raise MatrixSyncError(f"Comparator reference row {index} lacks an available selected scenario")
+        if build=="battle_master":
+            if row["Spell ID"] or (available and (row["Scenario"]!=family_id or family_candidates!=1)) or row["Save Primers"] or row["Primer Timing"] not in {"","none"}:
+                raise MatrixSyncError(f"Battle Master reference row {index} is not the fixed maintained maneuver")
+        else:
+            if row["Spell ID"]!=family_id:
+                raise MatrixSyncError(f"Eldritch Knight reference row {index} is not grouped by spell_id")
+            primers=_catalog_tokens(row["Save Primers"],r"(?:eldritch_strike|mind_sliver)","save primer",index)
+            if "mind_sliver" in primers and row["Primer Timing"]!="cross_turn":
+                raise MatrixSyncError(f"Eldritch Knight reference row {index} uses Mind Sliver outside the approved cross-turn window")
+            if available and row["Primer Timing"] not in {"none","prior_attack_action","cross_turn"}:
+                raise MatrixSyncError(f"Eldritch Knight reference row {index} has unknown primer timing")
+            if not available and (primers or row["Primer Timing"]):
+                raise MatrixSyncError(f"Unavailable Eldritch Knight family row {index} retains primer evidence")
+            if family_id=="blindness_deafness" and available and ("condition:blinded" not in declared or "outcome:hearing_option_denial" in declared):
+                raise MatrixSyncError("Blindness/Deafness reference is not the maintained Blinded mode")
+        parsed[identity]={"available":available,"cu":cu,"delivery":delivery,"effective":effective,"scenario":row["Scenario"]}
+    _key_difference(set(parsed),expected,"Comparator reference detail")
+    cells={}
+    targets_by_level={level:tuple(target for target in targets if target.level==level) for level in levels}
+    for build,inventory in inventories.items():
+        for family_id in inventory:
+            for level in levels:
+                family_rows=[parsed[(str(level),target.name,build,family_id)] for target in targets_by_level[level]]
+                availability={bool(item["available"]) for item in family_rows}
+                if len(availability)!=1:
+                    raise MatrixSyncError(f"Comparator family {(build,family_id,level)} has target-dependent level availability")
+                if not next(iter(availability)):
+                    cells[(build,family_id,level)]=ComparatorReferenceCell(False);continue
+                total=len(family_rows)
+                if total!=PROFILE_LEVEL_COUNTS[DEFAULT_PROFILE][level]:
+                    raise MatrixSyncError(f"Comparator family {(build,family_id,level)} has an incomplete roster")
+                cells[(build,family_id,level)]=ComparatorReferenceCell(
+                    True,
+                    sum(float(item["cu"]) for item in family_rows)/total,
+                    sum(float(item["delivery"]) for item in family_rows)/total,
+                    sum(bool(item["effective"]) for item in family_rows),
+                    total,
+                    tuple((target.name,str(item["scenario"])) for target,item in zip(targets_by_level[level],family_rows,strict=True)),
+                )
     return cells
 
 
@@ -1432,6 +1634,100 @@ def render_raw_kv_reliability_table(
 ) -> str:
     """Render raw KV stick probability from CU-winner-aligned Reliability rows."""
     return _raw_kv_table(reliability_rows, disciplines, decimals=2, suffix="%")
+
+
+def _render_comparator_reference_cell(cell: ComparatorReferenceCell) -> str:
+    if not cell.available:return "N/A"
+    if (
+        cell.mean_cu is None
+        or cell.mean_delivery is None
+        or cell.effective_targets is None
+        or cell.total_targets is None
+        or not math.isfinite(cell.mean_cu)
+        or not math.isfinite(cell.mean_delivery)
+        or not 0<=cell.effective_targets<=cell.total_targets
+    ):
+        raise MatrixSyncError("Comparator reference cell is missing aggregate evidence")
+    return f"{cell.mean_cu:.3f} CU · {cell.mean_delivery:.2f}% · {cell.effective_targets}/{cell.total_targets}"
+
+
+def render_comparator_reference_scale(
+    cells: Mapping[tuple[str,str,int],ComparatorReferenceCell],levels: Sequence[int]
+) -> str:
+    """Render the compact raw BM/EK comparison scale."""
+    inventories=(
+        ("battle_master","Battle Master reference maneuvers",BATTLE_MASTER_REFERENCE_SCENARIOS,"Maneuver"),
+        ("eldritch_knight","Eldritch Knight reference spell families",ELDRITCH_KNIGHT_REFERENCE_FAMILIES,"Spell family"),
+    )
+    expected={(build,family_id,int(level)) for build,_,inventory,_ in inventories for family_id,_ in inventory for level in levels}
+    _key_difference(set(cells),expected,"Comparator reference publication")
+    sections=[
+        "## Comparator reference scale",
+        "",
+        (
+            "These raw rows provide a familiar Fighter comparison scale beside the exact-form "
+            "Kinetic Vanguard catalog. They are reference measurements, not Kinetic Vanguard rules."
+        ),
+        "",
+        "**Cell format:** `CU · initial delivery · effective/roster`",
+        "",
+        (
+            "`CU` is complete-roster mean Control Value. `Initial delivery` is the complete-roster "
+            "mean initial establishment probability after maintained legal retries and primer logic. "
+            "`Effective/roster` counts targets for which at least one modeled control consequence "
+            "survives structural restrictions, maintained immunities, and effect dependencies. "
+            "Zero and nullified targets remain in both means; coverage is not derived from CU, "
+            "pricing state, or delivery probability."
+        ),
+        "",
+    ]
+    for build,heading,inventory,first_column in inventories:
+        sections.extend((f"### {heading}",""))
+        if build=="eldritch_knight":
+            sections.extend((
+                "**Best maintained legal setup for each spell family per target.** Candidates are "
+                "grouped by stable `spell_id`; the exact selector orders them by highest CU, then "
+                "highest initial Reliability on an exact CU tie, then lexicographically ascending "
+                "stable Scenario ID on an exact tie. Different targets may select different setups.",
+                "",
+            ))
+        table_rows=[
+            [display_name,*(_render_comparator_reference_cell(cells[(build,family_id,int(level))]) for level in levels)]
+            for family_id,display_name in inventory
+        ]
+        sections.extend((_markdown_table((first_column,*(f"Fighter {level}" for level in levels)),table_rows),""))
+        if build=="battle_master":
+            sections.extend((
+                "Goading Attack and Disarming Attack remain maintained context-required diagnostics; "
+                "they are not scalar reference rows.",
+                "",
+            ))
+        else:
+            sections.extend((
+                "`N/A` means the family is not spell-accessible at that Fighter level. When a family "
+                "is available, target-specific restrictions such as Hold Person's Humanoid requirement "
+                "contribute zero and remain in the complete-roster denominator.",
+                "",
+            ))
+    sections.extend((
+        "### How to interpret comparator references",
+        "",
+        (
+            "These rows do not mean Kinetic Vanguard should equal each reference, that every source is "
+            "equally severe or broadly applicable, that higher Reliability implies greater severity, "
+            "or that higher CU implies higher delivery. Control Value and Reliability retain the "
+            "separate meanings documented below."
+        ),
+        "",
+        (
+            "Creature and roster facts come from SRD 5.2.1. Battle Master and Eldritch Knight mechanics "
+            "come from reviewed, independently expressed current-PHB-derived analytical abstractions in "
+            "`harness/comparators/fighter-subclasses.json`. This unofficial comparative scale is not "
+            "Wizards-endorsed project content, is not Kinetic Vanguard rules, and does not assert that "
+            "the Eldritch Knight control inventory is SRD-only."
+        ),
+    ))
+    return "\n".join(sections)
 
 
 def _render_catalog_cell(cell: ControlCatalogCell) -> str:
@@ -2636,6 +2932,7 @@ def render_control_benchmark_detail(
     value_rows: Sequence[MatrixRow],
     catalog: Sequence[ControlCatalogForm],
     catalog_cells: Mapping[tuple[str, str, int], ControlCatalogCell],
+    comparator_cells: Mapping[tuple[str, str, int], ComparatorReferenceCell],
     disciplines: Sequence[str] = README_DISCIPLINES,
 ) -> str:
     """Render the exhaustive control companion from the validated publication run."""
@@ -2680,6 +2977,8 @@ def render_control_benchmark_detail(
             render_control_coverage_exceptions(catalog, catalog_cells, levels),
             "",
             render_benchmark_roster_methodology(),
+            "",
+            render_comparator_reference_scale(comparator_cells,levels),
             "",
             "## Control Reliability methodology",
             "",
@@ -2791,7 +3090,7 @@ def replace_generated_region(readme: str, region: str) -> str:
 
 def _control_publication_rows(
     root: Path, levels: set[int]
-) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
+) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
     catalog = build_kv_control_catalog()
     publication_scenarios = catalog_rider_scenarios(catalog)
     control = run_control(
@@ -2810,11 +3109,12 @@ def _control_publication_rows(
         read_matrix_rows(control["value_paths"]["matrix"]),
         read_matrix_rows(control["value_paths"]["selection_audit"]),
         read_matrix_rows(control["value_paths"]["catalog_scenario_detail"]),
+        read_matrix_rows(control["value_paths"]["comparator_reference"]),
     )
 
 
 def generate_control_publication_rows(
-) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
+) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
     config = load_config()
     levels = {int(value) for value in config["methodology"]["levels"]}
     with tempfile.TemporaryDirectory(prefix="kv-readme-control-") as directory:
@@ -2824,6 +3124,7 @@ def generate_control_publication_rows(
 def generate_authoritative_rows(
     workers: int,
 ) -> tuple[
+    list[MatrixRow],
     list[MatrixRow],
     list[MatrixRow],
     list[MatrixRow],
@@ -2848,6 +3149,7 @@ def generate_authoritative_rows(
             value_rows,
             value_audit_rows,
             value_scenario_rows,
+            comparator_reference_rows,
         ) = _control_publication_rows(root / "control", levels)
         return (
             read_matrix_rows(damage["paths"]["csv"]),
@@ -2855,6 +3157,7 @@ def generate_authoritative_rows(
             value_rows,
             value_audit_rows,
             value_scenario_rows,
+            comparator_reference_rows,
         )
 
 
@@ -2898,7 +3201,7 @@ def main() -> None:
     generated_region_span(readme)
     if args.control_only:
         damage_section = extract_damage_section(readme)
-        reliability_rows, value_rows, value_audit_rows, value_scenario_rows = (
+        reliability_rows, value_rows, value_audit_rows, value_scenario_rows, comparator_reference_rows = (
             generate_control_publication_rows()
         )
         rules_version, profile, _, disciplines = validate_reliability_rows(
@@ -2911,6 +3214,7 @@ def main() -> None:
             value_rows,
             value_audit_rows,
             value_scenario_rows,
+            comparator_reference_rows,
         ) = (
             generate_authoritative_rows(args.workers)
         )
@@ -2928,6 +3232,10 @@ def main() -> None:
         catalog,
         tuple(int(value) for value in load_config()["methodology"]["levels"]),
     )
+    comparator_cells = validate_comparator_reference_scenarios(
+        comparator_reference_rows,
+        tuple(int(value) for value in load_config()["methodology"]["levels"]),
+    )
     region = render_balance_region(
         readme,
         damage_section,
@@ -2940,6 +3248,7 @@ def main() -> None:
         value_public_rows,
         catalog,
         catalog_cells,
+        comparator_cells,
         disciplines,
     )
     if README_PATH.read_text(encoding="utf-8") != readme:
