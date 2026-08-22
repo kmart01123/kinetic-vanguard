@@ -60,10 +60,13 @@ test("README exposes one structurally valid headline balance snapshot",async()=>
   assert.match(region,/47 creature profiles from SRD 5\.2\.1 at levels 7, 11, 15, and 20/);assert.match(region,/weighted equally within their level/);
   assert.match(region,/Battle Master and Eldritch Knight define the comparison envelope/);assert.match(region,/comparator-envelope benchmark, not a universal real-play balance tolerance/);
   assert.match(region,/\*\*Primary control-balance metric:\*\* how much useful control/);assert.match(region,/\*\*Secondary diagnostic:\*\* how reliably/);
+  assert.match(region,/selects the legal package with the highest Control Value/);assert.match(region,/exact CU tie is resolved by higher whole-package Control Reliability, then by ascending stable scenario ID/);
+  assert.match(region,/Control Reliability measures delivery probability for the same CU-selected package/);
+  assert.match(region,/different public bands because they measure different properties of the same selected package/);
   assert.match(region,/`1\.0 CU` is denial of one target's normal Action \+ Bonus Action.*not a D&D rules quantity/s);
   assert.match(region,/Stunned decomposes into active-turn denial.*Stunned does \*\*not\*\* gain Speed 0/s);
   assert.match(region,/Zero Control Value from missing context does \*\*not\*\* mean that a mechanic has no value in actual play/);
-  assert.match(region,/Control Reliability measures delivery probability, not effect severity/);assert.match(region,/Reliability `HOT` result means unusually high delivery.*does not by itself mean.*severity is excessive/s);
+  assert.match(region,/Reliability `HOT` result means unusually high delivery.*does not by itself mean.*severity is excessive/s);
   for(const path of ["harness/README.md","harness/config/benchmark.json","harness/config/control-value.json","harness/data/control_primitives.json","harness/comparators/fighter-subclasses.json"])assert.ok(region.includes(`](${path})`));
   assert.match(region,/independently expressed analytical abstractions under the reviewed comparator source policy/);assert.doesNotMatch(region,/Eldritch Knight[^\n.]*SRD(?: |-)only/i);
   assert.doesNotMatch(region,/ORDER CHECK|KV DPR|KV control %|KV as % of EK|KV as % of BM/);assert.doesNotMatch(region,/IDEAL \([^)]*%\)|COLD \(\+|HOT \(-/);

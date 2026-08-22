@@ -128,7 +128,6 @@
       "spell_access": {"highest_slot_level_by_fighter_level": {"7": 2, "11": 2, "15": 3, "20": 4}},
       "eldritch_strike_minimum_level": 11,
       "magic_resistance_applies": true,
-      "reliability_scenario_ids": ["blindness_deafness", "blindness_after_eldritch_strike"],
       "scenarios": [
         {"id":"mind_sliver","spell_id":"mind_sliver","audit_comment_id":5314332767,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"modeled_mixed","spell_level":0,"delivery":"war_magic_cantrip","save":"intelligence","targeting":{"mode":"single_target"},"context_predicates":["qualifying_downstream_save","cross_turn_within_window_valid","same_attack_action_sequence_not_established"],"effects":[{"id":"save_primer","gate":"on_failed_save","outcomes":["next_save_roll_penalty"],"magnitude":4,"qualifiers":{"die":"1d4","consumption":"next_saving_throw"},"duration":"until_end_next_turn","unpriced":true}]},
         {"id":"ray_of_frost","spell_id":"ray_of_frost","audit_comment_id":5314336043,"source_scope":"independently_expressed_phb_comparator_abstraction","disposition":"modeled","spell_level":0,"delivery":"war_magic_cantrip","spell_attack":true,"hit_gated":true,"targeting":{"mode":"single_target"},"effects":[{"id":"control","gate":"on_hit","outcomes":["speed_reduction"],"magnitude_feet":10,"duration":"until_start_next_turn"}]},

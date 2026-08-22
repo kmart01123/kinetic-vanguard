@@ -1,4 +1,4 @@
-"""YAML-driven control reliability benchmark and selection-audit matrix."""
+"""YAML-driven common control selection and comparison matrices."""
 
 from __future__ import annotations
 
@@ -162,8 +162,7 @@ def _eldritch_strike_primer_probability(attacks:int,hit_probability:float)->floa
 def _composed_eldritch_knight_scenarios(comparators:dict[str,Any],target:Target,*,mind_sliver_timing:str="cross_turn")->list[dict[str,Any]]:
     """Expand configured EK spells through reusable, non-published save primers.
 
-    Configured IDs remain the authority for published Reliability. Generated
-    variants exist only in the production evaluation inventory. Mind Sliver is
+    Generated variants join the maintained legal evaluation inventory. Mind Sliver is
     admitted only for the approved cross-turn window; the unestablished
     same-Attack-action sequence deliberately produces no Mind Sliver variant.
     """
@@ -355,45 +354,43 @@ def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:d
     return {"build":build_id,"scenario":scenario["id"],"spell_id":scenario["spell_id"],"audit_comment_id":scenario["audit_comment_id"],"source_scope":scenario["source_scope"],"disposition":scenario["disposition"],"eligible":eligible,"reach":100*reach,"named":100*value,"mastery":0.0,"whole":100*value,"after_repeats":100*after_repeats,"shadow_components":components,"targeting":_resolved_targeting(row,scenario,target.level),"breaks":list(scenario.get("breaks",[])),"escapes":list(scenario.get("escapes",[])),"escape_resolution":escape_resolution,"context_predicates":list(scenario.get("context_predicates",[])),"area_exit_policy":scenario.get("area_exit_policy"),"turn_branches":deepcopy(scenario.get("turn_branches",[])),"save_composition":save_composition,"automatic_save_success":automatic_success,"automatic_success_rules":list(scenario.get("automatic_success_if",[]))}
 
 
-def _best(rows:list[dict[str,Any]])->dict[str,Any]:
-    if not rows:raise ValueError("Configured scenario set is empty at this level")
-    return max(rows,key=lambda row:(float(row["whole"]),str(row["scenario"])))
-
-
-def _best_value(rows:list[dict[str,Any]])->dict[str,Any]:
+def _select_control_value(rows:list[dict[str,Any]])->dict[str,Any]:
     if not rows:raise ValueError("Configured Control Value scenario set is empty at this level")
     eligible=[row for row in rows if row.get("Eligible") is True]
     if not eligible:raise ValueError("Configured Control Value scenario set has no eligible scenario at this level and target")
-    return max(eligible,key=lambda row:(float(row["Control Value CU"]),str(row["Scenario"])))
+    return min(eligible,key=lambda row:(-float(row["Control Value CU"]),-float(row["Whole-package control stick %"]),str(row["Scenario"])))
 
 
 def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,write_detail:bool=True,write_headline:bool=True,profile:str=DEFAULT_PROFILE,write_shadow:bool=False)->dict[str,Any]:
     model=AuthorityModel.load(authority);config=load_config();comparators=load_comparators();targets=load_targets(profile=profile,levels=levels,limit=target_limit);detail=[];audit=[];envelopes=[];shadow_detail=[];value_scenarios=[];value_audit=[];value_envelopes=[]
     scenario_sets=config["control_matrix"]["kv_scenarios"]
 
-    def value_row(target:Target,build:str,discipline:str,value:dict[str,Any])->dict[str,Any]:
+    def value_row(target:Target,build:str,discipline:str,value:dict[str,Any],*,collect_detail:bool)->dict[str,Any]:
         metadata={"Build":build,"Discipline":discipline,"Level":target.level,"Target":target.name,"Scenario":value["scenario"]}
         rows=shadow_rows(metadata,value["shadow_components"],horizon=int(config["methodology"]["rounds"]),benchmark_locomotion_speed=target.benchmark_locomotion_speed)
-        shadow_detail.extend(rows)
+        if collect_detail:shadow_detail.extend(rows)
         total=sum(float(row["Control Value CU"]) for row in rows)
         candidate=sum(row["Pricing Status"]=="candidate" for row in rows)
         unpriced=len(rows)-candidate
         retained_candidate=sum(row["Pricing Status"]=="candidate" and row["Normalization"] not in {"suppressed","combined_into_disjoint_stages"} for row in rows)
         zero_context=bool(rows and total==0.0 and retained_candidate==0 and unpriced>0)
         disposition="ineligible" if not value["eligible"] else ("priced_nonzero" if total!=0.0 else ("entirely_context_required_or_unsupported" if zero_context else "legitimately_priced_zero"))
-        return {**metadata,"Eligible":value["eligible"],"Control Value CU":total,"Value Disposition":disposition,"Primitive Rows":len(rows),"Candidate Rows":candidate,"Context/Unsupported Rows":unpriced,"Zero Entirely Fail-Closed Context":zero_context}
+        return {**metadata,"Eligible":value["eligible"],"Control Value CU":total,"Whole-package control stick %":value["whole"],"Value Disposition":disposition,"Primitive Rows":len(rows),"Candidate Rows":candidate,"Context/Unsupported Rows":unpriced,"Zero Entirely Fail-Closed Context":zero_context}
+
+    def selected_audit_row(winner:dict[str,Any])->dict[str,Any]:
+        return {"Level":winner["Level"],"Target":winner["Target"],"Discipline":winner["Discipline"],"Build":winner["Build"],"Selected Scenario":winner["Scenario"],"Eligible":winner["Eligible"],"Selection Basis":"Control Value","Control Value CU":winner["Control Value CU"],"Whole-package control stick %":winner["Whole-package control stick %"],"Value Disposition":winner["Value Disposition"]}
 
     for target in targets:
-        comparator_best={};comparator_value_best={}
+        comparator_winners={}
         for build in ("battle_master","eldritch_knight"):
             scenarios=_composed_eldritch_knight_scenarios(comparators,target) if build=="eldritch_knight" else comparators["control"][build]["scenarios"]
             all_values=[_comparator_scenario(model,config,comparators,target,build,scenario) for scenario in scenarios]
-            reliability_ids=set(comparators["control"][build].get("reliability_scenario_ids",(scenario["id"] for scenario in comparators["control"][build]["scenarios"])))
-            values=[value for value in all_values if value["scenario"] in reliability_ids]
-            detail.extend({"Level":target.level,"Target":target.name,**value} for value in values);comparator_best[build]=_best(values)
-            if write_shadow:
-                scored=[value_row(target,build,"all",value) for value in all_values];value_scenarios.extend(scored);comparator_value_best[build]=_best_value(scored);value_audit.append({"Level":target.level,"Target":target.name,"Discipline":"all","Build":build,"Selected Scenario":comparator_value_best[build]["Scenario"],"Eligible":comparator_value_best[build]["Eligible"],"Control Value CU":comparator_value_best[build]["Control Value CU"],"Value Disposition":comparator_value_best[build]["Value Disposition"]})
-            audit.append({"Level":target.level,"Target":target.name,"Discipline":"all","Build":build,"Selected Scenario":comparator_best[build]["scenario"],"Whole-package control stick %":f"{comparator_best[build]['whole']:.6f}","Eligible":comparator_best[build]["eligible"]})
+            detail.extend({"Level":target.level,"Target":target.name,**value} for value in all_values)
+            scored=[value_row(target,build,"all",value,collect_detail=write_shadow) for value in all_values]
+            if write_shadow:value_scenarios.extend(scored)
+            comparator_winners[build]=_select_control_value(scored)
+            selected=selected_audit_row(comparator_winners[build]);audit.append(selected)
+            if write_shadow:value_audit.append(selected)
         for discipline,configured in scenario_sets.items():
             values=[_mastery_scenario(model,config,target,discipline)]
             for entry in configured:
@@ -404,24 +401,27 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
                         try:values.append(_kv_scenario(model,config,target,discipline,entry["entity_id"],int(tier),str(target_role)))
                         except Exception as error:
                             if "unavailable" not in str(error):raise
-            best=_best(values);detail.extend({"Level":target.level,"Target":target.name,**value} for value in values)
+            detail.extend({"Level":target.level,"Target":target.name,**value} for value in values)
+            scored=[value_row(target,"kinetic_vanguard",discipline,value,collect_detail=write_shadow) for value in values]
+            if write_shadow:value_scenarios.extend(scored)
+            winner=_select_control_value(scored);selected=selected_audit_row(winner);audit.append(selected)
             if write_shadow:
-                scored=[value_row(target,"kinetic_vanguard",discipline,value) for value in values];value_scenarios.extend(scored);value_best=_best_value(scored);value_audit.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"Build":"kinetic_vanguard","Selected Scenario":value_best["Scenario"],"Eligible":value_best["Eligible"],"Control Value CU":value_best["Control Value CU"],"Value Disposition":value_best["Value Disposition"]});value_envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":value_best["Control Value CU"],"Eldritch Knight":comparator_value_best["eldritch_knight"]["Control Value CU"],"Battle Master":comparator_value_best["battle_master"]["Control Value CU"]})
-            audit.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"Build":"kinetic_vanguard","Selected Scenario":best["scenario"],"Whole-package control stick %":f"{best['whole']:.6f}","Eligible":best["eligible"]})
-            envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":best["whole"],"Eldritch Knight":comparator_best["eldritch_knight"]["whole"],"Battle Master":comparator_best["battle_master"]["whole"]})
+                value_audit.append(selected);value_envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":winner["Control Value CU"],"Eldritch Knight":comparator_winners["eldritch_knight"]["Control Value CU"],"Battle Master":comparator_winners["battle_master"]["Control Value CU"]})
+            envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":winner["Whole-package control stick %"],"Eldritch Knight":comparator_winners["eldritch_knight"]["Whole-package control stick %"],"Battle Master":comparator_winners["battle_master"]["Whole-package control stick %"]})
     slug=model.rules_version.replace(".","-");output_dir.mkdir(parents=True,exist_ok=True)
     source_columns={"Rules Version":model.rules_version,"Authority SHA-256":model.authority_sha256,"Catalog SHA-256":file_sha256(DEFAULT_CATALOG),"Roster SHA-256":file_sha256(DEFAULT_ROSTERS),"Target Profile":profile,"Config SHA-256":file_sha256(DEFAULT_CONFIG),"Comparator Config SHA-256":file_sha256(DEFAULT_COMPARATORS),**NOTICE_COLUMNS}
+    selection_source={**source_columns,"Control Primitive Catalog SHA-256":file_sha256(DEFAULT_PRIMITIVES),"Control Value Config SHA-256":file_sha256(DEFAULT_SCORING)}
     if write_detail:
         detail_rows=[]
         for item in detail:detail_rows.append({"Level":item["Level"],"Target":item["Target"],"Build":item["build"],"Scenario":item["scenario"],"Eligible":item["eligible"],"Reach/Hit %":f"{item['reach']:.6f}","Named control stick %":f"{item['named']:.6f}","Mastery control floor %":f"{item['mastery']:.6f}","Whole-package control stick %":f"{item['whole']:.6f}","Still controlled after configured repeats %":f"{item['after_repeats']:.6f}",**source_columns})
-        audit_rows=[{**row,**source_columns} for row in audit]
+        audit_rows=[{**row,**selection_source} for row in audit]
         with (output_dir/f"kv-{slug}-control-detail.csv").open("w",newline="",encoding="utf-8") as stream:
             writer=csv.DictWriter(stream,fieldnames=list(detail_rows[0]));writer.writeheader();writer.writerows(detail_rows)
         with (output_dir/f"kv-{slug}-control-selection-audit.csv").open("w",newline="",encoding="utf-8") as stream:
             writer=csv.DictWriter(stream,fieldnames=list(audit_rows[0]));writer.writeheader();writer.writerows(audit_rows)
     shadow_path=None;value_paths={}
     if write_shadow:
-        shadow_path=output_dir/f"kv-{slug}-control-value-shadow-detail.csv";shadow_source={**source_columns,"Control Primitive Catalog SHA-256":file_sha256(DEFAULT_PRIMITIVES),"Control Value Config SHA-256":file_sha256(DEFAULT_SCORING)};shadow_output=[{**row,**shadow_source} for row in shadow_detail]
+        shadow_path=output_dir/f"kv-{slug}-control-value-shadow-detail.csv";shadow_source=selection_source;shadow_output=[{**row,**shadow_source} for row in shadow_detail]
         with shadow_path.open("w",newline="",encoding="utf-8") as stream:
             if shadow_output:
                 writer=csv.DictWriter(stream,fieldnames=list(shadow_output[0]));writer.writeheader();writer.writerows(shadow_output)

@@ -9,7 +9,7 @@ from pathlib import Path
 from types import SimpleNamespace
 
 from harness.authority import AuthorityModel
-from harness.control_harness import _attack_action_expected_occurrences,_best_value,_comparator_scenario,_composed_eldritch_knight_scenarios,_eldritch_strike_primer_probability,_finite_penalty_save_failure_probability,_finite_penalty_with_disadvantage_probability,_kv_scenario
+from harness.control_harness import _attack_action_expected_occurrences,_comparator_scenario,_composed_eldritch_knight_scenarios,_eldritch_strike_primer_probability,_finite_penalty_save_failure_probability,_finite_penalty_with_disadvantage_probability,_kv_scenario,_select_control_value
 from harness.control_value import PrimitiveExposure,decompose_label,expose_label,fixed_exposure,instantaneous_exposure,load_primitive_catalog,load_scoring_config,normalize_exposures,repeat_save_exposure,score_exposure,shadow_rows
 from harness.model import Target,_benchmark_locomotion_speed,ability_check_success_probability,attack_probabilities,load_comparators,load_config,modified_save_success_probability,save_success_probability
 
@@ -165,9 +165,9 @@ class FrozenControlValueScoringTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError,"no frozen Control Value scoring rule"):score_exposure(missing,30,{"rules":{}})
 
     def test_value_winner_filters_eligibility_before_stable_scenario_id_tie_break(self)->None:
-        rows=[{"Scenario":"z_ineligible","Eligible":False,"Control Value CU":0.0},{"Scenario":"a_eligible","Eligible":True,"Control Value CU":0.0}]
-        self.assertEqual(_best_value(rows)["Scenario"],"a_eligible")
-        with self.assertRaisesRegex(ValueError,"no eligible scenario"):_best_value([rows[0]])
+        rows=[{"Scenario":"z_ineligible","Eligible":False,"Control Value CU":0.0,"Whole-package control stick %":100.0},{"Scenario":"a_eligible","Eligible":True,"Control Value CU":0.0,"Whole-package control stick %":0.0}]
+        self.assertEqual(_select_control_value(rows)["Scenario"],"a_eligible")
+        with self.assertRaisesRegex(ValueError,"no eligible scenario"):_select_control_value([rows[0]])
 
 
 class NormalizationTests(unittest.TestCase):
@@ -385,7 +385,7 @@ class CurrentScenarioShadowTests(unittest.TestCase):
         self.assertEqual(row["spell_access"]["highest_slot_level_by_fighter_level"],{"7":2,"11":2,"15":3,"20":4});self.assertNotIn("breadth_scalar",json.dumps(self.comparators))
 
     def test_reliability_boundary_battle_master_inventory_and_no_scalar(self)->None:
-        self.assertEqual(self.comparators["control"]["eldritch_knight"]["reliability_scenario_ids"],["blindness_deafness","blindness_after_eldritch_strike"])
+        self.assertNotIn("reliability_scenario_ids",self.comparators["control"]["eldritch_knight"])
         battle_master=self.comparators["control"]["battle_master"];self.assertEqual([scenario["id"] for scenario in battle_master["scenarios"]],["menacing_attack","pushing_attack","trip_attack","goading_attack","disarming_attack"]);self.assertEqual({level:len(maneuvers) for level,maneuvers in battle_master["known_maneuvers_by_level"].items()},{"7":5,"11":7,"15":9,"20":9})
         def keys(value:object)->set[str]:
             if isinstance(value,dict):return set(value)|set().union(*(keys(item) for item in value.values()))
@@ -472,7 +472,7 @@ class CurrentScenarioShadowTests(unittest.TestCase):
         slow=_comparator_scenario(self.model,self.config,self.comparators,self.target,"eldritch_knight",by_id["slow_after_eldritch_strike"]);speed=next(row for row in self.rows(slow,"all") if row["Mechanical Primitive"]=="speed_multiplier")
         active=self.active(speed);repeat=float(slow["save_composition"]["repeat_failure_probability"]);self.assertAlmostEqual(active[1],active[0]*repeat);self.assertAlmostEqual(active[2],active[1]*repeat)
         level7=replace(self.target,level=7);level7_ids={item["id"] for item in _composed_eldritch_knight_scenarios(self.comparators,level7)};self.assertNotIn("slow_after_eldritch_strike",level7_ids)
-        self.assertEqual(self.comparators["control"]["eldritch_knight"]["reliability_scenario_ids"],["blindness_deafness","blindness_after_eldritch_strike"])
+        self.assertNotIn("reliability_scenario_ids",self.comparators["control"]["eldritch_knight"])
 
     def test_bestow_curse_modes_are_separate_and_forced_dodge_is_not_turn_denial(self)->None:
         modes={scenario["id"]:scenario for scenario in self.comparators["control"]["eldritch_knight"]["scenarios"] if scenario["spell_id"]=="bestow_curse"}
@@ -526,8 +526,8 @@ class CurrentScenarioShadowTests(unittest.TestCase):
         self.assertTrue(priced);self.assertTrue(any(component["active_probabilities_by_basis"]=={} and component["application_probability"]==1.0 for component in grease["shadow_components"]));self.assertAlmostEqual(grease["whole"],100*max(float(component["application_probability"]) for component in priced));self.assertLess(grease["whole"],100)
         normal_failure=1-save_success_probability(probe,"constitution",dc,False,True)
         blindness=_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",self.scenario("blindness_deafness"));self.assertAlmostEqual(blindness["whole"],100*normal_failure);self.assertAlmostEqual(blindness["after_repeats"],100*normal_failure**3)
-        published={scenario_id:_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",self.scenario(scenario_id)) for scenario_id in row["reliability_scenario_ids"]}
-        self.assertEqual(set(published),{"blindness_deafness","blindness_after_eldritch_strike"});self.assertAlmostEqual(published["blindness_deafness"]["whole"],blindness["whole"]);self.assertGreater(published["blindness_after_eldritch_strike"]["whole"],blindness["whole"])
+        inventory={scenario["id"]:_comparator_scenario(self.model,self.config,self.comparators,probe,"eldritch_knight",scenario) for scenario in _composed_eldritch_knight_scenarios(self.comparators,probe)}
+        self.assertIn("blindness_deafness",inventory);self.assertIn("slow_after_mind_sliver_and_eldritch_strike",inventory);self.assertAlmostEqual(inventory["blindness_deafness"]["whole"],blindness["whole"]);self.assertGreater(inventory["blindness_after_eldritch_strike"]["whole"],blindness["whole"])
 
     def test_configured_inventory_maps_or_fails_closed_explicitly(self)->None:
         catalog=load_primitive_catalog();known=set(catalog["conditions"])|set(catalog["outcomes"])

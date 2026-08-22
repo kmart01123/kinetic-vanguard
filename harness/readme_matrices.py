@@ -83,7 +83,9 @@ VALUE_AUDIT_COLUMNS = (
     "Build",
     "Selected Scenario",
     "Eligible",
+    "Selection Basis",
     "Control Value CU",
+    "Whole-package control stick %",
     "Value Disposition",
     "Rules Version",
     "Authority SHA-256",
@@ -332,6 +334,10 @@ def validate_value_rows(
             raise MatrixSyncError(
                 f"Control Value audit row {index} has no selected scenario"
             )
+        if row["Selection Basis"] != "Control Value":
+            raise MatrixSyncError(
+                f"Control Value audit row {index} has a non-CU selection basis"
+            )
         if row["Value Disposition"] not in allowed_dispositions:
             raise MatrixSyncError(
                 f"Control Value audit row {index} has an invalid disposition"
@@ -345,6 +351,16 @@ def validate_value_rows(
         if not math.isfinite(value):
             raise MatrixSyncError(
                 f"Control Value audit row {index} has non-finite CU"
+            )
+        try:
+            reliability = float(row["Whole-package control stick %"])
+        except ValueError as error:
+            raise MatrixSyncError(
+                f"Control Value audit row {index} has non-numeric Reliability"
+            ) from error
+        if not math.isfinite(reliability) or not 0.0 <= reliability <= 100.0:
+            raise MatrixSyncError(
+                f"Control Value audit row {index} has invalid Reliability"
             )
         identity = (row["Level"], row["Target"], row["Discipline"], row["Build"])
         audit_values[identity] = value
@@ -413,6 +429,80 @@ def validate_value_rows(
             "README discipline columns differ from the canonical discipline set"
         )
     return public_rows
+
+
+def validate_reliability_alignment(
+    control_rows: Sequence[MatrixRow], value_audit_rows: Sequence[MatrixRow]
+) -> list[MatrixRow]:
+    """Reconstruct public Reliability solely from the common CU winner audit."""
+    config = load_config()
+    levels = tuple(int(value) for value in config["methodology"]["levels"])
+    targets = load_targets(profile=DEFAULT_PROFILE, levels=set(levels))
+    expected_identities = {
+        (str(target.level), target.name, discipline, build)
+        for target in targets
+        for build, discipline in (
+            ("battle_master", "all"),
+            ("eldritch_knight", "all"),
+            *(("kinetic_vanguard", item) for item in README_DISCIPLINES),
+        )
+    }
+    actual_identities = {
+        (row["Level"], row["Target"], row["Discipline"], row["Build"])
+        for row in value_audit_rows
+    }
+    _key_difference(actual_identities, expected_identities, "common selection audit")
+    if len(value_audit_rows) != len(expected_identities):
+        raise MatrixSyncError("Common selection audit contains duplicate winner identities")
+    audit_reliability: dict[tuple[str, str, str, str], float] = {}
+    for index, row in enumerate(value_audit_rows):
+        if row.get("Selection Basis") != "Control Value":
+            raise MatrixSyncError(
+                f"Common selection audit row {index} has a non-CU selection basis"
+            )
+        try:
+            value = float(row["Whole-package control stick %"])
+        except (KeyError, ValueError) as error:
+            raise MatrixSyncError(
+                f"Common selection audit row {index} has non-numeric Reliability"
+            ) from error
+        if not math.isfinite(value) or not 0.0 <= value <= 100.0:
+            raise MatrixSyncError(
+                f"Common selection audit row {index} has invalid Reliability"
+            )
+        identity = (row["Level"], row["Target"], row["Discipline"], row["Build"])
+        audit_reliability[identity] = value
+
+    aligned_rows: list[MatrixRow] = []
+    for index, row in enumerate(control_rows):
+        level = int(row["Level"])
+        discipline = row["Discipline"]
+        level_targets = [target for target in targets if target.level == level]
+
+        def winner_mean(build: str, selected_discipline: str) -> float:
+            values = [
+                audit_reliability[
+                    (str(level), target.name, selected_discipline, build)
+                ]
+                for target in level_targets
+            ]
+            return sum(values) / len(values)
+
+        expected = matrix_row(
+            {"Level": level, "Discipline": discipline},
+            winner_mean("kinetic_vanguard", discipline),
+            winner_mean("eldritch_knight", "all"),
+            winner_mean("battle_master", "all"),
+            "control",
+        )
+        for field in RESULT_FIELDS:
+            if row[field] != expected[field]:
+                raise MatrixSyncError(
+                    f"control row {index} does not match common winner {field}: "
+                    f"{row[field]} != {expected[field]}"
+                )
+        aligned_rows.append(dict(row))
+    return aligned_rows
 
 
 def validate_damage_rows(
@@ -750,20 +840,29 @@ def render_balance_region(
                 "quantity**."
             ),
             "",
+            (
+                "For each target, build, and discipline, the benchmark filters out ineligible "
+                "packages and selects the legal package with the highest Control Value. An exact "
+                "CU tie is resolved by higher whole-package Control Reliability, then by ascending "
+                "stable scenario ID. Control Value reports what that selected package delivers "
+                "mechanically; CU is the common package-selection methodology for both readouts."
+            ),
+            "",
             render_control_table(value_rows, disciplines),
             "",
             "### Control Reliability — delivery diagnostic",
             "",
             (
-                "**Secondary diagnostic:** how reliably the configured control package lands "
-                "and, where applicable, persists. Control Reliability asks: “How reliably "
-                "does the configured package land and persist?”"
+                "**Secondary diagnostic:** how reliably the Value-selected control package lands "
+                "and, where applicable, persists. Control Reliability asks: “How reliably is "
+                "that selected package delivered?”"
             ),
             "",
             f"Configured Reliability metric: **{metric}**.",
             "",
             (
-                "Control Reliability measures delivery probability, not effect severity. It "
+                "Control Reliability measures delivery probability for the same CU-selected "
+                "package, not effect severity. It "
                 "includes legal repeatable attack-delivered opportunities within one ordinary "
                 "Attack action when the rules permit them, excludes Action Surge from the "
                 "headline control comparison, and applies the maintained repeat-save and "
@@ -793,7 +892,9 @@ def render_balance_region(
             ),
             "",
             (
-                "That consequence-aware treatment is why Value and Reliability can disagree: "
+                "Value and Reliability can still receive different public bands because they "
+                "measure different properties of the same selected package. A consequence-aware "
+                "Value readout can differ from delivery: "
                 "a soft effect such as Sap can land very reliably without carrying the same "
                 "mechanical consequence as Stunned or Restrained. Equal stick probabilities "
                 "do not imply equal control power."
@@ -957,10 +1058,13 @@ def main() -> None:
         )
         damage_section = render_damage_section(damage_rows, disciplines)
     value_public_rows = validate_value_rows(value_rows, value_audit_rows)
+    reliability_public_rows = validate_reliability_alignment(
+        reliability_rows, value_audit_rows
+    )
     region = render_balance_region(
         readme,
         damage_section,
-        reliability_rows,
+        reliability_public_rows,
         value_public_rows,
         rules_version,
         profile,

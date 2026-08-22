@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
-from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_mastery_scenario,_repeat_rider_probability,run as run_control
+from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_battle_master_dpr_for_schedule,_battle_master_result,_comparator_dpr,_comparator_score,_eldritch_knight_result,_kv_dpr,_psionic_apex_packet,_rider_values,_strike_packet_options,run as run_damage
 from harness.ek_damage_planner import EKDamagePlanner,EKScore,EKState,chromatic_orb_duplicate_probability
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,fighter_action_schedules,load_comparators,load_config,load_targets,save_success_probability
@@ -811,9 +811,6 @@ class ComparatorLeafContractTests(unittest.TestCase):
 
     def control_mutation(self,path:tuple[object,...],current:object)->object:
         build=str(path[1]);row_field=str(path[2]);field=str(path[-2]) if isinstance(path[-1],int) else str(path[-1])
-        if row_field=="reliability_scenario_ids":
-            selected=set(self.comparators["control"][build]["reliability_scenario_ids"])
-            return next(scenario["id"] for scenario in self.comparators["control"][build]["scenarios"] if scenario["id"] not in selected)
         if row_field=="spell_access":return int(current)-1
         if field=="save" or field=="ability" or field=="save_ability":return "wisdom" if current=="strength" else "strength"
         if field=="delivery":return "action_spell" if current=="war_magic_cantrip" else "war_magic_cantrip"
@@ -877,10 +874,7 @@ class ComparatorLeafContractTests(unittest.TestCase):
                 if scenario.get("required_creature_type"):target=replace(target,creature_type=str(scenario["required_creature_type"]))
                 if scenario.get("maximum_size"):target=replace(target,size=str(scenario["maximum_size"]))
                 results.append(self.control_result_signature(_comparator_scenario(self.model,self.config,comparators,target,build,scenario)))
-        reliability=[]
-        for scenario_id in row.get("reliability_scenario_ids",[]):
-            scenario=next(item for item in row["scenarios"] if item["id"]==scenario_id);level=self.scenario_level(row,scenario);reliability.append((scenario_id,self.scenario_signature(comparators,build,scenario,level,"",None)))
-        return json.dumps({"evaluations":results,"reliability":reliability},sort_keys=True)
+        return json.dumps({"evaluations":results},sort_keys=True)
 
     def test_every_control_comparator_leaf_has_observable_semantics(self)->None:
         outcomes:Counter[str]=Counter();evaluation_rejections:Counter[str]=Counter()
@@ -903,7 +897,7 @@ class ComparatorLeafContractTests(unittest.TestCase):
                     self.assertNotEqual(outcome,"unobservable")
                 outcomes[outcome]+=1
                 if outcome=="evaluation_rejected":evaluation_rejections[str(reason)]+=1
-        self.assertEqual(outcomes,Counter({"observable":947,"validation_rejected":455,"evaluation_rejected":6}))
+        self.assertEqual(outcomes,Counter({"observable":947,"validation_rejected":453,"evaluation_rejected":6}))
         self.assertEqual(evaluation_rejections,Counter({"Unknown ability check skill: athletics_contract_probe":2,"Modeled action escape lacks the standing legal-exit policy":2,"Unsupported modeled area trigger":2}))
 
     def test_control_leaf_contract_propagates_accidental_evaluator_key_error(self)->None:
@@ -1424,6 +1418,28 @@ class ClassificationTests(unittest.TestCase):
             self.assertNotIn("Open Hand Monk",rendered)
 
 
+class CommonControlSelectionTests(unittest.TestCase):
+    @staticmethod
+    def candidate(scenario:str,cu:float,reliability:float,eligible:bool=True)->dict[str,object]:
+        return {"Scenario":scenario,"Control Value CU":cu,"Whole-package control stick %":reliability,"Eligible":eligible}
+
+    def test_higher_value_wins_and_reliability_follows_that_package(self)->None:
+        winner=_select_control_value([self.candidate("scenario_a",1.00,40.0),self.candidate("scenario_b",0.80,95.0)])
+        self.assertEqual((winner["Scenario"],winner["Control Value CU"],winner["Whole-package control stick %"]),("scenario_a",1.00,40.0))
+
+    def test_exact_value_tie_uses_higher_reliability(self)->None:
+        winner=_select_control_value([self.candidate("scenario_a",1.00,40.0),self.candidate("scenario_b",1.00,70.0)])
+        self.assertEqual(winner["Scenario"],"scenario_b")
+
+    def test_exact_value_and_reliability_tie_uses_ascending_scenario_id(self)->None:
+        winner=_select_control_value([self.candidate("scenario_b",1.00,70.0),self.candidate("scenario_a",1.00,70.0)])
+        self.assertEqual(winner["Scenario"],"scenario_a")
+
+    def test_ineligible_high_value_scenario_never_wins(self)->None:
+        winner=_select_control_value([self.candidate("ineligible",100.0,100.0,False),self.candidate("eligible",1.00,40.0)])
+        self.assertEqual(winner["Scenario"],"eligible")
+
+
 class SmokeAndBoundaryTests(unittest.TestCase):
     def test_damage_smoke_writes_current_detail_and_matrix_outputs(self)->None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1462,16 +1478,19 @@ class SmokeAndBoundaryTests(unittest.TestCase):
                 audit_rows=list(csv.DictReader(stream))
             self.assertTrue(audit_rows);self.assertTrue(all(row["Selected Scenario"] for row in audit_rows))
             self.assertTrue(all(row["Target Profile"]=="headline" for row in audit_rows))
+            self.assertTrue(all(row["Selection Basis"]=="Control Value" for row in audit_rows))
+            self.assertTrue(all(row["Whole-package control stick %"] for row in audit_rows))
             with (root/"kv-14-3-0-control-detail.csv").open(encoding="utf-8") as stream:
                 control_rows=list(csv.DictReader(stream))
             keyed={(row["Build"],row["Scenario"]):row for row in control_rows}
             self.assertEqual(keyed[("battle_master","menacing_attack")]["Whole-package control stick %"],"80.859375")
             self.assertEqual(keyed[("eldritch_knight","blindness_deafness")]["Whole-package control stick %"],"55.000000")
+            self.assertIn(("eldritch_knight","web"),keyed)
             with control["paths"]["csv"].open(encoding="utf-8") as stream:
                 matrix_rows=list(csv.DictReader(stream))
             self.assertTrue(matrix_rows);self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
 
-    def test_control_value_shadow_writes_independent_transparent_outputs(self)->None:
+    def test_control_value_detail_writes_common_transparent_outputs(self)->None:
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);control=run_control(DEFAULT_AUTHORITY,root,{20},1,write_headline=False,profile="headline",write_shadow=True)
             self.assertEqual(control["shadow_rows"],569);self.assertEqual(control["value_scenario_rows"],186);self.assertEqual(control["value_audit_rows"],6);self.assertEqual(control["value_matrix_rows"],4)
@@ -1483,7 +1502,12 @@ class SmokeAndBoundaryTests(unittest.TestCase):
                 self.assertIn(column,rows[0])
             with control["value_paths"]["selection_audit"].open(encoding="utf-8") as stream:
                 value_audit=list(csv.DictReader(stream))
-            self.assertEqual(len(value_audit),6);self.assertTrue(all(row["Selected Scenario"] and row["Eligible"]=="True" for row in value_audit));self.assertTrue(all(row["Value Disposition"] in {"priced_nonzero","legitimately_priced_zero","entirely_context_required_or_unsupported"} for row in value_audit))
+            self.assertEqual(len(value_audit),6);self.assertTrue(all(row["Selected Scenario"] and row["Eligible"]=="True" for row in value_audit));self.assertTrue(all(row["Selection Basis"]=="Control Value" for row in value_audit));self.assertTrue(all(row["Value Disposition"] in {"priced_nonzero","legitimately_priced_zero","entirely_context_required_or_unsupported"} for row in value_audit))
+            with (root/"kv-14-3-0-control-selection-audit.csv").open(encoding="utf-8") as stream:
+                reliability_audit=list(csv.DictReader(stream))
+            identity=lambda row:(row["Level"],row["Target"],row["Discipline"],row["Build"],row["Selected Scenario"])
+            self.assertEqual({identity(row) for row in reliability_audit},{identity(row) for row in value_audit})
+            self.assertNotIn("reliability_scenario_ids",load_comparators()["control"]["eldritch_knight"])
 
 
 if __name__=="__main__":unittest.main()

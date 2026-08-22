@@ -20,7 +20,7 @@
 - Corrected Control Reliability benchmark methodology so bare Kinetic Mastery receives the same legal retries across one ordinary Attack action as repeatable embedded Mastery; Action Surge remains excluded, with no changes to Kinetic Vanguard or comparator mechanics.
 - Made hostile named conditions consistently require a saving throw; Flare retains its Dexterity save at every tier, and Mind Lock uses one Intelligence save for its full condition package.
 - Added the shadow Control Value scorer with its frozen Control Unit and explicit primitive transforms, resolved-status fail-closed eligibility, SRD-derived locomotion normalization, cumulative expected-occurrence displacement, correlated flat-mobility capping, transparent normalization diagnostics, and eligible-only independent scenario selection while leaving publication unchanged in that Slice-2 step.
-- Promoted Control Value from shadow-only output to the primary public control-balance metric, retained Control Reliability as a public delivery diagnostic, added compact public control methodology, and added control-only README regeneration without changing damage or control mechanics.
+- Promoted Control Value from shadow-only output to the primary public control-balance metric and common package-selection methodology, with Control Value reporting mechanical consequence and Control Reliability reporting delivery of that same selected package; also added compact public methodology and control-only README regeneration without changing damage or control mechanics.
 
 ### Removed
 

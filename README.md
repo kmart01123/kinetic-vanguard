@@ -45,6 +45,8 @@ The front-door damage view is the single-target benchmark: primary-target DPR at
 
 Control Value combines delivery probability, persistence or active windows, established attack/save/reaction opportunities, mechanical consequences, and legal repeatable accumulating instantaneous effects. `1.0 CU` is denial of one target's normal Action + Bonus Action for one scored target-turn window. A Control Unit is a project analytical benchmark unit, **not a D&D rules quantity**.
 
+For each target, build, and discipline, the benchmark filters out ineligible packages and selects the legal package with the highest Control Value. An exact CU tie is resolved by higher whole-package Control Reliability, then by ascending stable scenario ID. Control Value reports what that selected package delivers mechanically; CU is the common package-selection methodology for both readouts.
+
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
 | 7 | IDEAL | COLD (-100.00%) | IDEAL | COLD (-34.91%) |
@@ -54,18 +56,18 @@ Control Value combines delivery probability, persistence or active windows, esta
 
 ### Control Reliability — delivery diagnostic
 
-**Secondary diagnostic:** how reliably the configured control package lands and, where applicable, persists. Control Reliability asks: “How reliably does the configured package land and persist?”
+**Secondary diagnostic:** how reliably the Value-selected control package lands and, where applicable, persists. Control Reliability asks: “How reliably is that selected package delivered?”
 
 Configured Reliability metric: **roster-adjusted whole-package control stick %**.
 
-Control Reliability measures delivery probability, not effect severity. It includes legal repeatable attack-delivered opportunities within one ordinary Attack action when the rules permit them, excludes Action Surge from the headline control comparison, and applies the maintained repeat-save and persistence treatment where relevant. A Reliability `HOT` result means unusually high delivery relative to the Reliability comparator envelope; it does not by itself mean that the control's mechanical severity is excessive.
+Control Reliability measures delivery probability for the same CU-selected package, not effect severity. It includes legal repeatable attack-delivered opportunities within one ordinary Attack action when the rules permit them, excludes Action Surge from the headline control comparison, and applies the maintained repeat-save and persistence treatment where relevant. A Reliability `HOT` result means unusually high delivery relative to the Reliability comparator envelope; it does not by itself mean that the control's mechanical severity is excessive.
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
-| 7 | HOT (+35.64%) | COLD (-100.00%) | HOT (+31.82%) | HOT (+35.64%) |
-| 11 | HOT (+23.78%) | COLD (-100.00%) | HOT (+11.41%) | HOT (+23.78%) |
-| 15 | HOT (+32.05%) | HOT (+7.07%) | HOT (+32.71%) | HOT (+32.09%) |
-| 20 | HOT (+50.52%) | HOT (+28.62%) | HOT (+50.52%) | HOT (+50.27%) |
+| 7 | HOT (+46.97%) | COLD (-100.00%) | HOT (+41.81%) | HOT (+46.97%) |
+| 11 | HOT (+14.49%) | COLD (-100.00%) | IDEAL | HOT (+5.32%) |
+| 15 | HOT (+8.81%) | HOT (+5.71%) | HOT (+6.75%) | COLD (-3.09%) |
+| 20 | HOT (+34.32%) | HOT (+14.81%) | HOT (+17.36%) | COLD (-13.92%) |
 
 ### Control methodology
 
@@ -73,7 +75,7 @@ Control Value follows a transparent pipeline: canonical condition or outcome →
 
 For example, Stunned decomposes into active-turn denial through Incapacitated, reaction denial, automatic failure of Strength and Dexterity saves, and Advantage on incoming attacks. Stunned does **not** gain Speed 0. Restrained includes complete movement denial plus its separately scored consequences. Forced movement is valued from expected displaced feet, and repeatable legal displacement can accrue multiple successful occurrences.
 
-That consequence-aware treatment is why Value and Reliability can disagree: a soft effect such as Sap can land very reliably without carrying the same mechanical consequence as Stunned or Restrained. Equal stick probabilities do not imply equal control power.
+Value and Reliability can still receive different public bands because they measure different properties of the same selected package. A consequence-aware Value readout can differ from delivery: a soft effect such as Sap can land very reliably without carrying the same mechanical consequence as Stunned or Restrained. Equal stick probabilities do not imply equal control power.
 
 Normalization prevents double counting. Identical boolean consequences do not stack. Complete turn denial suppresses overlapping lesser action or offensive effects; automatic save failure supersedes weaker impairment to the same save; and complete movement denial supersedes overlapping lesser mobility loss. All-attacks Disadvantage suppresses only an explicitly overlapping next-attack Disadvantage share. Correlated flat movement reductions are capped at complete movement denial, while unrelated mechanical consequences remain independently valued.
 

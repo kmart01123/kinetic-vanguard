@@ -39,6 +39,7 @@ from harness.readme_matrices import (
     render_single_target_damage,
     replace_generated_region,
     validate_authoritative_rows,
+    validate_reliability_alignment,
     validate_reliability_rows,
     validate_value_rows,
 )
@@ -194,7 +195,9 @@ def _full_authoritative_rows() -> tuple[
                     "Build": build,
                     "Selected Scenario": "synthetic_winner",
                     "Eligible": "True",
+                    "Selection Basis": "Control Value",
                     "Control Value CU": str(value),
+                    "Whole-package control stick %": str(value),
                     "Value Disposition": "priced_nonzero",
                     **raw_common,
                 }
@@ -332,6 +335,9 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
         for required in (
             "**Primary control-balance metric:**",
             "**Secondary diagnostic:**",
+            "selects the legal package with the highest Control Value",
+            "same CU-selected package",
+            "different properties of the same selected package",
             "`1.0 CU`",
             "Stunned does **not** gain Speed 0",
             "does **not** mean that a mechanic has no value in actual play",
@@ -585,6 +591,14 @@ class ControlValueRowValidationTests(unittest.TestCase):
         self.assertTrue(
             all(row["Benchmark Type"] == "Control Value" for row in public_rows)
         )
+        aligned = validate_reliability_alignment(
+            self.reliability_rows, self.value_audit_rows
+        )
+        self.assertEqual(len(aligned), 16)
+        self.assertTrue(
+            all(row["Benchmark Type"] == "Control Reliability" for row in aligned)
+        )
+        self.assertTrue(all(row["Metric"] for row in aligned))
 
     def test_value_schema_duplicates_and_missing_identities_fail_closed(self) -> None:
         missing_field = deepcopy(self.value_rows)
@@ -642,6 +656,27 @@ class ControlValueRowValidationTests(unittest.TestCase):
         row["Control Value CU"] = "25.0"
         with self.assertRaisesRegex(MatrixSyncError, "stale winner aggregate"):
             validate_value_rows(self.value_rows, audit)
+
+    def test_reliability_is_reconstructed_from_common_cu_winners(self) -> None:
+        audit = deepcopy(self.value_audit_rows)
+        row = next(
+            item
+            for item in audit
+            if item["Build"] == "kinetic_vanguard"
+            and item["Discipline"] == "cryokinesis"
+            and item["Level"] == "7"
+        )
+        row["Whole-package control stick %"] = "95.0"
+        with self.assertRaisesRegex(MatrixSyncError, "common winner KV"):
+            validate_reliability_alignment(self.reliability_rows, audit)
+
+    def test_common_winner_selection_basis_fails_closed(self) -> None:
+        audit = deepcopy(self.value_audit_rows)
+        audit[0]["Selection Basis"] = "Reliability"
+        with self.assertRaisesRegex(MatrixSyncError, "non-CU selection basis"):
+            validate_value_rows(self.value_rows, audit)
+        with self.assertRaisesRegex(MatrixSyncError, "non-CU selection basis"):
+            validate_reliability_alignment(self.reliability_rows, audit)
 
 
 class ControlOnlyGenerationTests(unittest.TestCase):
