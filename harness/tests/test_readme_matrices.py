@@ -39,6 +39,7 @@ from harness.readme_matrices import (
     render_single_target_damage,
     replace_generated_region,
     validate_authoritative_rows,
+    validate_damage_rows,
     validate_reliability_alignment,
     validate_reliability_rows,
     validate_value_rows,
@@ -157,6 +158,12 @@ def _full_authoritative_rows() -> tuple[
             row.update(
                 {
                     **common,
+                    "Provenance Control Primitive Catalog Sha256": file_sha256(
+                        DEFAULT_PRIMITIVES
+                    ),
+                    "Provenance Control Value Config Sha256": file_sha256(
+                        DEFAULT_SCORING
+                    ),
                     "Provenance Aggregation": str(
                         config["control_matrix"]["aggregation"]
                     ),
@@ -540,6 +547,31 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
         control[0][notice_field] = "changed notice"
         with self.assertRaisesRegex(MatrixSyncError, "changed notice field"):
             validate_authoritative_rows(self.damage_rows, control)
+
+    def test_reliability_cu_selection_provenance_fails_closed(self) -> None:
+        expected = {
+            "Provenance Control Primitive Catalog Sha256": file_sha256(
+                DEFAULT_PRIMITIVES
+            ),
+            "Provenance Control Value Config Sha256": file_sha256(DEFAULT_SCORING),
+        }
+        for field, value in expected.items():
+            self.assertTrue(all(row[field] == value for row in self.control_rows))
+            with self.subTest(field=field):
+                stale = deepcopy(self.control_rows)
+                stale[0][field] = "wrong-hash"
+                with self.assertRaisesRegex(MatrixSyncError, field):
+                    validate_reliability_rows(stale)
+
+    def test_damage_provenance_does_not_require_cu_selection_inputs(self) -> None:
+        control_only_fields = {
+            "Provenance Control Primitive Catalog Sha256",
+            "Provenance Control Value Config Sha256",
+        }
+        self.assertTrue(
+            all(control_only_fields.isdisjoint(row) for row in self.damage_rows)
+        )
+        validate_damage_rows(self.damage_rows)
 
     def test_catalog_roster_and_target_profile_provenance_fail_closed(self) -> None:
         cases = (

@@ -46,7 +46,7 @@ README_DISCIPLINES = (
     "electrokinesis",
 )
 RESULT_FIELDS = tuple(VALUE_COLUMNS)
-PROVENANCE_FIELDS = (
+COMMON_PROVENANCE_FIELDS = (
     "Provenance Rules Version",
     "Provenance Authority Sha256",
     "Provenance Catalog Sha256",
@@ -56,6 +56,12 @@ PROVENANCE_FIELDS = (
     "Provenance Comparator Config Sha256",
     "Provenance Evaluator",
     "Provenance Aggregation",
+)
+DAMAGE_PROVENANCE_FIELDS = COMMON_PROVENANCE_FIELDS
+RELIABILITY_PROVENANCE_FIELDS = (
+    *COMMON_PROVENANCE_FIELDS,
+    "Provenance Control Primitive Catalog Sha256",
+    "Provenance Control Value Config Sha256",
 )
 MatrixRow = dict[str, str]
 VALUE_COLUMNS_RAW = (
@@ -187,7 +193,7 @@ def validate_reliability_rows(
             "Metric",
             "Profile",
             *RESULT_FIELDS,
-            *PROVENANCE_FIELDS,
+            *RELIABILITY_PROVENANCE_FIELDS,
             *NOTICE_COLUMNS,
         ),
         "control",
@@ -210,6 +216,8 @@ def validate_reliability_rows(
         "Provenance Target Profile": DEFAULT_PROFILE,
         "Provenance Config Sha256": file_sha256(DEFAULT_CONFIG),
         "Provenance Comparator Config Sha256": file_sha256(DEFAULT_COMPARATORS),
+        "Provenance Control Primitive Catalog Sha256": file_sha256(DEFAULT_PRIMITIVES),
+        "Provenance Control Value Config Sha256": file_sha256(DEFAULT_SCORING),
         "Provenance Evaluator": "exact_analytical_enumeration",
         "Provenance Aggregation": str(config["control_matrix"]["aggregation"]),
         "Profile": str(config["kv_profile"]["id"]),
@@ -527,7 +535,7 @@ def validate_damage_rows(
             "Damage Scope",
             "Profile",
             *RESULT_FIELDS,
-            *PROVENANCE_FIELDS,
+            *DAMAGE_PROVENANCE_FIELDS,
             *NOTICE_COLUMNS,
         ),
         "damage",

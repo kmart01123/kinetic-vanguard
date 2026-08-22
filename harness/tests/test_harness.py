@@ -14,9 +14,10 @@ from unittest.mock import patch
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
 from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
+from harness.control_value import DEFAULT_PRIMITIVES,DEFAULT_SCORING
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_battle_master_dpr_for_schedule,_battle_master_result,_comparator_dpr,_comparator_score,_eldritch_knight_result,_kv_dpr,_psionic_apex_packet,_rider_values,_strike_packet_options,run as run_damage
 from harness.ek_damage_planner import EKDamagePlanner,EKScore,EKState,chromatic_orb_duplicate_probability
-from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,fighter_action_schedules,load_comparators,load_config,load_targets,save_success_probability
+from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,file_sha256,fighter_action_schedules,load_comparators,load_config,load_targets,save_success_probability
 
 
 def _leaf_paths(value:object,prefix:tuple[object,...]=())->list[tuple[object,...]]:
@@ -1489,6 +1490,8 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             with control["paths"]["csv"].open(encoding="utf-8") as stream:
                 matrix_rows=list(csv.DictReader(stream))
             self.assertTrue(matrix_rows);self.assertTrue(all(row["Provenance Evaluator"]=="exact_analytical_enumeration" for row in matrix_rows))
+            self.assertTrue(all(row["Provenance Control Primitive Catalog Sha256"]==file_sha256(DEFAULT_PRIMITIVES) for row in matrix_rows))
+            self.assertTrue(all(row["Provenance Control Value Config Sha256"]==file_sha256(DEFAULT_SCORING) for row in matrix_rows))
 
     def test_control_value_detail_writes_common_transparent_outputs(self)->None:
         with tempfile.TemporaryDirectory() as directory:
