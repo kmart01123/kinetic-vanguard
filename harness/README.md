@@ -1,6 +1,6 @@
 # Kinetic Vanguard maintained benchmark harnesses
 
-The damage and Control Reliability evaluators use exact analytical enumeration. `KineticVanguard.yaml` is the sole Kinetic Vanguard rules authority; Python receives a schema- and semantics-validated projection keyed by stable entity ID and does not maintain a second copy of Kinetic Vanguard rules.
+The damage, Control Value, and Control Reliability evaluators use exact analytical enumeration. `KineticVanguard.yaml` is the sole Kinetic Vanguard rules authority; Python receives a schema- and semantics-validated projection keyed by stable entity ID and does not maintain a second copy of Kinetic Vanguard rules.
 
 ## Authority and input boundaries
 
@@ -51,6 +51,13 @@ npm run readme:benchmarks
 npm run readme:benchmarks:check
 ```
 
+When only control publication inputs or copy changed, the control-only mode preserves the current Single-Target Damage subsection byte-for-byte and obtains fresh Control Value and Reliability evidence from one control run without executing the damage harness:
+
+```text
+npm run readme:control
+npm run readme:control:check
+```
+
 The writer atomically replaces only the delimited balance region and refuses to overwrite a concurrently changed README. Use it only after an intentional authority, methodology, roster, comparator, or release-state change and review the numerical diff.
 
 ## Damage methodology
@@ -73,17 +80,17 @@ Damage matrices retain primary-target and aggregate-cluster DPR. For each row, B
 
 ## Control Reliability methodology
 
-Control Reliability measures how often the configured control package takes effect; it does not compare condition severity, duration, area, or strategic value. For each level and target, the harness selects the highest legal named-feature-plus-mastery reliability for each configured build. An ineligible scenario contributes zero, and the selection audit records the per-target winner.
+Control Reliability measures how often the selected control package takes effect; it does not compare condition severity, duration, area, or strategic value. For each target, build, and discipline, the harness first filters out ineligible scenarios and selects the legal package with the highest Control Value. An exact CU tie is resolved by higher whole-package Reliability, then by lexicographically ascending stable scenario ID. Control Reliability reports the whole-package delivery/persistence probability of that same CU-selected winner; it never runs a second winner-selection pass.
 
-Eldritch Knight's published Control Reliability winner selection is restricted to its configured `reliability_scenario_ids`; its broader scenario inventory may still feed optional Control Value shadow detail without entering the published winner set. Battle Master uses a separate fixed control-forward 5/7/9/9 maneuver-known profile. Menacing Attack, Pushing Attack, and Trip Attack are its direct modeled scenarios; Pushing preserves 15-foot directly-away displacement, while Trip records target-turn standing recovery at half-Speed cost rather than assuming full-round persistence. Goading Attack and Disarming Attack remain visible diagnostics but fail closed to zero without alternate-target and held-object context. The remaining known maneuvers receive no hostile-control credit merely for occupying a legal loadout slot.
+Every maintained scenario retains its delivery probabilities and remains available in per-scenario Reliability diagnostics. Eldritch Knight's full reviewed Control Value inventory participates in the common selection; there is no Reliability-only spell subset. Battle Master follows the same common selection over its fixed control-forward 5/7/9/9 maneuver-known profile. Menacing Attack, Pushing Attack, and Trip Attack are its direct modeled scenarios; Pushing preserves 15-foot directly-away displacement, while Trip records target-turn standing recovery at half-Speed cost rather than assuming full-round persistence. Goading Attack and Disarming Attack remain visible diagnostics but fail closed to zero without alternate-target and held-object context. The remaining known maneuvers receive no hostile-control credit merely for occupying a legal loadout slot.
 
 Kinetic Vanguard and Battle Master use legal repeated attack-delivered opportunities within one ordinary Attack action when their configured packages permit them. Eldritch Knight retains one configured cast; an Eldritch Strike package uses every ordinary primer attack to determine whether at least one hit established Disadvantage. Action Surge and repeated spell casts are not credited to Control Reliability.
 
-Control Reliability uses the same dynamic comparator envelope as damage and keeps raw comparator values and boundary identities in generated matrices.
+Control Reliability uses the same dynamic comparator envelope as damage and keeps raw comparator values and boundary identities in generated matrices. Its Battle Master and Eldritch Knight boundaries are the Reliability readouts of the same comparator packages selected by CU for the Value boundary.
 
-## Control Value shadow detail
+## Control Value methodology and detail
 
-Control Value remains a shadow metric during Slice 2. Control Reliability remains the default/published control metric and keeps its own winner selection unchanged. `1.0 CU` is denial of one target's normal Action + Bonus Action for one scored target-turn window.
+Control Value is the primary public control-balance metric and the common package-selection objective. It reports the mechanical consequence delivered by the selected package; Control Reliability is the delivery diagnostic for that same package. `1.0 CU` is denial of one target's normal Action + Bonus Action for one scored target-turn window.
 
 The frozen nominal rules are:
 
@@ -117,11 +124,11 @@ Repeatable accumulating instantaneous effects use expected successful occurrence
 
 Normalization keeps the landed duplicate, condition-inclusion, Mastery, and explicitly correlated all-attacks-over-next-attack rules. It also applies generic dominance for active-turn denial over lesser overlapping action/offense entries, Bonus Action denial over Action/Bonus exclusivity, same-ability automatic save failure over weaker save impairments, and complete turn movement denial over flat/multiplier/standing mobility. Multiple flat reductions share the `0.30 CU` complete-movement ceiling only when a component explicitly names their same-window correlation; independent sources remain independent and retain separate diagnostics. Glacial Spike still replaces Slow, Telekinetic Shove still replaces Push where canonically projected, Electron Burst leaves Sap's successful-save residual, and Graze contributes no Control Value.
 
-`--shadow-detail` adds primitive detail, scenario detail, independent Value selection audit, and a 16-cell level/discipline Value matrix. Value winner selection first excludes every ineligible scenario, then maximizes CU with lexicographically greatest scenario ID as the deterministic equal-CU tie-break; a set with no eligible scenario fails closed. Audit rows distinguish nonzero priced winners, legitimate eligible zeroes, and zeroes whose package is entirely context-required or unsupported. Primitive rows report application and active probabilities, expected occurrences and exposure, relevant benchmark locomotion speed, nominal weight, transform ID, scalar CU, resolved status, and normalization disposition. These outputs do not replace the public README benchmark table.
+`--shadow-detail` adds primitive detail, scenario detail, the common CU-selection audit, and the 16-cell level/discipline Value matrix used for public classification. Winner selection first excludes every ineligible scenario, then maximizes CU; exact CU ties use whole-package Reliability and then lexicographically ascending scenario ID. A set with no eligible scenario fails closed. Each common audit row carries the selected scenario, selection basis, CU, and whole-package Reliability, so both public aggregates can be reconstructed from one winner inventory. Audit rows distinguish nonzero priced winners, legitimate eligible zeroes, and zeroes whose package is entirely context-required or unsupported. Primitive rows report application and active probabilities, expected occurrences and exposure, relevant benchmark locomotion speed, nominal weight, transform ID, scalar CU, resolved status, and normalization disposition.
 
 The shadow layer preserves current condition decomposition, repeat-save timing, dependencies, and fail-closed behavior. Recoverable Prone generically exposes one target-turn `standing_movement_cost` at half Speed, regardless of comparator source. That recovery cost is suppressed while own-turn standing is explicitly unavailable; Prone's attack-facing consequences remain separate and context-sensitive. Unknown timing, magnitude, scope, or battlefield context remains contextual or unsupported.
 
-The Eldritch Knight shadow inventory accounts for the 41 retained audited spells without duplicating the 110 exclusions in runtime data. Exact finite save penalties and deterministic turn branches are analytically enumerated. Reusable production composition evaluates legal prior-Attack-action Eldritch Strike and cross-turn Mind Sliver primers without changing the published Reliability IDs; only the initial qualifying save consumes either primer. Web and Evard's Black Tentacles use a three-window closed-form adversarial escape convention from explicit target Athletics facts with Strength fallback, preserving each escape Action and immediate legal exit without a combat timeline or pathfinding. Other area occupancy, two-sided visibility or isolation, transformations, and context-dependent packages remain explicitly unpriced where the maintained benchmark lacks the required geometry, opportunity, environment, behavior, or replacement-form data.
+The Eldritch Knight inventory accounts for the 41 retained audited spells without duplicating the 110 exclusions in runtime data. Exact finite save penalties and deterministic turn branches are analytically enumerated. Reusable production composition evaluates legal prior-Attack-action Eldritch Strike and cross-turn Mind Sliver primers as ordinary common-selection candidates; only the initial qualifying save consumes either primer. Web and Evard's Black Tentacles use a three-window closed-form adversarial escape convention from explicit target Athletics facts with Strength fallback, preserving each escape Action and immediate legal exit without a combat timeline or pathfinding. Other area occupancy, two-sided visibility or isolation, transformations, and context-dependent packages remain explicitly unpriced where the maintained benchmark lacks the required geometry, opportunity, environment, behavior, or replacement-form data.
 
 A focused shadow inspection is:
 
@@ -131,7 +138,7 @@ python3 -m harness.control_harness --output-dir /tmp/kv-control-shadow --profile
 
 ## Output and provenance
 
-Filenames derive from the canonical `rules_version`. Each comparison matrix is emitted as CSV, Markdown, and self-contained HTML from one row model. Matrix provenance identifies the rules, authority, SRD catalog, roster, selected target profile, benchmark config, comparator config, exact analytical evaluator, and aggregation policy. Detail and selection-audit CSVs carry the same current source identities.
+Filenames derive from the canonical `rules_version`. Damage and public Reliability comparison matrices are emitted as CSV, Markdown, and self-contained HTML from one row model. Control Value evidence is emitted as primitive-detail, scenario-detail, common-selection-audit, and 16-cell matrix CSVs; it does not claim unimplemented Markdown or HTML formats. Matrix provenance identifies the rules, authority, SRD catalog, roster, selected target profile, benchmark config, comparator config, exact analytical evaluator, and aggregation policy. Because public Reliability reports delivery of the CU-selected package, its matrix provenance also identifies the control primitive catalog and frozen Control Value config. Detail and selection-audit CSVs carry the same current source identities.
 
 Generated rows also carry the project component boundary, SRD 5.2.1 attribution and modification notice, CC BY 4.0 Section 5 disclaimer reference, and unofficial comparator notice. Generated outputs, caches, and virtual environments are not official source.
 

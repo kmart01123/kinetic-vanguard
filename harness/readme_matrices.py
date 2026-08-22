@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import csv
+import math
 import os
 import re
 import stat
@@ -19,6 +20,7 @@ from .comparison_report import (
     matrix_row,
 )
 from .control_harness import run as run_control
+from .control_value import DEFAULT_PRIMITIVES, DEFAULT_SCORING
 from .damage_harness import run as run_damage
 from .model import (
     DEFAULT_CATALOG,
@@ -26,13 +28,16 @@ from .model import (
     DEFAULT_CONFIG,
     DEFAULT_PROFILE,
     DEFAULT_ROSTERS,
+    PROFILE_LEVEL_COUNTS,
     file_sha256,
     load_config,
+    load_targets,
 )
 
 BEGIN_MARKER = "<!-- BEGIN GENERATED BALANCE MATRICES -->"
 END_MARKER = "<!-- END GENERATED BALANCE MATRICES -->"
 README_PATH = PROJECT_ROOT / "README.md"
+DAMAGE_SECTION_START = "The front-door damage view is the single-target benchmark:"
 DAMAGE_SCOPES = ("primary-target DPR", "aggregate cluster DPR")
 README_DISCIPLINES = (
     "cryokinesis",
@@ -41,7 +46,7 @@ README_DISCIPLINES = (
     "electrokinesis",
 )
 RESULT_FIELDS = tuple(VALUE_COLUMNS)
-PROVENANCE_FIELDS = (
+COMMON_PROVENANCE_FIELDS = (
     "Provenance Rules Version",
     "Provenance Authority Sha256",
     "Provenance Catalog Sha256",
@@ -52,7 +57,53 @@ PROVENANCE_FIELDS = (
     "Provenance Evaluator",
     "Provenance Aggregation",
 )
+DAMAGE_PROVENANCE_FIELDS = COMMON_PROVENANCE_FIELDS
+RELIABILITY_PROVENANCE_FIELDS = (
+    *COMMON_PROVENANCE_FIELDS,
+    "Provenance Control Primitive Catalog Sha256",
+    "Provenance Control Value Config Sha256",
+)
 MatrixRow = dict[str, str]
+VALUE_COLUMNS_RAW = (
+    "Level",
+    "Discipline",
+    "Kinetic Vanguard Control Value CU",
+    "Eldritch Knight Control Value CU",
+    "Battle Master Control Value CU",
+    "Targets",
+    "Rules Version",
+    "Authority SHA-256",
+    "Catalog SHA-256",
+    "Roster SHA-256",
+    "Target Profile",
+    "Config SHA-256",
+    "Comparator Config SHA-256",
+    *NOTICE_COLUMNS,
+    "Control Primitive Catalog SHA-256",
+    "Control Value Config SHA-256",
+)
+VALUE_AUDIT_COLUMNS = (
+    "Level",
+    "Target",
+    "Discipline",
+    "Build",
+    "Selected Scenario",
+    "Eligible",
+    "Selection Basis",
+    "Control Value CU",
+    "Whole-package control stick %",
+    "Value Disposition",
+    "Rules Version",
+    "Authority SHA-256",
+    "Catalog SHA-256",
+    "Roster SHA-256",
+    "Target Profile",
+    "Config SHA-256",
+    "Comparator Config SHA-256",
+    *NOTICE_COLUMNS,
+    "Control Primitive Catalog SHA-256",
+    "Control Value Config SHA-256",
+)
 
 
 class MatrixSyncError(ValueError):
@@ -122,8 +173,348 @@ def _key_difference(actual: set[tuple[str, ...]], expected: set[tuple[str, ...]]
     raise MatrixSyncError(f"{kind} row identities differ; missing={missing}, extra={extra}")
 
 
-def validate_authoritative_rows(
-    damage_rows: Sequence[MatrixRow], control_rows: Sequence[MatrixRow]
+def validate_reliability_rows(
+    control_rows: Sequence[MatrixRow],
+) -> tuple[str, str, tuple[int, ...], tuple[str, ...]]:
+    model = AuthorityModel.load(DEFAULT_AUTHORITY)
+    config = load_config()
+    levels = tuple(int(value) for value in config["methodology"]["levels"])
+    disciplines = README_DISCIPLINES
+    if set(disciplines) != set(model.disciplines):
+        raise MatrixSyncError(
+            "README discipline columns differ from the canonical discipline set"
+        )
+
+    _require_fields(
+        control_rows,
+        (
+            "Level",
+            "Discipline",
+            "Metric",
+            "Profile",
+            *RESULT_FIELDS,
+            *RELIABILITY_PROVENANCE_FIELDS,
+            *NOTICE_COLUMNS,
+        ),
+        "control",
+    )
+    expected_identities = {
+        (str(level), discipline) for level in levels for discipline in disciplines
+    }
+    actual_identities = {
+        (row["Level"], row["Discipline"]) for row in control_rows
+    }
+    _key_difference(actual_identities, expected_identities, "control")
+    if len(control_rows) != len(expected_identities):
+        raise MatrixSyncError("Control matrix contains duplicate row identities")
+
+    expected = {
+        "Provenance Rules Version": model.rules_version,
+        "Provenance Authority Sha256": model.authority_sha256,
+        "Provenance Catalog Sha256": file_sha256(DEFAULT_CATALOG),
+        "Provenance Roster Sha256": file_sha256(DEFAULT_ROSTERS),
+        "Provenance Target Profile": DEFAULT_PROFILE,
+        "Provenance Config Sha256": file_sha256(DEFAULT_CONFIG),
+        "Provenance Comparator Config Sha256": file_sha256(DEFAULT_COMPARATORS),
+        "Provenance Control Primitive Catalog Sha256": file_sha256(DEFAULT_PRIMITIVES),
+        "Provenance Control Value Config Sha256": file_sha256(DEFAULT_SCORING),
+        "Provenance Evaluator": "exact_analytical_enumeration",
+        "Provenance Aggregation": str(config["control_matrix"]["aggregation"]),
+        "Profile": str(config["kv_profile"]["id"]),
+    }
+    for index, row in enumerate(control_rows):
+        for field, value in expected.items():
+            if row[field] != value:
+                raise MatrixSyncError(
+                    f"control row {index} has {field}={row[field]!r}; expected {value!r}"
+                )
+        for field, value in NOTICE_COLUMNS.items():
+            if row[field] != value:
+                raise MatrixSyncError(f"control row {index} changed notice field {field}")
+        recomputed = matrix_row(
+            {},
+            float(row["KV"]),
+            float(row["Eldritch Knight"]),
+            float(row["Battle Master"]),
+            "control",
+        )
+        for field in RESULT_FIELDS:
+            if row[field] != recomputed[field]:
+                raise MatrixSyncError(
+                    f"control row {index} has stale {field}: "
+                    f"{row[field]} != {recomputed[field]}"
+                )
+
+    metric = str(config["control_matrix"]["metric"])
+    if _uniform(control_rows, "Metric", "control") != metric:
+        raise MatrixSyncError("Control matrix metric differs from benchmark configuration")
+    return model.rules_version, DEFAULT_PROFILE, levels, disciplines
+
+
+def _validate_value_source(
+    row: MatrixRow, index: int, kind: str, expected: dict[str, str]
+) -> None:
+    for field, value in (*expected.items(), *NOTICE_COLUMNS.items()):
+        if row[field] != value:
+            raise MatrixSyncError(
+                f"{kind} row {index} has {field}={row[field]!r}; expected {value!r}"
+            )
+
+
+def validate_value_rows(
+    value_rows: Sequence[MatrixRow], value_audit_rows: Sequence[MatrixRow]
+) -> list[MatrixRow]:
+    model = AuthorityModel.load(DEFAULT_AUTHORITY)
+    config = load_config()
+    levels = tuple(int(value) for value in config["methodology"]["levels"])
+    disciplines = README_DISCIPLINES
+    expected_matrix_identities = {
+        (str(level), discipline) for level in levels for discipline in disciplines
+    }
+    expected_source = {
+        "Rules Version": model.rules_version,
+        "Authority SHA-256": model.authority_sha256,
+        "Catalog SHA-256": file_sha256(DEFAULT_CATALOG),
+        "Roster SHA-256": file_sha256(DEFAULT_ROSTERS),
+        "Target Profile": DEFAULT_PROFILE,
+        "Config SHA-256": file_sha256(DEFAULT_CONFIG),
+        "Comparator Config SHA-256": file_sha256(DEFAULT_COMPARATORS),
+        "Control Primitive Catalog SHA-256": file_sha256(DEFAULT_PRIMITIVES),
+        "Control Value Config SHA-256": file_sha256(DEFAULT_SCORING),
+    }
+
+    _require_fields(value_rows, VALUE_COLUMNS_RAW, "Control Value")
+    actual_matrix_identities = {
+        (row["Level"], row["Discipline"]) for row in value_rows
+    }
+    _key_difference(
+        actual_matrix_identities, expected_matrix_identities, "Control Value"
+    )
+    if len(value_rows) != len(expected_matrix_identities):
+        raise MatrixSyncError("Control Value matrix contains duplicate row identities")
+
+    _require_fields(value_audit_rows, VALUE_AUDIT_COLUMNS, "Control Value audit")
+    targets = load_targets(profile=DEFAULT_PROFILE, levels=set(levels))
+    expected_audit_identities: set[tuple[str, str, str, str]] = set()
+    for target in targets:
+        expected_audit_identities.update(
+            {
+                (str(target.level), target.name, "all", "battle_master"),
+                (str(target.level), target.name, "all", "eldritch_knight"),
+                *(
+                    (
+                        str(target.level),
+                        target.name,
+                        discipline,
+                        "kinetic_vanguard",
+                    )
+                    for discipline in disciplines
+                ),
+            }
+        )
+    actual_audit_identities = {
+        (row["Level"], row["Target"], row["Discipline"], row["Build"])
+        for row in value_audit_rows
+    }
+    _key_difference(
+        actual_audit_identities,
+        expected_audit_identities,
+        "Control Value audit",
+    )
+    if len(value_audit_rows) != len(expected_audit_identities):
+        raise MatrixSyncError("Control Value audit contains duplicate winner identities")
+
+    audit_values: dict[tuple[str, str, str, str], float] = {}
+    allowed_dispositions = {
+        "priced_nonzero",
+        "legitimately_priced_zero",
+        "entirely_context_required_or_unsupported",
+    }
+    for index, row in enumerate(value_audit_rows):
+        _validate_value_source(
+            row, index, "Control Value audit", expected_source
+        )
+        if row["Eligible"] != "True":
+            raise MatrixSyncError(
+                f"Control Value audit row {index} selected an ineligible winner"
+            )
+        if not row["Selected Scenario"]:
+            raise MatrixSyncError(
+                f"Control Value audit row {index} has no selected scenario"
+            )
+        if row["Selection Basis"] != "Control Value":
+            raise MatrixSyncError(
+                f"Control Value audit row {index} has a non-CU selection basis"
+            )
+        if row["Value Disposition"] not in allowed_dispositions:
+            raise MatrixSyncError(
+                f"Control Value audit row {index} has an invalid disposition"
+            )
+        try:
+            value = float(row["Control Value CU"])
+        except ValueError as error:
+            raise MatrixSyncError(
+                f"Control Value audit row {index} has non-numeric CU"
+            ) from error
+        if not math.isfinite(value):
+            raise MatrixSyncError(
+                f"Control Value audit row {index} has non-finite CU"
+            )
+        try:
+            reliability = float(row["Whole-package control stick %"])
+        except ValueError as error:
+            raise MatrixSyncError(
+                f"Control Value audit row {index} has non-numeric Reliability"
+            ) from error
+        if not math.isfinite(reliability) or not 0.0 <= reliability <= 100.0:
+            raise MatrixSyncError(
+                f"Control Value audit row {index} has invalid Reliability"
+            )
+        identity = (row["Level"], row["Target"], row["Discipline"], row["Build"])
+        audit_values[identity] = value
+
+    public_rows: list[MatrixRow] = []
+    for index, row in enumerate(value_rows):
+        _validate_value_source(row, index, "Control Value", expected_source)
+        level = int(row["Level"])
+        expected_targets = PROFILE_LEVEL_COUNTS[DEFAULT_PROFILE][level]
+        if row["Targets"] != str(expected_targets):
+            raise MatrixSyncError(
+                f"Control Value row {index} has Targets={row['Targets']!r}; "
+                f"expected {expected_targets}"
+            )
+        discipline = row["Discipline"]
+        level_targets = [target for target in targets if target.level == level]
+
+        def winner_mean(build: str, selected_discipline: str) -> float:
+            values = [
+                audit_values[
+                    (str(level), target.name, selected_discipline, build)
+                ]
+                for target in level_targets
+            ]
+            return sum(values) / len(values)
+
+        expected_aggregates = {
+            "Kinetic Vanguard Control Value CU": winner_mean(
+                "kinetic_vanguard", discipline
+            ),
+            "Eldritch Knight Control Value CU": winner_mean(
+                "eldritch_knight", "all"
+            ),
+            "Battle Master Control Value CU": winner_mean("battle_master", "all"),
+        }
+        for field, value in expected_aggregates.items():
+            try:
+                numeric = float(row[field])
+            except ValueError as error:
+                raise MatrixSyncError(
+                    f"Control Value row {index} has non-numeric {field}"
+                ) from error
+            if not math.isfinite(numeric):
+                raise MatrixSyncError(
+                    f"Control Value row {index} has non-finite {field}"
+                )
+            expected_display = f"{value:.12f}"
+            if row[field] != expected_display:
+                raise MatrixSyncError(
+                    f"Control Value row {index} has stale winner aggregate {field}: "
+                    f"{row[field]} != {expected_display}"
+                )
+
+        public = matrix_row(
+            {"Level": level, "Discipline": discipline},
+            expected_aggregates["Kinetic Vanguard Control Value CU"],
+            expected_aggregates["Eldritch Knight Control Value CU"],
+            expected_aggregates["Battle Master Control Value CU"],
+            "control",
+        )
+        public["Benchmark Type"] = "Control Value"
+        public_rows.append(public)
+
+    if set(disciplines) != set(model.disciplines):
+        raise MatrixSyncError(
+            "README discipline columns differ from the canonical discipline set"
+        )
+    return public_rows
+
+
+def validate_reliability_alignment(
+    control_rows: Sequence[MatrixRow], value_audit_rows: Sequence[MatrixRow]
+) -> list[MatrixRow]:
+    """Reconstruct public Reliability solely from the common CU winner audit."""
+    config = load_config()
+    levels = tuple(int(value) for value in config["methodology"]["levels"])
+    targets = load_targets(profile=DEFAULT_PROFILE, levels=set(levels))
+    expected_identities = {
+        (str(target.level), target.name, discipline, build)
+        for target in targets
+        for build, discipline in (
+            ("battle_master", "all"),
+            ("eldritch_knight", "all"),
+            *(("kinetic_vanguard", item) for item in README_DISCIPLINES),
+        )
+    }
+    actual_identities = {
+        (row["Level"], row["Target"], row["Discipline"], row["Build"])
+        for row in value_audit_rows
+    }
+    _key_difference(actual_identities, expected_identities, "common selection audit")
+    if len(value_audit_rows) != len(expected_identities):
+        raise MatrixSyncError("Common selection audit contains duplicate winner identities")
+    audit_reliability: dict[tuple[str, str, str, str], float] = {}
+    for index, row in enumerate(value_audit_rows):
+        if row.get("Selection Basis") != "Control Value":
+            raise MatrixSyncError(
+                f"Common selection audit row {index} has a non-CU selection basis"
+            )
+        try:
+            value = float(row["Whole-package control stick %"])
+        except (KeyError, ValueError) as error:
+            raise MatrixSyncError(
+                f"Common selection audit row {index} has non-numeric Reliability"
+            ) from error
+        if not math.isfinite(value) or not 0.0 <= value <= 100.0:
+            raise MatrixSyncError(
+                f"Common selection audit row {index} has invalid Reliability"
+            )
+        identity = (row["Level"], row["Target"], row["Discipline"], row["Build"])
+        audit_reliability[identity] = value
+
+    aligned_rows: list[MatrixRow] = []
+    for index, row in enumerate(control_rows):
+        level = int(row["Level"])
+        discipline = row["Discipline"]
+        level_targets = [target for target in targets if target.level == level]
+
+        def winner_mean(build: str, selected_discipline: str) -> float:
+            values = [
+                audit_reliability[
+                    (str(level), target.name, selected_discipline, build)
+                ]
+                for target in level_targets
+            ]
+            return sum(values) / len(values)
+
+        expected = matrix_row(
+            {"Level": level, "Discipline": discipline},
+            winner_mean("kinetic_vanguard", discipline),
+            winner_mean("eldritch_knight", "all"),
+            winner_mean("battle_master", "all"),
+            "control",
+        )
+        for field in RESULT_FIELDS:
+            if row[field] != expected[field]:
+                raise MatrixSyncError(
+                    f"control row {index} does not match common winner {field}: "
+                    f"{row[field]} != {expected[field]}"
+                )
+        aligned_rows.append(dict(row))
+    return aligned_rows
+
+
+def validate_damage_rows(
+    damage_rows: Sequence[MatrixRow],
 ) -> tuple[str, str, tuple[int, ...], tuple[str, ...]]:
     model = AuthorityModel.load(DEFAULT_AUTHORITY)
     config = load_config()
@@ -134,8 +525,6 @@ def validate_authoritative_rows(
         raise MatrixSyncError(
             "README discipline columns differ from the canonical discipline set"
         )
-    kv_profile = str(config["kv_profile"]["id"])
-    target_profile = DEFAULT_PROFILE
 
     _require_fields(
         damage_rows,
@@ -146,25 +535,11 @@ def validate_authoritative_rows(
             "Damage Scope",
             "Profile",
             *RESULT_FIELDS,
-            *PROVENANCE_FIELDS,
+            *DAMAGE_PROVENANCE_FIELDS,
             *NOTICE_COLUMNS,
         ),
         "damage",
     )
-    _require_fields(
-        control_rows,
-        (
-            "Level",
-            "Discipline",
-            "Metric",
-            "Profile",
-            *RESULT_FIELDS,
-            *PROVENANCE_FIELDS,
-            *NOTICE_COLUMNS,
-        ),
-        "control",
-    )
-
     expected_damage = {
         (str(level), discipline, str(cluster), scope)
         for level in levels
@@ -180,66 +555,61 @@ def validate_authoritative_rows(
     if len(damage_rows) != len(expected_damage):
         raise MatrixSyncError("Damage matrix contains duplicate row identities")
 
-    expected_control = {
-        (str(level), discipline) for level in levels for discipline in disciplines
-    }
-    actual_control = {(row["Level"], row["Discipline"]) for row in control_rows}
-    _key_difference(actual_control, expected_control, "control")
-    if len(control_rows) != len(expected_control):
-        raise MatrixSyncError("Control matrix contains duplicate row identities")
-
-    expected_common = {
+    expected = {
         "Provenance Rules Version": model.rules_version,
         "Provenance Authority Sha256": model.authority_sha256,
         "Provenance Catalog Sha256": file_sha256(DEFAULT_CATALOG),
         "Provenance Roster Sha256": file_sha256(DEFAULT_ROSTERS),
-        "Provenance Target Profile": target_profile,
+        "Provenance Target Profile": DEFAULT_PROFILE,
         "Provenance Config Sha256": file_sha256(DEFAULT_CONFIG),
         "Provenance Comparator Config Sha256": file_sha256(DEFAULT_COMPARATORS),
         "Provenance Evaluator": "exact_analytical_enumeration",
-        "Profile": kv_profile,
+        "Provenance Aggregation": (
+            "equal-weight roster means; percentages from displayed aggregates"
+        ),
+        "Profile": str(config["kv_profile"]["id"]),
     }
+    for index, row in enumerate(damage_rows):
+        for field, value in expected.items():
+            if row[field] != value:
+                raise MatrixSyncError(
+                    f"damage row {index} has {field}={row[field]!r}; expected {value!r}"
+                )
+        for field, value in NOTICE_COLUMNS.items():
+            if row[field] != value:
+                raise MatrixSyncError(f"damage row {index} changed notice field {field}")
+        recomputed = matrix_row(
+            {},
+            float(row["KV"]),
+            float(row["Eldritch Knight"]),
+            float(row["Battle Master"]),
+            "damage",
+        )
+        for field in RESULT_FIELDS:
+            if row[field] != recomputed[field]:
+                raise MatrixSyncError(
+                    f"damage row {index} has stale {field}: "
+                    f"{row[field]} != {recomputed[field]}"
+                )
+    return model.rules_version, DEFAULT_PROFILE, clusters, disciplines
 
-    for kind, rows in (("damage", damage_rows), ("control", control_rows)):
-        expected = {
-            **expected_common,
-            "Provenance Aggregation": (
-                "equal-weight roster means; percentages from displayed aggregates"
-                if kind == "damage"
-                else str(config["control_matrix"]["aggregation"])
-            ),
-        }
-        for index, row in enumerate(rows):
-            for field, value in expected.items():
-                if row[field] != value:
-                    raise MatrixSyncError(
-                        f"{kind} row {index} has {field}={row[field]!r}; expected {value!r}"
-                    )
-            for field, value in NOTICE_COLUMNS.items():
-                if row[field] != value:
-                    raise MatrixSyncError(f"{kind} row {index} changed notice field {field}")
-            recomputed = matrix_row(
-                {},
-                float(row["KV"]),
-                float(row["Eldritch Knight"]),
-                float(row["Battle Master"]),
-                kind,
-            )
-            for field in RESULT_FIELDS:
-                if row[field] != recomputed[field]:
-                    raise MatrixSyncError(
-                        f"{kind} row {index} has stale {field}: {row[field]} != {recomputed[field]}"
-                    )
 
-    metric = str(config["control_matrix"]["metric"])
-    if _uniform(control_rows, "Metric", "control") != metric:
-        raise MatrixSyncError("Control matrix metric differs from benchmark configuration")
-    if _uniform(damage_rows, "Provenance Rules Version", "damage") != model.rules_version:
-        raise MatrixSyncError("Damage matrix rules version differs from canonical authority")
-    if _uniform(control_rows, "Provenance Rules Version", "control") != model.rules_version:
-        raise MatrixSyncError("Control matrix rules version differs from canonical authority")
-
-    return model.rules_version, target_profile, clusters, disciplines
+def validate_authoritative_rows(
+    damage_rows: Sequence[MatrixRow], control_rows: Sequence[MatrixRow]
+) -> tuple[str, str, tuple[int, ...], tuple[str, ...]]:
+    damage_contract = validate_damage_rows(damage_rows)
+    rules_version, profile, _, disciplines = validate_reliability_rows(control_rows)
+    if (
+        rules_version,
+        profile,
+        disciplines,
+    ) != (
+        damage_contract[0],
+        damage_contract[1],
+        damage_contract[3],
+    ):
+        raise MatrixSyncError("Damage and control publication contracts differ")
+    return damage_contract
 
 
 def _escape_cell(value: str) -> str:
@@ -329,6 +699,45 @@ def render_single_target_damage(
     return _heat_table(rows, disciplines)
 
 
+def render_damage_section(
+    damage_rows: Sequence[MatrixRow],
+    disciplines: Sequence[str] = README_DISCIPLINES,
+) -> str:
+    return "\n".join(
+        (
+            (
+                "The front-door damage view is the single-target benchmark: "
+                "primary-target DPR at cluster size 1. All other primary-target and "
+                "aggregate-cluster results remain in the generated detailed release "
+                "reports and are not collapsed into this table."
+            ),
+            "",
+            "### Single-Target Damage",
+            "",
+            render_single_target_damage(damage_rows, disciplines),
+            "",
+            "",
+        )
+    )
+
+
+def extract_damage_section(readme: str) -> str:
+    start, end = generated_region_span(readme)
+    region = readme[start:end]
+    if region.count(DAMAGE_SECTION_START) != 1:
+        raise MatrixSyncError(
+            "README must contain exactly one preserved Single-Target Damage introduction"
+        )
+    section_start = region.index(DAMAGE_SECTION_START)
+    headings = list(re.finditer(r"^### .+$", region[section_start:], re.MULTILINE))
+    if not headings or headings[0].group(0) != "### Single-Target Damage":
+        raise MatrixSyncError("README Single-Target Damage heading is missing or misplaced")
+    if len(headings) < 2:
+        raise MatrixSyncError("README damage subsection has no following control section")
+    section_end = section_start + headings[1].start()
+    return region[section_start:section_end]
+
+
 def render_control_table(
     control_rows: Sequence[MatrixRow],
     disciplines: Sequence[str] = README_DISCIPLINES,
@@ -378,97 +787,177 @@ def release_state_line(readme: str, rules_version: str) -> str:
 
 def render_balance_region(
     readme: str,
-    damage_rows: Sequence[MatrixRow],
-    control_rows: Sequence[MatrixRow],
+    damage_section: str,
+    reliability_rows: Sequence[MatrixRow],
+    value_rows: Sequence[MatrixRow],
     rules_version: str,
     profile: str,
-    clusters: Sequence[int],
     disciplines: Sequence[str] = README_DISCIPLINES,
 ) -> str:
     release_line = release_state_line(readme, rules_version)
-    metric = _uniform(control_rows, "Metric", "control")
-    if 1 not in clusters:
-        raise MatrixSyncError("Single-target README snapshot requires cluster size 1")
-    lines = [
-        BEGIN_MARKER,
-        "## Balance benchmark snapshot",
-        "",
-        release_line,
-        "",
+    metric = _uniform(reliability_rows, "Metric", "control")
+    common = "\n".join(
         (
-            f"Target profile: `{profile}`. These are exact analytical full-roster results."
-        ),
-        "",
+            BEGIN_MARKER,
+            "## Balance benchmark snapshot",
+            "",
+            release_line,
+            "",
+            (
+                f"Target profile: `{profile}`. The maintained headline benchmark uses "
+                f"{sum(PROFILE_LEVEL_COUNTS[profile].values())} creature profiles from "
+                "SRD 5.2.1 at levels 7, 11, 15, and 20. These are exact analytical "
+                "full-roster results, with creatures weighted equally within their level."
+            ),
+            "",
+            (
+                "Battle Master and Eldritch Knight define the comparison envelope for each "
+                "benchmark result. `IDEAL` means Kinetic Vanguard falls between the two "
+                "comparator values, inclusive. `COLD` is below both; `HOT` is above both. "
+                "The percentage on COLD and HOT cells shows the signed distance outside the "
+                "nearest comparator boundary. `N/A` is reserved for a comparison that cannot "
+                "be evaluated. This is a comparator-envelope benchmark, not a universal "
+                "real-play balance tolerance, and `IDEAL` is not proof of balance in every game."
+            ),
+            "",
+            (
+                "README cells intentionally contain only the public balance result: `IDEAL`, "
+                "`COLD (-X%)`, `HOT (+X%)`, or `N/A`. Detailed evidence retains raw Kinetic "
+                "Vanguard and comparator aggregates, dynamic boundaries, and the comparator "
+                "identity supplying each boundary."
+            ),
+            "",
+        )
+    )
+    control = "\n".join(
         (
-            "Battle Master and Eldritch Knight define the comparison envelope for each "
-            "benchmark result. `IDEAL` means Kinetic Vanguard falls between the two "
-            "comparator results, inclusive. `COLD` is below both; `HOT` is above both. "
-            "The percentage on COLD and HOT cells shows the signed distance outside the nearest "
-            "envelope boundary. `N/A` is reserved for a comparison that cannot be evaluated."
-        ),
-        "",
-        (
-            "README cells intentionally contain only the public balance result: `IDEAL`, "
-            "`COLD (-X%)`, `HOT (+X%)`, or `N/A`. Detailed release CSV, Markdown, "
-            "and HTML reports retain raw Kinetic Vanguard and comparator aggregates, ordinary "
-            "KV/comparator ratios, dynamic lower and upper boundaries, and the comparator "
-            "identity supplying each boundary."
-        ),
-        "",
-        (
-            "The front-door damage view is the single-target benchmark: primary-target DPR "
-            "at cluster size 1. All other primary-target and aggregate-cluster results remain "
-            "in the generated detailed release reports and are not collapsed into this table."
-        ),
-        "",
-        "### Single-Target Damage",
-        "",
-        render_single_target_damage(damage_rows, disciplines),
-        "",
-        "### Control Reliability",
-        "",
-        (
-            "This single-target benchmark evaluates each configured control package against "
-            "one roster target at a time before taking the equal-weight roster mean."
-        ),
-        "",
-        f"Configured headline metric: **{metric}**.",
-        "",
-        (
-            "This snapshot evaluates legal repeated attack-delivered opportunities within "
-            "one ordinary Attack action when the configured package permits them. Kinetic Vanguard "
-            "on-hit riders and Battle Master maneuvers receive legal retries while resources remain. "
-            "Eldritch Knight keeps one Blindness/Deafness cast and uses all ordinary primer attacks "
-            "for Eldritch Strike."
-        ),
-        "",
-        (
-            "Control Reliability measures how often the configured control package takes effect. "
-            "It does not measure the relative severity, duration, area, or strategic value of "
-            "different control effects. A HOT result is a balance-review signal, not an automatic "
-            "finding that the feature is overpowered."
-        ),
-        "",
-        render_control_table(control_rows, disciplines),
-        "",
-        (
-            "This snapshot is a summary, not the full evidence set. Kinetic Vanguard mechanics "
-            "come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the "
-            "[maintained harness guide](harness/README.md), "
-            "[methodology configuration](harness/config/benchmark.json), "
-            "[SRD creature profiles](harness/data/srd_creature_rosters.json), and "
-            "[comparator assumptions](harness/comparators/fighter-subclasses.json) for the "
-            "complete methodology, provenance, regeneration commands, and report paths."
-        ),
-        "",
-        (
-            COMPARATOR_NOTICE
-            + " See [`LICENSE.md`](LICENSE.md) for component boundaries and "
-            "[`NOTICE.md`](NOTICE.md) for attribution and notices."
-        ),
-        END_MARKER,
-    ]
-    return "\n".join(lines)
+            "### Control Value",
+            "",
+            (
+                "**Primary control-balance metric:** how much useful control the configured "
+                "package delivers. Control Value asks: “How much useful control does the "
+                "configured package deliver?”"
+            ),
+            "",
+            (
+                "Control Value combines delivery probability, persistence or active windows, "
+                "established attack/save/reaction opportunities, mechanical consequences, and "
+                "legal repeatable accumulating instantaneous effects. `1.0 CU` is denial of "
+                "one target's normal Action + Bonus Action for one scored target-turn window. "
+                "A Control Unit is a project analytical benchmark unit, **not a D&D rules "
+                "quantity**."
+            ),
+            "",
+            (
+                "For each target, build, and discipline, the benchmark filters out ineligible "
+                "packages and selects the legal package with the highest Control Value. An exact "
+                "CU tie is resolved by higher whole-package Control Reliability, then by ascending "
+                "stable scenario ID. Control Value reports what that selected package delivers "
+                "mechanically; CU is the common package-selection methodology for both readouts."
+            ),
+            "",
+            render_control_table(value_rows, disciplines),
+            "",
+            "### Control Reliability — delivery diagnostic",
+            "",
+            (
+                "**Secondary diagnostic:** how reliably the Value-selected control package lands "
+                "and, where applicable, persists. Control Reliability asks: “How reliably is "
+                "that selected package delivered?”"
+            ),
+            "",
+            f"Configured Reliability metric: **{metric}**.",
+            "",
+            (
+                "Control Reliability measures delivery probability for the same CU-selected "
+                "package, not effect severity. It "
+                "includes legal repeatable attack-delivered opportunities within one ordinary "
+                "Attack action when the rules permit them, excludes Action Surge from the "
+                "headline control comparison, and applies the maintained repeat-save and "
+                "persistence treatment where relevant. A Reliability `HOT` result means "
+                "unusually high delivery relative to the Reliability comparator envelope; it "
+                "does not by itself mean that the control's mechanical severity is excessive."
+            ),
+            "",
+            render_control_table(reliability_rows, disciplines),
+            "",
+            "### Control methodology",
+            "",
+            (
+                "Control Value follows a transparent pipeline: canonical condition or outcome "
+                "→ mechanical consequences → expected exposure or opportunities → overlap "
+                "normalization → weighted Control Units. It prices what an effect mechanically "
+                "does rather than assigning value only from its name."
+            ),
+            "",
+            (
+                "For example, Stunned decomposes into active-turn denial through Incapacitated, "
+                "reaction denial, automatic failure of Strength and Dexterity saves, and "
+                "Advantage on incoming attacks. Stunned does **not** gain Speed 0. Restrained "
+                "includes complete movement denial plus its separately scored consequences. "
+                "Forced movement is valued from expected displaced feet, and repeatable legal "
+                "displacement can accrue multiple successful occurrences."
+            ),
+            "",
+            (
+                "Value and Reliability can still receive different public bands because they "
+                "measure different properties of the same selected package. A consequence-aware "
+                "Value readout can differ from delivery: "
+                "a soft effect such as Sap can land very reliably without carrying the same "
+                "mechanical consequence as Stunned or Restrained. Equal stick probabilities "
+                "do not imply equal control power."
+            ),
+            "",
+            (
+                "Normalization prevents double counting. Identical boolean consequences do not "
+                "stack. Complete turn denial suppresses overlapping lesser action or offensive "
+                "effects; automatic save failure supersedes weaker impairment to the same save; "
+                "and complete movement denial supersedes overlapping lesser mobility loss. "
+                "All-attacks Disadvantage suppresses only an explicitly overlapping next-attack "
+                "Disadvantage share. Correlated flat movement reductions are capped at complete "
+                "movement denial, while unrelated mechanical consequences remain independently "
+                "valued."
+            ),
+            "",
+            (
+                "Some mechanics require battlefield or opportunity facts that this benchmark "
+                "cannot neutrally establish, such as geometry-dependent restrictions, sight or "
+                "sense interactions, cliffs or hazards, unspecified ally opportunities, and "
+                "open-ended behavioral effects. They remain visible in detailed diagnostics but "
+                "contribute zero CU unless the required context is explicitly established. Zero "
+                "Control Value from missing context does **not** mean that a mechanic has no value "
+                "in actual play."
+            ),
+            "",
+            (
+                "Speed 0 is complete turn movement denial. Flat Speed reductions normalize "
+                "against the target's maintained unconditional locomotion Speed; conditional or "
+                "choice movement modes are not assumed, and missing trustworthy movement data "
+                "fails closed. Forced displacement uses expected feet moved."
+            ),
+            "",
+            (
+                "Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). "
+                "Full methodology and reproducibility details are in the "
+                "[maintained harness guide](harness/README.md), "
+                "[benchmark configuration](harness/config/benchmark.json), "
+                "[frozen Control Value configuration](harness/config/control-value.json), "
+                "[control primitive catalog](harness/data/control_primitives.json), and "
+                "[comparator assumptions](harness/comparators/fighter-subclasses.json)."
+            ),
+            "",
+            (
+                "Creature benchmark data is SRD 5.2.1. Maintained comparator mechanics are "
+                "independently expressed analytical abstractions under the reviewed comparator "
+                "source policy; they are not Kinetic Vanguard rules. "
+                + COMPARATOR_NOTICE
+                + " See [`LICENSE.md`](LICENSE.md) for component boundaries and "
+                "[`NOTICE.md`](NOTICE.md) for attribution and notices."
+            ),
+            END_MARKER,
+        )
+    )
+    return common + "\n" + damage_section + control
 
 
 def generated_region_span(readme: str) -> tuple[int, int]:
@@ -486,7 +975,37 @@ def replace_generated_region(readme: str, region: str) -> str:
     return readme[:start] + region + readme[end:]
 
 
-def generate_authoritative_rows(workers: int) -> tuple[list[MatrixRow], list[MatrixRow]]:
+def _control_publication_rows(
+    root: Path, levels: set[int]
+) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
+    control = run_control(
+        DEFAULT_AUTHORITY,
+        root,
+        levels,
+        None,
+        write_detail=False,
+        write_headline=True,
+        profile=DEFAULT_PROFILE,
+        write_shadow=True,
+    )
+    return (
+        read_matrix_rows(control["paths"]["csv"]),
+        read_matrix_rows(control["value_paths"]["matrix"]),
+        read_matrix_rows(control["value_paths"]["selection_audit"]),
+    )
+
+
+def generate_control_publication_rows(
+) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
+    config = load_config()
+    levels = {int(value) for value in config["methodology"]["levels"]}
+    with tempfile.TemporaryDirectory(prefix="kv-readme-control-") as directory:
+        return _control_publication_rows(Path(directory), levels)
+
+
+def generate_authoritative_rows(
+    workers: int,
+) -> tuple[list[MatrixRow], list[MatrixRow], list[MatrixRow], list[MatrixRow]]:
     config = load_config()
     levels = {int(value) for value in config["methodology"]["levels"]}
     with tempfile.TemporaryDirectory(prefix="kv-readme-matrices-") as directory:
@@ -500,17 +1019,14 @@ def generate_authoritative_rows(workers: int) -> tuple[list[MatrixRow], list[Mat
             True,
             workers,
         )
-        control = run_control(
-            DEFAULT_AUTHORITY,
-            root / "control",
-            levels,
-            None,
-            False,
-            True,
+        reliability_rows, value_rows, value_audit_rows = _control_publication_rows(
+            root / "control", levels
         )
         return (
             read_matrix_rows(damage["paths"]["csv"]),
-            read_matrix_rows(control["paths"]["csv"]),
+            reliability_rows,
+            value_rows,
+            value_audit_rows,
         )
 
 
@@ -521,6 +1037,11 @@ def main() -> None:
     mode = parser.add_mutually_exclusive_group(required=True)
     mode.add_argument("--write", action="store_true")
     mode.add_argument("--check", action="store_true")
+    parser.add_argument(
+        "--control-only",
+        action="store_true",
+        help="refresh control publication while preserving the current damage subsection",
+    )
     parser.add_argument("--workers", type=int, default=4)
     args = parser.parse_args()
     if args.workers <= 0:
@@ -528,17 +1049,33 @@ def main() -> None:
 
     readme = README_PATH.read_text(encoding="utf-8")
     generated_region_span(readme)
-    damage_rows, control_rows = generate_authoritative_rows(args.workers)
-    rules_version, profile, clusters, disciplines = validate_authoritative_rows(
-        damage_rows, control_rows
+    if args.control_only:
+        damage_section = extract_damage_section(readme)
+        reliability_rows, value_rows, value_audit_rows = (
+            generate_control_publication_rows()
+        )
+        rules_version, profile, _, disciplines = validate_reliability_rows(
+            reliability_rows
+        )
+    else:
+        damage_rows, reliability_rows, value_rows, value_audit_rows = (
+            generate_authoritative_rows(args.workers)
+        )
+        rules_version, profile, _, disciplines = validate_authoritative_rows(
+            damage_rows, reliability_rows
+        )
+        damage_section = render_damage_section(damage_rows, disciplines)
+    value_public_rows = validate_value_rows(value_rows, value_audit_rows)
+    reliability_public_rows = validate_reliability_alignment(
+        reliability_rows, value_audit_rows
     )
     region = render_balance_region(
         readme,
-        damage_rows,
-        control_rows,
+        damage_section,
+        reliability_public_rows,
+        value_public_rows,
         rules_version,
         profile,
-        clusters,
         disciplines,
     )
     synchronized = replace_generated_region(readme, region)
@@ -547,8 +1084,13 @@ def main() -> None:
 
     if args.check:
         if synchronized != readme:
+            command = (
+                "npm run readme:control"
+                if args.control_only
+                else "npm run readme:benchmarks"
+            )
             raise SystemExit(
-                "README balance benchmark snapshot is stale; run npm run readme:benchmarks"
+                f"README balance benchmark snapshot is stale; run {command}"
             )
         print(f"README balance benchmark snapshot is synchronized for v{rules_version}")
         return

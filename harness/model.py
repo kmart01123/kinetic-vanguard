@@ -126,7 +126,9 @@ def load_config(path:Path=DEFAULT_CONFIG)->dict[str,Any]:
     for index,item_value in enumerate(exclusions):
         item=_object(item_value,f"damage exclusion {index}");_exact_keys(item,{"entity_id","reason"},f"damage exclusion {index}")
         if not all(isinstance(item[key],str) and item[key].strip() for key in ("entity_id","reason")):raise ValueError("Damage exclusions require non-empty entity_id and reason")
-    control=_object(data["control_matrix"],"control_matrix");_exact_keys(control,{"metric","aggregation","kv_scenarios"},"control_matrix")
+    control=_object(data["control_matrix"],"control_matrix");_exact_keys(control,{"metric","selection_basis","aggregation","kv_scenarios"},"control_matrix")
+    if control["selection_basis"]!="control_value":raise ValueError("Control matrix selection basis must be Control Value")
+    if control["aggregation"]!="per-target Control-Value-selected legal scenario then equal-weight roster mean":raise ValueError("Unsupported control aggregation policy")
     scenarios=_object(control["kv_scenarios"],"control_matrix.kv_scenarios");_exact_keys(scenarios,{"pyrokinesis","cryokinesis","psychokinesis","electrokinesis"},"control_matrix.kv_scenarios")
     for discipline,entries in scenarios.items():
         if not isinstance(entries,list) or not entries:raise ValueError(f"{discipline} control scenarios must be non-empty")
@@ -344,7 +346,7 @@ def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
     if bm_policy!=expected_bm_policy:raise ValueError("Unsupported Battle Master tactical policy")
     ek=_object(damage["eldritch_knight"],"damage.eldritch_knight");_validate_eldritch_knight_damage(ek)
     for build_id,row_value in control.items():
-        row=_object(row_value,f"control.{build_id}");common={"minimum_level","attack_ability_modifier","magic_weapon_bonus_by_level","save_dc_base","magic_resistance_applies","scenarios"};ability={"save_ability_modifier","known_maneuvers_by_level"} if build_id=="battle_master" else {"spellcasting_ability_modifier_by_level","spell_access","eldritch_strike_minimum_level","reliability_scenario_ids"};_exact_keys(row,common|ability,f"control.{build_id}")
+        row=_object(row_value,f"control.{build_id}");common={"minimum_level","attack_ability_modifier","magic_weapon_bonus_by_level","save_dc_base","magic_resistance_applies","scenarios"};ability={"save_ability_modifier","known_maneuvers_by_level"} if build_id=="battle_master" else {"spellcasting_ability_modifier_by_level","spell_access","eldritch_strike_minimum_level"};_exact_keys(row,common|ability,f"control.{build_id}")
         for key in ("minimum_level","attack_ability_modifier","save_dc_base"):_integer(row[key],f"control.{build_id}.{key}",0)
         _level_map(row["magic_weapon_bonus_by_level"],f"control.{build_id}.magic_weapon_bonus_by_level");_boolean(row["magic_resistance_applies"],f"control.{build_id}.magic_resistance_applies")
         if build_id=="battle_master":
@@ -472,10 +474,6 @@ def load_comparators(path:Path=DEFAULT_COMPARATORS)->dict[str,Any]:
         if build_id=="battle_master":
             scenario_ids=[scenario["id"] for scenario in row["scenarios"]]
             if scenario_ids!=["menacing_attack","pushing_attack","trip_attack","goading_attack","disarming_attack"]:raise ValueError("control.battle_master scenarios do not match the audited package set")
-        if build_id=="eldritch_knight":
-            scenario_ids=[scenario["id"] for scenario in row["scenarios"]];reliability_ids=row["reliability_scenario_ids"]
-            if not isinstance(reliability_ids,list) or not reliability_ids or any(not isinstance(item,str) for item in reliability_ids) or len(reliability_ids)!=len(set(reliability_ids)):raise ValueError("control.eldritch_knight.reliability_scenario_ids must be a unique non-empty string list")
-            if not set(reliability_ids)<=set(scenario_ids):raise ValueError("control.eldritch_knight reliability scenarios must reference configured scenario IDs")
     return data
 
 

@@ -25,7 +25,9 @@
     "harness:damage": "python3 -m harness.damage_harness",
     "harness:control": "python3 -m harness.control_harness",
     "readme:benchmarks": "python3 -m harness.readme_matrices --write --workers 4",
-    "readme:benchmarks:check": "python3 -m harness.readme_matrices --check --workers 4"
+    "readme:benchmarks:check": "python3 -m harness.readme_matrices --check --workers 4",
+    "readme:control": "python3 -m harness.readme_matrices --write --control-only",
+    "readme:control:check": "python3 -m harness.readme_matrices --check --control-only"
   },
   "dependencies": {
     "ajv": "8.20.0",

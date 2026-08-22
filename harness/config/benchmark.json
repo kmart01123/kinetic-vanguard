@@ -79,7 +79,8 @@
   },
   "control_matrix": {
     "metric": "roster-adjusted whole-package control stick %",
-    "aggregation": "per-target best legal scenario then equal-weight roster mean",
+    "selection_basis": "control_value",
+    "aggregation": "per-target Control-Value-selected legal scenario then equal-weight roster mean",
     "kv_scenarios": {
       "pyrokinesis": [
         {

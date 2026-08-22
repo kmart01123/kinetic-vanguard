@@ -9,14 +9,17 @@ from unittest.mock import patch
 from harness import readme_matrices
 from harness.authority import AuthorityModel, DEFAULT_AUTHORITY
 from harness.comparison_report import COMPARATOR_NOTICE, NOTICE_COLUMNS, matrix_row
+from harness.control_value import DEFAULT_PRIMITIVES, DEFAULT_SCORING
 from harness.model import (
     DEFAULT_CATALOG,
     DEFAULT_COMPARATORS,
     DEFAULT_CONFIG,
     DEFAULT_PROFILE,
     DEFAULT_ROSTERS,
+    PROFILE_LEVEL_COUNTS,
     file_sha256,
     load_config,
+    load_targets,
 )
 from harness.readme_matrices import (
     BEGIN_MARKER,
@@ -26,13 +29,20 @@ from harness.readme_matrices import (
     _markdown_table,
     _public_result,
     atomic_replace_text,
+    extract_damage_section,
+    generate_control_publication_rows,
     generated_region_span,
     release_state_line,
     render_balance_region,
     render_control_table,
+    render_damage_section,
     render_single_target_damage,
     replace_generated_region,
     validate_authoritative_rows,
+    validate_damage_rows,
+    validate_reliability_alignment,
+    validate_reliability_rows,
+    validate_value_rows,
 )
 
 
@@ -80,7 +90,12 @@ def _control_row(
     )
 
 
-def _full_authoritative_rows() -> tuple[list[dict[str, str]], list[dict[str, str]]]:
+def _full_authoritative_rows() -> tuple[
+    list[dict[str, str]],
+    list[dict[str, str]],
+    list[dict[str, str]],
+    list[dict[str, str]],
+]:
     model = AuthorityModel.load(DEFAULT_AUTHORITY)
     config = load_config()
     methodology = config["methodology"]
@@ -143,6 +158,12 @@ def _full_authoritative_rows() -> tuple[list[dict[str, str]], list[dict[str, str
             row.update(
                 {
                     **common,
+                    "Provenance Control Primitive Catalog Sha256": file_sha256(
+                        DEFAULT_PRIMITIVES
+                    ),
+                    "Provenance Control Value Config Sha256": file_sha256(
+                        DEFAULT_SCORING
+                    ),
                     "Provenance Aggregation": str(
                         config["control_matrix"]["aggregation"]
                     ),
@@ -150,7 +171,58 @@ def _full_authoritative_rows() -> tuple[list[dict[str, str]], list[dict[str, str
                 }
             )
             control_rows.append(row)
-    return damage_rows, control_rows
+    raw_common = {
+        "Rules Version": model.rules_version,
+        "Authority SHA-256": model.authority_sha256,
+        "Catalog SHA-256": file_sha256(DEFAULT_CATALOG),
+        "Roster SHA-256": file_sha256(DEFAULT_ROSTERS),
+        "Target Profile": DEFAULT_PROFILE,
+        "Config SHA-256": file_sha256(DEFAULT_CONFIG),
+        "Comparator Config SHA-256": file_sha256(DEFAULT_COMPARATORS),
+        **NOTICE_COLUMNS,
+        "Control Primitive Catalog SHA-256": file_sha256(DEFAULT_PRIMITIVES),
+        "Control Value Config SHA-256": file_sha256(DEFAULT_SCORING),
+    }
+    targets = load_targets(profile=DEFAULT_PROFILE, levels=set(methodology["levels"]))
+    value_audit_rows: list[dict[str, str]] = []
+    for target in targets:
+        for build, discipline, value in (
+            ("battle_master", "all", 10.0),
+            ("eldritch_knight", "all", 20.0),
+            *(
+                ("kinetic_vanguard", discipline, 15.0)
+                for discipline in README_DISCIPLINES
+            ),
+        ):
+            value_audit_rows.append(
+                {
+                    "Level": str(target.level),
+                    "Target": target.name,
+                    "Discipline": discipline,
+                    "Build": build,
+                    "Selected Scenario": "synthetic_winner",
+                    "Eligible": "True",
+                    "Selection Basis": "Control Value",
+                    "Control Value CU": str(value),
+                    "Whole-package control stick %": str(value),
+                    "Value Disposition": "priced_nonzero",
+                    **raw_common,
+                }
+            )
+    value_rows = [
+        {
+            "Level": str(level),
+            "Discipline": discipline,
+            "Kinetic Vanguard Control Value CU": "15.000000000000",
+            "Eldritch Knight Control Value CU": "20.000000000000",
+            "Battle Master Control Value CU": "10.000000000000",
+            "Targets": str(PROFILE_LEVEL_COUNTS[DEFAULT_PROFILE][level]),
+            **raw_common,
+        }
+        for level in methodology["levels"]
+        for discipline in README_DISCIPLINES
+    ]
+    return damage_rows, control_rows, value_rows, value_audit_rows
 
 
 class ReadmeMatrixRenderingTests(unittest.TestCase):
@@ -236,7 +308,9 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             _public_result(retired)
 
     def test_complete_region_is_deterministic_transposed_and_minimal(self) -> None:
-        damage_rows,control_rows=_full_authoritative_rows()
+        damage_rows,control_rows,value_rows,value_audit_rows=_full_authoritative_rows()
+        value_public_rows=validate_value_rows(value_rows,value_audit_rows)
+        damage_section=render_damage_section(damage_rows)
         readme="\n".join(
             (
                 "# Project",
@@ -245,24 +319,37 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             )
         )
         arguments=(
-            readme,damage_rows,control_rows,"14.1.0","synthetic_profile",(1,3,6),
+            readme,damage_section,control_rows,value_public_rows,
+            "14.1.0",DEFAULT_PROFILE,
         )
         rendered=render_balance_region(*arguments)
         reordered=render_balance_region(
-            readme,list(reversed(damage_rows)),list(reversed(control_rows)),
-            "14.1.0","synthetic_profile",(1,3,6),
+            readme,damage_section,list(reversed(control_rows)),
+            list(reversed(value_public_rows)),"14.1.0",DEFAULT_PROFILE,
         )
         self.assertEqual(rendered,reordered)
         self.assertTrue(rendered.startswith(BEGIN_MARKER))
         self.assertTrue(rendered.endswith(END_MARKER))
-        self.assertEqual(rendered.count("| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |"),2)
-        for heading in ("### Single-Target Damage","### Control Reliability"):
+        self.assertEqual(rendered.count("| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |"),3)
+        for heading in (
+            "### Single-Target Damage",
+            "### Control Value",
+            "### Control Reliability — delivery diagnostic",
+            "### Control methodology",
+        ):
             self.assertIn(heading,rendered)
         self.assertNotIn("### Cluster / Aggregate Damage",rendered)
-        limitation=("Control Reliability measures how often the configured control package takes effect. "
-                    "It does not measure the relative severity, duration, area, or strategic value of different control effects. "
-                    "A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.")
-        self.assertIn(limitation,rendered)
+        for required in (
+            "**Primary control-balance metric:**",
+            "**Secondary diagnostic:**",
+            "selects the legal package with the highest Control Value",
+            "same CU-selected package",
+            "different properties of the same selected package",
+            "`1.0 CU`",
+            "Stunned does **not** gain Speed 0",
+            "does **not** mean that a mechanic has no value in actual play",
+        ):
+            self.assertIn(required,rendered)
         for forbidden in ("ORDER CHECK","KV DPR","KV as % of EK","KV as % of BM","KV control %"):
             self.assertNotIn(forbidden,rendered)
         self.assertIn(COMPARATOR_NOTICE,rendered)
@@ -298,6 +385,25 @@ class ReadmeMatrixDelimiterTests(unittest.TestCase):
         replaced = replace_generated_region(readme, region)
         self.assertEqual(replaced, expected)
         self.assertEqual(replace_generated_region(replaced, region), expected)
+
+    def test_control_render_preserves_damage_subsection_byte_for_byte(self) -> None:
+        readme = readme_matrices.README_PATH.read_text(encoding="utf-8")
+        original_damage = extract_damage_section(readme)
+        _, reliability_rows, value_rows, value_audit_rows = _full_authoritative_rows()
+        rules_version, profile, _, disciplines = validate_reliability_rows(
+            reliability_rows
+        )
+        rendered = render_balance_region(
+            readme,
+            original_damage,
+            reliability_rows,
+            validate_value_rows(value_rows, value_audit_rows),
+            rules_version,
+            profile,
+            disciplines,
+        )
+        synchronized = replace_generated_region(readme, rendered)
+        self.assertEqual(extract_damage_section(synchronized), original_damage)
 
 
 class ReadmeMatrixReleaseStateTests(unittest.TestCase):
@@ -389,7 +495,12 @@ class ReadmeMatrixAtomicWriteTests(unittest.TestCase):
 class AuthoritativeRowValidationTests(unittest.TestCase):
     @classmethod
     def setUpClass(cls) -> None:
-        cls.damage_rows, cls.control_rows = _full_authoritative_rows()
+        (
+            cls.damage_rows,
+            cls.control_rows,
+            cls.value_rows,
+            cls.value_audit_rows,
+        ) = _full_authoritative_rows()
 
     def test_full_current_shape_synthetic_rows_pass(self) -> None:
         model = AuthorityModel.load(DEFAULT_AUTHORITY)
@@ -437,6 +548,31 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
         with self.assertRaisesRegex(MatrixSyncError, "changed notice field"):
             validate_authoritative_rows(self.damage_rows, control)
 
+    def test_reliability_cu_selection_provenance_fails_closed(self) -> None:
+        expected = {
+            "Provenance Control Primitive Catalog Sha256": file_sha256(
+                DEFAULT_PRIMITIVES
+            ),
+            "Provenance Control Value Config Sha256": file_sha256(DEFAULT_SCORING),
+        }
+        for field, value in expected.items():
+            self.assertTrue(all(row[field] == value for row in self.control_rows))
+            with self.subTest(field=field):
+                stale = deepcopy(self.control_rows)
+                stale[0][field] = "wrong-hash"
+                with self.assertRaisesRegex(MatrixSyncError, field):
+                    validate_reliability_rows(stale)
+
+    def test_damage_provenance_does_not_require_cu_selection_inputs(self) -> None:
+        control_only_fields = {
+            "Provenance Control Primitive Catalog Sha256",
+            "Provenance Control Value Config Sha256",
+        }
+        self.assertTrue(
+            all(control_only_fields.isdisjoint(row) for row in self.damage_rows)
+        )
+        validate_damage_rows(self.damage_rows)
+
     def test_catalog_roster_and_target_profile_provenance_fail_closed(self) -> None:
         cases = (
             ("Provenance Catalog Sha256", "wrong-catalog"),
@@ -468,6 +604,138 @@ class AuthoritativeRowValidationTests(unittest.TestCase):
                 damage[0][field] = value
                 with self.assertRaisesRegex(MatrixSyncError, f"stale {field}"):
                     validate_authoritative_rows(damage, self.control_rows)
+
+
+class ControlValueRowValidationTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls) -> None:
+        (
+            _,
+            cls.reliability_rows,
+            cls.value_rows,
+            cls.value_audit_rows,
+        ) = _full_authoritative_rows()
+
+    def test_full_winner_derived_value_shape_passes(self) -> None:
+        public_rows = validate_value_rows(self.value_rows, self.value_audit_rows)
+        self.assertEqual(len(public_rows), 16)
+        self.assertEqual({row["Band"] for row in public_rows}, {"IDEAL"})
+        self.assertTrue(
+            all(row["Benchmark Type"] == "Control Value" for row in public_rows)
+        )
+        aligned = validate_reliability_alignment(
+            self.reliability_rows, self.value_audit_rows
+        )
+        self.assertEqual(len(aligned), 16)
+        self.assertTrue(
+            all(row["Benchmark Type"] == "Control Reliability" for row in aligned)
+        )
+        self.assertTrue(all(row["Metric"] for row in aligned))
+
+    def test_value_schema_duplicates_and_missing_identities_fail_closed(self) -> None:
+        missing_field = deepcopy(self.value_rows)
+        del missing_field[0]["Targets"]
+        with self.assertRaisesRegex(MatrixSyncError, "schema differences"):
+            validate_value_rows(missing_field, self.value_audit_rows)
+
+        duplicate = deepcopy(self.value_rows)
+        duplicate.append(deepcopy(duplicate[0]))
+        with self.assertRaisesRegex(MatrixSyncError, "duplicate row identities"):
+            validate_value_rows(duplicate, self.value_audit_rows)
+
+        missing = deepcopy(self.value_rows[1:])
+        with self.assertRaisesRegex(MatrixSyncError, "row identities differ"):
+            validate_value_rows(missing, self.value_audit_rows)
+
+    def test_value_provenance_target_counts_and_eligibility_fail_closed(self) -> None:
+        cases = (
+            ("Control Primitive Catalog SHA-256", "wrong-primitives"),
+            ("Control Value Config SHA-256", "wrong-scoring"),
+            ("Authority SHA-256", "wrong-authority"),
+            ("Target Profile", "wrong-profile"),
+        )
+        for field, value in cases:
+            with self.subTest(field=field):
+                rows = deepcopy(self.value_rows)
+                rows[0][field] = value
+                with self.assertRaisesRegex(MatrixSyncError, field):
+                    validate_value_rows(rows, self.value_audit_rows)
+
+        wrong_count = deepcopy(self.value_rows)
+        wrong_count[0]["Targets"] = "47"
+        with self.assertRaisesRegex(MatrixSyncError, "Targets"):
+            validate_value_rows(wrong_count, self.value_audit_rows)
+
+        ineligible = deepcopy(self.value_audit_rows)
+        ineligible[0]["Eligible"] = "False"
+        with self.assertRaisesRegex(MatrixSyncError, "ineligible winner"):
+            validate_value_rows(self.value_rows, ineligible)
+
+    def test_value_aggregates_and_public_bands_are_recomputed(self) -> None:
+        stale = deepcopy(self.value_rows)
+        stale[0]["Kinetic Vanguard Control Value CU"] = "999.000000000000"
+        with self.assertRaisesRegex(MatrixSyncError, "stale winner aggregate"):
+            validate_value_rows(stale, self.value_audit_rows)
+
+        audit = deepcopy(self.value_audit_rows)
+        row = next(
+            item
+            for item in audit
+            if item["Build"] == "kinetic_vanguard"
+            and item["Discipline"] == "cryokinesis"
+            and item["Level"] == "7"
+        )
+        row["Control Value CU"] = "25.0"
+        with self.assertRaisesRegex(MatrixSyncError, "stale winner aggregate"):
+            validate_value_rows(self.value_rows, audit)
+
+    def test_reliability_is_reconstructed_from_common_cu_winners(self) -> None:
+        audit = deepcopy(self.value_audit_rows)
+        row = next(
+            item
+            for item in audit
+            if item["Build"] == "kinetic_vanguard"
+            and item["Discipline"] == "cryokinesis"
+            and item["Level"] == "7"
+        )
+        row["Whole-package control stick %"] = "95.0"
+        with self.assertRaisesRegex(MatrixSyncError, "common winner KV"):
+            validate_reliability_alignment(self.reliability_rows, audit)
+
+    def test_common_winner_selection_basis_fails_closed(self) -> None:
+        audit = deepcopy(self.value_audit_rows)
+        audit[0]["Selection Basis"] = "Reliability"
+        with self.assertRaisesRegex(MatrixSyncError, "non-CU selection basis"):
+            validate_value_rows(self.value_rows, audit)
+        with self.assertRaisesRegex(MatrixSyncError, "non-CU selection basis"):
+            validate_reliability_alignment(self.reliability_rows, audit)
+
+
+class ControlOnlyGenerationTests(unittest.TestCase):
+    def test_control_only_runs_control_once_and_never_runs_damage(self) -> None:
+        paths = {
+            "paths": {"csv": Path("reliability.csv")},
+            "value_paths": {
+                "matrix": Path("value.csv"),
+                "selection_audit": Path("audit.csv"),
+            },
+        }
+        expected = ([{"kind": "reliability"}], [{"kind": "value"}], [{"kind": "audit"}])
+        with (
+            patch.object(readme_matrices, "run_control", return_value=paths) as control,
+            patch.object(readme_matrices, "run_damage") as damage,
+            patch.object(
+                readme_matrices,
+                "read_matrix_rows",
+                side_effect=expected,
+            ),
+        ):
+            self.assertEqual(generate_control_publication_rows(), expected)
+        control.assert_called_once()
+        self.assertTrue(control.call_args.kwargs["write_shadow"])
+        self.assertTrue(control.call_args.kwargs["write_headline"])
+        self.assertFalse(control.call_args.kwargs["write_detail"])
+        damage.assert_not_called()
 
 if __name__ == "__main__":
     unittest.main()
