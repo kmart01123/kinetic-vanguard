@@ -1405,14 +1405,20 @@ class ClassificationTests(unittest.TestCase):
         for label,value in LEGAL_NOTICES:
             self.assertEqual(markdown.count(value),1,label)
             self.assertEqual(html.count(value),1,label)
-        limitation=("Control Reliability measures how often the configured control package takes effect. "
+        damage_limitation="Damage percentages are computed from the displayed aggregate raw values, never from averaged target-level percentages."
+        limitation=("Control Reliability measures how reliably the Control-Value-selected package takes effect and, where applicable, persists. "
                     "It does not measure the relative severity, duration, area, or strategic value of different control effects. "
                     "A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.")
+        old_limitation="Control Reliability measures how often the configured control package takes effect."
         self.assertTrue(control_markdown.startswith("# Kinetic Vanguard 14.1.0 Control Reliability Comparison Matrix"))
         self.assertIn("<title>Kinetic Vanguard 14.1.0 Control Reliability Comparison Matrix</title>",control_html)
         self.assertIn("<h1>Kinetic Vanguard 14.1.0 Control Reliability Comparison Matrix</h1>",control_html)
         self.assertIn(limitation,control_markdown)
         self.assertIn(limitation,control_html)
+        self.assertNotIn(old_limitation,control_markdown)
+        self.assertNotIn(old_limitation,control_html)
+        self.assertIn(damage_limitation,markdown)
+        self.assertIn(damage_limitation,html)
         for rendered in (markdown,html,control_markdown,control_html):
             self.assertNotIn("ORDER CHECK",rendered)
             self.assertNotIn("Hunter Ranger",rendered)
