@@ -2168,14 +2168,10 @@ def render_control_benchmark_detail(
 def render_balance_region(
     readme: str,
     damage_section: str,
-    reliability_rows: Sequence[MatrixRow],
-    value_rows: Sequence[MatrixRow],
     rules_version: str,
     profile: str,
-    disciplines: Sequence[str] = README_DISCIPLINES,
 ) -> str:
     release_line = release_state_line(readme, rules_version)
-    metric = _uniform(reliability_rows, "Metric", "control")
     common = "\n".join(
         (
             BEGIN_MARKER,
@@ -2191,173 +2187,45 @@ def render_balance_region(
             ),
             "",
             (
-                "Battle Master and Eldritch Knight define the comparison envelope for each "
-                "benchmark result. `IDEAL` means Kinetic Vanguard falls between the two "
-                "comparator values, inclusive. `COLD` is below both; `HOT` is above both. "
-                "The percentage on COLD and HOT cells shows the signed distance outside the "
-                "nearest comparator boundary. `N/A` is reserved for a comparison that cannot "
-                "be evaluated. This is a comparator-envelope benchmark, not a universal "
-                "real-play balance tolerance, and `IDEAL` is not proof of balance in every game."
+                "Battle Master and Eldritch Knight define the comparison envelope for the "
+                "front-door Single-Target Damage result. `IDEAL` means Kinetic Vanguard "
+                "falls between the two comparator values, inclusive. `COLD` is below both; "
+                "`HOT` is above both. The percentage on COLD and HOT cells shows the signed "
+                "distance outside the nearest comparator boundary. `N/A` is reserved for a "
+                "comparison that cannot be evaluated. This is a comparator-envelope benchmark, "
+                "not a universal real-play balance tolerance, and `IDEAL` is not proof of "
+                "balance in every game."
             ),
             "",
             (
-                "README cells intentionally contain only the public balance result: `IDEAL`, "
-                "`COLD (-X%)`, `HOT (+X%)`, or `N/A`. Detailed evidence retains raw Kinetic "
-                "Vanguard and comparator aggregates, dynamic boundaries, and the comparator "
-                "identity supplying each boundary."
+                "Front-door damage comparator-table cells contain only the public balance "
+                "classification: `IDEAL`, `COLD (-X%)`, `HOT (+X%)`, or `N/A`. "
+                "Detailed damage evidence retains raw Kinetic Vanguard and comparator "
+                "aggregates, dynamic boundaries, and the comparator identity supplying each "
+                "boundary."
             ),
             "",
         )
     )
-    control = "\n".join(
+    control_pointer = "\n".join(
         (
-            "### Control Value",
+            "### Control benchmark",
             "",
             (
-                "**Primary control-balance metric:** how much mechanically useful control the "
-                "selected package delivers. A Control Unit is a project analytical benchmark "
-                "unit, **not a D&D rules quantity**."
+                "Control Value and Control Reliability require more context than the front-door "
+                "damage check. The exhaustive exact-form results, effective coverage, Control "
+                "Unit methodology, and Reliability analysis are maintained in:"
             ),
-            "",
-            (
-                "For each target, build, and discipline, the benchmark filters out ineligible "
-                "packages and selects the legal package with the highest Control Value. An exact "
-                "CU tie is resolved by higher whole-package Control Reliability, then by ascending "
-                "stable scenario ID. Control Value reports what that selected package delivers "
-                "mechanically; CU is the common package-selection methodology for both readouts."
-            ),
-            "",
-            (
-                "The band table compares Kinetic Vanguard against the Battle Master / Eldritch "
-                "Knight Control Value envelope."
-            ),
-            "",
-            render_control_table(value_rows, disciplines),
-            "",
-            "### Kinetic Vanguard mean Control Value",
-            "",
-            (
-                "This companion table shows the raw Kinetic Vanguard equal-weight roster mean for "
-                "the same CU-selected packages represented by the band table."
-            ),
-            "",
-            render_raw_kv_value_table(value_rows, disciplines),
             "",
             (
                 "[Full control benchmark, catalog, and methodology]"
                 "(CONTROL_BENCHMARK_DETAIL.md)"
             ),
             "",
-            "### Control Reliability — delivery diagnostic",
-            "",
-            (
-                "**Secondary diagnostic:** how reliably the Value-selected control package lands "
-                "and, where applicable, persists. Control Reliability asks: “How reliably is "
-                "that selected package delivered?”"
-            ),
-            "",
-            f"Configured Reliability metric: **{metric}**.",
-            "",
-            (
-                "Control Reliability measures delivery probability for the same CU-selected "
-                "package, not effect severity. It "
-                "includes legal repeatable attack-delivered opportunities within one ordinary "
-                "Attack action when the rules permit them, excludes Action Surge from the "
-                "headline control comparison, and applies the maintained repeat-save and "
-                "persistence treatment where relevant."
-            ),
-            "",
-            (
-                "A cell such as `HOT (+46.97%)` does **not** mean a 46.97% chance to apply "
-                "control. The percentage is the signed distance outside the nearest Battle "
-                "Master / Eldritch Knight Reliability comparator boundary. `IDEAL` means the "
-                "raw value falls within that comparator envelope. `COLD` and `HOT` describe "
-                "relative comparator position, not an absolute real-play balance verdict."
-            ),
-            "",
-            render_control_table(reliability_rows, disciplines),
-            "",
-            "### Kinetic Vanguard mean Reliability",
-            "",
-            (
-                "This companion table shows the raw Kinetic Vanguard whole-package stick "
-                "probability reconstructed from the same common CU-selected winner audit. The "
-                "band percentage above is comparator distance, not this raw application "
-                "probability."
-            ),
-            "",
-            render_raw_kv_reliability_table(reliability_rows, disciplines),
-            "",
-            "### Why Control Value and Reliability can disagree",
-            "",
-            (
-                "Control Value asks: “How much mechanically useful control does the selected "
-                "package deliver?” Reliability asks: “How often does that same selected package "
-                "land and persist?” Both readouts use the same CU-selected package."
-            ),
-            "",
-            (
-                "Sap can be very reliable because legal repeated attack opportunities can give "
-                "a next-attack Disadvantage rider multiple chances to land. Its priced consequence "
-                "is still only one impaired attack, so its Control Value remains small. "
-                "Restrained- and Stunned-style control affects much more of a target's turn, "
-                "movement, attacks, defenses, saves, or reactions, so one successful application "
-                "can carry substantially more Control Value even when it is less reliable."
-            ),
-            "",
-            (
-                "**High Reliability + low Value** means soft control that lands consistently. "
-                "**Lower Reliability + high Value** means harder control that is less dependable "
-                "but more consequential when it lands. High Reliability alone is not evidence "
-                "that a feature is too strong, and low Value alone is not evidence that delivery "
-                "is poor."
-            ),
-            "",
-            "### Control methodology",
-            "",
-            (
-                "Normalization prevents double counting. Identical boolean consequences do not "
-                "stack. Complete turn denial suppresses overlapping lesser action or offensive "
-                "effects; automatic save failure supersedes weaker impairment to the same save; "
-                "and complete movement denial supersedes overlapping lesser mobility loss. "
-                "All-attacks Disadvantage suppresses only an explicitly overlapping next-attack "
-                "Disadvantage share. Correlated flat movement reductions are capped at complete "
-                "movement denial, while unrelated mechanical consequences remain independently "
-                "valued."
-            ),
-            "",
-            (
-                "Some mechanics require battlefield or opportunity facts that this benchmark "
-                "cannot neutrally establish, such as geometry-dependent restrictions, sight or "
-                "sense interactions, cliffs or hazards, unspecified ally opportunities, and "
-                "open-ended behavioral effects. They remain visible in detailed diagnostics but "
-                "contribute zero CU unless the required context is explicitly established. Zero "
-                "Control Value from missing context does **not** mean that a mechanic has no value "
-                "in actual play."
-            ),
-            "",
-            (
-                "Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). "
-                "Full methodology and reproducibility details are in the "
-                "[maintained harness guide](harness/README.md), "
-                "[benchmark configuration](harness/config/benchmark.json), "
-                "[frozen Control Value configuration](harness/config/control-value.json), "
-                "[control primitive catalog](harness/data/control_primitives.json), and "
-                "[comparator assumptions](harness/comparators/fighter-subclasses.json)."
-            ),
-            "",
-            (
-                "Creature benchmark data is SRD 5.2.1. Maintained comparator mechanics are "
-                "independently expressed analytical abstractions under the reviewed comparator "
-                "source policy; they are not Kinetic Vanguard rules. "
-                + COMPARATOR_NOTICE
-                + " See [`LICENSE.md`](LICENSE.md) for component boundaries and "
-                "[`NOTICE.md`](NOTICE.md) for attribution and notices."
-            ),
             END_MARKER,
         )
     )
-    return common + "\n" + damage_section + control
+    return common + "\n" + damage_section + control_pointer
 
 
 def generated_region_span(readme: str) -> tuple[int, int]:
@@ -2517,11 +2385,8 @@ def main() -> None:
     region = render_balance_region(
         readme,
         damage_section,
-        reliability_public_rows,
-        value_public_rows,
         rules_version,
         profile,
-        disciplines,
     )
     synchronized = replace_generated_region(readme, region)
     synchronized_detail = render_control_benchmark_detail(

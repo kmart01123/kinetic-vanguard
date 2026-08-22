@@ -8,7 +8,7 @@ from unittest.mock import patch
 
 from harness import readme_matrices
 from harness.authority import AuthorityModel, DEFAULT_AUTHORITY
-from harness.comparison_report import COMPARATOR_NOTICE, NOTICE_COLUMNS, matrix_row
+from harness.comparison_report import NOTICE_COLUMNS, matrix_row
 from harness.control_value import (
     DEFAULT_PRIMITIVES,
     DEFAULT_SCORING,
@@ -382,7 +382,7 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
         with self.assertRaisesRegex(MatrixSyncError,"Unsupported public"):
             _public_result(retired)
 
-    def test_complete_region_is_deterministic_transposed_and_minimal(self) -> None:
+    def test_readme_front_door_is_minimal_and_detail_remains_complete(self) -> None:
         (
             damage_rows,
             control_rows,
@@ -406,43 +406,41 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             )
         )
         arguments=(
-            readme,damage_section,control_rows,value_public_rows,"14.1.0",DEFAULT_PROFILE,
+            readme,damage_section,"14.1.0",DEFAULT_PROFILE,
         )
         rendered=render_balance_region(*arguments)
-        reordered=render_balance_region(
-            readme,damage_section,list(reversed(control_rows)),
-            list(reversed(value_public_rows)),"14.1.0",DEFAULT_PROFILE,
-        )
-        self.assertEqual(rendered,reordered)
+        self.assertEqual(rendered,render_balance_region(*arguments))
         self.assertTrue(rendered.startswith(BEGIN_MARKER))
         self.assertTrue(rendered.endswith(END_MARKER))
-        self.assertEqual(rendered.count("| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |"),5)
+        self.assertEqual(rendered.count("| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |"),1)
         for heading in (
             "### Single-Target Damage",
+            "### Control benchmark",
+        ):
+            self.assertIn(heading,rendered)
+        self.assertNotIn("### Cluster / Aggregate Damage",rendered)
+        for required in (
+            "front-door Single-Target Damage result",
+            "Front-door damage comparator-table cells contain only",
+            "Control Value and Control Reliability require more context",
+            "exhaustive exact-form results, effective coverage, Control Unit methodology",
+        ):
+            self.assertIn(required,rendered)
+        for forbidden in (
+            "README cells intentionally contain only",
             "### Control Value",
             "### Kinetic Vanguard mean Control Value",
             "### Control Reliability — delivery diagnostic",
             "### Kinetic Vanguard mean Reliability",
             "### Why Control Value and Reliability can disagree",
             "### Control methodology",
+            "ORDER CHECK",
+            "KV DPR",
+            "KV as % of EK",
+            "KV as % of BM",
+            "KV control %",
         ):
-            self.assertIn(heading,rendered)
-        self.assertNotIn("### Cluster / Aggregate Damage",rendered)
-        for required in (
-            "**Primary control-balance metric:**",
-            "**Secondary diagnostic:**",
-            "selects the legal package with the highest Control Value",
-            "same CU-selected package",
-            "does **not** mean a 46.97% chance to apply control",
-            "soft control that lands consistently",
-            "does **not** mean that a mechanic has no value in actual play",
-        ):
-            self.assertIn(required,rendered)
-        for forbidden in ("ORDER CHECK","KV DPR","KV as % of EK","KV as % of BM","KV control %"):
             self.assertNotIn(forbidden,rendered)
-        self.assertIn(COMPARATOR_NOTICE,rendered)
-        self.assertIn("LICENSE.md",rendered)
-        self.assertIn("NOTICE.md",rendered)
         self.assertEqual(
             rendered.count(
                 "[Full control benchmark, catalog, and methodology]"
@@ -1100,21 +1098,18 @@ class ReadmeMatrixDelimiterTests(unittest.TestCase):
         (
             _,
             reliability_rows,
-            value_rows,
-            value_audit_rows,
+            _,
+            _,
             _,
         ) = _full_authoritative_rows()
-        rules_version, profile, _, disciplines = validate_reliability_rows(
+        rules_version, profile, _, _ = validate_reliability_rows(
             reliability_rows
         )
         rendered = render_balance_region(
             readme,
             original_damage,
-            reliability_rows,
-            validate_value_rows(value_rows, value_audit_rows),
             rules_version,
             profile,
-            disciplines,
         )
         synchronized = replace_generated_region(readme, rendered)
         self.assertEqual(extract_damage_section(synchronized), original_damage)
