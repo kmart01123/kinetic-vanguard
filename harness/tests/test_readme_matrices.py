@@ -700,11 +700,15 @@ class ControlCatalogTests(unittest.TestCase):
             "`0.143 CU` average Control Value",
             "`95.00%` average initial control-delivery probability",
             "eligible targets / roster targets",
-            "`12/12` means the exact form is legally eligible against all 12 targets",
-            "If a cell says `9/12`, only 9 of 12 targets are legally eligible",
+            "`12/12` means all 12 targets satisfy the exact form's structural target restrictions",
+            "If a cell says `9/12`, only 9 of 12 targets satisfy the exact form's structural target restrictions",
             "other 3 are not removed",
             "contribute `0 CU` and `0% delivery`",
-            "eligible-only averaging",
+            "`eligible/roster` reports structural target eligibility",
+            "maximum-size and required-creature-type restrictions",
+            "not universal susceptibility",
+            "Condition immunity or other effect-level ineffectiveness can reduce a target's CU or delivery",
+            "target remains structurally eligible in the ratio",
             "Eligibility is not a save result, hit count, successful application count, or probability",
             "`Unpriced` retains measurable delivery and eligibility without reporting zero CU",
             "`No modeled control` means `0.000 CU` and no control delivery (`—`)",
@@ -716,6 +720,8 @@ class ControlCatalogTests(unittest.TestCase):
         for forbidden in (
             "eligible targets only",
             "12/12` is a save result",
+            "immunity/effect-eligibility",
+            "condition immunity where it makes the package ineffective",
         ):
             self.assertNotIn(forbidden,catalog)
 
@@ -765,9 +771,17 @@ class ControlCatalogTests(unittest.TestCase):
         methodology = render_benchmark_roster_methodology()
         self.assertEqual(methodology.count("### Benchmark roster, eligibility, and coverage"),1)
         for required in (
-            "legally eligible targets / total maintained benchmark targets",
+            "structurally eligible targets / total maintained benchmark targets",
+            "`target_is_eligible()`",
+            "maximum-size and required-creature-type restrictions",
+            "`12/12` means all 12 roster targets satisfy those structural restrictions",
+            "`9/12` means 9 of 12 satisfy them",
+            "universal susceptibility to every control consequence",
             "An ineligible target remains in the aggregate denominator",
             "`CU = 0` and `delivery = 0%`",
+            "not automatically coverage exclusions",
+            "structurally eligible but immune target",
+            "remain in the coverage numerator while contributing `0 CU` or `0% delivery`",
             "Do not divide only by eligible targets",
             "Eligible-only averaging would hide practical restrictions",
             "**Instructional example (not a published scenario):**",
@@ -778,6 +792,7 @@ class ControlCatalogTests(unittest.TestCase):
             "does not participate in that level's aggregate",
         ):
             self.assertIn(required,methodology)
+        self.assertNotIn("condition or effect immunity where it makes the package ineffective",methodology)
 
 
 class ReadmeMatrixDelimiterTests(unittest.TestCase):

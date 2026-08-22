@@ -73,9 +73,9 @@ Columns are benchmark snapshots at Fighter levels 7, 11, 15, and 20. Each column
 
 **Cell format:** `CU · delivery · eligible/roster`
 
-Example: `0.143 CU · 95.00% · 12/12` means `0.143 CU` average Control Value and `95.00%` average initial control-delivery probability across the full benchmark roster at that fighter level; `12/12` means the exact form is legally eligible against all 12 targets. The ratio is **eligible targets / roster targets**.
+Example: `0.143 CU · 95.00% · 12/12` means `0.143 CU` average Control Value and `95.00%` average initial control-delivery probability across the full benchmark roster at that fighter level; `12/12` means all 12 targets satisfy the exact form's structural target restrictions. The ratio is **eligible targets / roster targets**.
 
-If a cell says `9/12`, only 9 of 12 targets are legally eligible. The other 3 are not removed: they remain in the roster denominator and contribute `0 CU` and `0% delivery`. This makes maintained size, creature-type, immunity/effect-eligibility, and other explicit legality restrictions reduce the roster-wide means instead of being hidden by eligible-only averaging. Eligibility is not a save result, hit count, successful application count, or probability.
+If a cell says `9/12`, only 9 of 12 targets satisfy the exact form's structural target restrictions. The other 3 are not removed: they remain in the roster denominator and contribute `0 CU` and `0% delivery`. `eligible/roster` reports structural target eligibility—currently maintained maximum-size and required-creature-type restrictions—not universal susceptibility. Condition immunity or other effect-level ineffectiveness can reduce a target's CU or delivery while that target remains structurally eligible in the ratio. Eligibility is not a save result, hit count, successful application count, or probability.
 
 `Partial` means retained priced and retained context-required or unsupported consequences coexist; suppressed duplicate or weaker primitives do not create that label. `Unpriced` retains measurable delivery and eligibility without reporting zero CU. `No modeled control` means `0.000 CU` and no control delivery (`—`). `N/A` means the exact form is unavailable at that level.
 
@@ -170,9 +170,9 @@ Full denominator and state methodology: [Benchmark roster, eligibility, and cove
 
 ### Benchmark roster, eligibility, and coverage
 
-Every Fighter level uses the complete maintained headline roster for that level. `eligible/roster` means **legally eligible targets / total maintained benchmark targets**.
+Every Fighter level uses the complete maintained headline roster for that level. `eligible/roster` means **structurally eligible targets / total maintained benchmark targets**. Structural eligibility currently comes from `target_is_eligible()`: the exact form's maintained maximum-size and required-creature-type restrictions.
 
-`12/12` means the exact form is legally applicable to all 12 roster targets. `9/12` means it is legally applicable to 9 of 12 roster targets. Eligibility is not a success roll or delivery probability. In particular, `12/12` does not mean 12 successful saves, 12 successful attacks, 100% delivery, or 12 successful applications.
+`12/12` means all 12 roster targets satisfy those structural restrictions. `9/12` means 9 of 12 satisfy them. Eligibility is not a success roll, delivery probability, or guarantee of susceptibility. In particular, `12/12` does not mean 12 successful saves, 12 successful attacks, 100% delivery, 12 successful applications, or universal susceptibility to every control consequence.
 
 An ineligible target remains in the aggregate denominator. For a priced or partially priced form, that target contributes `CU = 0` and `delivery = 0%`.
 
@@ -182,9 +182,9 @@ An ineligible target remains in the aggregate denominator. For a priced or parti
 
 Do not divide only by eligible targets. Eligible-only averaging would hide practical restrictions and could make a narrowly applicable control look stronger or more reliable than it is across the maintained benchmark roster.
 
-Restrictions that may reduce coverage are maintained facts such as maximum creature size, required creature type, condition or effect immunity where it makes the package ineffective, and other explicit scenario-legality requirements.
+Condition immunity and other effect-level ineffectiveness are resolved separately when effective control components are filtered; they are not automatically coverage exclusions. A structurally eligible but immune target can remain in the coverage numerator while contributing `0 CU` or `0% delivery` for the ineffective consequence.
 
-**Instructional example (not a published scenario):** if a form has 80% delivery against 9 legal targets and is ineligible against 3, its full-roster delivery mean is `(9 × 0.80 + 3 × 0) / 12 = 0.60 = 60%`. The eligible-only 80% is not the roster-wide result.
+**Instructional example (not a published scenario):** if a form has 80% delivery against 9 structurally eligible targets and 3 targets are structurally ineligible, its full-roster delivery mean is `(9 × 0.80 + 3 × 0) / 12 = 0.60 = 60%`. The eligible-only 80% is not the roster-wide result.
 
 `Priced` and `Partial` use the complete-roster denominator above. `Unpriced` can still show coverage and independently measurable delivery, but its CU field remains `Unpriced`, not zero. `No modeled control` is `0.000 CU` because that catalog source declares no modeled control, with delivery `—` because no control establishment is measured. `N/A` means the exact form is unavailable at that Fighter level and does not participate in that level's aggregate.
 
