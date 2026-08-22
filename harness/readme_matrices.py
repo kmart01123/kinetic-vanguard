@@ -22,11 +22,14 @@ from .comparison_report import (
     matrix_row,
 )
 from .control_harness import (
+    DELIVERY_RECIPE_IDS,
     EFFECTIVE,
     EFFECTIVENESS_NOT_APPLICABLE,
     INEFFECTIVE_NULLIFIED,
     INEFFECTIVE_STRUCTURAL,
     PARTIALLY_EFFECTIVE,
+    _attack_action_retry_probability,
+    _kv_retry_resources,
     run as run_control,
 )
 from .control_value import (
@@ -154,7 +157,17 @@ CATALOG_EFFECTIVENESS_COLUMNS = (
     "Surviving Consequences",
     "Effectiveness Reasons",
 )
-CATALOG_SCENARIO_COLUMNS = (*VALUE_SCENARIO_COLUMNS, *CATALOG_EFFECTIVENESS_COLUMNS)
+CATALOG_DELIVERY_RECIPE_COLUMNS = (
+    "Delivery Recipe ID",
+    "Delivery Gate",
+    "Retry Model",
+    "Resolved Save Ability",
+)
+CATALOG_SCENARIO_COLUMNS = (
+    *VALUE_SCENARIO_COLUMNS,
+    *CATALOG_EFFECTIVENESS_COLUMNS,
+    *CATALOG_DELIVERY_RECIPE_COLUMNS,
+)
 
 PRICED = "priced"
 PARTIALLY_PRICED = "partially_priced"
@@ -197,6 +210,14 @@ class ControlCoverageException:
 
 
 @dataclass(frozen=True)
+class ControlDeliveryRecipe:
+    recipe_id: str
+    gate: str
+    retry_model: str
+    save_ability: str
+
+
+@dataclass(frozen=True)
 class ControlCatalogCell:
     state: str
     mean_cu: float | None = None
@@ -204,6 +225,7 @@ class ControlCatalogCell:
     effective_targets: int | None = None
     total_targets: int | None = None
     exceptions: tuple[ControlCoverageException, ...] = ()
+    delivery_recipe: ControlDeliveryRecipe | None = None
 
 
 class MatrixSyncError(ValueError):
@@ -524,6 +546,69 @@ def _validate_effectiveness_evidence(
     }
 
 
+def _validate_delivery_recipe_evidence(
+    row: MatrixRow, index: int, form: ControlCatalogForm
+) -> ControlDeliveryRecipe:
+    recipe_id = row["Delivery Recipe ID"]
+    gate = row["Delivery Gate"]
+    retry_model = row["Retry Model"]
+    save_ability = row["Resolved Save Ability"]
+    if recipe_id not in DELIVERY_RECIPE_IDS:
+        raise MatrixSyncError(
+            f"Control Value scenario detail row {index} has unknown delivery recipe ID"
+        )
+    contracts = {
+        "automatic_no_save": ("automatic", "single_activation", False),
+        "mastery_attack_action_hit_retry": (
+            "hit",
+            "ordinary_attack_action_independent_hits",
+            False,
+        ),
+        "no_modeled_control": ("none", "none", False),
+        "single_activation_failed_save": ("failed_save", "single_activation", True),
+        "single_activation_hit": ("hit", "single_activation", False),
+        "single_activation_hit_failed_save": (
+            "hit_and_failed_save",
+            "single_activation",
+            True,
+        ),
+        "kv_attack_action_hit_retry": (
+            "hit",
+            "kv_attack_action_state_recursion",
+            False,
+        ),
+        "kv_attack_action_hit_failed_save_retry": (
+            "hit_and_failed_save",
+            "kv_attack_action_state_recursion",
+            True,
+        ),
+    }
+    expected_gate, expected_retry, requires_save = contracts[recipe_id]
+    if gate != expected_gate or retry_model != expected_retry:
+        raise MatrixSyncError(
+            f"Control Value scenario detail row {index} has inconsistent delivery recipe evidence"
+        )
+    if requires_save:
+        if not re.fullmatch(r"[a-z]+", save_ability):
+            raise MatrixSyncError(
+                f"Control Value scenario detail row {index} lacks a resolved save ability"
+            )
+    elif save_ability:
+        raise MatrixSyncError(
+            f"Control Value scenario detail row {index} invents a save for its delivery recipe"
+        )
+    if form.is_mastery and recipe_id not in {
+        "mastery_attack_action_hit_retry",
+        "no_modeled_control",
+    }:
+        raise MatrixSyncError("Kinetic Mastery has rider delivery recipe evidence")
+    if not form.is_mastery and recipe_id == "mastery_attack_action_hit_retry":
+        raise MatrixSyncError("Rider delivery recipe inherited Kinetic Mastery")
+    if form.modeled_control == (recipe_id == "no_modeled_control"):
+        raise MatrixSyncError("Delivery recipe disagrees with modeled-control authority")
+    return ControlDeliveryRecipe(recipe_id, gate, retry_model, save_ability)
+
+
 def validate_control_catalog_scenarios(
     scenario_rows: Sequence[MatrixRow],
     catalog: Sequence[ControlCatalogForm],
@@ -618,6 +703,7 @@ def validate_control_catalog_scenarios(
         effectiveness = _validate_effectiveness_evidence(
             row, index, form, eligible, cu, delivery
         )
+        recipe = _validate_delivery_recipe_evidence(row, index, form)
         parsed[identity] = {
             "target": row["Target"],
             "cu": cu,
@@ -625,6 +711,7 @@ def validate_control_catalog_scenarios(
             "eligible": eligible,
             "retained_candidates": retained_candidates,
             "retained_context": retained_context,
+            "delivery_recipe": recipe,
             **effectiveness,
         }
 
@@ -657,6 +744,11 @@ def validate_control_catalog_scenarios(
                 parsed[(str(level), target.name, *form.identity)]
                 for target in targets_by_level[level]
             ]
+            recipes = {row["delivery_recipe"] for row in rows}
+            if len(recipes) != 1:
+                raise MatrixSyncError(
+                    f"Exact scenario {form.identity} has target-dependent delivery recipes"
+                )
             total = len(rows)
             if total != PROFILE_LEVEL_COUNTS[DEFAULT_PROFILE][level]:
                 raise MatrixSyncError(
@@ -690,6 +782,7 @@ def validate_control_catalog_scenarios(
                         INEFFECTIVE_NULLIFIED,
                     }
                 ),
+                delivery_recipe=next(iter(recipes)),
             )
     return cells
 
@@ -1351,6 +1444,34 @@ def _render_catalog_cell(cell: ControlCatalogCell) -> str:
     raise MatrixSyncError(f"Unknown control catalog pricing state: {cell.state}")
 
 
+def _render_delivery_recipe(recipe: ControlDeliveryRecipe | None) -> str:
+    if recipe is None:
+        return "—"
+    save = recipe.save_ability.title()
+    labels = {
+        "automatic_no_save": "Automatic / no-save modeled control",
+        "mastery_attack_action_hit_retry": (
+            "Kinetic Mastery — ordinary Attack-action at least one hit"
+        ),
+        "no_modeled_control": "—",
+        "single_activation_failed_save": f"Single activation — failed {save} save",
+        "single_activation_hit": "Single activation — hit",
+        "single_activation_hit_failed_save": (
+            f"Single activation — hit × failed {save} save"
+        ),
+        "kv_attack_action_hit_retry": "KV Attack-action retry — hit",
+        "kv_attack_action_hit_failed_save_retry": (
+            f"KV Attack-action retry — hit × failed {save} save"
+        ),
+    }
+    try:
+        return labels[recipe.recipe_id]
+    except KeyError as error:
+        raise MatrixSyncError(
+            f"Unknown delivery recipe ID: {recipe.recipe_id}"
+        ) from error
+
+
 def render_kv_control_catalog(
     catalog: Sequence[ControlCatalogForm],
     cells: Mapping[tuple[str, str, int], ControlCatalogCell],
@@ -1437,9 +1558,20 @@ def render_kv_control_catalog(
                 label = f"{form.title} — T{form.tier}"
                 if variant_counts[(form.discipline_id, form.entity_id, form.tier)] > 1:
                     label += f" — {form.target_role}"
+            recipes = {
+                cells[(*form.identity, int(level))].delivery_recipe
+                for level in levels
+                if cells[(*form.identity, int(level))].delivery_recipe is not None
+            }
+            if len(recipes) > 1:
+                raise MatrixSyncError(
+                    f"Control catalog form {form.identity} has level-dependent delivery recipes"
+                )
+            recipe = next(iter(recipes), None)
             rows.append(
                 [
                     label,
+                    _render_delivery_recipe(recipe),
                     *[
                         _render_catalog_cell(cells[(*form.identity, int(level))])
                         for level in levels
@@ -1452,7 +1584,12 @@ def render_kv_control_catalog(
                 f"#### {labels[discipline_id]}",
                 "",
                 _markdown_table(
-                    ("Rider / form", *(f"Fighter {level}" for level in levels)), rows
+                    (
+                        "Rider / form",
+                        "Delivery recipe",
+                        *(f"Fighter {level}" for level in levels),
+                    ),
+                    rows,
                 ),
             )
         )
@@ -1913,6 +2050,372 @@ def render_control_normalization_methodology() -> str:
     )
 
 
+def render_reliability_definition() -> str:
+    return "\n".join(
+        (
+            "### What Reliability measures",
+            "",
+            (
+                "`Whole-package control stick %` is the probability that the exact published "
+                "control source or package establishes at least one modeled control consequence "
+                "in its legal initial delivery window, after all maintained legal retries and "
+                "resource constraints are applied. It is initial establishment/delivery "
+                "probability: it is not a severity score, Control Value, effective coverage, or "
+                "the probability of remaining controlled for all three benchmark rounds."
+            ),
+            "",
+            (
+                "The headline discipline benchmark reports the delivery of the same full legal "
+                "package selected by Control Value. It does not run a separate Reliability "
+                "winner-selection pass. Persistence is a separate diagnostic and contributes to "
+                "active exposure and Control Value where the maintained scenario timing calls for it."
+            ),
+        )
+    )
+
+
+def render_probability_grammar() -> str:
+    return "\n".join(
+        (
+            "### One-attempt probability grammar",
+            "",
+            "**Hit-gated, no save:** `P(control) = P(hit)`.",
+            "",
+            (
+                "The maintained attack helper enumerates d20 results exactly. A natural 1 "
+                "misses, a natural 20 hits as a critical, and every other roll hits when "
+                "`natural roll + attack bonus >= AC`. `P(hit)` includes ordinary hits plus "
+                "critical hits. Where a source contract actually grants attack Advantage, the "
+                "helper enumerates both d20s exactly and keeps the higher result; this publication "
+                "does not invent Advantage for a control source."
+            ),
+            "",
+            "**Save-only:** `P(control) = P(failed save) = 1 - P(successful save)`.",
+            "",
+            (
+                "A save succeeds when `d20 + maintained save bonus >= DC`. Saving throws do not "
+                "use the attack-roll natural-1/natural-20 automatic miss/critical rules. Magic "
+                "Resistance supplies save Advantage only where the maintained comparator/source "
+                "contract says it applies. The save helper enumerates Advantage and Disadvantage "
+                "exactly and cancels them when both apply. Finite penalties such as `d20 - 1d4` "
+                "are enumerated over every die result, never replaced by an average penalty."
+            ),
+            "",
+            (
+                "**Hit plus failed save:** for the maintained independent gates, "
+                "`P(control) = P(hit) × P(failed save)`."
+            ),
+            "",
+            (
+                "**Automatic / no-save modeled control:** application uses the maintained "
+                "automatic or reach probability supplied by the evaluator. “Automatic” does not "
+                "mean universally effective: size/type restrictions, immunities, and effect "
+                "dependencies are evaluated separately."
+            ),
+        )
+    )
+
+
+def render_attack_action_retry_methodology() -> str:
+    return "\n".join(
+        (
+            "### Attack-action retries",
+            "",
+            (
+                "For `n` identical unconstrained attempts with one-attempt success probability "
+                "`p`, `P(at least one success) = 1 - (1 - p)^n`. The maintained generic helper "
+                "returns this special case when no state-changing legality function is supplied."
+            ),
+            "",
+            (
+                "That closed form is not the general Kinetic Vanguard or Battle Master rule when "
+                "resources or legality change. Their recursive shape is "
+                "`R(attacks remaining, state) = max over legal next states [p + (1 - p) × "
+                "R(attacks remaining - 1, next state)]`, with terminal `0` when no attacks or "
+                "legal attempts remain. The exact legal resource state is carried forward."
+            ),
+            "",
+            (
+                "Every headline control retry window in this section is one ordinary Attack "
+                "action. Action Surge is excluded."
+            ),
+        )
+    )
+
+
+def render_kv_retry_methodology() -> str:
+    model = AuthorityModel.load(DEFAULT_AUTHORITY)
+    config = load_config()
+    levels = tuple(int(value) for value in config["methodology"]["levels"])
+    resources = tuple(_kv_retry_resources(model, config, level) for level in levels)
+    rows = []
+    for row in resources:
+        mastery = (
+            f"available / {row['overload_mastery_uses']} per rest"
+            if row["overload_mastery_uses"]
+            else "unavailable / 0"
+        )
+        taxes = "/".join(str(value) for value in row["blood_tax_by_tier"])
+        rows.append(
+            (
+                row["level"],
+                row["attacks_per_action"],
+                row["psi_pool"],
+                row["benchmark_hp"],
+                row["blood_tax_budget"],
+                taxes,
+                mastery,
+                row["tier_two_limit"],
+            )
+        )
+    return "\n".join(
+        (
+            "### Kinetic Vanguard retry resources",
+            "",
+            (
+                "A repeatable on-hit rider can be declared again on a later Manifested Strike "
+                "within the same ordinary Attack action. At each opportunity, the evaluator "
+                "carries attacks remaining, Psi spent, Blood Tax spent, Tier-2 declarations, "
+                "Overload Mastery uses remaining, and the selected raw/reduced payment mode. A "
+                "declaration is legal only if its Psi cost fits the current Psi pool, its "
+                "canonical Blood Tax payment fits the benchmark budget, the Tier-2-per-Attack-"
+                "action limit is respected, and the current Overload Mastery payment state offers "
+                "that option. The recursion then chooses the legal state path with the greatest "
+                "at-least-one-establishment probability."
+            ),
+            "",
+            (
+                "The canonical payment options preserve the raw Blood Tax path and, while the "
+                "maintained Overload Mastery use is available, the exact reduced-tax path. Once "
+                "a path establishes its payment mode, later declarations carry that mode and "
+                "remaining-use state forward; the renderer does not approximate or rebuild it."
+            ),
+            "",
+            (
+                "The table is generated from canonical authority, Fighter progression, and the "
+                "benchmark profile used by the evaluator. Benchmark HP and its 25% Blood Tax "
+                "budget are analytical inputs, not subclass rules. `T0/T1/T2 tax` lists the "
+                "canonical raw Blood Tax before any legal Overload Mastery reduction."
+            ),
+            "",
+            _markdown_table(
+                (
+                    "Fighter level",
+                    "Attacks / Attack action",
+                    "Psi pool",
+                    "Benchmark HP",
+                    "Blood Tax budget",
+                    "T0/T1/T2 tax",
+                    "Overload Mastery availability/uses",
+                    "Tier-2 declaration limit",
+                ),
+                rows,
+            ),
+        )
+    )
+
+
+def render_mastery_and_package_methodology() -> str:
+    return "\n".join(
+        (
+            "### Kinetic Mastery retries",
+            "",
+            (
+                "For an eligible current Kinetic Mastery, each qualifying Manifested Strike hit "
+                "in one ordinary Attack action is an opportunity and there is no additional "
+                "Mastery saving throw. With maintained ordinary attacks/action, "
+                "`P(Mastery establishes) = 1 - (1 - P(hit))^attacks`. Action Surge is excluded. "
+                "Mastery delivery and rider delivery remain separate catalog recipes."
+            ),
+            "",
+            "### Headline package versus catalog delivery",
+            "",
+            (
+                "The explanatory catalog decomposes each exact source: a Kinetic Mastery row "
+                "shows Mastery delivery only, and a rider row shows rider delivery only. Mastery "
+                "does not rescue a rider's recipe or target effectiveness. The headline discipline "
+                "benchmark instead uses the selected full legal package, and its Reliability is "
+                "the initial delivery probability of that same CU-selected package."
+            ),
+        )
+    )
+
+
+def render_battle_master_retry_methodology() -> str:
+    return "\n".join(
+        (
+            "### Battle Master retry recursion",
+            "",
+            (
+                "For attacks remaining `a`, superiority dice remaining `d`, hit probability `h`, "
+                "and failed-save probability `f`, the maintained recursion is:"
+            ),
+            "",
+            "`R(a,d) = (1-h) × R(a-1,d) + h × [f + (1-f) × R(a-1,d-1)]`",
+            "",
+            (
+                "The terminal value is zero when attacks or superiority dice are exhausted. A "
+                "miss preserves the die; a hit consumes it; hit plus failed save succeeds; and a "
+                "hit followed by a successful save can recurse when both attacks and dice remain. "
+                "The headline Control Reliability window excludes Action Surge. This methodology "
+                "does not publish the Phase-4 Battle Master reference table."
+            ),
+        )
+    )
+
+
+def render_eldritch_knight_reliability_methodology() -> str:
+    return "\n".join(
+        (
+            "### Eldritch Knight spell attacks and saves",
+            "",
+            (
+                "A spell attack uses its exact spell-attack hit probability. A save spell uses "
+                "its exact failed-save probability. Headline Reliability credits one configured "
+                "cast in the spell's delivery window, not repeated casting."
+            ),
+            "",
+            "### Eldritch Strike primer",
+            "",
+            (
+                "A legal prior ordinary Attack action establishes Eldritch Strike with "
+                "`P(ES established) = 1 - (1 - P(weapon hit))^ordinary primer attacks`. The "
+                "target spell's initial failure probability is the exact mixture "
+                "`P(ES) × P(fail with maintained Disadvantage state) + (1 - P(ES)) × "
+                "P(ordinary fail)`. The save helper preserves Magic Resistance and cancels "
+                "Advantage against Disadvantage when both apply. Eldritch Strike is never "
+                "credited below its configured minimum level."
+            ),
+            "",
+            "### Mind Sliver primer",
+            "",
+            (
+                "Only the approved cross-turn composition is modeled. Mind Sliver must first "
+                "establish on its Intelligence save; if it does, the next qualifying save "
+                "enumerates exact `d20 - 1d4` outcomes, with no average `-2.5` substitution. "
+                "The composition is `P(initial target save fails) = P(Mind Sliver establishes) "
+                "× P(penalized save fails) + P(Mind Sliver does not establish) × "
+                "P(unpenalized composed save fails)`. If Eldritch Strike is also present, the "
+                "finite penalty and probabilistic Disadvantage are combined exactly, including "
+                "Magic Resistance cancellation. Same-Attack-action Mind Sliver sequencing is not modeled."
+            ),
+        )
+    )
+
+
+def render_persistence_methodology() -> str:
+    return "\n".join(
+        (
+            "### Persistence is separate from delivery",
+            "",
+            (
+                "Let initial delivery be `p` and the maintained repeat-save failure probability "
+                "be `q`. For an effect whose timing supplies repeated survival checkpoints, the "
+                "active probabilities can conceptually be `p`, `p × q`, and `p × q²` over the "
+                "frozen three-round horizon. Only initial `p` is `Whole-package control stick %`."
+            ),
+            "",
+            (
+                "The later terms affect active exposure, Control Value, and the "
+                "`Still controlled after configured repeats %` persistence diagnostic; they do "
+                "not redefine initial Reliability as `p × q²`. The evaluator uses each "
+                "scenario's actual timing metadata rather than applying this pattern universally. "
+                "Other maintained end or escape mechanisms can likewise change CU exposure "
+                "without becoming part of initial Reliability."
+            ),
+        )
+    )
+
+
+def render_reliability_worked_examples() -> str:
+    hit = 0.70
+    failed_save = 0.60
+    one_attempt = hit * failed_save
+    retries = _attack_action_retry_probability(3, one_attempt)
+    repeat_failure = 0.60
+    return "\n".join(
+        (
+            "### Worked Reliability examples",
+            "",
+            (
+                "**Illustrative hit × save (not current target data):** `P(hit) = 0.70` and "
+                "`P(failed save) = 0.60`, so `P(one-attempt control) = 0.70 × 0.60 = "
+                f"{one_attempt:.2f} = {100 * one_attempt:.0f}%`."
+            ),
+            "",
+            (
+                "**Illustrative identical retries (not current target data):** with "
+                f"`p = {one_attempt:.2f}` and `n = 3`, `P(at least one) = 1 - (1 - "
+                f"{one_attempt:.2f})^3 = {retries:.6f} = {100 * retries:.2f}%`. Actual KV and "
+                "Battle Master retries use exact state recursion when resources or legality change."
+            ),
+            "",
+            (
+                "**Illustrative persistence (not current target data):** with initial "
+                f"`p = {one_attempt:.2f}` and repeat-save failure `q = {repeat_failure:.2f}`, "
+                f"the active windows are `p = {one_attempt:.2f} ({100 * one_attempt:.2f}%)`, "
+                f"`p × q = {one_attempt * repeat_failure:.3f} "
+                f"({100 * one_attempt * repeat_failure:.2f}%)`, and `p × q² = "
+                f"{one_attempt * repeat_failure**2:.4f} "
+                f"({100 * one_attempt * repeat_failure**2:.2f}%)`. Only the first `p` is "
+                "headline Reliability."
+            ),
+        )
+    )
+
+
+def render_reliability_recipe_legend() -> str:
+    samples = (
+        ControlDeliveryRecipe("mastery_attack_action_hit_retry", "hit", "ordinary_attack_action_independent_hits", ""),
+        ControlDeliveryRecipe("kv_attack_action_hit_retry", "hit", "kv_attack_action_state_recursion", ""),
+        ControlDeliveryRecipe("kv_attack_action_hit_failed_save_retry", "hit_and_failed_save", "kv_attack_action_state_recursion", "constitution"),
+        ControlDeliveryRecipe("single_activation_hit", "hit", "single_activation", ""),
+        ControlDeliveryRecipe("single_activation_failed_save", "failed_save", "single_activation", "constitution"),
+        ControlDeliveryRecipe("single_activation_hit_failed_save", "hit_and_failed_save", "single_activation", "constitution"),
+        ControlDeliveryRecipe("automatic_no_save", "automatic", "single_activation", ""),
+        ControlDeliveryRecipe("no_modeled_control", "none", "none", ""),
+    )
+    if {sample.recipe_id for sample in samples} != DELIVERY_RECIPE_IDS:
+        raise MatrixSyncError("Delivery recipe legend differs from evaluator recipe inventory")
+    return "\n".join(
+        (
+            "### Catalog delivery recipes",
+            "",
+            (
+                "The generated `Delivery recipe` column is diagnostic metadata from each exact "
+                "source's evaluator path. It never changes scoring or selection, contains no "
+                "per-target percentages, and remains present for deliverable `Unpriced` forms. "
+                "Structural restrictions and effect immunities change target effectiveness, not "
+                "the underlying source recipe. Unknown recipe IDs fail publication closed."
+            ),
+            "",
+            _markdown_table(
+                ("Recipe family", "Reader-facing format"),
+                tuple(
+                    (f"`{sample.recipe_id}`", _render_delivery_recipe(sample))
+                    for sample in samples
+                ),
+            ),
+        )
+    )
+
+
+def render_control_reliability_methodology() -> str:
+    return "\n\n".join(
+        (
+            render_reliability_definition(),
+            render_probability_grammar(),
+            render_attack_action_retry_methodology(),
+            render_kv_retry_methodology(),
+            render_mastery_and_package_methodology(),
+            render_battle_master_retry_methodology(),
+            render_eldritch_knight_reliability_methodology(),
+            render_persistence_methodology(),
+            render_reliability_worked_examples(),
+        )
+    )
+
+
 def render_control_value_explanation() -> str:
     """Render reader-facing CU arithmetic from the maintained scoring contracts."""
     scoring = load_scoring_config()
@@ -2107,7 +2610,7 @@ def render_control_benchmark_detail(
             (
                 "This is the exhaustive public companion to the README control benchmark. "
                 "Control Value measures the mechanical consequence of the selected package; "
-                "Control Reliability measures delivery and persistence of that same "
+                "Control Reliability measures initial establishment/delivery of that same "
                 "CU-selected package. Damage analysis is outside this page's scope."
             ),
             "",
@@ -2125,8 +2628,8 @@ def render_control_benchmark_detail(
             "### Kinetic Vanguard mean Reliability",
             "",
             (
-                "This table shows the raw whole-package delivery/persistence probability for "
-                "those same CU-selected winners."
+                "This table shows the raw initial whole-package establishment/delivery "
+                "probability for those same CU-selected winners."
             ),
             "",
             render_raw_kv_reliability_table(reliability_rows, disciplines),
@@ -2135,9 +2638,15 @@ def render_control_benchmark_detail(
             "",
             render_kv_control_catalog(catalog, catalog_cells, levels, disciplines),
             "",
+            render_reliability_recipe_legend(),
+            "",
             render_control_coverage_exceptions(catalog, catalog_cells, levels),
             "",
             render_benchmark_roster_methodology(),
+            "",
+            "## Control Reliability methodology",
+            "",
+            render_control_reliability_methodology(),
             "",
             "## Control Value methodology",
             "",

@@ -1,6 +1,6 @@
 # Kinetic Vanguard Control Benchmark Detail
 
-This is the exhaustive public companion to the README control benchmark. Control Value measures the mechanical consequence of the selected package; Control Reliability measures delivery and persistence of that same CU-selected package. Damage analysis is outside this page's scope.
+This is the exhaustive public companion to the README control benchmark. Control Value measures the mechanical consequence of the selected package; Control Reliability measures initial establishment/delivery of that same CU-selected package. Damage analysis is outside this page's scope.
 
 ## Current Kinetic Vanguard results
 
@@ -17,7 +17,7 @@ This table shows the raw Kinetic Vanguard equal-weight roster mean for the packa
 
 ### Kinetic Vanguard mean Reliability
 
-This table shows the raw whole-package delivery/persistence probability for those same CU-selected winners.
+This table shows the raw initial whole-package establishment/delivery probability for those same CU-selected winners.
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
@@ -46,90 +46,105 @@ Full denominator and state methodology: [Benchmark roster, effectiveness, and co
 
 #### Cryokinesis
 
-| Rider / form | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |
-|---|---|---|---|---|
-| Kinetic Mastery | 0.076 CU · 96.23% · 12/12 | 0.060 CU · 99.51% · 12/12 | 0.051 CU · 99.50% · 11/11 | 0.041 CU · 99.84% · 12/12 |
-| Glacial Spike — T0 | 0.076 CU · 96.23% · 12/12 | 0.060 CU · 99.51% · 12/12 | 0.051 CU · 99.50% · 11/11 | 0.041 CU · 99.84% · 12/12 |
-| Glacial Spike — T1 | 0.226 CU · 96.23% · 12/12 | 0.226 CU · 99.51% · 12/12 | 0.216 CU · 99.50% · 11/11 | 0.232 CU · 99.84% · 12/12 |
-| Glacial Spike — T2 | N/A | 0.397 CU · 83.75% · 12/12 | 0.422 CU · 84.09% · 11/11 | 0.374 CU · 82.08% · 12/12 |
-| Snow Chains — T0 | 0.807 CU · 96.23% · 12/12 | 0.836 CU · 99.51% · 12/12 | 0.861 CU · 99.50% · 11/11 | 0.897 CU · 99.84% · 12/12 |
-| Snow Chains — T1 | 0.943 CU · 96.23% · 12/12 | 0.975 CU · 99.51% · 12/12 | 0.993 CU · 99.50% · 11/11 | 1.045 CU · 99.84% · 12/12 |
-| Snow Chains — T2 | N/A | 1.033 CU (partial) · 83.75% · 12/12 | 1.025 CU (partial) · 84.09% · 11/11 | 0.964 CU (partial) · 82.08% · 12/12 |
-| Frozen Ground — T0 | N/A | 0.125 CU · 41.54% · 12/12 | 0.124 CU · 41.23% · 11/11 | 0.119 CU · 39.52% · 12/12 |
-| Frozen Ground — T1 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Frozen Ground — T2 | N/A | 0.435 CU · 37.79% · 11/12 | 0.474 CU · 41.23% · 11/11 | 0.440 CU · 38.27% · 11/12 |
-| Arctic Tempest — T0 | N/A | N/A | 0.474 CU · 41.23% · 11/11 | 0.440 CU · 38.27% · 11/12 |
-| Arctic Tempest — T1 | N/A | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Arctic Tempest — T2 | N/A | N/A | 0.928 CU (partial) · 41.23% · 11/11 | 0.889 CU (partial) · 39.52% · 12/12 |
-| Absolute Zero — T0 | N/A | N/A | N/A | 0.119 CU · 39.52% · 12/12 |
-| Absolute Zero — T1 | N/A | N/A | N/A | 0.444 CU · 39.52% · 12/12 |
-| Absolute Zero — T2 | N/A | N/A | N/A | 1.189 CU (partial) · 100.00% · 12/12 |
+| Rider / form | Delivery recipe | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |
+|---|---|---|---|---|---|
+| Kinetic Mastery | Kinetic Mastery — ordinary Attack-action at least one hit | 0.076 CU · 96.23% · 12/12 | 0.060 CU · 99.51% · 12/12 | 0.051 CU · 99.50% · 11/11 | 0.041 CU · 99.84% · 12/12 |
+| Glacial Spike — T0 | KV Attack-action retry — hit | 0.076 CU · 96.23% · 12/12 | 0.060 CU · 99.51% · 12/12 | 0.051 CU · 99.50% · 11/11 | 0.041 CU · 99.84% · 12/12 |
+| Glacial Spike — T1 | KV Attack-action retry — hit × failed Constitution save | 0.226 CU · 96.23% · 12/12 | 0.226 CU · 99.51% · 12/12 | 0.216 CU · 99.50% · 11/11 | 0.232 CU · 99.84% · 12/12 |
+| Glacial Spike — T2 | KV Attack-action retry — hit × failed Constitution save | N/A | 0.397 CU · 83.75% · 12/12 | 0.422 CU · 84.09% · 11/11 | 0.374 CU · 82.08% · 12/12 |
+| Snow Chains — T0 | KV Attack-action retry — hit × failed Constitution save | 0.807 CU · 96.23% · 12/12 | 0.836 CU · 99.51% · 12/12 | 0.861 CU · 99.50% · 11/11 | 0.897 CU · 99.84% · 12/12 |
+| Snow Chains — T1 | KV Attack-action retry — hit × failed Constitution save | 0.943 CU · 96.23% · 12/12 | 0.975 CU · 99.51% · 12/12 | 0.993 CU · 99.50% · 11/11 | 1.045 CU · 99.84% · 12/12 |
+| Snow Chains — T2 | KV Attack-action retry — hit × failed Constitution save | N/A | 1.033 CU (partial) · 83.75% · 12/12 | 1.025 CU (partial) · 84.09% · 11/11 | 0.964 CU (partial) · 82.08% · 12/12 |
+| Frozen Ground — T0 | Single activation — failed Constitution save | N/A | 0.125 CU · 41.54% · 12/12 | 0.124 CU · 41.23% · 11/11 | 0.119 CU · 39.52% · 12/12 |
+| Frozen Ground — T1 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Frozen Ground — T2 | Single activation — failed Constitution save | N/A | 0.435 CU · 37.79% · 11/12 | 0.474 CU · 41.23% · 11/11 | 0.440 CU · 38.27% · 11/12 |
+| Arctic Tempest — T0 | Single activation — failed Constitution save | N/A | N/A | 0.474 CU · 41.23% · 11/11 | 0.440 CU · 38.27% · 11/12 |
+| Arctic Tempest — T1 | — | N/A | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Arctic Tempest — T2 | Single activation — failed Constitution save | N/A | N/A | 0.928 CU (partial) · 41.23% · 11/11 | 0.889 CU (partial) · 39.52% · 12/12 |
+| Absolute Zero — T0 | Single activation — failed Constitution save | N/A | N/A | N/A | 0.119 CU · 39.52% · 12/12 |
+| Absolute Zero — T1 | Single activation — failed Constitution save | N/A | N/A | N/A | 0.444 CU · 39.52% · 12/12 |
+| Absolute Zero — T2 | Single activation — failed Constitution save | N/A | N/A | N/A | 1.189 CU (partial) · 100.00% · 12/12 |
 
 #### Pyrokinesis
 
-| Rider / form | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |
-|---|---|---|---|---|
-| Kinetic Mastery | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Ember Bolt — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Ember Bolt — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Ember Bolt — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Thermal Fracture — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Thermal Fracture — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Thermal Fracture — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Cinder Lance — T0 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Cinder Lance — T1 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Cinder Lance — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Flare — T0 | N/A | N/A | 0.524 CU (partial) · 80.68% · 11/11 | 0.555 CU (partial) · 85.45% · 12/12 |
-| Flare — T1 | N/A | N/A | 0.524 CU (partial) · 80.68% · 11/11 | 0.555 CU (partial) · 85.45% · 12/12 |
-| Flare — T2 | N/A | N/A | 0.300 CU (partial) · 46.16% · 11/11 | 0.266 CU (partial) · 40.91% · 12/12 |
-| Furnace Strike — T0 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
-| Furnace Strike — T1 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
-| Furnace Strike — T2 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
+| Rider / form | Delivery recipe | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |
+|---|---|---|---|---|---|
+| Kinetic Mastery | — | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Ember Bolt — T0 | — | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Ember Bolt — T1 | — | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Ember Bolt — T2 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Thermal Fracture — T0 | — | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Thermal Fracture — T1 | — | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Thermal Fracture — T2 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Cinder Lance — T0 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Cinder Lance — T1 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Cinder Lance — T2 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Flare — T0 | KV Attack-action retry — hit × failed Dexterity save | N/A | N/A | 0.524 CU (partial) · 80.68% · 11/11 | 0.555 CU (partial) · 85.45% · 12/12 |
+| Flare — T1 | KV Attack-action retry — hit × failed Dexterity save | N/A | N/A | 0.524 CU (partial) · 80.68% · 11/11 | 0.555 CU (partial) · 85.45% · 12/12 |
+| Flare — T2 | KV Attack-action retry — hit × failed Dexterity save | N/A | N/A | 0.300 CU (partial) · 46.16% · 11/11 | 0.266 CU (partial) · 40.91% · 12/12 |
+| Furnace Strike — T0 | — | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
+| Furnace Strike — T1 | — | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
+| Furnace Strike — T2 | — | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
 
 #### Psychokinesis
 
-| Rider / form | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |
-|---|---|---|---|---|
-| Kinetic Mastery | 0.297 CU · 87.92% · 11/12 | 0.375 CU · 74.61% · 9/12 | 0.191 CU · 36.25% · 4/11 | 0.163 CU · 24.97% · 3/12 |
-| Telekinetic Shove — T0 | 0.167 CU · 64.53% · 12/12 | 0.220 CU · 70.93% · 12/12 | 0.205 CU · 68.21% · 11/11 | 0.268 CU · 73.69% · 12/12 |
-| Telekinetic Shove — T1 | 0.250 CU · 64.53% · 12/12 | 0.330 CU · 70.93% · 12/12 | 0.308 CU · 68.21% · 11/11 | 0.403 CU · 73.69% · 12/12 |
-| Telekinetic Shove — T2 | N/A | 0.257 CU · 36.65% · 12/12 | 0.239 CU · 34.19% · 11/11 | 0.235 CU · 33.54% · 12/12 |
-| Vectored Thrust — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Vectored Thrust — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Vectored Thrust — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Explosion/Implosion — T0 — primary | N/A | 0.733 CU · 63.77% · 11/12 | 0.784 CU · 68.21% · 11/11 | 0.831 CU · 72.22% · 11/12 |
-| Explosion/Implosion — T0 — secondary | N/A | 1.063 CU · 70.93% · 12/12 | 1.092 CU · 68.21% · 11/11 | 1.233 CU · 73.69% · 12/12 |
-| Explosion/Implosion — T1 — primary | N/A | 0.733 CU · 63.77% · 11/12 | 0.784 CU · 68.21% · 11/11 | 0.831 CU · 72.22% · 11/12 |
-| Explosion/Implosion — T1 — secondary | N/A | 1.393 CU · 70.93% · 12/12 | 1.400 CU · 68.21% · 11/11 | 1.636 CU · 73.69% · 12/12 |
-| Explosion/Implosion — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Telekinetic Slam — T0 | N/A | N/A | 0.082 CU · 40.95% · 11/11 | 0.083 CU · 41.25% · 12/12 |
-| Telekinetic Slam — T1 | N/A | N/A | 0.164 CU · 40.95% · 11/11 | 0.165 CU · 41.25% · 12/12 |
-| Telekinetic Slam — T2 | N/A | N/A | 0.487 CU · 100.00% · 11/11 | 0.489 CU · 100.00% · 12/12 |
-| Mass Levitation — T0 | N/A | N/A | N/A | 0.138 CU (partial) · 11.67% · 3/12 |
-| Mass Levitation — T1 | N/A | N/A | N/A | 0.180 CU (partial) · 11.67% · 3/12 |
-| Mass Levitation — T2 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
+| Rider / form | Delivery recipe | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |
+|---|---|---|---|---|---|
+| Kinetic Mastery | Kinetic Mastery — ordinary Attack-action at least one hit | 0.297 CU · 87.92% · 11/12 | 0.375 CU · 74.61% · 9/12 | 0.191 CU · 36.25% · 4/11 | 0.163 CU · 24.97% · 3/12 |
+| Telekinetic Shove — T0 | KV Attack-action retry — hit × failed Strength save | 0.167 CU · 64.53% · 12/12 | 0.220 CU · 70.93% · 12/12 | 0.205 CU · 68.21% · 11/11 | 0.268 CU · 73.69% · 12/12 |
+| Telekinetic Shove — T1 | KV Attack-action retry — hit × failed Strength save | 0.250 CU · 64.53% · 12/12 | 0.330 CU · 70.93% · 12/12 | 0.308 CU · 68.21% · 11/11 | 0.403 CU · 73.69% · 12/12 |
+| Telekinetic Shove — T2 | KV Attack-action retry — hit × failed Strength save | N/A | 0.257 CU · 36.65% · 12/12 | 0.239 CU · 34.19% · 11/11 | 0.235 CU · 33.54% · 12/12 |
+| Vectored Thrust — T0 | — | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Vectored Thrust — T1 | — | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Vectored Thrust — T2 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Explosion/Implosion — T0 — primary | KV Attack-action retry — hit × failed Strength save | N/A | 0.733 CU · 63.77% · 11/12 | 0.784 CU · 68.21% · 11/11 | 0.831 CU · 72.22% · 11/12 |
+| Explosion/Implosion — T0 — secondary | KV Attack-action retry — hit × failed Strength save | N/A | 1.063 CU · 70.93% · 12/12 | 1.092 CU · 68.21% · 11/11 | 1.233 CU · 73.69% · 12/12 |
+| Explosion/Implosion — T1 — primary | KV Attack-action retry — hit × failed Strength save | N/A | 0.733 CU · 63.77% · 11/12 | 0.784 CU · 68.21% · 11/11 | 0.831 CU · 72.22% · 11/12 |
+| Explosion/Implosion — T1 — secondary | KV Attack-action retry — hit × failed Strength save | N/A | 1.393 CU · 70.93% · 12/12 | 1.400 CU · 68.21% · 11/11 | 1.636 CU · 73.69% · 12/12 |
+| Explosion/Implosion — T2 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Telekinetic Slam — T0 | Single activation — failed Strength save | N/A | N/A | 0.082 CU · 40.95% · 11/11 | 0.083 CU · 41.25% · 12/12 |
+| Telekinetic Slam — T1 | Single activation — failed Strength save | N/A | N/A | 0.164 CU · 40.95% · 11/11 | 0.165 CU · 41.25% · 12/12 |
+| Telekinetic Slam — T2 | Single activation — failed Strength save | N/A | N/A | 0.487 CU · 100.00% · 11/11 | 0.489 CU · 100.00% · 12/12 |
+| Mass Levitation — T0 | Single activation — failed Strength save | N/A | N/A | N/A | 0.138 CU (partial) · 11.67% · 3/12 |
+| Mass Levitation — T1 | Single activation — failed Strength save | N/A | N/A | N/A | 0.180 CU (partial) · 11.67% · 3/12 |
+| Mass Levitation — T2 | — | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
 
 #### Electrokinesis
 
-| Rider / form | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |
-|---|---|---|---|---|
-| Kinetic Mastery | 0.144 CU · 96.23% · 12/12 | 0.149 CU · 99.51% · 12/12 | 0.149 CU · 99.50% · 11/11 | 0.150 CU · 99.84% · 12/12 |
-| Static Discharge — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Static Discharge — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Static Discharge — T2 | N/A | 0.083 CU · 41.30% · 12/12 | 0.084 CU · 41.96% · 11/11 | 0.086 CU · 42.82% · 12/12 |
-| Branching Bolt — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Branching Bolt — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Branching Bolt — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Electron Burst — T0 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Electron Burst — T1 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Electron Burst — T2 | N/A | 0.248 CU · 41.30% · 12/12 | 0.252 CU · 41.96% · 11/11 | 0.257 CU · 42.82% · 12/12 |
-| Forked Lightning — T0 | N/A | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Forked Lightning — T1 | N/A | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Forked Lightning — T2 — primary | N/A | N/A | 0.453 CU · 50.32% · 11/11 | 0.467 CU · 51.85% · 12/12 |
-| Forked Lightning — T2 — secondary | N/A | N/A | 0.302 CU · 50.32% · 11/11 | 0.311 CU · 51.85% · 12/12 |
-| Ball Lightning — T0 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
-| Ball Lightning — T1 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
-| Ball Lightning — T2 | N/A | N/A | N/A | Unpriced · 51.85% delivery · 12/12 |
+| Rider / form | Delivery recipe | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |
+|---|---|---|---|---|---|
+| Kinetic Mastery | Kinetic Mastery — ordinary Attack-action at least one hit | 0.144 CU · 96.23% · 12/12 | 0.149 CU · 99.51% · 12/12 | 0.149 CU · 99.50% · 11/11 | 0.150 CU · 99.84% · 12/12 |
+| Static Discharge — T0 | — | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Static Discharge — T1 | — | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Static Discharge — T2 | KV Attack-action retry — hit × failed Charisma save | N/A | 0.083 CU · 41.30% · 12/12 | 0.084 CU · 41.96% · 11/11 | 0.086 CU · 42.82% · 12/12 |
+| Branching Bolt — T0 | — | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Branching Bolt — T1 | — | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Branching Bolt — T2 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Electron Burst — T0 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Electron Burst — T1 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Electron Burst — T2 | KV Attack-action retry — hit × failed Charisma save | N/A | 0.248 CU · 41.30% · 12/12 | 0.252 CU · 41.96% · 11/11 | 0.257 CU · 42.82% · 12/12 |
+| Forked Lightning — T0 | — | N/A | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Forked Lightning — T1 | — | N/A | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
+| Forked Lightning — T2 — primary | Single activation — failed Charisma save | N/A | N/A | 0.453 CU · 50.32% · 11/11 | 0.467 CU · 51.85% · 12/12 |
+| Forked Lightning — T2 — secondary | Single activation — failed Charisma save | N/A | N/A | 0.302 CU · 50.32% · 11/11 | 0.311 CU · 51.85% · 12/12 |
+| Ball Lightning — T0 | — | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
+| Ball Lightning — T1 | — | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
+| Ball Lightning — T2 | Single activation — failed Charisma save | N/A | N/A | N/A | Unpriced · 51.85% delivery · 12/12 |
+
+### Catalog delivery recipes
+
+The generated `Delivery recipe` column is diagnostic metadata from each exact source's evaluator path. It never changes scoring or selection, contains no per-target percentages, and remains present for deliverable `Unpriced` forms. Structural restrictions and effect immunities change target effectiveness, not the underlying source recipe. Unknown recipe IDs fail publication closed.
+
+| Recipe family | Reader-facing format |
+|---|---|
+| `mastery_attack_action_hit_retry` | Kinetic Mastery — ordinary Attack-action at least one hit |
+| `kv_attack_action_hit_retry` | KV Attack-action retry — hit |
+| `kv_attack_action_hit_failed_save_retry` | KV Attack-action retry — hit × failed Constitution save |
+| `single_activation_hit` | Single activation — hit |
+| `single_activation_failed_save` | Single activation — failed Constitution save |
+| `single_activation_hit_failed_save` | Single activation — hit × failed Constitution save |
+| `automatic_no_save` | Automatic / no-save modeled control |
+| `no_modeled_control` | — |
 
 ### Control coverage exceptions
 
@@ -181,6 +196,93 @@ Do not divide only by effective targets. Effective-only averaging would hide pra
 **Instructional example (not a published scenario):** if a form has 80% delivery against 9 effective targets and 3 ineffective targets contribute 0%, its full-roster delivery mean is `(9 × 0.80 + 3 × 0) / 12 = 0.60 = 60%`. The effective-only 80% is not the roster-wide result.
 
 `Priced` and `Partial` use the complete-roster denominator above. `Unpriced` can still be effectively covered and show independently measurable delivery, but its CU field remains `Unpriced`, not zero. `No modeled control` is `0.000 CU` because that catalog source declares no modeled control, with delivery `—` because no control establishment is measured. `N/A` means the exact form is unavailable at that Fighter level and does not participate in that level's aggregate.
+
+## Control Reliability methodology
+
+### What Reliability measures
+
+`Whole-package control stick %` is the probability that the exact published control source or package establishes at least one modeled control consequence in its legal initial delivery window, after all maintained legal retries and resource constraints are applied. It is initial establishment/delivery probability: it is not a severity score, Control Value, effective coverage, or the probability of remaining controlled for all three benchmark rounds.
+
+The headline discipline benchmark reports the delivery of the same full legal package selected by Control Value. It does not run a separate Reliability winner-selection pass. Persistence is a separate diagnostic and contributes to active exposure and Control Value where the maintained scenario timing calls for it.
+
+### One-attempt probability grammar
+
+**Hit-gated, no save:** `P(control) = P(hit)`.
+
+The maintained attack helper enumerates d20 results exactly. A natural 1 misses, a natural 20 hits as a critical, and every other roll hits when `natural roll + attack bonus >= AC`. `P(hit)` includes ordinary hits plus critical hits. Where a source contract actually grants attack Advantage, the helper enumerates both d20s exactly and keeps the higher result; this publication does not invent Advantage for a control source.
+
+**Save-only:** `P(control) = P(failed save) = 1 - P(successful save)`.
+
+A save succeeds when `d20 + maintained save bonus >= DC`. Saving throws do not use the attack-roll natural-1/natural-20 automatic miss/critical rules. Magic Resistance supplies save Advantage only where the maintained comparator/source contract says it applies. The save helper enumerates Advantage and Disadvantage exactly and cancels them when both apply. Finite penalties such as `d20 - 1d4` are enumerated over every die result, never replaced by an average penalty.
+
+**Hit plus failed save:** for the maintained independent gates, `P(control) = P(hit) × P(failed save)`.
+
+**Automatic / no-save modeled control:** application uses the maintained automatic or reach probability supplied by the evaluator. “Automatic” does not mean universally effective: size/type restrictions, immunities, and effect dependencies are evaluated separately.
+
+### Attack-action retries
+
+For `n` identical unconstrained attempts with one-attempt success probability `p`, `P(at least one success) = 1 - (1 - p)^n`. The maintained generic helper returns this special case when no state-changing legality function is supplied.
+
+That closed form is not the general Kinetic Vanguard or Battle Master rule when resources or legality change. Their recursive shape is `R(attacks remaining, state) = max over legal next states [p + (1 - p) × R(attacks remaining - 1, next state)]`, with terminal `0` when no attacks or legal attempts remain. The exact legal resource state is carried forward.
+
+Every headline control retry window in this section is one ordinary Attack action. Action Surge is excluded.
+
+### Kinetic Vanguard retry resources
+
+A repeatable on-hit rider can be declared again on a later Manifested Strike within the same ordinary Attack action. At each opportunity, the evaluator carries attacks remaining, Psi spent, Blood Tax spent, Tier-2 declarations, Overload Mastery uses remaining, and the selected raw/reduced payment mode. A declaration is legal only if its Psi cost fits the current Psi pool, its canonical Blood Tax payment fits the benchmark budget, the Tier-2-per-Attack-action limit is respected, and the current Overload Mastery payment state offers that option. The recursion then chooses the legal state path with the greatest at-least-one-establishment probability.
+
+The canonical payment options preserve the raw Blood Tax path and, while the maintained Overload Mastery use is available, the exact reduced-tax path. Once a path establishes its payment mode, later declarations carry that mode and remaining-use state forward; the renderer does not approximate or rebuild it.
+
+The table is generated from canonical authority, Fighter progression, and the benchmark profile used by the evaluator. Benchmark HP and its 25% Blood Tax budget are analytical inputs, not subclass rules. `T0/T1/T2 tax` lists the canonical raw Blood Tax before any legal Overload Mastery reduction.
+
+| Fighter level | Attacks / Attack action | Psi pool | Benchmark HP | Blood Tax budget | T0/T1/T2 tax | Overload Mastery availability/uses | Tier-2 declaration limit |
+|---|---|---|---|---|---|---|---|
+| 7 | 2 | 7 | 67 | 16 | 0/3/6 | unavailable / 0 | 1 |
+| 11 | 3 | 10 | 103 | 25 | 0/4/8 | unavailable / 0 | 1 |
+| 15 | 3 | 13 | 139 | 34 | 0/5/10 | unavailable / 0 | 1 |
+| 20 | 4 | 16 | 184 | 46 | 0/6/12 | available / 1 per rest | 1 |
+
+### Kinetic Mastery retries
+
+For an eligible current Kinetic Mastery, each qualifying Manifested Strike hit in one ordinary Attack action is an opportunity and there is no additional Mastery saving throw. With maintained ordinary attacks/action, `P(Mastery establishes) = 1 - (1 - P(hit))^attacks`. Action Surge is excluded. Mastery delivery and rider delivery remain separate catalog recipes.
+
+### Headline package versus catalog delivery
+
+The explanatory catalog decomposes each exact source: a Kinetic Mastery row shows Mastery delivery only, and a rider row shows rider delivery only. Mastery does not rescue a rider's recipe or target effectiveness. The headline discipline benchmark instead uses the selected full legal package, and its Reliability is the initial delivery probability of that same CU-selected package.
+
+### Battle Master retry recursion
+
+For attacks remaining `a`, superiority dice remaining `d`, hit probability `h`, and failed-save probability `f`, the maintained recursion is:
+
+`R(a,d) = (1-h) × R(a-1,d) + h × [f + (1-f) × R(a-1,d-1)]`
+
+The terminal value is zero when attacks or superiority dice are exhausted. A miss preserves the die; a hit consumes it; hit plus failed save succeeds; and a hit followed by a successful save can recurse when both attacks and dice remain. The headline Control Reliability window excludes Action Surge. This methodology does not publish the Phase-4 Battle Master reference table.
+
+### Eldritch Knight spell attacks and saves
+
+A spell attack uses its exact spell-attack hit probability. A save spell uses its exact failed-save probability. Headline Reliability credits one configured cast in the spell's delivery window, not repeated casting.
+
+### Eldritch Strike primer
+
+A legal prior ordinary Attack action establishes Eldritch Strike with `P(ES established) = 1 - (1 - P(weapon hit))^ordinary primer attacks`. The target spell's initial failure probability is the exact mixture `P(ES) × P(fail with maintained Disadvantage state) + (1 - P(ES)) × P(ordinary fail)`. The save helper preserves Magic Resistance and cancels Advantage against Disadvantage when both apply. Eldritch Strike is never credited below its configured minimum level.
+
+### Mind Sliver primer
+
+Only the approved cross-turn composition is modeled. Mind Sliver must first establish on its Intelligence save; if it does, the next qualifying save enumerates exact `d20 - 1d4` outcomes, with no average `-2.5` substitution. The composition is `P(initial target save fails) = P(Mind Sliver establishes) × P(penalized save fails) + P(Mind Sliver does not establish) × P(unpenalized composed save fails)`. If Eldritch Strike is also present, the finite penalty and probabilistic Disadvantage are combined exactly, including Magic Resistance cancellation. Same-Attack-action Mind Sliver sequencing is not modeled.
+
+### Persistence is separate from delivery
+
+Let initial delivery be `p` and the maintained repeat-save failure probability be `q`. For an effect whose timing supplies repeated survival checkpoints, the active probabilities can conceptually be `p`, `p × q`, and `p × q²` over the frozen three-round horizon. Only initial `p` is `Whole-package control stick %`.
+
+The later terms affect active exposure, Control Value, and the `Still controlled after configured repeats %` persistence diagnostic; they do not redefine initial Reliability as `p × q²`. The evaluator uses each scenario's actual timing metadata rather than applying this pattern universally. Other maintained end or escape mechanisms can likewise change CU exposure without becoming part of initial Reliability.
+
+### Worked Reliability examples
+
+**Illustrative hit × save (not current target data):** `P(hit) = 0.70` and `P(failed save) = 0.60`, so `P(one-attempt control) = 0.70 × 0.60 = 0.42 = 42%`.
+
+**Illustrative identical retries (not current target data):** with `p = 0.42` and `n = 3`, `P(at least one) = 1 - (1 - 0.42)^3 = 0.804888 = 80.49%`. Actual KV and Battle Master retries use exact state recursion when resources or legality change.
+
+**Illustrative persistence (not current target data):** with initial `p = 0.42` and repeat-save failure `q = 0.60`, the active windows are `p = 0.42 (42.00%)`, `p × q = 0.252 (25.20%)`, and `p × q² = 0.1512 (15.12%)`. Only the first `p` is headline Reliability.
 
 ## Control Value methodology
 

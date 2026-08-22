@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
-from harness.control_harness import EFFECTIVE,INEFFECTIVE_NULLIFIED,INEFFECTIVE_STRUCTURAL,PARTIALLY_EFFECTIVE,_battle_master_retry_probability,_catalog_effectiveness,_catalog_rider_scenario,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
+from harness.control_harness import EFFECTIVE,INEFFECTIVE_NULLIFIED,INEFFECTIVE_STRUCTURAL,PARTIALLY_EFFECTIVE,_attack_action_retry_probability,_battle_master_retry_probability,_catalog_effectiveness,_catalog_rider_scenario,_comparator_scenario,_composed_eldritch_knight_scenarios,_delivery_recipe,_effect_available,_eldritch_strike_primer_probability,_kv_retry_resources,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
 from harness.control_value import DEFAULT_PRIMITIVES,DEFAULT_SCORING
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_battle_master_dpr_for_schedule,_battle_master_result,_comparator_dpr,_comparator_score,_eldritch_knight_result,_kv_dpr,_psionic_apex_packet,_rider_values,_strike_packet_options,run as run_damage
 from harness.ek_damage_planner import EKDamagePlanner,EKScore,EKState,chromatic_orb_duplicate_probability
@@ -1063,6 +1063,46 @@ class CanonicalControlTests(unittest.TestCase):
     def expected_mastery_retry(self,level:int,target:Target)->float:
         profile=self.config["kv_profile"];bonus=self.model.kv_attack_bonus(level,int(profile["psionic_ability_modifier"]))+int(profile["archery_attack_bonus"]);hit=sum(attack_probabilities(bonus,target.ac)[1:]);attacks=int(self.config["fighter_progression"][str(level)]["attacks_per_action"])
         return 100*(1-(1-hit)**attacks)
+
+    def test_unconstrained_attack_action_retry_matches_closed_form(self)->None:
+        for attacks,probability in ((0,0.42),(1,0.42),(3,0.42),(4,0.0),(4,1.0)):
+            with self.subTest(attacks=attacks,probability=probability):
+                self.assertAlmostEqual(_attack_action_retry_probability(attacks,probability),1-(1-probability)**attacks,places=12)
+
+    def test_kv_retry_resource_projection_uses_authority_and_benchmark_inputs(self)->None:
+        resources=[_kv_retry_resources(self.model,self.config,level) for level in (7,11,15,20)]
+        self.assertEqual([row["attacks_per_action"] for row in resources],[2,3,3,4])
+        for row in resources:
+            level=row["level"];profile=self.config["kv_profile"]
+            hp=int(profile["hit_point_model"]["first_level_base"])+int(profile["constitution_modifier"])+(level-1)*(int(profile["hit_point_model"]["later_level_average"])+int(profile["constitution_modifier"]))
+            self.assertEqual(row["psi_pool"],self.model.progression("psi_points",level))
+            self.assertEqual((row["benchmark_hp"],row["blood_tax_budget"]),(hp,int(hp*float(profile["blood_tax_hp_fraction"]))))
+            self.assertEqual(row["blood_tax_by_tier"],tuple(self.model.blood_tax(level,tier) for tier in (0,1,2)))
+            self.assertEqual(row["tier_two_limit"],self.model.projection["core"]["overload"]["tier_two_limit_per_attack_action"])
+        self.assertEqual([row["overload_mastery_uses"] for row in resources],[0,0,0,1])
+
+    def test_delivery_recipe_metadata_keeps_mastery_and_rider_separate(self)->None:
+        target=self.level_target(20)
+        mastery=_mastery_scenario(self.model,self.config,target,"electrokinesis")
+        rider=_catalog_rider_scenario(self.model,self.config,target,"cryokinesis","snow_chains",0)
+        automatic=_delivery_recipe("automatic_no_save","automatic","single_activation")
+        self.assertEqual(mastery["delivery_recipe"]["id"],"mastery_attack_action_hit_retry")
+        self.assertEqual(rider["delivery_recipe"],rider["rider_delivery_recipe"])
+        self.assertEqual(rider["delivery_recipe"]["id"],"kv_attack_action_hit_failed_save_retry")
+        self.assertEqual(rider["delivery_recipe"]["save_ability"],"constitution")
+        self.assertEqual(automatic["id"],"automatic_no_save")
+        with self.assertRaisesRegex(ValueError,"Unknown delivery recipe ID"):
+            _delivery_recipe("unknown","automatic","single_activation")
+
+    def test_catalog_initial_delivery_is_not_repeat_save_persistence(self)->None:
+        target=next(item for item in load_targets(profile="headline",levels={20}) if item.name=="Lich")
+        package=_kv_scenario(self.model,self.config,target,"psychokinesis","mass_levitation",0)
+        catalog=_catalog_rider_scenario(self.model,self.config,target,"psychokinesis","mass_levitation",0)
+        self.assertAlmostEqual(package["whole"],90.0)
+        self.assertAlmostEqual(package["after_repeats"],72.9)
+        self.assertAlmostEqual(catalog["whole"],package["whole"])
+        self.assertAlmostEqual(catalog["after_repeats"],package["whole"])
+        self.assertNotEqual(package["whole"],package["after_repeats"])
 
     def test_catalog_effectiveness_distinguishes_structural_full_partial_and_nullified(self)->None:
         target=self.target();outcome={"outcomes":["speed_zero"]};condition={"conditions":["restrained"]}

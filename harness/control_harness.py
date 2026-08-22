@@ -17,6 +17,62 @@ from .control_value import DEFAULT_PRIMITIVES,DEFAULT_SCORING,load_scoring_confi
 from .model import DEFAULT_CATALOG,DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_PROFILE,DEFAULT_ROSTERS,PROFILE_COUNTS,Target,ability_check_success_probability,attack_probabilities,file_sha256,level_config,load_comparators,load_config,load_targets,modified_save_success_probability,save_success_probability,target_is_eligible
 
 
+DELIVERY_RECIPE_IDS=frozenset({
+    "automatic_no_save",
+    "mastery_attack_action_hit_retry",
+    "no_modeled_control",
+    "single_activation_failed_save",
+    "single_activation_hit",
+    "single_activation_hit_failed_save",
+    "kv_attack_action_hit_retry",
+    "kv_attack_action_hit_failed_save_retry",
+})
+
+
+def _delivery_recipe(recipe_id:str,gate:str,retry_model:str,save_ability:str="")->dict[str,str]:
+    """Return fail-closed, diagnostic-only delivery metadata."""
+    if recipe_id not in DELIVERY_RECIPE_IDS:raise ValueError(f"Unknown delivery recipe ID: {recipe_id}")
+    return {"id":recipe_id,"gate":gate,"retry_model":retry_model,"save_ability":save_ability}
+
+
+def _kv_retry_resources(model:AuthorityModel,config:dict[str,Any],level:int)->dict[str,Any]:
+    """Project the maintained inputs carried by KV's retry recursion."""
+    progression=level_config(config,level);profile=config["kv_profile"]
+    hp=int(profile["hit_point_model"]["first_level_base"])+int(profile["constitution_modifier"])+(level-1)*(int(profile["hit_point_model"]["later_level_average"])+int(profile["constitution_modifier"]))
+    mastery=model.projection["core"]["overload"]["mastery"]
+    mastery_uses=int(mastery["uses_per_rest"]) if level>=int(mastery["minimum_level"]) else 0
+    return {
+        "level":level,
+        "attacks_per_action":int(progression["attacks_per_action"]),
+        "psi_pool":model.progression("psi_points",level),
+        "benchmark_hp":hp,
+        "blood_tax_budget":int(hp*float(profile["blood_tax_hp_fraction"])),
+        "blood_tax_by_tier":tuple(model.blood_tax(level,tier) for tier in (0,1,2)),
+        "overload_mastery_uses":mastery_uses,
+        "overload_mastery_minimum_level":int(mastery["minimum_level"]),
+        "tier_two_limit":int(model.projection["core"]["overload"]["tier_two_limit_per_attack_action"]),
+    }
+
+
+def _kv_rider_delivery_recipe(control:dict[str,Any],rider:bool)->dict[str,str]:
+    """Classify one canonical KV rider's evaluator delivery path."""
+    application=str(control["application"]);hit_gated=bool(control.get("hit_gated"));save_ability=""
+    if application=="failed_save":
+        save_ability=str(control["save"])
+        if save_ability=="discipline_signature":raise ValueError("KV delivery recipe requires a resolved signature save")
+    elif application!="no_save":
+        raise ValueError(f"Unsupported KV delivery application: {application}")
+    if rider:
+        if not hit_gated:raise ValueError("Repeatable KV on-hit rider lacks a hit gate")
+        recipe_id="kv_attack_action_hit_failed_save_retry" if save_ability else "kv_attack_action_hit_retry"
+        gate="hit_and_failed_save" if save_ability else "hit"
+        return _delivery_recipe(recipe_id,gate,"kv_attack_action_state_recursion",save_ability)
+    if hit_gated and save_ability:return _delivery_recipe("single_activation_hit_failed_save","hit_and_failed_save","single_activation",save_ability)
+    if hit_gated:return _delivery_recipe("single_activation_hit","hit","single_activation")
+    if save_ability:return _delivery_recipe("single_activation_failed_save","failed_save","single_activation",save_ability)
+    return _delivery_recipe("automatic_no_save","automatic","single_activation")
+
+
 def _effect_available(target:Target,effect:dict[str,Any],target_role:str)->bool:
     role=effect.get("target_role","all")
     if role not in {"all",target_role}:return False
@@ -137,9 +193,7 @@ def _attack_action_expected_occurrences(attacks:int,attempt_success:float,*,init
 def _repeat_rider_probability(model:AuthorityModel,config:dict[str,Any],level:int,tier:int,psi_cost:int,attempt_success:float)->float:
     """Optimize retry legality for one fixed rider tier without target identity state."""
     if model.projection["core"]["manifested_strike"]["rider_repeatability"]!="per_manifested_strike":raise ValueError("Unsupported canonical rider repeatability")
-    progression=level_config(config,level);attacks=int(progression["attacks_per_action"]);psi_pool=model.progression("psi_points",level)
-    profile=config["kv_profile"];hp=int(profile["hit_point_model"]["first_level_base"])+int(profile["constitution_modifier"])+(level-1)*(int(profile["hit_point_model"]["later_level_average"])+int(profile["constitution_modifier"]));blood_budget=int(hp*float(profile["blood_tax_hp_fraction"]))
-    mastery=model.projection["core"]["overload"]["mastery"];mastery_remaining=int(mastery["uses_per_rest"]) if level>=int(mastery["minimum_level"]) else 0;tier_two_limit=int(model.projection["core"]["overload"]["tier_two_limit_per_attack_action"]);blood_tax=model.blood_tax(level,tier)
+    resources=_kv_retry_resources(model,config,level);attacks=int(resources["attacks_per_action"]);psi_pool=int(resources["psi_pool"]);blood_budget=int(resources["blood_tax_budget"]);mastery_remaining=int(resources["overload_mastery_uses"]);tier_two_limit=int(resources["tier_two_limit"]);blood_tax=int(resources["blood_tax_by_tier"][tier])
     def legal_attempt_states(state:tuple[int,...])->tuple[tuple[int,...],...]:
         psi_spent,blood_spent,tier_twos,remaining_mastery,mastery_mode=state
         if tier==2 and tier_twos>=tier_two_limit:return ()
@@ -157,9 +211,7 @@ def _repeat_rider_probability(model:AuthorityModel,config:dict[str,Any],level:in
 def _repeat_rider_expected_occurrences(model:AuthorityModel,config:dict[str,Any],level:int,tier:int,psi_cost:int,attempt_success:float)->float:
     """Optimize legal declarations and sum successes for accumulating events."""
     if model.projection["core"]["manifested_strike"]["rider_repeatability"]!="per_manifested_strike":raise ValueError("Unsupported canonical rider repeatability")
-    progression=level_config(config,level);attacks=int(progression["attacks_per_action"]);psi_pool=model.progression("psi_points",level)
-    profile=config["kv_profile"];hp=int(profile["hit_point_model"]["first_level_base"])+int(profile["constitution_modifier"])+(level-1)*(int(profile["hit_point_model"]["later_level_average"])+int(profile["constitution_modifier"]));blood_budget=int(hp*float(profile["blood_tax_hp_fraction"]))
-    mastery=model.projection["core"]["overload"]["mastery"];mastery_remaining=int(mastery["uses_per_rest"]) if level>=int(mastery["minimum_level"]) else 0;tier_two_limit=int(model.projection["core"]["overload"]["tier_two_limit_per_attack_action"]);blood_tax=model.blood_tax(level,tier)
+    resources=_kv_retry_resources(model,config,level);attacks=int(resources["attacks_per_action"]);psi_pool=int(resources["psi_pool"]);blood_budget=int(resources["blood_tax_budget"]);mastery_remaining=int(resources["overload_mastery_uses"]);tier_two_limit=int(resources["tier_two_limit"]);blood_tax=int(resources["blood_tax_by_tier"][tier])
     def legal_attempt_states(state:tuple[int,...])->tuple[tuple[int,...],...]:
         psi_spent,blood_spent,tier_twos,remaining_mastery,mastery_mode=state
         if tier==2 and tier_twos>=tier_two_limit:return ()
@@ -282,7 +334,7 @@ def _catalog_rider_scenario(model:AuthorityModel,config:dict[str,Any],target:Tar
     rider_components=[component for component in package["shadow_components"] if not str(component["source_effect"]).startswith("mastery:")]
     feature=model.feature(entity_id,target.level,tier);control=next(item for item in feature["control_tiers"] if int(item["tier"])==tier)
     effectiveness=_catalog_effectiveness(target,control["effects"],target_role,maximum_size=control.get("maximum_size"),required_creature_type=control.get("required_creature_type"))
-    return {**package,"mastery":0.0,"whole":package["named"],"after_repeats":package["named"],"shadow_components":rider_components,"effectiveness":effectiveness}
+    return {**package,"mastery":0.0,"whole":package["named"],"after_repeats":package["named"],"shadow_components":rider_components,"effectiveness":effectiveness,"delivery_recipe":package["rider_delivery_recipe"]}
 
 
 def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int,target_role:str="primary")->dict[str,Any]:
@@ -325,7 +377,8 @@ def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipl
     if mastery_available and mastery["control_outcomes"]:
         shadow_components.append(_mastery_shadow_component(mastery,discipline_id,mastery_value,expected(mastery_single)))
     repeat=max([mastery_value,*after]);suffix=f":{target_role}" if target_role!="primary" else ""
-    return {"build":discipline_id,"scenario":f"{entity_id}:T{tier}{suffix}","eligible":eligible,"reach":100*reach,"named":100*named,"mastery":100*mastery_value,"whole":100*whole,"after_repeats":100*repeat,"shadow_components":shadow_components}
+    recipe_control={**control,"save":save} if control["application"]=="failed_save" else control
+    return {"build":discipline_id,"scenario":f"{entity_id}:T{tier}{suffix}","eligible":eligible,"reach":100*reach,"named":100*named,"mastery":100*mastery_value,"whole":100*whole,"after_repeats":100*repeat,"shadow_components":shadow_components,"rider_delivery_recipe":_kv_rider_delivery_recipe(recipe_control,rider)}
 
 
 def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str)->dict[str,Any]:
@@ -334,7 +387,8 @@ def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,di
     eligible=not mastery.get("maximum_size") or target_is_eligible(target,mastery["maximum_size"])
     attacks=int(level_config(config,target.level)["attacks_per_action"]);whole=_attack_action_retry_probability(attacks,reach) if eligible and mastery["control_outcomes"] else 0.0
     component=_mastery_shadow_component(mastery,discipline_id,whole,attacks*reach if eligible else 0.0)
-    return {"build":discipline_id,"scenario":f"mastery:{mastery['kind']}","eligible":eligible,"reach":100*reach,"named":0.0,"mastery":100*whole,"whole":100*whole,"after_repeats":100*whole,"shadow_components":[component] if component["labels"] else []}
+    recipe=_delivery_recipe("mastery_attack_action_hit_retry","hit","ordinary_attack_action_independent_hits") if mastery["control_outcomes"] else _delivery_recipe("no_modeled_control","none","none")
+    return {"build":discipline_id,"scenario":f"mastery:{mastery['kind']}","eligible":eligible,"reach":100*reach,"named":0.0,"mastery":100*whole,"whole":100*whole,"after_repeats":100*whole,"shadow_components":[component] if component["labels"] else [],"delivery_recipe":recipe}
 
 
 def _catalog_mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str)->dict[str,Any]:
@@ -450,7 +504,9 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
         if include_effectiveness:
             evidence=value.get("effectiveness")
             if not isinstance(evidence,dict):raise ValueError("Catalog scenario lacks effectiveness evidence")
-            row.update({"Effectiveness Status":evidence["status"],"Effective":evidence["effective"],"Declared Consequences":";".join(evidence["declared"]),"Surviving Consequences":";".join(evidence["surviving"]),"Effectiveness Reasons":";".join(evidence["reasons"])})
+            recipe=value.get("delivery_recipe")
+            if not isinstance(recipe,dict) or set(recipe)!={"id","gate","retry_model","save_ability"}:raise ValueError("Catalog scenario lacks exact delivery recipe evidence")
+            row.update({"Effectiveness Status":evidence["status"],"Effective":evidence["effective"],"Declared Consequences":";".join(evidence["declared"]),"Surviving Consequences":";".join(evidence["surviving"]),"Effectiveness Reasons":";".join(evidence["reasons"]),"Delivery Recipe ID":recipe["id"],"Delivery Gate":recipe["gate"],"Retry Model":recipe["retry_model"],"Resolved Save Ability":recipe["save_ability"]})
         return row
 
     def selected_audit_row(winner:dict[str,Any])->dict[str,Any]:

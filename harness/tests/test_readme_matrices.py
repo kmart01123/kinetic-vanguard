@@ -9,6 +9,7 @@ from unittest.mock import patch
 from harness import readme_matrices
 from harness.authority import AuthorityModel, DEFAULT_AUTHORITY
 from harness.comparison_report import NOTICE_COLUMNS, matrix_row
+from harness.control_harness import _kv_rider_delivery_recipe
 from harness.control_value import (
     DEFAULT_PRIMITIVES,
     DEFAULT_SCORING,
@@ -38,6 +39,7 @@ from harness.readme_matrices import (
     UNAVAILABLE,
     UNPRICED,
     ControlCatalogCell,
+    ControlDeliveryRecipe,
     CONTROL_VALUE_TRANSFORM_FORMULAS,
     MatrixSyncError,
     README_DISCIPLINES,
@@ -57,6 +59,7 @@ from harness.readme_matrices import (
     render_control_value_explanation,
     render_control_benchmark_detail,
     render_control_normalization_methodology,
+    render_control_reliability_methodology,
     render_control_primitive_pricing_rubric,
     render_control_coverage_exceptions,
     render_control_table,
@@ -64,6 +67,7 @@ from harness.readme_matrices import (
     render_kv_control_catalog,
     render_raw_kv_reliability_table,
     render_raw_kv_value_table,
+    render_reliability_recipe_legend,
     render_single_target_damage,
     render_movement_methodology,
     render_unpriced_primitive_menu,
@@ -264,6 +268,38 @@ def _full_authoritative_rows() -> tuple[
             ):
                 continue
             modeled = form.modeled_control
+            if form.is_mastery:
+                recipe = {
+                    "id": (
+                        "mastery_attack_action_hit_retry"
+                        if modeled
+                        else "no_modeled_control"
+                    ),
+                    "gate": "hit" if modeled else "none",
+                    "retry_model": (
+                        "ordinary_attack_action_independent_hits"
+                        if modeled
+                        else "none"
+                    ),
+                    "save_ability": "",
+                }
+            else:
+                feature = model.features[str(form.entity_id)]
+                control = next(
+                    row
+                    for row in feature["control_tiers"]
+                    if int(row["tier"]) == form.tier
+                )
+                resolved = dict(control)
+                if resolved.get("save") == "discipline_signature":
+                    resolved["save"] = model.disciplines[form.discipline_id][
+                        "signature_save"
+                    ]
+                recipe = _kv_rider_delivery_recipe(
+                    resolved,
+                    feature.get("damage_delivery") == "on_hit_rider"
+                    and feature.get("activation") == "on_hit",
+                )
             value_scenario_rows.append(
                 {
                     "Build": "kinetic_vanguard",
@@ -288,6 +324,10 @@ def _full_authoritative_rows() -> tuple[
                     "Declared Consequences": "outcome:synthetic_control" if modeled else "",
                     "Surviving Consequences": "outcome:synthetic_control" if modeled else "",
                     "Effectiveness Reasons": "",
+                    "Delivery Recipe ID": recipe["id"],
+                    "Delivery Gate": recipe["gate"],
+                    "Retry Model": recipe["retry_model"],
+                    "Resolved Save Ability": recipe["save_ability"],
                     **raw_common,
                 }
             )
@@ -465,7 +505,7 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
         )
         self.assertTrue(detail.startswith("# Kinetic Vanguard Control Benchmark Detail\n"))
         self.assertEqual(
-            detail.count("| Rider / form | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |"),
+            detail.count("| Rider / form | Delivery recipe | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |"),
             4,
         )
         self.assertIn("Forked Lightning — T2 — primary", detail)
@@ -866,6 +906,26 @@ class ControlCatalogTests(unittest.TestCase):
         )
         with self.assertRaisesRegex(MatrixSyncError,"unknown effectiveness reason"):
             validate_control_catalog_scenarios(bad_reason,self.catalog,self.levels)
+        unknown_recipe = deepcopy(self.scenario_rows)
+        unknown_recipe[0]["Delivery Recipe ID"] = "reader_prose_guess"
+        with self.assertRaisesRegex(MatrixSyncError,"unknown delivery recipe ID"):
+            validate_control_catalog_scenarios(
+                unknown_recipe,self.catalog,self.levels
+            )
+        inherited_mastery = deepcopy(self.scenario_rows)
+        rider = next(row for row in inherited_mastery if row["Scenario"]=="glacial_spike:T0")
+        rider.update(
+            {
+                "Delivery Recipe ID":"mastery_attack_action_hit_retry",
+                "Delivery Gate":"hit",
+                "Retry Model":"ordinary_attack_action_independent_hits",
+                "Resolved Save Ability":"",
+            }
+        )
+        with self.assertRaisesRegex(MatrixSyncError,"inherited Kinetic Mastery"):
+            validate_control_catalog_scenarios(
+                inherited_mastery,self.catalog,self.levels
+            )
 
     def test_effective_coverage_and_generated_partial_exceptions_are_semantic(self) -> None:
         rows = deepcopy(self.scenario_rows)
@@ -998,6 +1058,92 @@ class ControlCatalogTests(unittest.TestCase):
         ):
             self.assertIn(required,catalog)
         self.assertNotIn("eligible/roster",catalog)
+
+    def test_delivery_recipes_are_source_driven_and_target_invariant(self) -> None:
+        cells = validate_control_catalog_scenarios(
+            self.scenario_rows,self.catalog,self.levels
+        )
+        rendered = render_kv_control_catalog(self.catalog,cells,self.levels)
+        header = "| Rider / form | Delivery recipe | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |"
+        self.assertEqual(rendered.count(header),4)
+        self.assertIn(
+            "KV Attack-action retry — hit × failed Constitution save",
+            rendered,
+        )
+        self.assertIn(
+            "Kinetic Mastery — ordinary Attack-action at least one hit",
+            rendered,
+        )
+        rows = [
+            line
+            for line in rendered.splitlines()
+            if line.startswith("| ") and not line.startswith(("| Rider / form", "|---"))
+        ]
+        self.assertEqual(len(rows),67)
+        self.assertTrue(all(len(row.split("|"))==8 for row in rows))
+        glacial = {
+            cell.delivery_recipe
+            for key,cell in cells.items()
+            if key[:2] == ("cryokinesis","glacial_spike:T0")
+        }
+        self.assertEqual(
+            glacial,
+            {ControlDeliveryRecipe("kv_attack_action_hit_retry","hit","kv_attack_action_state_recursion","")},
+        )
+
+    def test_reliability_methodology_discloses_exact_probability_contracts(self) -> None:
+        rendered = render_control_reliability_methodology()
+        for heading in (
+            "What Reliability measures",
+            "One-attempt probability grammar",
+            "Attack-action retries",
+            "Kinetic Vanguard retry resources",
+            "Kinetic Mastery retries",
+            "Headline package versus catalog delivery",
+            "Battle Master retry recursion",
+            "Eldritch Knight spell attacks and saves",
+            "Eldritch Strike primer",
+            "Mind Sliver primer",
+            "Persistence is separate from delivery",
+            "Worked Reliability examples",
+        ):
+            self.assertIn(f"### {heading}",rendered)
+        for required in (
+            "legal initial delivery window",
+            "natural 1 misses",
+            "natural 20 hits as a critical",
+            "Saving throws do not use the attack-roll natural-1/natural-20",
+            "Magic Resistance supplies save Advantage",
+            "cancels them when both apply",
+            "enumerated over every die result",
+            "P(control) = P(hit) × P(failed save)",
+            "Automatic / no-save modeled control",
+            "1 - (1 - p)^n",
+            "max over legal next states",
+            "Action Surge is excluded",
+            "Psi spent",
+            "Blood Tax spent",
+            "Tier-2 declarations",
+            "Overload Mastery uses remaining",
+            "R(a,d) = (1-h) × R(a-1,d) + h × [f + (1-f) × R(a-1,d-1)]",
+            "one configured cast",
+            "P(ES established) = 1 - (1 - P(weapon hit))^ordinary primer attacks",
+            "approved cross-turn composition",
+            "no average `-2.5` substitution",
+            "`p`, `p × q`, and `p × q²`",
+            "Still controlled after configured repeats %` persistence diagnostic",
+            "= 0.42 = 42%",
+            "= 0.804888 = 80.49%",
+        ):
+            self.assertIn(required,rendered)
+        self.assertNotIn("same-Attack-action Mind Sliver sequencing is modeled",rendered)
+        self.assertIn("| 7 | 2 |",rendered)
+        self.assertIn("| 11 | 3 |",rendered)
+        self.assertIn("| 15 | 3 |",rendered)
+        self.assertIn("| 20 | 4 |",rendered)
+        legend = render_reliability_recipe_legend()
+        for recipe_id in readme_matrices.DELIVERY_RECIPE_IDS:
+            self.assertIn(f"`{recipe_id}`",legend)
 
     def test_rider_only_control_classification_is_authority_driven(self) -> None:
         no_rider_control = {
