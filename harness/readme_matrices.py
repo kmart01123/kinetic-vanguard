@@ -162,6 +162,7 @@ CATALOG_DELIVERY_RECIPE_COLUMNS = (
     "Delivery Gate",
     "Retry Model",
     "Resolved Save Ability",
+    "Additional Control Gate",
 )
 CATALOG_SCENARIO_COLUMNS = (
     *VALUE_SCENARIO_COLUMNS,
@@ -215,6 +216,7 @@ class ControlDeliveryRecipe:
     gate: str
     retry_model: str
     save_ability: str
+    additional_control_gate: str = ""
 
 
 @dataclass(frozen=True)
@@ -553,18 +555,19 @@ def _validate_delivery_recipe_evidence(
     gate = row["Delivery Gate"]
     retry_model = row["Retry Model"]
     save_ability = row["Resolved Save Ability"]
+    additional_control_gate = row["Additional Control Gate"]
     if recipe_id not in DELIVERY_RECIPE_IDS:
         raise MatrixSyncError(
             f"Control Value scenario detail row {index} has unknown delivery recipe ID"
         )
     contracts = {
-        "automatic_no_save": ("automatic", "single_activation", False),
         "mastery_attack_action_hit_retry": (
             "hit",
             "ordinary_attack_action_independent_hits",
             False,
         ),
         "no_modeled_control": ("none", "none", False),
+        "single_activation_automatic": ("automatic", "single_activation", False),
         "single_activation_failed_save": ("failed_save", "single_activation", True),
         "single_activation_hit": ("hit", "single_activation", False),
         "single_activation_hit_failed_save": (
@@ -588,7 +591,20 @@ def _validate_delivery_recipe_evidence(
         raise MatrixSyncError(
             f"Control Value scenario detail row {index} has inconsistent delivery recipe evidence"
         )
-    if requires_save:
+    if additional_control_gate not in {"","failed_save"}:
+        raise MatrixSyncError(
+            f"Control Value scenario detail row {index} has unknown additional-control gate"
+        )
+    if additional_control_gate:
+        if requires_save or gate not in {"hit","automatic"}:
+            raise MatrixSyncError(
+                f"Control Value scenario detail row {index} has inconsistent mixed-gate evidence"
+            )
+        if not re.fullmatch(r"[a-z]+",save_ability):
+            raise MatrixSyncError(
+                f"Control Value scenario detail row {index} lacks an additional-control save ability"
+            )
+    elif requires_save:
         if not re.fullmatch(r"[a-z]+", save_ability):
             raise MatrixSyncError(
                 f"Control Value scenario detail row {index} lacks a resolved save ability"
@@ -606,7 +622,9 @@ def _validate_delivery_recipe_evidence(
         raise MatrixSyncError("Rider delivery recipe inherited Kinetic Mastery")
     if form.modeled_control == (recipe_id == "no_modeled_control"):
         raise MatrixSyncError("Delivery recipe disagrees with modeled-control authority")
-    return ControlDeliveryRecipe(recipe_id, gate, retry_model, save_ability)
+    return ControlDeliveryRecipe(
+        recipe_id, gate, retry_model, save_ability, additional_control_gate
+    )
 
 
 def validate_control_catalog_scenarios(
@@ -1449,11 +1467,11 @@ def _render_delivery_recipe(recipe: ControlDeliveryRecipe | None) -> str:
         return "—"
     save = recipe.save_ability.title()
     labels = {
-        "automatic_no_save": "Automatic / no-save modeled control",
         "mastery_attack_action_hit_retry": (
             "Kinetic Mastery — ordinary Attack-action at least one hit"
         ),
         "no_modeled_control": "—",
+        "single_activation_automatic": "Single activation — automatic/no-save modeled control",
         "single_activation_failed_save": f"Single activation — failed {save} save",
         "single_activation_hit": "Single activation — hit",
         "single_activation_hit_failed_save": (
@@ -1465,11 +1483,16 @@ def _render_delivery_recipe(recipe: ControlDeliveryRecipe | None) -> str:
         ),
     }
     try:
-        return labels[recipe.recipe_id]
+        label=labels[recipe.recipe_id]
     except KeyError as error:
         raise MatrixSyncError(
             f"Unknown delivery recipe ID: {recipe.recipe_id}"
         ) from error
+    if not recipe.additional_control_gate:return label
+    if recipe.additional_control_gate!="failed_save" or not recipe.save_ability:
+        raise MatrixSyncError("Malformed additional-control delivery gate")
+    if recipe.gate=="automatic":label="Single activation — automatic control"
+    return f"{label}; failed {recipe.save_ability.title()} save gates additional control"
 
 
 def render_kv_control_catalog(
@@ -2368,11 +2391,14 @@ def render_reliability_recipe_legend() -> str:
     samples = (
         ControlDeliveryRecipe("mastery_attack_action_hit_retry", "hit", "ordinary_attack_action_independent_hits", ""),
         ControlDeliveryRecipe("kv_attack_action_hit_retry", "hit", "kv_attack_action_state_recursion", ""),
+        ControlDeliveryRecipe("kv_attack_action_hit_retry", "hit", "kv_attack_action_state_recursion", "constitution", "failed_save"),
         ControlDeliveryRecipe("kv_attack_action_hit_failed_save_retry", "hit_and_failed_save", "kv_attack_action_state_recursion", "constitution"),
         ControlDeliveryRecipe("single_activation_hit", "hit", "single_activation", ""),
+        ControlDeliveryRecipe("single_activation_hit", "hit", "single_activation", "constitution", "failed_save"),
         ControlDeliveryRecipe("single_activation_failed_save", "failed_save", "single_activation", "constitution"),
         ControlDeliveryRecipe("single_activation_hit_failed_save", "hit_and_failed_save", "single_activation", "constitution"),
-        ControlDeliveryRecipe("automatic_no_save", "automatic", "single_activation", ""),
+        ControlDeliveryRecipe("single_activation_automatic", "automatic", "single_activation", ""),
+        ControlDeliveryRecipe("single_activation_automatic", "automatic", "single_activation", "constitution", "failed_save"),
         ControlDeliveryRecipe("no_modeled_control", "none", "none", ""),
     )
     if {sample.recipe_id for sample in samples} != DELIVERY_RECIPE_IDS:
@@ -2383,7 +2409,10 @@ def render_reliability_recipe_legend() -> str:
             "",
             (
                 "The generated `Delivery recipe` column is diagnostic metadata from each exact "
-                "source's evaluator path. It never changes scoring or selection, contains no "
+                "source's evaluator path. Its initial gate comes from the canonical control "
+                "effects applicable to that exact target role: any `on_reach` consequence can "
+                "establish initial control, while an optional `on_failed_save` gate identifies "
+                "additional control. It never changes scoring or selection, contains no "
                 "per-target percentages, and remains present for deliverable `Unpriced` forms. "
                 "Structural restrictions and effect immunities change target effectiveness, not "
                 "the underlying source recipe. Unknown recipe IDs fail publication closed."
@@ -2392,7 +2421,15 @@ def render_reliability_recipe_legend() -> str:
             _markdown_table(
                 ("Recipe family", "Reader-facing format"),
                 tuple(
-                    (f"`{sample.recipe_id}`", _render_delivery_recipe(sample))
+                    (
+                        f"`{sample.recipe_id}`"
+                        + (
+                            " + `additional_control_gate=failed_save`"
+                            if sample.additional_control_gate
+                            else ""
+                        ),
+                        _render_delivery_recipe(sample),
+                    )
                     for sample in samples
                 ),
             ),

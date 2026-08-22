@@ -50,11 +50,11 @@ Full denominator and state methodology: [Benchmark roster, effectiveness, and co
 |---|---|---|---|---|---|
 | Kinetic Mastery | Kinetic Mastery — ordinary Attack-action at least one hit | 0.076 CU · 96.23% · 12/12 | 0.060 CU · 99.51% · 12/12 | 0.051 CU · 99.50% · 11/11 | 0.041 CU · 99.84% · 12/12 |
 | Glacial Spike — T0 | KV Attack-action retry — hit | 0.076 CU · 96.23% · 12/12 | 0.060 CU · 99.51% · 12/12 | 0.051 CU · 99.50% · 11/11 | 0.041 CU · 99.84% · 12/12 |
-| Glacial Spike — T1 | KV Attack-action retry — hit × failed Constitution save | 0.226 CU · 96.23% · 12/12 | 0.226 CU · 99.51% · 12/12 | 0.216 CU · 99.50% · 11/11 | 0.232 CU · 99.84% · 12/12 |
-| Glacial Spike — T2 | KV Attack-action retry — hit × failed Constitution save | N/A | 0.397 CU · 83.75% · 12/12 | 0.422 CU · 84.09% · 11/11 | 0.374 CU · 82.08% · 12/12 |
-| Snow Chains — T0 | KV Attack-action retry — hit × failed Constitution save | 0.807 CU · 96.23% · 12/12 | 0.836 CU · 99.51% · 12/12 | 0.861 CU · 99.50% · 11/11 | 0.897 CU · 99.84% · 12/12 |
-| Snow Chains — T1 | KV Attack-action retry — hit × failed Constitution save | 0.943 CU · 96.23% · 12/12 | 0.975 CU · 99.51% · 12/12 | 0.993 CU · 99.50% · 11/11 | 1.045 CU · 99.84% · 12/12 |
-| Snow Chains — T2 | KV Attack-action retry — hit × failed Constitution save | N/A | 1.033 CU (partial) · 83.75% · 12/12 | 1.025 CU (partial) · 84.09% · 11/11 | 0.964 CU (partial) · 82.08% · 12/12 |
+| Glacial Spike — T1 | KV Attack-action retry — hit; failed Constitution save gates additional control | 0.226 CU · 96.23% · 12/12 | 0.226 CU · 99.51% · 12/12 | 0.216 CU · 99.50% · 11/11 | 0.232 CU · 99.84% · 12/12 |
+| Glacial Spike — T2 | KV Attack-action retry — hit; failed Constitution save gates additional control | N/A | 0.397 CU · 83.75% · 12/12 | 0.422 CU · 84.09% · 11/11 | 0.374 CU · 82.08% · 12/12 |
+| Snow Chains — T0 | KV Attack-action retry — hit; failed Constitution save gates additional control | 0.807 CU · 96.23% · 12/12 | 0.836 CU · 99.51% · 12/12 | 0.861 CU · 99.50% · 11/11 | 0.897 CU · 99.84% · 12/12 |
+| Snow Chains — T1 | KV Attack-action retry — hit; failed Constitution save gates additional control | 0.943 CU · 96.23% · 12/12 | 0.975 CU · 99.51% · 12/12 | 0.993 CU · 99.50% · 11/11 | 1.045 CU · 99.84% · 12/12 |
+| Snow Chains — T2 | KV Attack-action retry — hit; failed Constitution save gates additional control | N/A | 1.033 CU (partial) · 83.75% · 12/12 | 1.025 CU (partial) · 84.09% · 11/11 | 0.964 CU (partial) · 82.08% · 12/12 |
 | Frozen Ground — T0 | Single activation — failed Constitution save | N/A | 0.125 CU · 41.54% · 12/12 | 0.124 CU · 41.23% · 11/11 | 0.119 CU · 39.52% · 12/12 |
 | Frozen Ground — T1 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
 | Frozen Ground — T2 | Single activation — failed Constitution save | N/A | 0.435 CU · 37.79% · 11/12 | 0.474 CU · 41.23% · 11/11 | 0.440 CU · 38.27% · 11/12 |
@@ -63,7 +63,7 @@ Full denominator and state methodology: [Benchmark roster, effectiveness, and co
 | Arctic Tempest — T2 | Single activation — failed Constitution save | N/A | N/A | 0.928 CU (partial) · 41.23% · 11/11 | 0.889 CU (partial) · 39.52% · 12/12 |
 | Absolute Zero — T0 | Single activation — failed Constitution save | N/A | N/A | N/A | 0.119 CU · 39.52% · 12/12 |
 | Absolute Zero — T1 | Single activation — failed Constitution save | N/A | N/A | N/A | 0.444 CU · 39.52% · 12/12 |
-| Absolute Zero — T2 | Single activation — failed Constitution save | N/A | N/A | N/A | 1.189 CU (partial) · 100.00% · 12/12 |
+| Absolute Zero — T2 | Single activation — automatic control; failed Constitution save gates additional control | N/A | N/A | N/A | 1.189 CU (partial) · 100.00% · 12/12 |
 
 #### Pyrokinesis
 
@@ -104,7 +104,7 @@ Full denominator and state methodology: [Benchmark roster, effectiveness, and co
 | Explosion/Implosion — T2 | — | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
 | Telekinetic Slam — T0 | Single activation — failed Strength save | N/A | N/A | 0.082 CU · 40.95% · 11/11 | 0.083 CU · 41.25% · 12/12 |
 | Telekinetic Slam — T1 | Single activation — failed Strength save | N/A | N/A | 0.164 CU · 40.95% · 11/11 | 0.165 CU · 41.25% · 12/12 |
-| Telekinetic Slam — T2 | Single activation — failed Strength save | N/A | N/A | 0.487 CU · 100.00% · 11/11 | 0.489 CU · 100.00% · 12/12 |
+| Telekinetic Slam — T2 | Single activation — automatic control; failed Strength save gates additional control | N/A | N/A | 0.487 CU · 100.00% · 11/11 | 0.489 CU · 100.00% · 12/12 |
 | Mass Levitation — T0 | Single activation — failed Strength save | N/A | N/A | N/A | 0.138 CU (partial) · 11.67% · 3/12 |
 | Mass Levitation — T1 | Single activation — failed Strength save | N/A | N/A | N/A | 0.180 CU (partial) · 11.67% · 3/12 |
 | Mass Levitation — T2 | — | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
@@ -133,17 +133,20 @@ Full denominator and state methodology: [Benchmark roster, effectiveness, and co
 
 ### Catalog delivery recipes
 
-The generated `Delivery recipe` column is diagnostic metadata from each exact source's evaluator path. It never changes scoring or selection, contains no per-target percentages, and remains present for deliverable `Unpriced` forms. Structural restrictions and effect immunities change target effectiveness, not the underlying source recipe. Unknown recipe IDs fail publication closed.
+The generated `Delivery recipe` column is diagnostic metadata from each exact source's evaluator path. Its initial gate comes from the canonical control effects applicable to that exact target role: any `on_reach` consequence can establish initial control, while an optional `on_failed_save` gate identifies additional control. It never changes scoring or selection, contains no per-target percentages, and remains present for deliverable `Unpriced` forms. Structural restrictions and effect immunities change target effectiveness, not the underlying source recipe. Unknown recipe IDs fail publication closed.
 
 | Recipe family | Reader-facing format |
 |---|---|
 | `mastery_attack_action_hit_retry` | Kinetic Mastery — ordinary Attack-action at least one hit |
 | `kv_attack_action_hit_retry` | KV Attack-action retry — hit |
+| `kv_attack_action_hit_retry` + `additional_control_gate=failed_save` | KV Attack-action retry — hit; failed Constitution save gates additional control |
 | `kv_attack_action_hit_failed_save_retry` | KV Attack-action retry — hit × failed Constitution save |
 | `single_activation_hit` | Single activation — hit |
+| `single_activation_hit` + `additional_control_gate=failed_save` | Single activation — hit; failed Constitution save gates additional control |
 | `single_activation_failed_save` | Single activation — failed Constitution save |
 | `single_activation_hit_failed_save` | Single activation — hit × failed Constitution save |
-| `automatic_no_save` | Automatic / no-save modeled control |
+| `single_activation_automatic` | Single activation — automatic/no-save modeled control |
+| `single_activation_automatic` + `additional_control_gate=failed_save` | Single activation — automatic control; failed Constitution save gates additional control |
 | `no_modeled_control` | — |
 
 ### Control coverage exceptions

@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
-from harness.control_harness import EFFECTIVE,INEFFECTIVE_NULLIFIED,INEFFECTIVE_STRUCTURAL,PARTIALLY_EFFECTIVE,_attack_action_retry_probability,_battle_master_retry_probability,_catalog_effectiveness,_catalog_rider_scenario,_comparator_scenario,_composed_eldritch_knight_scenarios,_delivery_recipe,_effect_available,_eldritch_strike_primer_probability,_kv_retry_resources,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
+from harness.control_harness import EFFECTIVE,INEFFECTIVE_NULLIFIED,INEFFECTIVE_STRUCTURAL,PARTIALLY_EFFECTIVE,_attack_action_retry_probability,_battle_master_retry_probability,_catalog_effectiveness,_catalog_rider_scenario,_comparator_scenario,_composed_eldritch_knight_scenarios,_delivery_recipe,_effect_available,_eldritch_strike_primer_probability,_kv_retry_resources,_kv_rider_delivery_recipe,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
 from harness.control_value import DEFAULT_PRIMITIVES,DEFAULT_SCORING
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_battle_master_dpr_for_schedule,_battle_master_result,_comparator_dpr,_comparator_score,_eldritch_knight_result,_kv_dpr,_psionic_apex_packet,_rider_values,_strike_packet_options,run as run_damage
 from harness.ek_damage_planner import EKDamagePlanner,EKScore,EKState,chromatic_orb_duplicate_probability
@@ -1085,14 +1085,70 @@ class CanonicalControlTests(unittest.TestCase):
         target=self.level_target(20)
         mastery=_mastery_scenario(self.model,self.config,target,"electrokinesis")
         rider=_catalog_rider_scenario(self.model,self.config,target,"cryokinesis","snow_chains",0)
-        automatic=_delivery_recipe("automatic_no_save","automatic","single_activation")
+        automatic=_delivery_recipe("single_activation_automatic","automatic","single_activation")
         self.assertEqual(mastery["delivery_recipe"]["id"],"mastery_attack_action_hit_retry")
         self.assertEqual(rider["delivery_recipe"],rider["rider_delivery_recipe"])
-        self.assertEqual(rider["delivery_recipe"]["id"],"kv_attack_action_hit_failed_save_retry")
+        self.assertEqual(rider["delivery_recipe"]["id"],"kv_attack_action_hit_retry")
+        self.assertEqual(rider["delivery_recipe"]["gate"],"hit")
         self.assertEqual(rider["delivery_recipe"]["save_ability"],"constitution")
-        self.assertEqual(automatic["id"],"automatic_no_save")
+        self.assertEqual(rider["delivery_recipe"]["additional_control_gate"],"failed_save")
+        self.assertEqual(automatic["id"],"single_activation_automatic")
         with self.assertRaisesRegex(ValueError,"Unknown delivery recipe ID"):
             _delivery_recipe("unknown","automatic","single_activation")
+
+    def test_mixed_gate_recipes_follow_exact_effect_gates(self)->None:
+        sentinels=(
+            ("cryokinesis","glacial_spike",1,7,"constitution"),
+            ("cryokinesis","glacial_spike",2,11,"constitution"),
+            ("cryokinesis","snow_chains",0,7,"constitution"),
+            ("cryokinesis","snow_chains",1,7,"constitution"),
+            ("cryokinesis","snow_chains",2,11,"constitution"),
+        )
+        for discipline,entity,tier,level,save in sentinels:
+            with self.subTest(entity=entity,tier=tier):
+                row=_catalog_rider_scenario(self.model,self.config,self.level_target(level),discipline,entity,tier)
+                recipe=row["delivery_recipe"]
+                self.assertEqual((recipe["id"],recipe["gate"],recipe["save_ability"],recipe["additional_control_gate"]),("kv_attack_action_hit_retry","hit",save,"failed_save"))
+                self.assertNotEqual(recipe["gate"],"hit_and_failed_save")
+                feature=self.model.features[entity];expected=100*_repeat_rider_probability(self.model,self.config,level,tier,int(feature["psi_cost"]),row["reach"]/100)
+                self.assertAlmostEqual(row["whole"],expected,places=12)
+        glacial_zero=_catalog_rider_scenario(self.model,self.config,self.level_target(7),"cryokinesis","glacial_spike",0)["delivery_recipe"]
+        self.assertEqual((glacial_zero["id"],glacial_zero["gate"],glacial_zero["save_ability"],glacial_zero["additional_control_gate"]),("kv_attack_action_hit_retry","hit","",""))
+
+    def test_standalone_mixed_gate_recipes_are_automatic_initial_delivery(self)->None:
+        target=self.level_target(20)
+        for discipline,entity,save in (("cryokinesis","absolute_zero","constitution"),("psychokinesis","telekinetic_slam","strength")):
+            with self.subTest(entity=entity):
+                row=_catalog_rider_scenario(self.model,self.config,target,discipline,entity,2);recipe=row["delivery_recipe"]
+                self.assertEqual((recipe["id"],recipe["gate"],recipe["retry_model"],recipe["save_ability"],recipe["additional_control_gate"]),("single_activation_automatic","automatic","single_activation",save,"failed_save"))
+                self.assertAlmostEqual(row["whole"],100.0)
+
+    def test_pure_save_recipe_families_remain_unchanged(self)->None:
+        target=self.level_target(20)
+        frozen=_catalog_rider_scenario(self.model,self.config,target,"cryokinesis","frozen_ground",0)["delivery_recipe"]
+        self.assertEqual((frozen["id"],frozen["gate"],frozen["save_ability"],frozen["additional_control_gate"]),("single_activation_failed_save","failed_save","constitution",""))
+        for discipline,entity,save in (("pyrokinesis","flare","dexterity"),("electrokinesis","electron_burst","charisma")):
+            with self.subTest(entity=entity):
+                recipe=_catalog_rider_scenario(self.model,self.config,target,discipline,entity,2)["delivery_recipe"]
+                self.assertEqual((recipe["id"],recipe["gate"],recipe["save_ability"],recipe["additional_control_gate"]),("kv_attack_action_hit_failed_save_retry","hit_and_failed_save",save,""))
+
+    def test_delivery_recipe_target_role_filtering_and_malformed_gates_fail_closed(self)->None:
+        control={"application":"failed_save","hit_gated":True,"save":"constitution","effects":[
+            {"target_role":"primary","gate":"on_reach","outcomes":["speed_zero"]},
+            {"target_role":"primary","gate":"on_failed_save","conditions":["restrained"]},
+            {"target_role":"secondary","gate":"on_failed_save","conditions":["restrained"]},
+        ]}
+        primary=_kv_rider_delivery_recipe(control,True,"primary");secondary=_kv_rider_delivery_recipe(control,True,"secondary")
+        self.assertEqual((primary["gate"],primary["additional_control_gate"]),("hit","failed_save"))
+        self.assertEqual((secondary["gate"],secondary["additional_control_gate"]),("hit_and_failed_save",""))
+        malformed=(
+            ({**control,"effects":[{"gate":"after_damage","outcomes":["speed_zero"]}]},"Unsupported KV delivery effect gate"),
+            ({**control,"effects":[{"target_role":"secondary","gate":"on_reach","outcomes":["speed_zero"]}]},"no applicable modeled control effect"),
+            ({**control,"save":"","effects":[{"gate":"on_failed_save","conditions":["restrained"]}]},"lacks a save ability"),
+            ({**control,"application":"no_save","effects":[{"gate":"on_failed_save","conditions":["restrained"]}]},"application disagrees"),
+        )
+        for candidate,message in malformed:
+            with self.subTest(message=message),self.assertRaisesRegex(ValueError,message):_kv_rider_delivery_recipe(candidate,True,"primary")
 
     def test_catalog_initial_delivery_is_not_repeat_save_persistence(self)->None:
         target=next(item for item in load_targets(profile="headline",levels={20}) if item.name=="Lich")

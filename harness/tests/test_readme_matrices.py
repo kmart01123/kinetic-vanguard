@@ -282,6 +282,7 @@ def _full_authoritative_rows() -> tuple[
                         else "none"
                     ),
                     "save_ability": "",
+                    "additional_control_gate": "",
                 }
             else:
                 feature = model.features[str(form.entity_id)]
@@ -299,6 +300,7 @@ def _full_authoritative_rows() -> tuple[
                     resolved,
                     feature.get("damage_delivery") == "on_hit_rider"
                     and feature.get("activation") == "on_hit",
+                    form.target_role,
                 )
             value_scenario_rows.append(
                 {
@@ -328,6 +330,7 @@ def _full_authoritative_rows() -> tuple[
                     "Delivery Gate": recipe["gate"],
                     "Retry Model": recipe["retry_model"],
                     "Resolved Save Ability": recipe["save_ability"],
+                    "Additional Control Gate": recipe["additional_control_gate"],
                     **raw_common,
                 }
             )
@@ -920,11 +923,30 @@ class ControlCatalogTests(unittest.TestCase):
                 "Delivery Gate":"hit",
                 "Retry Model":"ordinary_attack_action_independent_hits",
                 "Resolved Save Ability":"",
+                "Additional Control Gate":"",
             }
         )
         with self.assertRaisesRegex(MatrixSyncError,"inherited Kinetic Mastery"):
             validate_control_catalog_scenarios(
                 inherited_mastery,self.catalog,self.levels
+            )
+        unknown_additional = deepcopy(self.scenario_rows)
+        unknown_additional[0]["Additional Control Gate"] = "reader_guess"
+        with self.assertRaisesRegex(MatrixSyncError,"unknown additional-control gate"):
+            validate_control_catalog_scenarios(
+                unknown_additional,self.catalog,self.levels
+            )
+        target_dependent = deepcopy(self.scenario_rows)
+        changed = next(row for row in target_dependent if row["Scenario"]=="glacial_spike:T0")
+        changed.update(
+            {
+                "Resolved Save Ability":"constitution",
+                "Additional Control Gate":"failed_save",
+            }
+        )
+        with self.assertRaisesRegex(MatrixSyncError,"target-dependent delivery recipes"):
+            validate_control_catalog_scenarios(
+                target_dependent,self.catalog,self.levels
             )
 
     def test_effective_coverage_and_generated_partial_exceptions_are_semantic(self) -> None:
@@ -1067,7 +1089,23 @@ class ControlCatalogTests(unittest.TestCase):
         header = "| Rider / form | Delivery recipe | Fighter 7 | Fighter 11 | Fighter 15 | Fighter 20 |"
         self.assertEqual(rendered.count(header),4)
         self.assertIn(
-            "KV Attack-action retry — hit × failed Constitution save",
+            "KV Attack-action retry — hit × failed Dexterity save",
+            rendered,
+        )
+        self.assertIn(
+            "Glacial Spike — T1 | KV Attack-action retry — hit; failed Constitution save gates additional control",
+            rendered,
+        )
+        self.assertIn(
+            "Snow Chains — T2 | KV Attack-action retry — hit; failed Constitution save gates additional control",
+            rendered,
+        )
+        self.assertIn(
+            "Absolute Zero — T2 | Single activation — automatic control; failed Constitution save gates additional control",
+            rendered,
+        )
+        self.assertIn(
+            "Telekinetic Slam — T2 | Single activation — automatic control; failed Strength save gates additional control",
             rendered,
         )
         self.assertIn(
@@ -1089,6 +1127,15 @@ class ControlCatalogTests(unittest.TestCase):
         self.assertEqual(
             glacial,
             {ControlDeliveryRecipe("kv_attack_action_hit_retry","hit","kv_attack_action_state_recursion","")},
+        )
+        glacial_one = {
+            cell.delivery_recipe
+            for key,cell in cells.items()
+            if key[:2] == ("cryokinesis","glacial_spike:T1")
+        }
+        self.assertEqual(
+            glacial_one,
+            {ControlDeliveryRecipe("kv_attack_action_hit_retry","hit","kv_attack_action_state_recursion","constitution","failed_save")},
         )
 
     def test_reliability_methodology_discloses_exact_probability_contracts(self) -> None:

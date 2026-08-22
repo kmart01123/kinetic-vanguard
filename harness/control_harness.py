@@ -18,9 +18,9 @@ from .model import DEFAULT_CATALOG,DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_PR
 
 
 DELIVERY_RECIPE_IDS=frozenset({
-    "automatic_no_save",
     "mastery_attack_action_hit_retry",
     "no_modeled_control",
+    "single_activation_automatic",
     "single_activation_failed_save",
     "single_activation_hit",
     "single_activation_hit_failed_save",
@@ -29,10 +29,10 @@ DELIVERY_RECIPE_IDS=frozenset({
 })
 
 
-def _delivery_recipe(recipe_id:str,gate:str,retry_model:str,save_ability:str="")->dict[str,str]:
+def _delivery_recipe(recipe_id:str,gate:str,retry_model:str,save_ability:str="",additional_control_gate:str="")->dict[str,str]:
     """Return fail-closed, diagnostic-only delivery metadata."""
     if recipe_id not in DELIVERY_RECIPE_IDS:raise ValueError(f"Unknown delivery recipe ID: {recipe_id}")
-    return {"id":recipe_id,"gate":gate,"retry_model":retry_model,"save_ability":save_ability}
+    return {"id":recipe_id,"gate":gate,"retry_model":retry_model,"save_ability":save_ability,"additional_control_gate":additional_control_gate}
 
 
 def _kv_retry_resources(model:AuthorityModel,config:dict[str,Any],level:int)->dict[str,Any]:
@@ -54,23 +54,30 @@ def _kv_retry_resources(model:AuthorityModel,config:dict[str,Any],level:int)->di
     }
 
 
-def _kv_rider_delivery_recipe(control:dict[str,Any],rider:bool)->dict[str,str]:
-    """Classify one canonical KV rider's evaluator delivery path."""
-    application=str(control["application"]);hit_gated=bool(control.get("hit_gated"));save_ability=""
-    if application=="failed_save":
-        save_ability=str(control["save"])
-        if save_ability=="discipline_signature":raise ValueError("KV delivery recipe requires a resolved signature save")
-    elif application!="no_save":
-        raise ValueError(f"Unsupported KV delivery application: {application}")
+def _kv_rider_delivery_recipe(control:dict[str,Any],rider:bool,target_role:str="primary")->dict[str,str]:
+    """Classify one exact KV rider from its target-role-applicable effect gates."""
+    applicable=[effect for effect in control["effects"] if effect.get("target_role","all") in {"all",target_role} and (effect.get("conditions") or effect.get("outcomes"))]
+    if not applicable:raise ValueError("KV delivery recipe has no applicable modeled control effect")
+    gates={str(effect["gate"]) for effect in applicable}
+    unknown=gates-{"on_reach","on_failed_save"}
+    if unknown:raise ValueError(f"Unsupported KV delivery effect gate: {sorted(unknown)}")
+    application=str(control["application"])
+    if application not in {"failed_save","no_save"}:raise ValueError(f"Unsupported KV delivery application: {application}")
+    if "on_failed_save" in gates and application!="failed_save":raise ValueError("KV delivery application disagrees with applicable effect gates")
+    hit_gated=bool(control.get("hit_gated"));has_reach="on_reach" in gates;has_failed_save="on_failed_save" in gates
+    save_ability=str(control.get("save","")) if has_failed_save else ""
+    if save_ability=="discipline_signature":raise ValueError("KV delivery recipe requires a resolved signature save")
+    if has_failed_save and not save_ability:raise ValueError("KV failed-save delivery gate lacks a save ability")
+    additional="failed_save" if has_reach and has_failed_save else ""
     if rider:
         if not hit_gated:raise ValueError("Repeatable KV on-hit rider lacks a hit gate")
-        recipe_id="kv_attack_action_hit_failed_save_retry" if save_ability else "kv_attack_action_hit_retry"
-        gate="hit_and_failed_save" if save_ability else "hit"
-        return _delivery_recipe(recipe_id,gate,"kv_attack_action_state_recursion",save_ability)
-    if hit_gated and save_ability:return _delivery_recipe("single_activation_hit_failed_save","hit_and_failed_save","single_activation",save_ability)
-    if hit_gated:return _delivery_recipe("single_activation_hit","hit","single_activation")
-    if save_ability:return _delivery_recipe("single_activation_failed_save","failed_save","single_activation",save_ability)
-    return _delivery_recipe("automatic_no_save","automatic","single_activation")
+        if has_reach:return _delivery_recipe("kv_attack_action_hit_retry","hit","kv_attack_action_state_recursion",save_ability,additional)
+        return _delivery_recipe("kv_attack_action_hit_failed_save_retry","hit_and_failed_save","kv_attack_action_state_recursion",save_ability)
+    if has_reach:
+        if hit_gated:return _delivery_recipe("single_activation_hit","hit","single_activation",save_ability,additional)
+        return _delivery_recipe("single_activation_automatic","automatic","single_activation",save_ability,additional)
+    if hit_gated:return _delivery_recipe("single_activation_hit_failed_save","hit_and_failed_save","single_activation",save_ability)
+    return _delivery_recipe("single_activation_failed_save","failed_save","single_activation",save_ability)
 
 
 def _effect_available(target:Target,effect:dict[str,Any],target_role:str)->bool:
@@ -378,7 +385,7 @@ def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipl
         shadow_components.append(_mastery_shadow_component(mastery,discipline_id,mastery_value,expected(mastery_single)))
     repeat=max([mastery_value,*after]);suffix=f":{target_role}" if target_role!="primary" else ""
     recipe_control={**control,"save":save} if control["application"]=="failed_save" else control
-    return {"build":discipline_id,"scenario":f"{entity_id}:T{tier}{suffix}","eligible":eligible,"reach":100*reach,"named":100*named,"mastery":100*mastery_value,"whole":100*whole,"after_repeats":100*repeat,"shadow_components":shadow_components,"rider_delivery_recipe":_kv_rider_delivery_recipe(recipe_control,rider)}
+    return {"build":discipline_id,"scenario":f"{entity_id}:T{tier}{suffix}","eligible":eligible,"reach":100*reach,"named":100*named,"mastery":100*mastery_value,"whole":100*whole,"after_repeats":100*repeat,"shadow_components":shadow_components,"rider_delivery_recipe":_kv_rider_delivery_recipe(recipe_control,rider,target_role)}
 
 
 def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str)->dict[str,Any]:
@@ -505,8 +512,8 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
             evidence=value.get("effectiveness")
             if not isinstance(evidence,dict):raise ValueError("Catalog scenario lacks effectiveness evidence")
             recipe=value.get("delivery_recipe")
-            if not isinstance(recipe,dict) or set(recipe)!={"id","gate","retry_model","save_ability"}:raise ValueError("Catalog scenario lacks exact delivery recipe evidence")
-            row.update({"Effectiveness Status":evidence["status"],"Effective":evidence["effective"],"Declared Consequences":";".join(evidence["declared"]),"Surviving Consequences":";".join(evidence["surviving"]),"Effectiveness Reasons":";".join(evidence["reasons"]),"Delivery Recipe ID":recipe["id"],"Delivery Gate":recipe["gate"],"Retry Model":recipe["retry_model"],"Resolved Save Ability":recipe["save_ability"]})
+            if not isinstance(recipe,dict) or set(recipe)!={"id","gate","retry_model","save_ability","additional_control_gate"}:raise ValueError("Catalog scenario lacks exact delivery recipe evidence")
+            row.update({"Effectiveness Status":evidence["status"],"Effective":evidence["effective"],"Declared Consequences":";".join(evidence["declared"]),"Surviving Consequences":";".join(evidence["surviving"]),"Effectiveness Reasons":";".join(evidence["reasons"]),"Delivery Recipe ID":recipe["id"],"Delivery Gate":recipe["gate"],"Retry Model":recipe["retry_model"],"Resolved Save Ability":recipe["save_ability"],"Additional Control Gate":recipe["additional_control_gate"]})
         return row
 
     def selected_audit_row(winner:dict[str,Any])->dict[str,Any]:
