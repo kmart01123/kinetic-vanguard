@@ -6,7 +6,7 @@ import { summarizeDiagnostics,validateSemantics } from "./validate.js";
 import type { Authority,CalculatorLevelBand,HarnessFeatureRule } from "./types.js";
 
 export interface HarnessProjection {
-  projection_version:"1.1.0";
+  projection_version:"1.2.0";
   authority_path:string;
   authority_sha256:string;
   rules_version:string;
@@ -15,7 +15,7 @@ export interface HarnessProjection {
   progressions:{proficiency_bonus:CalculatorLevelBand[];psi_points:CalculatorLevelBand[];psionic_focus:CalculatorLevelBand[];manifested_strike_die:CalculatorLevelBand[];tier_minimum_levels:Authority["calculator"]["tier_minimum_levels"]};
   core:Pick<Authority["calculator"]["harness_mechanics"],"action_economy"|"manifested_strike"|"overload"|"psionic_apex">;
   disciplines:Authority["calculator"]["harness_mechanics"]["disciplines"];
-  features:Array<HarnessFeatureRule&{minimum_level:number;psi_cost:number;activation:string;damage_delivery:string|null;damage_tiers:NonNullable<Authority["calculator"]["features"][number]["tiers"]>;selectable_advanced_training:boolean}>;
+  features:Array<HarnessFeatureRule&{title:string;minimum_level:number;psi_cost:number;activation:string;damage_delivery:string|null;damage_tiers:NonNullable<Authority["calculator"]["features"][number]["tiers"]>;advanced_training:boolean;selectable_advanced_training:boolean}>;
 }
 
 export async function createHarnessProjection(authorityPath="KineticVanguard.yaml"):Promise<HarnessProjection>{
@@ -28,10 +28,11 @@ export async function createHarnessProjection(authorityPath="KineticVanguard.yam
   const features=harness.feature_rules.map(rule=>{
     const entity=entities.get(rule.entity_id);if(!entity||entity.level===undefined||entity.psi_cost===undefined)throw new Error(`Harness feature ${rule.entity_id} lacks canonical entity availability or Psi cost`);
     const damage=damageFeatures.get(rule.entity_id);
-    return {...structuredClone(rule),minimum_level:entity.level,psi_cost:entity.psi_cost,activation:entity.activation??"passive",damage_delivery:damage?.delivery??null,damage_tiers:structuredClone(damage?.tiers??[]),selectable_advanced_training:entity.classifications.rules_area.includes("advanced_training")&&entity.classifications.acquisition_mode==="selectable"};
+    const advancedTraining=entity.classifications.rules_area.includes("advanced_training");
+    return {...structuredClone(rule),title:entity.title,minimum_level:entity.level,psi_cost:entity.psi_cost,activation:entity.activation??"passive",damage_delivery:damage?.delivery??null,damage_tiers:structuredClone(damage?.tiers??[]),advanced_training:advancedTraining,selectable_advanced_training:advancedTraining&&entity.classifications.acquisition_mode==="selectable"};
   });
   return {
-    projection_version:"1.1.0",authority_path:resolve(authorityPath),authority_sha256:sha256(loaded.sourceBytes),rules_version:authority.rules_version,schema_version:authority.schema_version,
+    projection_version:"1.2.0",authority_path:resolve(authorityPath),authority_sha256:sha256(loaded.sourceBytes),rules_version:authority.rules_version,schema_version:authority.schema_version,
     supported_level_range:{minimum:calculator.fighter_level_minimum,maximum:calculator.fighter_level_maximum},
     progressions:{proficiency_bonus:structuredClone(calculator.proficiency_bonus_bands),psi_points:structuredClone(calculator.psi_point_bands),psionic_focus:structuredClone(calculator.psionic_focus_bands),manifested_strike_die:structuredClone(calculator.manifested_strike_die_bands),tier_minimum_levels:structuredClone(calculator.tier_minimum_levels)},
     core:{action_economy:structuredClone(harness.action_economy),manifested_strike:structuredClone(harness.manifested_strike),overload:structuredClone(harness.overload),psionic_apex:structuredClone(harness.psionic_apex)},disciplines:structuredClone(harness.disciplines),features

@@ -7,12 +7,14 @@ import { validateSemantics } from "../src/validate.js";
 
 test("harness projection reads the real authority and joins mechanics by stable entity ID",async()=>{
   const projection=await createHarnessProjection();
-  assert.equal(projection.projection_version,"1.1.0");
+  assert.equal(projection.projection_version,"1.2.0");
   assert.match(projection.authority_path,/\/KineticVanguard\.yaml$/);
   assert.ok(Number.isInteger(projection.core.action_economy.standalone_psionic_action_limit_per_turn));
   assert.equal(projection.core.manifested_strike.rider_repeatability,"per_manifested_strike");
   assert.equal(new Set(projection.features.map(item=>item.entity_id)).size,projection.features.length);
-  assert.ok(projection.features.every(item=>Number.isInteger(item.minimum_level)&&Number.isInteger(item.psi_cost)&&!Object.hasOwn(item,"title")));
+  assert.ok(projection.features.every(item=>Number.isInteger(item.minimum_level)&&Number.isInteger(item.psi_cost)&&item.title.length>0));
+  assert.equal(projection.features.find(item=>item.entity_id==="explosion_implosion")?.title,"Explosion/Implosion");
+  assert.equal(projection.features.find(item=>item.entity_id==="advanced_phase_step")?.advanced_training,true);
   assert.ok(projection.features.every(item=>!Object.hasOwn(item,"repeatability")));
   assert.ok(projection.disciplines.every(item=>item.id&&item.damage_type&&item.signature_save&&item.mastery));
   assert.ok(projection.features.some(item=>item.damage_tiers.length&&item.control_tiers?.length));
