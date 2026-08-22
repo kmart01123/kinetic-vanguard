@@ -26,6 +26,53 @@ def _effect_available(target:Target,effect:dict[str,Any],target_role:str)->bool:
     return bool(outcomes) or any(condition.lower() not in target.condition_immunities for condition in conditions)
 
 
+EFFECTIVE="effective"
+PARTIALLY_EFFECTIVE="partially_effective"
+INEFFECTIVE_STRUCTURAL="ineffective_structural"
+INEFFECTIVE_NULLIFIED="ineffective_nullified"
+EFFECTIVENESS_NOT_APPLICABLE="not_applicable"
+
+
+def _catalog_effectiveness(target:Target,effects:Sequence[dict[str,Any]],target_role:str,*,maximum_size:str|None=None,required_creature_type:str|None=None,modeled_control:bool=True)->dict[str,Any]:
+    """Derive publication-only exact-source effectiveness from evaluator facts."""
+    eligible=target_is_eligible(target,maximum_size,required_creature_type)
+    declared:list[str]=[];surviving:list[str]=[];reasons:list[str]=[]
+    if not modeled_control:
+        return {"status":EFFECTIVENESS_NOT_APPLICABLE,"effective":False,"declared":declared,"surviving":surviving,"reasons":reasons}
+    applicable=[]
+    for effect in effects:
+        if effect.get("target_role","all") in {"all",target_role}:applicable.append(effect)
+    for effect in applicable:
+        labels=[*(f"condition:{str(condition).lower()}" for condition in effect.get("conditions",[])),*(f"outcome:{str(outcome).lower()}" for outcome in effect.get("outcomes",[]))]
+        declared.extend(labels)
+    if not declared:raise ValueError("Modeled catalog control source has no applicable consequences")
+    if not eligible:
+        if maximum_size and not target_is_eligible(target,maximum_size):reasons.append(f"exceeds_maximum_size:{maximum_size.lower()}")
+        if required_creature_type and target.creature_type.lower()!=required_creature_type.lower():reasons.append(f"requires_creature_type:{required_creature_type.lower()}")
+        if not reasons:raise ValueError("Structurally ineligible catalog source has no maintained reason")
+        return {"status":INEFFECTIVE_STRUCTURAL,"effective":False,"declared":declared,"surviving":surviving,"reasons":reasons}
+    for effect in applicable:
+        conditions=[str(condition) for condition in effect.get("conditions",[])];outcomes=[str(outcome) for outcome in effect.get("outcomes",[])];dependency=effect.get("requires_condition")
+        if dependency and str(dependency).lower() in target.condition_immunities:
+            token=f"dependency_condition_immune:{str(dependency).lower()}"
+            if token not in reasons:reasons.append(token)
+            if _effect_available(target,effect,target_role):raise ValueError("Catalog dependency evidence disagrees with evaluator availability")
+            continue
+        effect_surviving=[*(f"condition:{condition.lower()}" for condition in conditions if condition.lower() not in target.condition_immunities),*(f"outcome:{outcome.lower()}" for outcome in outcomes)]
+        for condition in conditions:
+            if condition.lower() in target.condition_immunities:
+                token=f"immune_condition:{condition.lower()}"
+                if token not in reasons:reasons.append(token)
+        if bool(effect_surviving)!=_effect_available(target,effect,target_role):raise ValueError("Catalog consequence evidence disagrees with evaluator availability")
+        surviving.extend(effect_surviving)
+    if surviving and len(surviving)==len(declared):status=EFFECTIVE
+    elif surviving:status=PARTIALLY_EFFECTIVE
+    else:status=INEFFECTIVE_NULLIFIED
+    if status==EFFECTIVE and reasons:raise ValueError("Fully effective catalog source cannot retain nullification reasons")
+    if status!=EFFECTIVE and not reasons:raise ValueError("Reduced catalog effectiveness lacks a maintained reason")
+    return {"status":status,"effective":bool(surviving),"declared":declared,"surviving":surviving,"reasons":reasons}
+
+
 def _eldritch_knight_spellcasting_modifier(row:dict[str,Any],level:int)->int:
     """Return the one maintained EK ability modifier used by attacks and save DCs."""
     return int(row["spellcasting_ability_modifier_by_level"][str(level)])
@@ -233,7 +280,9 @@ def _catalog_rider_scenario(model:AuthorityModel,config:dict[str,Any],target:Tar
     """Project rider-only catalog evidence without changing headline packages."""
     package=_kv_scenario(model,config,target,discipline_id,entity_id,tier,target_role)
     rider_components=[component for component in package["shadow_components"] if not str(component["source_effect"]).startswith("mastery:")]
-    return {**package,"mastery":0.0,"whole":package["named"],"after_repeats":package["named"],"shadow_components":rider_components}
+    feature=model.feature(entity_id,target.level,tier);control=next(item for item in feature["control_tiers"] if int(item["tier"])==tier)
+    effectiveness=_catalog_effectiveness(target,control["effects"],target_role,maximum_size=control.get("maximum_size"),required_creature_type=control.get("required_creature_type"))
+    return {**package,"mastery":0.0,"whole":package["named"],"after_repeats":package["named"],"shadow_components":rider_components,"effectiveness":effectiveness}
 
 
 def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str,entity_id:str,tier:int,target_role:str="primary")->dict[str,Any]:
@@ -286,6 +335,13 @@ def _mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,di
     attacks=int(level_config(config,target.level)["attacks_per_action"]);whole=_attack_action_retry_probability(attacks,reach) if eligible and mastery["control_outcomes"] else 0.0
     component=_mastery_shadow_component(mastery,discipline_id,whole,attacks*reach if eligible else 0.0)
     return {"build":discipline_id,"scenario":f"mastery:{mastery['kind']}","eligible":eligible,"reach":100*reach,"named":0.0,"mastery":100*whole,"whole":100*whole,"after_repeats":100*whole,"shadow_components":[component] if component["labels"] else []}
+
+
+def _catalog_mastery_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipline_id:str)->dict[str,Any]:
+    """Attach publication-only effectiveness to Mastery-only evidence."""
+    scenario=_mastery_scenario(model,config,target,discipline_id);mastery=model.disciplines[discipline_id]["mastery"];outcomes=list(mastery["control_outcomes"])
+    effectiveness=_catalog_effectiveness(target,[{"outcomes":outcomes}],"primary",maximum_size=mastery.get("maximum_size"),modeled_control=bool(outcomes))
+    return {**scenario,"effectiveness":effectiveness}
 
 
 def _comparator_scenario(model:AuthorityModel,config:dict[str,Any],comparators:dict[str,Any],target:Target,build_id:str,scenario:dict[str,Any])->dict[str,Any]:
@@ -379,7 +435,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
         if identity in publication_identities:raise ValueError(f"Duplicate publication-only scenario identity: {identity}")
         publication_identities.add(identity);publication_by_discipline[identity[0]].append({"entity_id":identity[1],"tier":identity[2],"target_role":identity[3]})
 
-    def value_row(target:Target,build:str,discipline:str,value:dict[str,Any],*,collect_detail:bool)->dict[str,Any]:
+    def value_row(target:Target,build:str,discipline:str,value:dict[str,Any],*,collect_detail:bool,include_effectiveness:bool=False)->dict[str,Any]:
         metadata={"Build":build,"Discipline":discipline,"Level":target.level,"Target":target.name,"Scenario":value["scenario"]}
         rows=shadow_rows(metadata,value["shadow_components"],horizon=int(config["methodology"]["rounds"]),benchmark_locomotion_speed=target.benchmark_locomotion_speed)
         if collect_detail:shadow_detail.extend(rows)
@@ -390,7 +446,12 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
         retained_unpriced=sum(row["Pricing Status"]!="candidate" and row["Normalization"] not in {"suppressed","combined_into_disjoint_stages"} for row in rows)
         zero_context=bool(rows and total==0.0 and retained_candidate==0 and unpriced>0)
         disposition="ineligible" if not value["eligible"] else ("priced_nonzero" if total!=0.0 else ("entirely_context_required_or_unsupported" if zero_context else "legitimately_priced_zero"))
-        return {**metadata,"Eligible":value["eligible"],"Control Value CU":total,"Whole-package control stick %":value["whole"],"Value Disposition":disposition,"Primitive Rows":len(rows),"Candidate Rows":candidate,"Context/Unsupported Rows":unpriced,"Retained Candidate Rows":retained_candidate,"Retained Context/Unsupported Rows":retained_unpriced,"Zero Entirely Fail-Closed Context":zero_context}
+        row={**metadata,"Eligible":value["eligible"],"Control Value CU":total,"Whole-package control stick %":value["whole"],"Value Disposition":disposition,"Primitive Rows":len(rows),"Candidate Rows":candidate,"Context/Unsupported Rows":unpriced,"Retained Candidate Rows":retained_candidate,"Retained Context/Unsupported Rows":retained_unpriced,"Zero Entirely Fail-Closed Context":zero_context}
+        if include_effectiveness:
+            evidence=value.get("effectiveness")
+            if not isinstance(evidence,dict):raise ValueError("Catalog scenario lacks effectiveness evidence")
+            row.update({"Effectiveness Status":evidence["status"],"Effective":evidence["effective"],"Declared Consequences":";".join(evidence["declared"]),"Surviving Consequences":";".join(evidence["surviving"]),"Effectiveness Reasons":";".join(evidence["reasons"])})
+        return row
 
     def selected_audit_row(winner:dict[str,Any])->dict[str,Any]:
         return {"Level":winner["Level"],"Target":winner["Target"],"Discipline":winner["Discipline"],"Build":winner["Build"],"Selected Scenario":winner["Scenario"],"Eligible":winner["Eligible"],"Selection Basis":"Control Value","Control Value CU":winner["Control Value CU"],"Whole-package control stick %":winner["Whole-package control stick %"],"Value Disposition":winner["Value Disposition"]}
@@ -421,16 +482,14 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
             if write_shadow:value_scenarios.extend(scored)
             winner=_select_control_value(scored);selected=selected_audit_row(winner);audit.append(selected)
             if write_shadow:
-                catalog_scenarios.append(
-                    next(row for row in scored if str(row["Scenario"]).startswith("mastery:"))
-                )
+                catalog_scenarios.append(value_row(target,"kinetic_vanguard",discipline,_catalog_mastery_scenario(model,config,target,discipline),collect_detail=False,include_effectiveness=True))
                 value_audit.append(selected);value_envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":winner["Control Value CU"],"Eldritch Knight":comparator_winners["eldritch_knight"]["Control Value CU"],"Battle Master":comparator_winners["battle_master"]["Control Value CU"]})
                 for entry in publication_by_discipline.get(discipline,[]):
                     try:publication_value=_catalog_rider_scenario(model,config,target,discipline,entry["entity_id"],entry["tier"],entry["target_role"])
                     except Exception as error:
                         if "unavailable" in str(error):continue
                         raise
-                    catalog_scenarios.append(value_row(target,"kinetic_vanguard",discipline,publication_value,collect_detail=False))
+                    catalog_scenarios.append(value_row(target,"kinetic_vanguard",discipline,publication_value,collect_detail=False,include_effectiveness=True))
             envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":winner["Whole-package control stick %"],"Eldritch Knight":comparator_winners["eldritch_knight"]["Whole-package control stick %"],"Battle Master":comparator_winners["battle_master"]["Whole-package control stick %"]})
     slug=model.rules_version.replace(".","-");output_dir.mkdir(parents=True,exist_ok=True)
     source_columns={"Rules Version":model.rules_version,"Authority SHA-256":model.authority_sha256,"Catalog SHA-256":file_sha256(DEFAULT_CATALOG),"Roster SHA-256":file_sha256(DEFAULT_ROSTERS),"Target Profile":profile,"Config SHA-256":file_sha256(DEFAULT_CONFIG),"Comparator Config SHA-256":file_sha256(DEFAULT_COMPARATORS),**NOTICE_COLUMNS}

@@ -9,6 +9,7 @@ import os
 import re
 import stat
 import tempfile
+from collections import Counter
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Mapping, Sequence
@@ -20,7 +21,14 @@ from .comparison_report import (
     VALUE_COLUMNS,
     matrix_row,
 )
-from .control_harness import run as run_control
+from .control_harness import (
+    EFFECTIVE,
+    EFFECTIVENESS_NOT_APPLICABLE,
+    INEFFECTIVE_NULLIFIED,
+    INEFFECTIVE_STRUCTURAL,
+    PARTIALLY_EFFECTIVE,
+    run as run_control,
+)
 from .control_value import (
     DEFAULT_PRIMITIVES,
     DEFAULT_SCORING,
@@ -137,6 +145,14 @@ VALUE_SCENARIO_COLUMNS = (
     "Control Primitive Catalog SHA-256",
     "Control Value Config SHA-256",
 )
+CATALOG_EFFECTIVENESS_COLUMNS = (
+    "Effectiveness Status",
+    "Effective",
+    "Declared Consequences",
+    "Surviving Consequences",
+    "Effectiveness Reasons",
+)
+CATALOG_SCENARIO_COLUMNS = (*VALUE_SCENARIO_COLUMNS, *CATALOG_EFFECTIVENESS_COLUMNS)
 
 PRICED = "priced"
 PARTIALLY_PRICED = "partially_priced"
@@ -171,12 +187,21 @@ class ControlCatalogForm:
 
 
 @dataclass(frozen=True)
+class ControlCoverageException:
+    target: str
+    status: str
+    reasons: tuple[str, ...]
+    surviving_consequences: tuple[str, ...]
+
+
+@dataclass(frozen=True)
 class ControlCatalogCell:
     state: str
     mean_cu: float | None = None
     mean_delivery: float | None = None
-    eligible_targets: int | None = None
+    effective_targets: int | None = None
     total_targets: int | None = None
+    exceptions: tuple[ControlCoverageException, ...] = ()
 
 
 class MatrixSyncError(ValueError):
@@ -386,13 +411,94 @@ def classify_catalog_pricing(
     raise MatrixSyncError("Control-bearing form has no retained meaningful consequence")
 
 
+def _catalog_tokens(value: str, pattern: str, label: str, index: int) -> tuple[str, ...]:
+    if value == "":
+        return ()
+    tokens = tuple(value.split(";"))
+    if any(not re.fullmatch(pattern, token) for token in tokens):
+        raise MatrixSyncError(
+            f"Control Value scenario detail row {index} has unknown {label}"
+        )
+    return tokens
+
+
+def _validate_effectiveness_evidence(
+    row: MatrixRow,
+    index: int,
+    form: ControlCatalogForm,
+    eligible: bool,
+    cu: float,
+    delivery: float,
+) -> dict[str, object]:
+    status = row["Effectiveness Status"]
+    effective_text = row["Effective"]
+    if effective_text not in {"True", "False"}:
+        raise MatrixSyncError(
+            f"Control Value scenario detail row {index} has invalid effectiveness"
+        )
+    effective = effective_text == "True"
+    declared = _catalog_tokens(
+        row["Declared Consequences"], r"(?:condition|outcome):[a-z0-9_]+", "consequence token", index
+    )
+    surviving = _catalog_tokens(
+        row["Surviving Consequences"], r"(?:condition|outcome):[a-z0-9_]+", "consequence token", index
+    )
+    reasons = _catalog_tokens(
+        row["Effectiveness Reasons"],
+        r"(?:exceeds_maximum_size|requires_creature_type|immune_condition|dependency_condition_immune):[a-z0-9_]+",
+        "effectiveness reason",
+        index,
+    )
+    declared_counts = Counter(declared)
+    surviving_counts = Counter(surviving)
+    if surviving_counts - declared_counts:
+        raise MatrixSyncError(
+            f"Control Value scenario detail row {index} has undeclared surviving control"
+        )
+    structural_reasons = tuple(
+        reason for reason in reasons if reason.startswith(("exceeds_maximum_size:", "requires_creature_type:"))
+    )
+    effect_reasons = tuple(
+        reason for reason in reasons if reason.startswith(("immune_condition:", "dependency_condition_immune:"))
+    )
+    if status == EFFECTIVENESS_NOT_APPLICABLE:
+        valid = not form.modeled_control and not effective and not declared and not surviving and not reasons
+    elif status == EFFECTIVE:
+        valid = form.modeled_control and eligible and effective and bool(declared) and declared_counts == surviving_counts and not reasons
+    elif status == PARTIALLY_EFFECTIVE:
+        valid = form.modeled_control and eligible and effective and bool(surviving) and surviving_counts != declared_counts and bool(effect_reasons) and not structural_reasons
+    elif status == INEFFECTIVE_STRUCTURAL:
+        valid = form.modeled_control and not eligible and not effective and bool(declared) and not surviving and bool(structural_reasons) and not effect_reasons
+    elif status == INEFFECTIVE_NULLIFIED:
+        valid = form.modeled_control and eligible and not effective and bool(declared) and not surviving and bool(effect_reasons) and not structural_reasons
+    else:
+        raise MatrixSyncError(
+            f"Control Value scenario detail row {index} has unknown effectiveness status"
+        )
+    if not valid:
+        raise MatrixSyncError(
+            f"Control Value scenario detail row {index} has inconsistent effectiveness evidence"
+        )
+    if not effective and form.modeled_control and (cu != 0.0 or delivery != 0.0):
+        raise MatrixSyncError(
+            f"Ineffective exact scenario {(row['Level'], row['Target'], *form.identity)} must contribute zero"
+        )
+    return {
+        "status": status,
+        "effective": effective,
+        "declared": declared,
+        "surviving": surviving,
+        "reasons": reasons,
+    }
+
+
 def validate_control_catalog_scenarios(
     scenario_rows: Sequence[MatrixRow],
     catalog: Sequence[ControlCatalogForm],
     levels: Sequence[int],
 ) -> dict[tuple[str, str, int], ControlCatalogCell]:
     """Validate exact scenario evidence and aggregate complete-roster catalog cells."""
-    _require_fields(scenario_rows, VALUE_SCENARIO_COLUMNS, "Control Value scenario detail")
+    _require_fields(scenario_rows, CATALOG_SCENARIO_COLUMNS, "Control Value scenario detail")
     model = AuthorityModel.load(DEFAULT_AUTHORITY)
     expected_source = {
         "Rules Version": model.rules_version,
@@ -477,12 +583,17 @@ def validate_control_catalog_scenarios(
             raise MatrixSyncError(
                 f"Ineligible exact scenario {identity} must contribute zero"
             )
+        effectiveness = _validate_effectiveness_evidence(
+            row, index, form, eligible, cu, delivery
+        )
         parsed[identity] = {
+            "target": row["Target"],
             "cu": cu,
             "delivery": delivery,
             "eligible": eligible,
             "retained_candidates": retained_candidates,
             "retained_context": retained_context,
+            **effectiveness,
         }
 
     targets = load_targets(profile=DEFAULT_PROFILE, levels=set(levels))
@@ -519,7 +630,7 @@ def validate_control_catalog_scenarios(
                 raise MatrixSyncError(
                     f"Exact scenario {form.identity} has an incomplete level-{level} roster"
                 )
-            eligible = sum(bool(row["eligible"]) for row in rows)
+            effective = sum(bool(row["effective"]) for row in rows)
             state = classify_catalog_pricing(
                 sum(int(row["retained_candidates"]) for row in rows),
                 sum(int(row["retained_context"]) for row in rows),
@@ -528,8 +639,25 @@ def validate_control_catalog_scenarios(
                 state=state,
                 mean_cu=sum(float(row["cu"]) for row in rows) / total,
                 mean_delivery=sum(float(row["delivery"]) for row in rows) / total,
-                eligible_targets=eligible,
+                effective_targets=effective,
                 total_targets=total,
+                exceptions=tuple(
+                    ControlCoverageException(
+                        target=str(row["target"]),
+                        status=str(row["status"]),
+                        reasons=tuple(str(reason) for reason in row["reasons"]),
+                        surviving_consequences=tuple(
+                            str(consequence) for consequence in row["surviving"]
+                        ),
+                    )
+                    for row in rows
+                    if row["status"]
+                    in {
+                        PARTIALLY_EFFECTIVE,
+                        INEFFECTIVE_STRUCTURAL,
+                        INEFFECTIVE_NULLIFIED,
+                    }
+                ),
             )
     return cells
 
@@ -1171,14 +1299,14 @@ def _render_catalog_cell(cell: ControlCatalogCell) -> str:
     if (
         cell.mean_cu is None
         or cell.mean_delivery is None
-        or cell.eligible_targets is None
+        or cell.effective_targets is None
         or cell.total_targets is None
         or not math.isfinite(cell.mean_cu)
         or not math.isfinite(cell.mean_delivery)
-        or not 0 <= cell.eligible_targets <= cell.total_targets
+        or not 0 <= cell.effective_targets <= cell.total_targets
     ):
         raise MatrixSyncError("Control catalog cell is missing aggregate evidence")
-    coverage = f"{cell.eligible_targets}/{cell.total_targets}"
+    coverage = f"{cell.effective_targets}/{cell.total_targets}"
     if cell.state == PRICED:
         return f"{cell.mean_cu:.3f} CU · {cell.mean_delivery:.2f}% · {coverage}"
     if cell.state == PARTIALLY_PRICED:
@@ -1225,39 +1353,39 @@ def render_kv_control_catalog(
             "column uses the complete maintained roster for that level."
         ),
         "",
-        "**Cell format:** `CU · delivery · eligible/roster`",
+        "**Cell format:** `CU · delivery · effective/roster`",
         "",
         (
             "Example: `0.143 CU · 95.00% · 12/12` means `0.143 CU` average Control "
             "Value and `95.00%` average initial control-delivery probability across the full "
-            "benchmark roster at that fighter level; `12/12` means all 12 targets satisfy the "
-            "exact form's structural target restrictions. The ratio is **eligible targets / "
+            "benchmark roster at that fighter level. `effective/roster` is **targets against "
+            "which at least one modeled control consequence from that exact source survives "
+            "maintained structural restrictions, immunities, and effect dependencies / total "
             "roster targets**."
         ),
         "",
         (
-            "If a cell says `9/12`, only 9 of 12 targets satisfy the exact form's structural "
-            "target restrictions. The other 3 are not removed: they remain in the roster "
-            "denominator and contribute `0 CU` and `0% delivery`. `eligible/roster` reports "
-            "structural target eligibility—currently maintained maximum-size and required-"
-            "creature-type restrictions—not universal susceptibility. Condition immunity or "
-            "other effect-level ineffectiveness can reduce a target's CU or delivery while that "
-            "target remains structurally eligible in the ratio. Eligibility is not a save "
-            "result, hit count, successful application count, or probability."
+            "`12/12 effective` does **not** mean 100% delivery or that every consequence works; "
+            "it means every roster target can receive at least one modeled consequence from "
+            "that exact source. `10/11 effective` means one of the 11 creatures cannot receive "
+            "any modeled control from that source. A target can remain counted in `12/12 "
+            "effective` while appearing in a partial-effect exception because another modeled "
+            "consequence survives. Coverage is not a save result, hit count, successful "
+            "application count, CU threshold, pricing state, or delivery probability."
         ),
         "",
         (
             "`Partial` means retained priced and retained context-required or unsupported "
             "consequences coexist; suppressed duplicate or weaker primitives do not create that "
-            "label. `Unpriced` retains measurable delivery and eligibility without reporting zero "
+            "label. `Unpriced` retains measurable delivery and effectiveness coverage without reporting zero "
             "CU. `No modeled control` means `0.000 CU` and no control delivery (`—`). `N/A` means "
             "the exact form is unavailable at that level."
         ),
         "",
         (
             "Full denominator and state methodology: "
-            "[Benchmark roster, eligibility, and coverage]"
-            "(#benchmark-roster-eligibility-and-coverage)"
+            "[Benchmark roster, effectiveness, and coverage]"
+            "(#benchmark-roster-effectiveness-and-coverage)"
         ),
     ]
     labels = {
@@ -1299,31 +1427,135 @@ def render_kv_control_catalog(
     return "\n".join(sections)
 
 
+def _reader_consequence(token: str) -> str:
+    kind, value = token.split(":", 1)
+    if kind not in {"condition", "outcome"}:
+        raise MatrixSyncError(f"Unknown control consequence kind: {kind}")
+    if value == "speed_zero":
+        return "Speed 0"
+    return value.replace("_", " ").capitalize()
+
+
+def _reader_exception_reason(exception: ControlCoverageException) -> str:
+    phrases: list[str] = []
+    for token in exception.reasons:
+        kind, value = token.split(":", 1)
+        label = value.replace("_", " ").title()
+        if kind == "exceeds_maximum_size":
+            phrases.append(f"exceeds maximum size {label}")
+        elif kind == "requires_creature_type":
+            phrases.append(f"requires {label}")
+        elif kind == "immune_condition":
+            phrases.append(f"immune to {label}")
+        elif kind == "dependency_condition_immune":
+            phrases.append(
+                f"required condition {label} is unavailable because target is immune to {label}"
+            )
+        else:
+            raise MatrixSyncError(f"Unknown control effectiveness reason: {kind}")
+    if exception.status == PARTIALLY_EFFECTIVE:
+        survivors = tuple(dict.fromkeys(map(_reader_consequence, exception.surviving_consequences)))
+        if not survivors:
+            raise MatrixSyncError("Partial effectiveness exception lacks surviving control")
+        if len(survivors) == 1:
+            phrases.append(f"{survivors[0]} remains effective")
+        else:
+            survivor_text = (
+                f"{survivors[0]} and {survivors[1]}"
+                if len(survivors) == 2
+                else ", ".join(survivors[:-1]) + f", and {survivors[-1]}"
+            )
+            phrases.append(f"{survivor_text} remain effective")
+    return "; ".join(phrases)
+
+
+def render_control_coverage_exceptions(
+    catalog: Sequence[ControlCatalogForm],
+    cells: Mapping[tuple[str, str, int], ControlCatalogCell],
+    levels: Sequence[int],
+) -> str:
+    """Render deterministic target-level reductions from structured evidence."""
+    labels = {
+        "cryokinesis": "Cryokinesis",
+        "pyrokinesis": "Pyrokinesis",
+        "psychokinesis": "Psychokinesis",
+        "electrokinesis": "Electrokinesis",
+    }
+    variant_counts: dict[tuple[str, str | None, int | None], int] = {}
+    for form in catalog:
+        key = (form.discipline_id, form.entity_id, form.tier)
+        variant_counts[key] = variant_counts.get(key, 0) + 1
+    rows: list[tuple[str, str, str, str, str]] = []
+    for form in catalog:
+        form_label = form.title if form.is_mastery else f"{form.title} — T{form.tier}"
+        if not form.is_mastery and variant_counts[(form.discipline_id, form.entity_id, form.tier)] > 1:
+            form_label += f" — {form.target_role}"
+        for level in levels:
+            cell = cells[(*form.identity, int(level))]
+            grouped: dict[tuple[str, str], list[str]] = {}
+            for exception in cell.exceptions:
+                status = "Partial" if exception.status == PARTIALLY_EFFECTIVE else "Ineffective"
+                reason = _reader_exception_reason(exception)
+                grouped.setdefault((status, reason), []).append(exception.target)
+            for (status, reason), targets in grouped.items():
+                rows.append(
+                    (
+                        f"{labels[form.discipline_id]} — {form_label}",
+                        f"Fighter {level}",
+                        ", ".join(targets),
+                        status,
+                        reason,
+                    )
+                )
+    return "\n".join(
+        (
+            "### Control coverage exceptions",
+            "",
+            (
+                "These generated rows expose structural exclusions, complete effect "
+                "nullification, and partial losses from the same evidence used by the catalog."
+            ),
+            "",
+            _markdown_table(
+                ("Discipline / exact form", "Level", "Affected target(s)", "Status", "Reason"),
+                rows,
+            ),
+        )
+    )
+
+
 def render_benchmark_roster_methodology() -> str:
     """Render the maintained full-roster aggregation and catalog state contract."""
     return "\n".join(
         (
-            "### Benchmark roster, eligibility, and coverage",
+            "### Benchmark roster, effectiveness, and coverage",
             "",
             (
                 "Every Fighter level uses the complete maintained headline roster for that "
-                "level. `eligible/roster` means **structurally eligible targets / total "
-                "maintained benchmark targets**. Structural eligibility currently comes from "
-                "`target_is_eligible()`: the exact form's maintained maximum-size and required-"
-                "creature-type restrictions."
+                "level. Structural legality remains an internal prerequisite evaluated by "
+                "`target_is_eligible()` from maintained maximum-size and required-creature-type "
+                "restrictions. Public `effective/roster` coverage asks a different question: "
+                "for how many roster targets does at least one modeled control consequence from "
+                "this exact Mastery or rider survive structural restrictions, maintained "
+                "immunities, and effect dependencies?"
             ),
             "",
             (
-                "`12/12` means all 12 roster targets satisfy those structural restrictions. "
-                "`9/12` means 9 of 12 satisfy them. Eligibility is not a success roll, delivery "
-                "probability, or guarantee of susceptibility. In particular, `12/12` does not "
-                "mean 12 successful saves, 12 successful attacks, 100% delivery, 12 successful "
-                "applications, or universal susceptibility to every control consequence."
+                "A structural restriction makes a target ineffective for that exact source. "
+                "Maintained immunity can instead remove one or more consequences after the "
+                "structural check. If another consequence survives, the target is partially "
+                "effective and remains in the coverage numerator; if every modeled consequence "
+                "is nullified, the target is ineffective. Thus `12/12 effective` does not mean "
+                "100% delivery, 12 successful saves or attacks, 12 successful applications, or "
+                "that every consequence works against every target."
             ),
             "",
             (
-                "An ineligible target remains in the aggregate denominator. For a priced or "
-                "partially priced form, that target contributes `CU = 0` and `delivery = 0%`."
+                "Effective coverage is descriptive metadata, not a success roll, CU threshold, "
+                "pricing state, delivery probability, or alternate averaging population. An "
+                "ineffective target remains in the aggregate denominator at its existing `CU = "
+                "0` and `delivery = 0%` contribution. A partially effective target contributes "
+                "the CU and delivery of the consequences that survive."
             ),
             "",
             "`mean CU = sum(per-target CU across the complete roster) / total roster targets`",
@@ -1334,29 +1566,21 @@ def render_benchmark_roster_methodology() -> str:
             ),
             "",
             (
-                "Do not divide only by eligible targets. Eligible-only averaging would hide "
+                "Do not divide only by effective targets. Effective-only averaging would hide "
                 "practical restrictions and could make a narrowly applicable control look "
                 "stronger or more reliable than it is across the maintained benchmark roster."
             ),
             "",
             (
-                "Condition immunity and other effect-level ineffectiveness are resolved "
-                "separately when effective control components are filtered; they are not "
-                "automatically coverage exclusions. A structurally eligible but immune target "
-                "can remain in the coverage numerator while contributing `0 CU` or `0% "
-                "delivery` for the ineffective consequence."
-            ),
-            "",
-            (
                 "**Instructional example (not a published scenario):** if a form has 80% "
-                "delivery against 9 structurally eligible targets and 3 targets are structurally "
-                "ineligible, its full-roster delivery mean is `(9 × 0.80 + 3 × 0) / 12 = 0.60 "
-                "= 60%`. The eligible-only 80% is not the roster-wide result."
+                "delivery against 9 effective targets and 3 ineffective targets contribute 0%, "
+                "its full-roster delivery mean is `(9 × 0.80 + 3 × 0) / 12 = 0.60 = 60%`. "
+                "The effective-only 80% is not the roster-wide result."
             ),
             "",
             (
                 "`Priced` and `Partial` use the complete-roster denominator above. `Unpriced` "
-                "can still show coverage and independently measurable delivery, but its CU "
+                "can still be effectively covered and show independently measurable delivery, but its CU "
                 "field remains `Unpriced`, not zero. `No modeled control` is `0.000 CU` because "
                 "that catalog source declares no modeled control, with delivery `—` because no "
                 "control establishment is measured. `N/A` means the exact form is unavailable "
@@ -1657,6 +1881,12 @@ def render_balance_region(
                 catalog_cells,
                 tuple(int(value) for value in load_config()["methodology"]["levels"]),
                 disciplines,
+            ),
+            "",
+            render_control_coverage_exceptions(
+                catalog,
+                catalog_cells,
+                tuple(int(value) for value in load_config()["methodology"]["levels"]),
             ),
             "",
             render_benchmark_roster_methodology(),

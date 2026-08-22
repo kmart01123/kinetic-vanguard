@@ -13,7 +13,7 @@ from unittest.mock import patch
 
 from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
-from harness.control_harness import _battle_master_retry_probability,_catalog_rider_scenario,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
+from harness.control_harness import EFFECTIVE,INEFFECTIVE_NULLIFIED,INEFFECTIVE_STRUCTURAL,PARTIALLY_EFFECTIVE,_battle_master_retry_probability,_catalog_effectiveness,_catalog_rider_scenario,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
 from harness.control_value import DEFAULT_PRIMITIVES,DEFAULT_SCORING
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_battle_master_dpr_for_schedule,_battle_master_result,_comparator_dpr,_comparator_score,_eldritch_knight_result,_kv_dpr,_psionic_apex_packet,_rider_values,_strike_packet_options,run as run_damage
 from harness.ek_damage_planner import EKDamagePlanner,EKScore,EKState,chromatic_orb_duplicate_probability
@@ -1063,6 +1063,43 @@ class CanonicalControlTests(unittest.TestCase):
     def expected_mastery_retry(self,level:int,target:Target)->float:
         profile=self.config["kv_profile"];bonus=self.model.kv_attack_bonus(level,int(profile["psionic_ability_modifier"]))+int(profile["archery_attack_bonus"]);hit=sum(attack_probabilities(bonus,target.ac)[1:]);attacks=int(self.config["fighter_progression"][str(level)]["attacks_per_action"])
         return 100*(1-(1-hit)**attacks)
+
+    def test_catalog_effectiveness_distinguishes_structural_full_partial_and_nullified(self)->None:
+        target=self.target();outcome={"outcomes":["speed_zero"]};condition={"conditions":["restrained"]}
+        size=_catalog_effectiveness(replace(target,size="huge"),[outcome],"primary",maximum_size="large")
+        creature_type=_catalog_effectiveness(replace(target,creature_type="monstrosity"),[outcome],"primary",required_creature_type="humanoid")
+        nullified=_catalog_effectiveness(self.target("restrained"),[condition],"primary")
+        partial=_catalog_effectiveness(self.target("restrained"),[condition,outcome],"primary")
+        effective=_catalog_effectiveness(target,[condition,outcome],"primary")
+        self.assertEqual((size["status"],size["effective"],size["reasons"]),(INEFFECTIVE_STRUCTURAL,False,["exceeds_maximum_size:large"]))
+        self.assertEqual((creature_type["status"],creature_type["effective"],creature_type["reasons"]),(INEFFECTIVE_STRUCTURAL,False,["requires_creature_type:humanoid"]))
+        self.assertEqual((nullified["status"],nullified["effective"],nullified["surviving"],nullified["reasons"]),(INEFFECTIVE_NULLIFIED,False,[],["immune_condition:restrained"]))
+        self.assertEqual((partial["status"],partial["effective"]),(PARTIALLY_EFFECTIVE,True));self.assertEqual(partial["surviving"],["outcome:speed_zero"])
+        self.assertEqual((effective["status"],effective["effective"],effective["reasons"]),(EFFECTIVE,True,[]))
+
+    def test_catalog_effectiveness_uses_dependencies_but_not_pricing_or_cu(self)->None:
+        unpriced={"outcomes":["forced_movement"],"pricing_status":"unsupported"}
+        self.assertEqual(_catalog_effectiveness(self.target(),[unpriced],"primary")["status"],EFFECTIVE)
+        dependent={"outcomes":["reaction_denial"],"requires_condition":"restrained"}
+        result=_catalog_effectiveness(self.target("restrained"),[dependent],"primary")
+        self.assertEqual((result["status"],result["reasons"]),(INEFFECTIVE_NULLIFIED,["dependency_condition_immune:restrained"]))
+
+    def test_air_elemental_snow_chains_is_partial_and_mastery_does_not_rescue_rider(self)->None:
+        target=next(item for item in load_targets(profile="headline",levels={7}) if item.name=="Air Elemental")
+        self.assertIn("restrained",target.condition_immunities)
+        for tier,expected_survivors in ((0,["outcome:speed_zero"]),(1,["outcome:speed_zero","outcome:reaction_denial"])):
+            with self.subTest(tier=tier):
+                rider=_catalog_rider_scenario(self.model,self.config,target,"cryokinesis","snow_chains",tier)
+                evidence=rider["effectiveness"]
+                self.assertTrue(rider["eligible"]);self.assertEqual(evidence["status"],PARTIALLY_EFFECTIVE);self.assertTrue(evidence["effective"])
+                self.assertEqual(evidence["reasons"],["immune_condition:restrained"]);self.assertEqual(evidence["surviving"],expected_survivors)
+                self.assertNotIn("outcome:speed_reduction",evidence["declared"]);self.assertGreater(rider["whole"],0.0)
+
+    def test_purple_worm_flare_uses_unchanged_source_facts(self)->None:
+        target=next(item for item in load_targets(profile="headline",levels={15}) if item.name=="Purple Worm")
+        self.assertNotIn("blinded",target.condition_immunities)
+        rider=_catalog_rider_scenario(self.model,self.config,target,"pyrokinesis","flare",0)
+        self.assertEqual((rider["eligible"],rider["effectiveness"]["status"]),(True,EFFECTIVE));self.assertGreater(rider["whole"],0.0)
 
     def test_bare_sap_mastery_uses_every_ordinary_attack_without_action_surge(self)->None:
         for level,attacks in ((7,2),(11,3),(15,3),(20,4)):

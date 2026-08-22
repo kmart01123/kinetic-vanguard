@@ -50,6 +50,7 @@ from harness.readme_matrices import (
     render_balance_region,
     render_benchmark_roster_methodology,
     render_control_value_explanation,
+    render_control_coverage_exceptions,
     render_control_table,
     render_damage_section,
     render_kv_control_catalog,
@@ -271,6 +272,11 @@ def _full_authoritative_rows() -> tuple[
                     "Retained Candidate Rows": "1" if modeled else "0",
                     "Retained Context/Unsupported Rows": "0",
                     "Zero Entirely Fail-Closed Context": "False",
+                    "Effectiveness Status": "effective" if modeled else "not_applicable",
+                    "Effective": "True" if modeled else "False",
+                    "Declared Consequences": "outcome:synthetic_control" if modeled else "",
+                    "Surviving Consequences": "outcome:synthetic_control" if modeled else "",
+                    "Effectiveness Reasons": "",
                     **raw_common,
                 }
             )
@@ -407,7 +413,8 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             "### Control Value",
             "### Kinetic Vanguard mean Control Value",
             "### Kinetic Vanguard control catalog",
-            "### Benchmark roster, eligibility, and coverage",
+            "### Control coverage exceptions",
+            "### Benchmark roster, effectiveness, and coverage",
             "### How Control Value is calculated",
             "#### Worked example: Sap-style next-attack Disadvantage",
             "#### Worked example: Stunned",
@@ -423,12 +430,12 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
             "**Secondary diagnostic:**",
             "selects the legal package with the highest Control Value",
             "same CU-selected package",
-            "remain in the roster denominator and contribute `0 CU` and `0% delivery`",
-            "**Cell format:** `CU · delivery · eligible/roster`",
+            "ineffective target remains in the aggregate denominator",
+            "**Cell format:** `CU · delivery · effective/roster`",
             "Each Kinetic Mastery row reports only that Mastery's control",
             "each rider/tier/role row reports only control produced by that exact rider form",
             "Columns are benchmark snapshots at Fighter levels 7, 11, 15, and 20",
-            "[Benchmark roster, eligibility, and coverage](#benchmark-roster-eligibility-and-coverage)",
+            "[Benchmark roster, effectiveness, and coverage](#benchmark-roster-effectiveness-and-coverage)",
             "1.0 CU = denial of one target's normal Action + Bonus Action for one scored target-turn window.",
             "0.15 × 0.95 = 0.1425 CU",
             "**2.25 CU**",
@@ -621,12 +628,16 @@ class ControlCatalogTests(unittest.TestCase):
                 "Context/Unsupported Rows":"0",
                 "Retained Candidate Rows":"0",
                 "Retained Context/Unsupported Rows":"0",
+                "Effectiveness Status":"ineffective_structural",
+                "Effective":"False",
+                "Surviving Consequences":"",
+                "Effectiveness Reasons":"exceeds_maximum_size:large",
             }
         )
         cells = validate_control_catalog_scenarios(rows,self.catalog,self.levels)
         total = PROFILE_LEVEL_COUNTS[DEFAULT_PROFILE][7]
         cell = cells[("cryokinesis","glacial_spike:T0",7)]
-        self.assertEqual((cell.eligible_targets,cell.total_targets),(total-1,total))
+        self.assertEqual((cell.effective_targets,cell.total_targets),(total-1,total))
         self.assertAlmostEqual(cell.mean_cu,(total-1)/total)
         self.assertAlmostEqual(cell.mean_delivery,50*(total-1)/total)
         self.assertEqual(
@@ -654,6 +665,94 @@ class ControlCatalogTests(unittest.TestCase):
         unknown[0]["Scenario"] = "unknown:T0"
         with self.assertRaisesRegex(MatrixSyncError,"unknown exact KV scenario"):
             validate_control_catalog_scenarios(unknown,self.catalog,self.levels)
+        bad_status = deepcopy(self.scenario_rows)
+        bad_status[0]["Effectiveness Status"] = "reader_prose_guess"
+        with self.assertRaisesRegex(MatrixSyncError,"unknown effectiveness status"):
+            validate_control_catalog_scenarios(bad_status,self.catalog,self.levels)
+        bad_reason = deepcopy(self.scenario_rows)
+        bad_reason[0].update(
+            {
+                "Effectiveness Status":"partially_effective",
+                "Declared Consequences":"condition:restrained;outcome:synthetic_control",
+                "Surviving Consequences":"outcome:synthetic_control",
+                "Effectiveness Reasons":"free_form:restrained",
+            }
+        )
+        with self.assertRaisesRegex(MatrixSyncError,"unknown effectiveness reason"):
+            validate_control_catalog_scenarios(bad_reason,self.catalog,self.levels)
+
+    def test_effective_coverage_and_generated_partial_exceptions_are_semantic(self) -> None:
+        rows = deepcopy(self.scenario_rows)
+        for row in rows:
+            if row["Level"] == "7" and row["Target"] == "Air Elemental" and row["Discipline"] == "cryokinesis" and row["Scenario"] in {"snow_chains:T0","snow_chains:T1"}:
+                row.update(
+                    {
+                        "Effectiveness Status":"partially_effective",
+                        "Effective":"True",
+                        "Declared Consequences":(
+                            "outcome:speed_zero;condition:restrained"
+                            + (";outcome:reaction_denial" if row["Scenario"].endswith("T1") else "")
+                        ),
+                        "Surviving Consequences":(
+                            "outcome:speed_zero;outcome:reaction_denial"
+                            if row["Scenario"].endswith("T1")
+                            else "outcome:speed_zero"
+                        ),
+                        "Effectiveness Reasons":"immune_condition:restrained",
+                    }
+                )
+        cells = validate_control_catalog_scenarios(rows,self.catalog,self.levels)
+        total = PROFILE_LEVEL_COUNTS[DEFAULT_PROFILE][7]
+        for scenario in ("snow_chains:T0","snow_chains:T1"):
+            self.assertEqual(cells[("cryokinesis",scenario,7)].effective_targets,total)
+        rendered = render_control_coverage_exceptions(self.catalog,cells,self.levels)
+        self.assertIn("Cryokinesis — Snow Chains — T0 | Fighter 7 | Air Elemental | Partial | immune to Restrained; Speed 0 remains effective",rendered)
+        self.assertIn("Cryokinesis — Snow Chains — T1 | Fighter 7 | Air Elemental | Partial | immune to Restrained; Speed 0 and Reaction denial remain effective",rendered)
+        self.assertEqual(rendered,render_control_coverage_exceptions(self.catalog,dict(reversed(tuple(cells.items()))),self.levels))
+
+    def test_fully_nullified_effect_is_excluded_without_changing_denominator(self) -> None:
+        rows = deepcopy(self.scenario_rows)
+        changed = next(row for row in rows if row["Level"]=="7" and row["Discipline"]=="cryokinesis" and row["Scenario"]=="glacial_spike:T0")
+        changed.update(
+            {
+                "Control Value CU":"0.0",
+                "Whole-package control stick %":"0.0",
+                "Value Disposition":"legitimately_priced_zero",
+                "Effectiveness Status":"ineffective_nullified",
+                "Effective":"False",
+                "Declared Consequences":"condition:restrained",
+                "Surviving Consequences":"",
+                "Effectiveness Reasons":"immune_condition:restrained",
+            }
+        )
+        cells = validate_control_catalog_scenarios(rows,self.catalog,self.levels)
+        total = PROFILE_LEVEL_COUNTS[DEFAULT_PROFILE][7]
+        cell = cells[("cryokinesis","glacial_spike:T0",7)]
+        self.assertEqual((cell.effective_targets,cell.total_targets),(total-1,total))
+        self.assertAlmostEqual(cell.mean_cu,(total-1)/total)
+        self.assertAlmostEqual(cell.mean_delivery,50*(total-1)/total)
+
+    def test_effective_coverage_is_independent_of_cu_and_pricing_state(self) -> None:
+        rows = deepcopy(self.scenario_rows)
+        exact = [row for row in rows if row["Level"]=="7" and row["Discipline"]=="cryokinesis" and row["Scenario"]=="glacial_spike:T0"]
+        exact[0].update({"Control Value CU":"0.0","Value Disposition":"legitimately_priced_zero"})
+        cells = validate_control_catalog_scenarios(rows,self.catalog,self.levels)
+        total = PROFILE_LEVEL_COUNTS[DEFAULT_PROFILE][7]
+        self.assertEqual(cells[("cryokinesis","glacial_spike:T0",7)].effective_targets,total)
+        for row in exact:
+            row.update(
+                {
+                    "Control Value CU":"0.0",
+                    "Value Disposition":"entirely_context_required_or_unsupported",
+                    "Candidate Rows":"0",
+                    "Context/Unsupported Rows":"1",
+                    "Retained Candidate Rows":"0",
+                    "Retained Context/Unsupported Rows":"1",
+                    "Zero Entirely Fail-Closed Context":"True",
+                }
+            )
+        unpriced = validate_control_catalog_scenarios(rows,self.catalog,self.levels)[("cryokinesis","glacial_spike:T0",7)]
+        self.assertEqual((unpriced.state,unpriced.effective_targets),(UNPRICED,total))
 
     def test_catalog_rider_evidence_inventory_is_independent_of_headline_inventory(self) -> None:
         publication = catalog_rider_scenarios(self.catalog)
@@ -696,34 +795,23 @@ class ControlCatalogTests(unittest.TestCase):
             self.catalog,cells,self.levels
         )
         for required in (
-            "**Cell format:** `CU · delivery · eligible/roster`",
+            "**Cell format:** `CU · delivery · effective/roster`",
             "`0.143 CU` average Control Value",
             "`95.00%` average initial control-delivery probability",
-            "eligible targets / roster targets",
-            "`12/12` means all 12 targets satisfy the exact form's structural target restrictions",
-            "If a cell says `9/12`, only 9 of 12 targets satisfy the exact form's structural target restrictions",
-            "other 3 are not removed",
-            "contribute `0 CU` and `0% delivery`",
-            "`eligible/roster` reports structural target eligibility",
-            "maximum-size and required-creature-type restrictions",
-            "not universal susceptibility",
-            "Condition immunity or other effect-level ineffectiveness can reduce a target's CU or delivery",
-            "target remains structurally eligible in the ratio",
-            "Eligibility is not a save result, hit count, successful application count, or probability",
-            "`Unpriced` retains measurable delivery and eligibility without reporting zero CU",
+            "at least one modeled control consequence",
+            "structural restrictions, immunities, and effect dependencies",
+            "`12/12 effective` does **not** mean 100% delivery or that every consequence works",
+            "`10/11 effective` means one of the 11 creatures cannot receive any modeled control",
+            "partial-effect exception",
+            "Coverage is not a save result, hit count, successful application count, CU threshold, pricing state, or delivery probability",
+            "`Unpriced` retains measurable delivery and effectiveness coverage without reporting zero CU",
             "`No modeled control` means `0.000 CU` and no control delivery (`—`)",
             "`N/A` means the exact form is unavailable",
             "Columns are benchmark snapshots at Fighter levels 7, 11, 15, and 20",
-            "[Benchmark roster, eligibility, and coverage](#benchmark-roster-eligibility-and-coverage)",
+            "[Benchmark roster, effectiveness, and coverage](#benchmark-roster-effectiveness-and-coverage)",
         ):
             self.assertIn(required,catalog)
-        for forbidden in (
-            "eligible targets only",
-            "12/12` is a save result",
-            "immunity/effect-eligibility",
-            "condition immunity where it makes the package ineffective",
-        ):
-            self.assertNotIn(forbidden,catalog)
+        self.assertNotIn("eligible/roster",catalog)
 
     def test_rider_only_control_classification_is_authority_driven(self) -> None:
         no_rider_control = {
@@ -769,30 +857,30 @@ class ControlCatalogTests(unittest.TestCase):
 
     def test_roster_methodology_is_stable_and_computes_instructional_mean(self) -> None:
         methodology = render_benchmark_roster_methodology()
-        self.assertEqual(methodology.count("### Benchmark roster, eligibility, and coverage"),1)
+        self.assertEqual(methodology.count("### Benchmark roster, effectiveness, and coverage"),1)
         for required in (
-            "structurally eligible targets / total maintained benchmark targets",
+            "Structural legality remains an internal prerequisite",
             "`target_is_eligible()`",
             "maximum-size and required-creature-type restrictions",
-            "`12/12` means all 12 roster targets satisfy those structural restrictions",
-            "`9/12` means 9 of 12 satisfy them",
-            "universal susceptibility to every control consequence",
-            "An ineligible target remains in the aggregate denominator",
+            "at least one modeled control consequence",
+            "immunities, and effect dependencies",
+            "partially effective and remains in the coverage numerator",
+            "every modeled consequence is nullified, the target is ineffective",
+            "`12/12 effective` does not mean 100% delivery",
+            "descriptive metadata, not a success roll, CU threshold, pricing state, delivery probability",
+            "ineffective target remains in the aggregate denominator",
             "`CU = 0` and `delivery = 0%`",
-            "not automatically coverage exclusions",
-            "structurally eligible but immune target",
-            "remain in the coverage numerator while contributing `0 CU` or `0% delivery`",
-            "Do not divide only by eligible targets",
-            "Eligible-only averaging would hide practical restrictions",
+            "Do not divide only by effective targets",
+            "Effective-only averaging would hide practical restrictions",
             "**Instructional example (not a published scenario):**",
             "(9 × 0.80 + 3 × 0) / 12 = 0.60 = 60%",
-            "eligible-only 80% is not the roster-wide result",
+            "effective-only 80% is not the roster-wide result",
             "`Unpriced`, not zero",
             "`No modeled control` is `0.000 CU`",
             "does not participate in that level's aggregate",
         ):
             self.assertIn(required,methodology)
-        self.assertNotIn("condition or effect immunity where it makes the package ineffective",methodology)
+        self.assertNotIn("eligible/roster",methodology)
 
 
 class ReadmeMatrixDelimiterTests(unittest.TestCase):

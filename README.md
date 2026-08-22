@@ -71,15 +71,15 @@ This authority-driven catalog is a decomposition view: Kinetic Mastery and every
 
 Columns are benchmark snapshots at Fighter levels 7, 11, 15, and 20. Each column uses the complete maintained roster for that level.
 
-**Cell format:** `CU · delivery · eligible/roster`
+**Cell format:** `CU · delivery · effective/roster`
 
-Example: `0.143 CU · 95.00% · 12/12` means `0.143 CU` average Control Value and `95.00%` average initial control-delivery probability across the full benchmark roster at that fighter level; `12/12` means all 12 targets satisfy the exact form's structural target restrictions. The ratio is **eligible targets / roster targets**.
+Example: `0.143 CU · 95.00% · 12/12` means `0.143 CU` average Control Value and `95.00%` average initial control-delivery probability across the full benchmark roster at that fighter level. `effective/roster` is **targets against which at least one modeled control consequence from that exact source survives maintained structural restrictions, immunities, and effect dependencies / total roster targets**.
 
-If a cell says `9/12`, only 9 of 12 targets satisfy the exact form's structural target restrictions. The other 3 are not removed: they remain in the roster denominator and contribute `0 CU` and `0% delivery`. `eligible/roster` reports structural target eligibility—currently maintained maximum-size and required-creature-type restrictions—not universal susceptibility. Condition immunity or other effect-level ineffectiveness can reduce a target's CU or delivery while that target remains structurally eligible in the ratio. Eligibility is not a save result, hit count, successful application count, or probability.
+`12/12 effective` does **not** mean 100% delivery or that every consequence works; it means every roster target can receive at least one modeled consequence from that exact source. `10/11 effective` means one of the 11 creatures cannot receive any modeled control from that source. A target can remain counted in `12/12 effective` while appearing in a partial-effect exception because another modeled consequence survives. Coverage is not a save result, hit count, successful application count, CU threshold, pricing state, or delivery probability.
 
-`Partial` means retained priced and retained context-required or unsupported consequences coexist; suppressed duplicate or weaker primitives do not create that label. `Unpriced` retains measurable delivery and eligibility without reporting zero CU. `No modeled control` means `0.000 CU` and no control delivery (`—`). `N/A` means the exact form is unavailable at that level.
+`Partial` means retained priced and retained context-required or unsupported consequences coexist; suppressed duplicate or weaker primitives do not create that label. `Unpriced` retains measurable delivery and effectiveness coverage without reporting zero CU. `No modeled control` means `0.000 CU` and no control delivery (`—`). `N/A` means the exact form is unavailable at that level.
 
-Full denominator and state methodology: [Benchmark roster, eligibility, and coverage](#benchmark-roster-eligibility-and-coverage)
+Full denominator and state methodology: [Benchmark roster, effectiveness, and coverage](#benchmark-roster-effectiveness-and-coverage)
 
 #### Cryokinesis
 
@@ -94,8 +94,8 @@ Full denominator and state methodology: [Benchmark roster, eligibility, and cove
 | Snow Chains — T2 | N/A | 1.033 CU (partial) · 83.75% · 12/12 | 1.025 CU (partial) · 84.09% · 11/11 | 0.964 CU (partial) · 82.08% · 12/12 |
 | Frozen Ground — T0 | N/A | 0.125 CU · 41.54% · 12/12 | 0.124 CU · 41.23% · 11/11 | 0.119 CU · 39.52% · 12/12 |
 | Frozen Ground — T1 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Frozen Ground — T2 | N/A | 0.435 CU · 37.79% · 12/12 | 0.474 CU · 41.23% · 11/11 | 0.440 CU · 38.27% · 12/12 |
-| Arctic Tempest — T0 | N/A | N/A | 0.474 CU · 41.23% · 11/11 | 0.440 CU · 38.27% · 12/12 |
+| Frozen Ground — T2 | N/A | 0.435 CU · 37.79% · 11/12 | 0.474 CU · 41.23% · 11/11 | 0.440 CU · 38.27% · 11/12 |
+| Arctic Tempest — T0 | N/A | N/A | 0.474 CU · 41.23% · 11/11 | 0.440 CU · 38.27% · 11/12 |
 | Arctic Tempest — T1 | N/A | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
 | Arctic Tempest — T2 | N/A | N/A | 0.928 CU (partial) · 41.23% · 11/11 | 0.889 CU (partial) · 39.52% · 12/12 |
 | Absolute Zero — T0 | N/A | N/A | N/A | 0.119 CU · 39.52% · 12/12 |
@@ -134,9 +134,9 @@ Full denominator and state methodology: [Benchmark roster, eligibility, and cove
 | Vectored Thrust — T0 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
 | Vectored Thrust — T1 | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
 | Vectored Thrust — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
-| Explosion/Implosion — T0 — primary | N/A | 0.733 CU · 63.77% · 12/12 | 0.784 CU · 68.21% · 11/11 | 0.831 CU · 72.22% · 12/12 |
+| Explosion/Implosion — T0 — primary | N/A | 0.733 CU · 63.77% · 11/12 | 0.784 CU · 68.21% · 11/11 | 0.831 CU · 72.22% · 11/12 |
 | Explosion/Implosion — T0 — secondary | N/A | 1.063 CU · 70.93% · 12/12 | 1.092 CU · 68.21% · 11/11 | 1.233 CU · 73.69% · 12/12 |
-| Explosion/Implosion — T1 — primary | N/A | 0.733 CU · 63.77% · 12/12 | 0.784 CU · 68.21% · 11/11 | 0.831 CU · 72.22% · 12/12 |
+| Explosion/Implosion — T1 — primary | N/A | 0.733 CU · 63.77% · 11/12 | 0.784 CU · 68.21% · 11/11 | 0.831 CU · 72.22% · 11/12 |
 | Explosion/Implosion — T1 — secondary | N/A | 1.393 CU · 70.93% · 12/12 | 1.400 CU · 68.21% · 11/11 | 1.636 CU · 73.69% · 12/12 |
 | Explosion/Implosion — T2 | N/A | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control | 0.000 CU · — · no modeled control |
 | Telekinetic Slam — T0 | N/A | N/A | 0.082 CU · 40.95% · 11/11 | 0.083 CU · 41.25% · 12/12 |
@@ -168,25 +168,56 @@ Full denominator and state methodology: [Benchmark roster, eligibility, and cove
 | Ball Lightning — T1 | N/A | N/A | N/A | 0.000 CU · — · no modeled control |
 | Ball Lightning — T2 | N/A | N/A | N/A | Unpriced · 51.85% delivery · 12/12 |
 
-### Benchmark roster, eligibility, and coverage
+### Control coverage exceptions
 
-Every Fighter level uses the complete maintained headline roster for that level. `eligible/roster` means **structurally eligible targets / total maintained benchmark targets**. Structural eligibility currently comes from `target_is_eligible()`: the exact form's maintained maximum-size and required-creature-type restrictions.
+These generated rows expose structural exclusions, complete effect nullification, and partial losses from the same evidence used by the catalog.
 
-`12/12` means all 12 roster targets satisfy those structural restrictions. `9/12` means 9 of 12 satisfy them. Eligibility is not a success roll, delivery probability, or guarantee of susceptibility. In particular, `12/12` does not mean 12 successful saves, 12 successful attacks, 100% delivery, 12 successful applications, or universal susceptibility to every control consequence.
+| Discipline / exact form | Level | Affected target(s) | Status | Reason |
+|---|---|---|---|---|
+| Cryokinesis — Glacial Spike — T2 | Fighter 11 | Guardian Naga | Partial | immune to Restrained; Speed reduction remains effective |
+| Cryokinesis — Glacial Spike — T2 | Fighter 20 | Kraken | Partial | immune to Restrained; Speed reduction remains effective |
+| Cryokinesis — Snow Chains — T0 | Fighter 7 | Air Elemental | Partial | immune to Restrained; Speed 0 remains effective |
+| Cryokinesis — Snow Chains — T0 | Fighter 11 | Guardian Naga | Partial | immune to Restrained; Speed 0 remains effective |
+| Cryokinesis — Snow Chains — T0 | Fighter 20 | Kraken | Partial | immune to Restrained; Speed 0 remains effective |
+| Cryokinesis — Snow Chains — T1 | Fighter 7 | Air Elemental | Partial | immune to Restrained; Speed 0 and Reaction denial remain effective |
+| Cryokinesis — Snow Chains — T1 | Fighter 11 | Guardian Naga | Partial | immune to Restrained; Speed 0 and Reaction denial remain effective |
+| Cryokinesis — Snow Chains — T1 | Fighter 20 | Kraken | Partial | immune to Restrained; Speed 0 and Reaction denial remain effective |
+| Cryokinesis — Frozen Ground — T2 | Fighter 11 | Guardian Naga | Ineffective | immune to Restrained |
+| Cryokinesis — Frozen Ground — T2 | Fighter 20 | Kraken | Ineffective | immune to Restrained |
+| Cryokinesis — Arctic Tempest — T0 | Fighter 20 | Kraken | Ineffective | immune to Restrained |
+| Cryokinesis — Absolute Zero — T1 | Fighter 20 | Kraken | Partial | immune to Restrained; Speed 0 remains effective |
+| Psychokinesis — Kinetic Mastery | Fighter 7 | Giant Ape | Ineffective | exceeds maximum size Large |
+| Psychokinesis — Kinetic Mastery | Fighter 11 | Remorhaz, Storm Giant, Adult White Dragon | Ineffective | exceeds maximum size Large |
+| Psychokinesis — Kinetic Mastery | Fighter 15 | Adult Black Dragon, Adult Blue Dragon, Adult Bronze Dragon, Adult Copper Dragon, Adult Green Dragon, Purple Worm, Adult Silver Dragon | Ineffective | exceeds maximum size Large |
+| Psychokinesis — Kinetic Mastery | Fighter 20 | Balor, Ancient Blue Dragon, Ancient Brass Dragon, Ancient Copper Dragon, Ancient Gold Dragon, Ancient Green Dragon, Kraken, Ancient Silver Dragon, Ancient White Dragon | Ineffective | exceeds maximum size Large |
+| Psychokinesis — Explosion/Implosion — T0 — primary | Fighter 11 | Guardian Naga | Ineffective | immune to Restrained |
+| Psychokinesis — Explosion/Implosion — T0 — primary | Fighter 20 | Kraken | Ineffective | immune to Restrained |
+| Psychokinesis — Explosion/Implosion — T0 — secondary | Fighter 11 | Guardian Naga | Partial | immune to Restrained; Forced movement remains effective |
+| Psychokinesis — Explosion/Implosion — T0 — secondary | Fighter 20 | Kraken | Partial | immune to Restrained; Forced movement remains effective |
+| Psychokinesis — Explosion/Implosion — T1 — primary | Fighter 11 | Guardian Naga | Ineffective | immune to Restrained |
+| Psychokinesis — Explosion/Implosion — T1 — primary | Fighter 20 | Kraken | Ineffective | immune to Restrained |
+| Psychokinesis — Explosion/Implosion — T1 — secondary | Fighter 11 | Guardian Naga | Partial | immune to Restrained; Forced movement remains effective |
+| Psychokinesis — Explosion/Implosion — T1 — secondary | Fighter 20 | Kraken | Partial | immune to Restrained; Forced movement remains effective |
+| Psychokinesis — Mass Levitation — T0 | Fighter 20 | Balor, Ancient Blue Dragon, Ancient Brass Dragon, Ancient Copper Dragon, Ancient Gold Dragon, Ancient Green Dragon, Kraken, Ancient Silver Dragon, Ancient White Dragon | Ineffective | exceeds maximum size Large |
+| Psychokinesis — Mass Levitation — T1 | Fighter 20 | Balor, Ancient Blue Dragon, Ancient Brass Dragon, Ancient Copper Dragon, Ancient Gold Dragon, Ancient Green Dragon, Kraken, Ancient Silver Dragon, Ancient White Dragon | Ineffective | exceeds maximum size Large |
 
-An ineligible target remains in the aggregate denominator. For a priced or partially priced form, that target contributes `CU = 0` and `delivery = 0%`.
+### Benchmark roster, effectiveness, and coverage
+
+Every Fighter level uses the complete maintained headline roster for that level. Structural legality remains an internal prerequisite evaluated by `target_is_eligible()` from maintained maximum-size and required-creature-type restrictions. Public `effective/roster` coverage asks a different question: for how many roster targets does at least one modeled control consequence from this exact Mastery or rider survive structural restrictions, maintained immunities, and effect dependencies?
+
+A structural restriction makes a target ineffective for that exact source. Maintained immunity can instead remove one or more consequences after the structural check. If another consequence survives, the target is partially effective and remains in the coverage numerator; if every modeled consequence is nullified, the target is ineffective. Thus `12/12 effective` does not mean 100% delivery, 12 successful saves or attacks, 12 successful applications, or that every consequence works against every target.
+
+Effective coverage is descriptive metadata, not a success roll, CU threshold, pricing state, delivery probability, or alternate averaging population. An ineffective target remains in the aggregate denominator at its existing `CU = 0` and `delivery = 0%` contribution. A partially effective target contributes the CU and delivery of the consequences that survive.
 
 `mean CU = sum(per-target CU across the complete roster) / total roster targets`
 
 `mean delivery = sum(per-target initial-delivery probability across the complete roster) / total roster targets`
 
-Do not divide only by eligible targets. Eligible-only averaging would hide practical restrictions and could make a narrowly applicable control look stronger or more reliable than it is across the maintained benchmark roster.
+Do not divide only by effective targets. Effective-only averaging would hide practical restrictions and could make a narrowly applicable control look stronger or more reliable than it is across the maintained benchmark roster.
 
-Condition immunity and other effect-level ineffectiveness are resolved separately when effective control components are filtered; they are not automatically coverage exclusions. A structurally eligible but immune target can remain in the coverage numerator while contributing `0 CU` or `0% delivery` for the ineffective consequence.
+**Instructional example (not a published scenario):** if a form has 80% delivery against 9 effective targets and 3 ineffective targets contribute 0%, its full-roster delivery mean is `(9 × 0.80 + 3 × 0) / 12 = 0.60 = 60%`. The effective-only 80% is not the roster-wide result.
 
-**Instructional example (not a published scenario):** if a form has 80% delivery against 9 structurally eligible targets and 3 targets are structurally ineligible, its full-roster delivery mean is `(9 × 0.80 + 3 × 0) / 12 = 0.60 = 60%`. The eligible-only 80% is not the roster-wide result.
-
-`Priced` and `Partial` use the complete-roster denominator above. `Unpriced` can still show coverage and independently measurable delivery, but its CU field remains `Unpriced`, not zero. `No modeled control` is `0.000 CU` because that catalog source declares no modeled control, with delivery `—` because no control establishment is measured. `N/A` means the exact form is unavailable at that Fighter level and does not participate in that level's aggregate.
+`Priced` and `Partial` use the complete-roster denominator above. `Unpriced` can still be effectively covered and show independently measurable delivery, but its CU field remains `Unpriced`, not zero. `No modeled control` is `0.000 CU` because that catalog source declares no modeled control, with delivery `—` because no control establishment is measured. `N/A` means the exact form is unavailable at that Fighter level and does not participate in that level's aggregate.
 
 ### How Control Value is calculated
 
