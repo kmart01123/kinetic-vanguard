@@ -22,11 +22,11 @@ Version 14.1.0 restores maintained damage and control benchmark harness source. 
 
 **Unreleased development snapshot** — canonical rules **v14.3.0**; current published release **v14.2.0**.
 
-Target profile: `headline`. These are exact analytical full-roster results.
+Target profile: `headline`. The maintained headline benchmark uses 47 creature profiles from SRD 5.2.1 at levels 7, 11, 15, and 20. These are exact analytical full-roster results, with creatures weighted equally within their level.
 
-Battle Master and Eldritch Knight define the comparison envelope for each benchmark result. `IDEAL` means Kinetic Vanguard falls between the two comparator results, inclusive. `COLD` is below both; `HOT` is above both. The percentage on COLD and HOT cells shows the signed distance outside the nearest envelope boundary. `N/A` is reserved for a comparison that cannot be evaluated.
+Battle Master and Eldritch Knight define the comparison envelope for each benchmark result. `IDEAL` means Kinetic Vanguard falls between the two comparator values, inclusive. `COLD` is below both; `HOT` is above both. The percentage on COLD and HOT cells shows the signed distance outside the nearest comparator boundary. `N/A` is reserved for a comparison that cannot be evaluated. This is a comparator-envelope benchmark, not a universal real-play balance tolerance, and `IDEAL` is not proof of balance in every game.
 
-README cells intentionally contain only the public balance result: `IDEAL`, `COLD (-X%)`, `HOT (+X%)`, or `N/A`. Detailed release CSV, Markdown, and HTML reports retain raw Kinetic Vanguard and comparator aggregates, ordinary KV/comparator ratios, dynamic lower and upper boundaries, and the comparator identity supplying each boundary.
+README cells intentionally contain only the public balance result: `IDEAL`, `COLD (-X%)`, `HOT (+X%)`, or `N/A`. Detailed evidence retains raw Kinetic Vanguard and comparator aggregates, dynamic boundaries, and the comparator identity supplying each boundary.
 
 The front-door damage view is the single-target benchmark: primary-target DPR at cluster size 1. All other primary-target and aggregate-cluster results remain in the generated detailed release reports and are not collapsed into this table.
 
@@ -39,15 +39,26 @@ The front-door damage view is the single-target benchmark: primary-target DPR at
 | 15 | COLD (-18.10%) | IDEAL | IDEAL | COLD (-6.75%) |
 | 20 | COLD (-41.52%) | COLD (-12.76%) | COLD (-14.95%) | COLD (-26.58%) |
 
-### Control Reliability
+### Control Value
 
-This single-target benchmark evaluates each configured control package against one roster target at a time before taking the equal-weight roster mean.
+**Primary control-balance metric:** how much useful control the configured package delivers. Control Value asks: “How much useful control does the configured package deliver?”
 
-Configured headline metric: **roster-adjusted whole-package control stick %**.
+Control Value combines delivery probability, persistence or active windows, established attack/save/reaction opportunities, mechanical consequences, and legal repeatable accumulating instantaneous effects. `1.0 CU` is denial of one target's normal Action + Bonus Action for one scored target-turn window. A Control Unit is a project analytical benchmark unit, **not a D&D rules quantity**.
 
-This snapshot evaluates legal repeated attack-delivered opportunities within one ordinary Attack action when the configured package permits them. Kinetic Vanguard on-hit riders and Battle Master maneuvers receive legal retries while resources remain. Eldritch Knight keeps one Blindness/Deafness cast and uses all ordinary primer attacks for Eldritch Strike.
+| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
+|---|---|---|---|---|
+| 7 | IDEAL | COLD (-100.00%) | IDEAL | COLD (-34.91%) |
+| 11 | IDEAL | COLD (-100.00%) | IDEAL | IDEAL |
+| 15 | IDEAL | IDEAL | IDEAL | IDEAL |
+| 20 | IDEAL | IDEAL | IDEAL | IDEAL |
 
-Control Reliability measures how often the configured control package takes effect. It does not measure the relative severity, duration, area, or strategic value of different control effects. A HOT result is a balance-review signal, not an automatic finding that the feature is overpowered.
+### Control Reliability — delivery diagnostic
+
+**Secondary diagnostic:** how reliably the configured control package lands and, where applicable, persists. Control Reliability asks: “How reliably does the configured package land and persist?”
+
+Configured Reliability metric: **roster-adjusted whole-package control stick %**.
+
+Control Reliability measures delivery probability, not effect severity. It includes legal repeatable attack-delivered opportunities within one ordinary Attack action when the rules permit them, excludes Action Surge from the headline control comparison, and applies the maintained repeat-save and persistence treatment where relevant. A Reliability `HOT` result means unusually high delivery relative to the Reliability comparator envelope; it does not by itself mean that the control's mechanical severity is excessive.
 
 | Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |
 |---|---|---|---|---|
@@ -56,9 +67,23 @@ Control Reliability measures how often the configured control package takes effe
 | 15 | HOT (+32.05%) | HOT (+7.07%) | HOT (+32.71%) | HOT (+32.09%) |
 | 20 | HOT (+50.52%) | HOT (+28.62%) | HOT (+50.52%) | HOT (+50.27%) |
 
-This snapshot is a summary, not the full evidence set. Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). See the [maintained harness guide](harness/README.md), [methodology configuration](harness/config/benchmark.json), [SRD creature profiles](harness/data/srd_creature_rosters.json), and [comparator assumptions](harness/comparators/fighter-subclasses.json) for the complete methodology, provenance, regeneration commands, and report paths.
+### Control methodology
 
-Battle Master and Eldritch Knight are referenced solely as unofficial third-party comparative benchmarks. The Kinetic Vanguard project is not affiliated with or endorsed by Wizards of the Coast. No project license purports to grant rights in Wizards-owned material outside the System Reference Document. See [`LICENSE.md`](LICENSE.md) for component boundaries and [`NOTICE.md`](NOTICE.md) for attribution and notices.
+Control Value follows a transparent pipeline: canonical condition or outcome → mechanical consequences → expected exposure or opportunities → overlap normalization → weighted Control Units. It prices what an effect mechanically does rather than assigning value only from its name.
+
+For example, Stunned decomposes into active-turn denial through Incapacitated, reaction denial, automatic failure of Strength and Dexterity saves, and Advantage on incoming attacks. Stunned does **not** gain Speed 0. Restrained includes complete movement denial plus its separately scored consequences. Forced movement is valued from expected displaced feet, and repeatable legal displacement can accrue multiple successful occurrences.
+
+That consequence-aware treatment is why Value and Reliability can disagree: a soft effect such as Sap can land very reliably without carrying the same mechanical consequence as Stunned or Restrained. Equal stick probabilities do not imply equal control power.
+
+Normalization prevents double counting. Identical boolean consequences do not stack. Complete turn denial suppresses overlapping lesser action or offensive effects; automatic save failure supersedes weaker impairment to the same save; and complete movement denial supersedes overlapping lesser mobility loss. All-attacks Disadvantage suppresses only an explicitly overlapping next-attack Disadvantage share. Correlated flat movement reductions are capped at complete movement denial, while unrelated mechanical consequences remain independently valued.
+
+Some mechanics require battlefield or opportunity facts that this benchmark cannot neutrally establish, such as geometry-dependent restrictions, sight or sense interactions, cliffs or hazards, unspecified ally opportunities, and open-ended behavioral effects. They remain visible in detailed diagnostics but contribute zero CU unless the required context is explicitly established. Zero Control Value from missing context does **not** mean that a mechanic has no value in actual play.
+
+Speed 0 is complete turn movement denial. Flat Speed reductions normalize against the target's maintained unconditional locomotion Speed; conditional or choice movement modes are not assumed, and missing trustworthy movement data fails closed. Forced displacement uses expected feet moved.
+
+Kinetic Vanguard mechanics come from [`KineticVanguard.yaml`](KineticVanguard.yaml). Full methodology and reproducibility details are in the [maintained harness guide](harness/README.md), [benchmark configuration](harness/config/benchmark.json), [frozen Control Value configuration](harness/config/control-value.json), [control primitive catalog](harness/data/control_primitives.json), and [comparator assumptions](harness/comparators/fighter-subclasses.json).
+
+Creature benchmark data is SRD 5.2.1. Maintained comparator mechanics are independently expressed analytical abstractions under the reviewed comparator source policy; they are not Kinetic Vanguard rules. Battle Master and Eldritch Knight are referenced solely as unofficial third-party comparative benchmarks. The Kinetic Vanguard project is not affiliated with or endorsed by Wizards of the Coast. No project license purports to grant rights in Wizards-owned material outside the System Reference Document. See [`LICENSE.md`](LICENSE.md) for component boundaries and [`NOTICE.md`](NOTICE.md) for attribution and notices.
 <!-- END GENERATED BALANCE MATRICES -->
 
 ## Publication interface

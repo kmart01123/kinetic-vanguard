@@ -1,6 +1,6 @@
 # Kinetic Vanguard maintained benchmark harnesses
 
-The damage and Control Reliability evaluators use exact analytical enumeration. `KineticVanguard.yaml` is the sole Kinetic Vanguard rules authority; Python receives a schema- and semantics-validated projection keyed by stable entity ID and does not maintain a second copy of Kinetic Vanguard rules.
+The damage, Control Value, and Control Reliability evaluators use exact analytical enumeration. `KineticVanguard.yaml` is the sole Kinetic Vanguard rules authority; Python receives a schema- and semantics-validated projection keyed by stable entity ID and does not maintain a second copy of Kinetic Vanguard rules.
 
 ## Authority and input boundaries
 
@@ -51,6 +51,13 @@ npm run readme:benchmarks
 npm run readme:benchmarks:check
 ```
 
+When only control publication inputs or copy changed, the control-only mode preserves the current Single-Target Damage subsection byte-for-byte and obtains fresh Control Value and Reliability evidence from one control run without executing the damage harness:
+
+```text
+npm run readme:control
+npm run readme:control:check
+```
+
 The writer atomically replaces only the delimited balance region and refuses to overwrite a concurrently changed README. Use it only after an intentional authority, methodology, roster, comparator, or release-state change and review the numerical diff.
 
 ## Damage methodology
@@ -81,9 +88,9 @@ Kinetic Vanguard and Battle Master use legal repeated attack-delivered opportuni
 
 Control Reliability uses the same dynamic comparator envelope as damage and keeps raw comparator values and boundary identities in generated matrices.
 
-## Control Value shadow detail
+## Control Value methodology and detail
 
-Control Value remains a shadow metric during Slice 2. Control Reliability remains the default/published control metric and keeps its own winner selection unchanged. `1.0 CU` is denial of one target's normal Action + Bonus Action for one scored target-turn window.
+Control Value is the primary public control-balance metric; Control Reliability remains a separate public delivery diagnostic and keeps its own winner selection unchanged. `1.0 CU` is denial of one target's normal Action + Bonus Action for one scored target-turn window.
 
 The frozen nominal rules are:
 
@@ -117,7 +124,7 @@ Repeatable accumulating instantaneous effects use expected successful occurrence
 
 Normalization keeps the landed duplicate, condition-inclusion, Mastery, and explicitly correlated all-attacks-over-next-attack rules. It also applies generic dominance for active-turn denial over lesser overlapping action/offense entries, Bonus Action denial over Action/Bonus exclusivity, same-ability automatic save failure over weaker save impairments, and complete turn movement denial over flat/multiplier/standing mobility. Multiple flat reductions share the `0.30 CU` complete-movement ceiling only when a component explicitly names their same-window correlation; independent sources remain independent and retain separate diagnostics. Glacial Spike still replaces Slow, Telekinetic Shove still replaces Push where canonically projected, Electron Burst leaves Sap's successful-save residual, and Graze contributes no Control Value.
 
-`--shadow-detail` adds primitive detail, scenario detail, independent Value selection audit, and a 16-cell level/discipline Value matrix. Value winner selection first excludes every ineligible scenario, then maximizes CU with lexicographically greatest scenario ID as the deterministic equal-CU tie-break; a set with no eligible scenario fails closed. Audit rows distinguish nonzero priced winners, legitimate eligible zeroes, and zeroes whose package is entirely context-required or unsupported. Primitive rows report application and active probabilities, expected occurrences and exposure, relevant benchmark locomotion speed, nominal weight, transform ID, scalar CU, resolved status, and normalization disposition. These outputs do not replace the public README benchmark table.
+`--shadow-detail` adds primitive detail, scenario detail, independent Value selection audit, and the 16-cell level/discipline Value matrix used for public classification. Value winner selection first excludes every ineligible scenario, then maximizes CU with lexicographically greatest scenario ID as the deterministic equal-CU tie-break; a set with no eligible scenario fails closed. Audit rows distinguish nonzero priced winners, legitimate eligible zeroes, and zeroes whose package is entirely context-required or unsupported. Primitive rows report application and active probabilities, expected occurrences and exposure, relevant benchmark locomotion speed, nominal weight, transform ID, scalar CU, resolved status, and normalization disposition.
 
 The shadow layer preserves current condition decomposition, repeat-save timing, dependencies, and fail-closed behavior. Recoverable Prone generically exposes one target-turn `standing_movement_cost` at half Speed, regardless of comparator source. That recovery cost is suppressed while own-turn standing is explicitly unavailable; Prone's attack-facing consequences remain separate and context-sensitive. Unknown timing, magnitude, scope, or battlefield context remains contextual or unsupported.
 
