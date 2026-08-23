@@ -1012,8 +1012,9 @@ class ControlCatalogTests(unittest.TestCase):
         for scenario in ("snow_chains:T0","snow_chains:T1"):
             self.assertEqual(cells[("cryokinesis",scenario,7)].effective_targets,total)
         rendered = render_control_coverage_exceptions(self.catalog,cells,self.levels)
-        self.assertIn("Cryokinesis — Snow Chains — T0 | Fighter 7 | Air Elemental | Partial | immune to Restrained; Speed 0 remains effective",rendered)
-        self.assertIn("Cryokinesis — Snow Chains — T1 | Fighter 7 | Air Elemental | Partial | immune to Restrained; Speed 0 and Reaction denial remain effective",rendered)
+        self.assertIn("Cryokinesis — Snow Chains — T0 | Fighter 7 | Air Elemental | Partially effective | immune to Restrained; Speed 0 remains effective",rendered)
+        self.assertIn("Cryokinesis — Snow Chains — T1 | Fighter 7 | Air Elemental | Partially effective | immune to Restrained; Speed 0 and Reaction denial remain effective",rendered)
+        self.assertNotRegex(rendered,r"\| Partial \|")
         self.assertEqual(rendered,render_control_coverage_exceptions(self.catalog,dict(reversed(tuple(cells.items()))),self.levels))
 
     def test_fully_nullified_effect_is_excluded_without_changing_denominator(self) -> None:
@@ -1685,7 +1686,7 @@ class ComparatorReferencePublicationTests(unittest.TestCase):
         eldritch=rendered[rendered.index("### Eldritch Knight reference spell families"):rendered.index("### How to interpret comparator references")]
         self.assertEqual(sum(line.startswith("| ") and not line.startswith(("| Maneuver","|---")) for line in battle.splitlines()),3)
         self.assertEqual(sum(line.startswith("| ") and not line.startswith(("| Spell family","|---")) for line in eldritch.splitlines()),7)
-        for required in ("**Cell format:** `CU · initial delivery · effective/roster`","Best maintained legal setup for each spell family per target","grouped by stable `spell_id`","Goading Attack and Disarming Attack remain maintained context-required diagnostics","not assert that the Eldritch Knight control inventory is SRD-only"):
+        for required in ("**Cell format:** `CU · initial delivery · effective/roster`","Best maintained legal setup for each spell family per target","grouped by stable `spell_id`","Goading Attack and Disarming Attack remain maintained context-required diagnostics","Menacing Attack can have nonzero initial delivery with `0.000 CU`","not assert that the Eldritch Knight control inventory is SRD-only"):
             self.assertIn(required,rendered)
         self.assertIn("N/A",eldritch);self.assertNotRegex(rendered,r"\b(?:HOT|IDEAL|COLD)\b")
         self.assertNotIn("eligible/roster",rendered)

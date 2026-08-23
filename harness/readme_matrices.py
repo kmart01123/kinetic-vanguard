@@ -1701,6 +1701,12 @@ def render_comparator_reference_scale(
                 "Goading Attack and Disarming Attack remain maintained context-required diagnostics; "
                 "they are not scalar reference rows.",
                 "",
+                (
+                    "Menacing Attack can have nonzero initial delivery with `0.000 CU`: its "
+                    "Frightened consequences remain context-required without source line-of-sight, "
+                    "a relevant ability check, and encounter-geometry assumptions."
+                ),
+                "",
             ))
         else:
             sections.extend((
@@ -1847,9 +1853,10 @@ def render_kv_control_catalog(
         ),
         "",
         (
-            "`Partial` means retained priced and retained context-required or unsupported "
-            "consequences coexist; suppressed duplicate or weaker primitives do not create that "
-            "label. `Unpriced` retains measurable delivery and effectiveness coverage without reporting zero "
+            "`CU (partial)` means the form is partially priced: retained priced and retained "
+            "context-required or unsupported consequences coexist. Suppressed duplicate or "
+            "weaker primitives do not create that label. `Unpriced` retains measurable delivery "
+            "and effectiveness coverage without reporting zero "
             "CU. `No modeled control` means `0.000 CU` and no control delivery (`—`). `N/A` means "
             "the exact form is unavailable at that level."
         ),
@@ -1982,7 +1989,11 @@ def render_control_coverage_exceptions(
             cell = cells[(*form.identity, int(level))]
             grouped: dict[tuple[str, str], list[str]] = {}
             for exception in cell.exceptions:
-                status = "Partial" if exception.status == PARTIALLY_EFFECTIVE else "Ineffective"
+                status = (
+                    "Partially effective"
+                    if exception.status == PARTIALLY_EFFECTIVE
+                    else "Ineffective"
+                )
                 reason = _reader_exception_reason(exception)
                 grouped.setdefault((status, reason), []).append(exception.target)
             for (status, reason), targets in grouped.items():
@@ -2067,7 +2078,7 @@ def render_benchmark_roster_methodology() -> str:
             ),
             "",
             (
-                "`Priced` and `Partial` use the complete-roster denominator above. `Unpriced` "
+                "`Priced` and `CU (partial)` use the complete-roster denominator above. `Unpriced` "
                 "can still be effectively covered and show independently measurable delivery, but its CU "
                 "field remains `Unpriced`, not zero. `No modeled control` is `0.000 CU` because "
                 "that catalog source declares no modeled control, with delivery `—` because no "
@@ -2576,8 +2587,8 @@ def render_battle_master_retry_methodology() -> str:
                 "The terminal value is zero when attacks or superiority dice are exhausted. A "
                 "miss preserves the die; a hit consumes it; hit plus failed save succeeds; and a "
                 "hit followed by a successful save can recurse when both attacks and dice remain. "
-                "The headline Control Reliability window excludes Action Surge. This methodology "
-                "does not publish the Phase-4 Battle Master reference table."
+                "The headline Control Reliability window excludes Action Surge. The Battle Master "
+                "reference table above uses this same recursion."
             ),
         )
     )

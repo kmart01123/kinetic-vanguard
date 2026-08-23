@@ -40,7 +40,7 @@ Example: `0.143 CU · 95.00% · 12/12` means `0.143 CU` average Control Value an
 
 `12/12 effective` does **not** mean 100% delivery or that every consequence works; it means every roster target can receive at least one modeled consequence from that exact source. `10/11 effective` means one of the 11 creatures cannot receive any modeled control from that source. A target can remain counted in `12/12 effective` while appearing in a partial-effect exception because another modeled consequence survives. Coverage is not a save result, hit count, successful application count, CU threshold, pricing state, or delivery probability.
 
-`Partial` means retained priced and retained context-required or unsupported consequences coexist; suppressed duplicate or weaker primitives do not create that label. `Unpriced` retains measurable delivery and effectiveness coverage without reporting zero CU. `No modeled control` means `0.000 CU` and no control delivery (`—`). `N/A` means the exact form is unavailable at that level.
+`CU (partial)` means the form is partially priced: retained priced and retained context-required or unsupported consequences coexist. Suppressed duplicate or weaker primitives do not create that label. `Unpriced` retains measurable delivery and effectiveness coverage without reporting zero CU. `No modeled control` means `0.000 CU` and no control delivery (`—`). `N/A` means the exact form is unavailable at that level.
 
 Full denominator and state methodology: [Benchmark roster, effectiveness, and coverage](#benchmark-roster-effectiveness-and-coverage)
 
@@ -155,30 +155,30 @@ These generated rows expose structural exclusions, complete effect nullification
 
 | Discipline / exact form | Level | Affected target(s) | Status | Reason |
 |---|---|---|---|---|
-| Cryokinesis — Glacial Spike — T2 | Fighter 11 | Guardian Naga | Partial | immune to Restrained; Speed reduction remains effective |
-| Cryokinesis — Glacial Spike — T2 | Fighter 20 | Kraken | Partial | immune to Restrained; Speed reduction remains effective |
-| Cryokinesis — Snow Chains — T0 | Fighter 7 | Air Elemental | Partial | immune to Restrained; Speed 0 remains effective |
-| Cryokinesis — Snow Chains — T0 | Fighter 11 | Guardian Naga | Partial | immune to Restrained; Speed 0 remains effective |
-| Cryokinesis — Snow Chains — T0 | Fighter 20 | Kraken | Partial | immune to Restrained; Speed 0 remains effective |
-| Cryokinesis — Snow Chains — T1 | Fighter 7 | Air Elemental | Partial | immune to Restrained; Speed 0 and Reaction denial remain effective |
-| Cryokinesis — Snow Chains — T1 | Fighter 11 | Guardian Naga | Partial | immune to Restrained; Speed 0 and Reaction denial remain effective |
-| Cryokinesis — Snow Chains — T1 | Fighter 20 | Kraken | Partial | immune to Restrained; Speed 0 and Reaction denial remain effective |
+| Cryokinesis — Glacial Spike — T2 | Fighter 11 | Guardian Naga | Partially effective | immune to Restrained; Speed reduction remains effective |
+| Cryokinesis — Glacial Spike — T2 | Fighter 20 | Kraken | Partially effective | immune to Restrained; Speed reduction remains effective |
+| Cryokinesis — Snow Chains — T0 | Fighter 7 | Air Elemental | Partially effective | immune to Restrained; Speed 0 remains effective |
+| Cryokinesis — Snow Chains — T0 | Fighter 11 | Guardian Naga | Partially effective | immune to Restrained; Speed 0 remains effective |
+| Cryokinesis — Snow Chains — T0 | Fighter 20 | Kraken | Partially effective | immune to Restrained; Speed 0 remains effective |
+| Cryokinesis — Snow Chains — T1 | Fighter 7 | Air Elemental | Partially effective | immune to Restrained; Speed 0 and Reaction denial remain effective |
+| Cryokinesis — Snow Chains — T1 | Fighter 11 | Guardian Naga | Partially effective | immune to Restrained; Speed 0 and Reaction denial remain effective |
+| Cryokinesis — Snow Chains — T1 | Fighter 20 | Kraken | Partially effective | immune to Restrained; Speed 0 and Reaction denial remain effective |
 | Cryokinesis — Frozen Ground — T2 | Fighter 11 | Guardian Naga | Ineffective | immune to Restrained |
 | Cryokinesis — Frozen Ground — T2 | Fighter 20 | Kraken | Ineffective | immune to Restrained |
 | Cryokinesis — Arctic Tempest — T0 | Fighter 20 | Kraken | Ineffective | immune to Restrained |
-| Cryokinesis — Absolute Zero — T1 | Fighter 20 | Kraken | Partial | immune to Restrained; Speed 0 remains effective |
+| Cryokinesis — Absolute Zero — T1 | Fighter 20 | Kraken | Partially effective | immune to Restrained; Speed 0 remains effective |
 | Psychokinesis — Kinetic Mastery | Fighter 7 | Giant Ape | Ineffective | exceeds maximum size Large |
 | Psychokinesis — Kinetic Mastery | Fighter 11 | Remorhaz, Storm Giant, Adult White Dragon | Ineffective | exceeds maximum size Large |
 | Psychokinesis — Kinetic Mastery | Fighter 15 | Adult Black Dragon, Adult Blue Dragon, Adult Bronze Dragon, Adult Copper Dragon, Adult Green Dragon, Purple Worm, Adult Silver Dragon | Ineffective | exceeds maximum size Large |
 | Psychokinesis — Kinetic Mastery | Fighter 20 | Balor, Ancient Blue Dragon, Ancient Brass Dragon, Ancient Copper Dragon, Ancient Gold Dragon, Ancient Green Dragon, Kraken, Ancient Silver Dragon, Ancient White Dragon | Ineffective | exceeds maximum size Large |
 | Psychokinesis — Explosion/Implosion — T0 — primary | Fighter 11 | Guardian Naga | Ineffective | immune to Restrained |
 | Psychokinesis — Explosion/Implosion — T0 — primary | Fighter 20 | Kraken | Ineffective | immune to Restrained |
-| Psychokinesis — Explosion/Implosion — T0 — secondary | Fighter 11 | Guardian Naga | Partial | immune to Restrained; Forced movement remains effective |
-| Psychokinesis — Explosion/Implosion — T0 — secondary | Fighter 20 | Kraken | Partial | immune to Restrained; Forced movement remains effective |
+| Psychokinesis — Explosion/Implosion — T0 — secondary | Fighter 11 | Guardian Naga | Partially effective | immune to Restrained; Forced movement remains effective |
+| Psychokinesis — Explosion/Implosion — T0 — secondary | Fighter 20 | Kraken | Partially effective | immune to Restrained; Forced movement remains effective |
 | Psychokinesis — Explosion/Implosion — T1 — primary | Fighter 11 | Guardian Naga | Ineffective | immune to Restrained |
 | Psychokinesis — Explosion/Implosion — T1 — primary | Fighter 20 | Kraken | Ineffective | immune to Restrained |
-| Psychokinesis — Explosion/Implosion — T1 — secondary | Fighter 11 | Guardian Naga | Partial | immune to Restrained; Forced movement remains effective |
-| Psychokinesis — Explosion/Implosion — T1 — secondary | Fighter 20 | Kraken | Partial | immune to Restrained; Forced movement remains effective |
+| Psychokinesis — Explosion/Implosion — T1 — secondary | Fighter 11 | Guardian Naga | Partially effective | immune to Restrained; Forced movement remains effective |
+| Psychokinesis — Explosion/Implosion — T1 — secondary | Fighter 20 | Kraken | Partially effective | immune to Restrained; Forced movement remains effective |
 | Psychokinesis — Mass Levitation — T0 | Fighter 20 | Balor, Ancient Blue Dragon, Ancient Brass Dragon, Ancient Copper Dragon, Ancient Gold Dragon, Ancient Green Dragon, Kraken, Ancient Silver Dragon, Ancient White Dragon | Ineffective | exceeds maximum size Large |
 | Psychokinesis — Mass Levitation — T1 | Fighter 20 | Balor, Ancient Blue Dragon, Ancient Brass Dragon, Ancient Copper Dragon, Ancient Gold Dragon, Ancient Green Dragon, Kraken, Ancient Silver Dragon, Ancient White Dragon | Ineffective | exceeds maximum size Large |
 
@@ -198,7 +198,7 @@ Do not divide only by effective targets. Effective-only averaging would hide pra
 
 **Instructional example (not a published scenario):** if a form has 80% delivery against 9 effective targets and 3 ineffective targets contribute 0%, its full-roster delivery mean is `(9 × 0.80 + 3 × 0) / 12 = 0.60 = 60%`. The effective-only 80% is not the roster-wide result.
 
-`Priced` and `Partial` use the complete-roster denominator above. `Unpriced` can still be effectively covered and show independently measurable delivery, but its CU field remains `Unpriced`, not zero. `No modeled control` is `0.000 CU` because that catalog source declares no modeled control, with delivery `—` because no control establishment is measured. `N/A` means the exact form is unavailable at that Fighter level and does not participate in that level's aggregate.
+`Priced` and `CU (partial)` use the complete-roster denominator above. `Unpriced` can still be effectively covered and show independently measurable delivery, but its CU field remains `Unpriced`, not zero. `No modeled control` is `0.000 CU` because that catalog source declares no modeled control, with delivery `—` because no control establishment is measured. `N/A` means the exact form is unavailable at that Fighter level and does not participate in that level's aggregate.
 
 ## Comparator reference scale
 
@@ -217,6 +217,8 @@ These raw rows provide a familiar Fighter comparison scale beside the exact-form
 | Trip Attack | 0.078 CU · 52.14% · 10/12 | 0.092 CU · 61.00% · 9/12 | 0.039 CU · 26.13% · 4/11 | 0.033 CU · 21.93% · 3/12 |
 
 Goading Attack and Disarming Attack remain maintained context-required diagnostics; they are not scalar reference rows.
+
+Menacing Attack can have nonzero initial delivery with `0.000 CU`: its Frightened consequences remain context-required without source line-of-sight, a relevant ability check, and encounter-geometry assumptions.
 
 ### Eldritch Knight reference spell families
 
@@ -299,7 +301,7 @@ For attacks remaining `a`, superiority dice remaining `d`, hit probability `h`, 
 
 `R(a,d) = (1-h) × R(a-1,d) + h × [f + (1-f) × R(a-1,d-1)]`
 
-The terminal value is zero when attacks or superiority dice are exhausted. A miss preserves the die; a hit consumes it; hit plus failed save succeeds; and a hit followed by a successful save can recurse when both attacks and dice remain. The headline Control Reliability window excludes Action Surge. This methodology does not publish the Phase-4 Battle Master reference table.
+The terminal value is zero when attacks or superiority dice are exhausted. A miss preserves the die; a hit consumes it; hit plus failed save succeeds; and a hit followed by a successful save can recurse when both attacks and dice remain. The headline Control Reliability window excludes Action Surge. The Battle Master reference table above uses this same recursion.
 
 ### Eldritch Knight spell attacks and saves
 
