@@ -16,6 +16,10 @@ class AuthorityError(RuntimeError):
     """Raised when canonical mechanics cannot be projected safely."""
 
 
+class AuthorityUnavailableError(AuthorityError):
+    """Raised when a valid canonical feature or tier is unavailable at a Fighter level."""
+
+
 def _projector_command(authority_path: Path) -> list[str]:
     executable = PROJECT_ROOT / "node_modules" / ".bin" / "tsx"
     if not executable.is_file():
@@ -137,13 +141,17 @@ class AuthorityModel:
         if feature is None:
             raise AuthorityError(f"Unknown harness feature entity ID: {entity_id}")
         if level < int(feature["minimum_level"]):
-            raise AuthorityError(f"Feature {entity_id} is unavailable at Fighter level {level}")
+            raise AuthorityUnavailableError(
+                f"Feature {entity_id} is unavailable at Fighter level {level}"
+            )
         if tier is not None:
             minimums = {int(row["tier"]): int(row["minimum_level"]) for row in self.projection["progressions"]["tier_minimum_levels"]}
             if tier not in minimums:
                 raise AuthorityError(f"Unsupported Overload tier {tier}")
             if level < minimums[tier]:
-                raise AuthorityError(f"Tier {tier} is unavailable at Fighter level {level}")
+                raise AuthorityUnavailableError(
+                    f"Tier {tier} is unavailable at Fighter level {level}"
+                )
         return feature
 
     def progression(self, name: str, level: int) -> int:

@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Callable
 from unittest.mock import patch
 
-from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
+from harness.authority import AuthorityError,AuthorityModel,AuthorityUnavailableError,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
 from harness.control_harness import BATTLE_MASTER_REFERENCE_SCENARIOS,ELDRITCH_KNIGHT_REFERENCE_FAMILIES,EFFECTIVE,INEFFECTIVE_NULLIFIED,INEFFECTIVE_STRUCTURAL,PARTIALLY_EFFECTIVE,_attack_action_retry_probability,_battle_master_retry_probability,_catalog_effectiveness,_catalog_rider_scenario,_comparator_scenario,_comparator_scenario_available_at_level,_composed_eldritch_knight_scenarios,_delivery_recipe,_effect_available,_eldritch_strike_primer_probability,_is_eldritch_knight_reference_scenario,_kv_retry_resources,_kv_rider_delivery_recipe,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
 from harness.control_value import DEFAULT_PRIMITIVES,DEFAULT_SCORING,shadow_rows
@@ -85,14 +85,24 @@ class AuthorityProjectionTests(unittest.TestCase):
         self.assertEqual(self.model.disciplines["pyrokinesis"]["damage_type"],"fire")
         self.assertEqual(mutated.disciplines["pyrokinesis"]["damage_type"],"cold")
 
-    def test_missing_mechanics_and_unavailable_tier_fail_closed(self)->None:
+    def test_missing_mechanics_fail_closed(self)->None:
         source=DEFAULT_AUTHORITY.read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory() as directory:
             authority=Path(directory)/"KineticVanguard.yaml"
             authority.write_text(source.replace("  harness_mechanics:\n","  missing_harness_mechanics:\n",1),encoding="utf-8")
             with self.assertRaises(AuthorityError):AuthorityModel.load(authority)
-        with self.assertRaisesRegex(AuthorityError,"unavailable"):self.model.feature("flare",7,2)
-        with self.assertRaisesRegex(AuthorityError,"Unsupported"):self.model.feature("glacial_spike",7,9)
+
+    def test_authority_unavailability_is_narrow_and_fail_closed(self)->None:
+        self.assertTrue(issubclass(AuthorityUnavailableError,AuthorityError))
+        with self.assertRaisesRegex(AuthorityUnavailableError,"Feature flare is unavailable at Fighter level 11"):
+            self.model.feature("flare",11)
+        with self.assertRaisesRegex(AuthorityUnavailableError,"Tier 2 is unavailable at Fighter level 7"):
+            self.model.feature("glacial_spike",7,2)
+        for entity_id,tier,message in (("unknown_feature",None,"Unknown"),("glacial_spike",9,"Unsupported")):
+            with self.subTest(entity_id=entity_id,tier=tier):
+                with self.assertRaisesRegex(AuthorityError,message) as raised:
+                    self.model.feature(entity_id,7,tier)
+                self.assertNotIsInstance(raised.exception,AuthorityUnavailableError)
 
     def test_action_economy_mutation_fails_closed(self)->None:
         source=DEFAULT_AUTHORITY.read_text(encoding="utf-8")
@@ -1742,6 +1752,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
                 write_headline=True,profile="headline",write_shadow=True,
                 publication_scenarios=(
                     {"discipline_id":"cryokinesis","entity_id":"snow_chains","tier":0,"target_role":"primary"},
+                    {"discipline_id":"cryokinesis","entity_id":"snow_chains","tier":2,"target_role":"primary"},
                 ),
             )
             self.assertEqual(baseline["paths"]["csv"].read_bytes(),control["paths"]["csv"].read_bytes())
@@ -1751,6 +1762,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
                 scenarios=list(csv.DictReader(stream))
             extra=[row for row in scenarios if row["Build"]=="kinetic_vanguard" and row["Discipline"]=="cryokinesis" and row["Scenario"]=="snow_chains:T0"]
             self.assertEqual(len(extra),1)
+            self.assertFalse(any(row["Scenario"]=="snow_chains:T2" for row in scenarios))
             self.assertIn("Retained Candidate Rows",extra[0]);self.assertIn("Retained Context/Unsupported Rows",extra[0])
             with control["value_paths"]["selection_audit"].open(encoding="utf-8") as stream:
                 winners=list(csv.DictReader(stream))
@@ -1764,6 +1776,14 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             without_mastery=_catalog_rider_scenario(AuthorityModel(projection),config,target,"cryokinesis","snow_chains",0)
             self.assertEqual((rider["named"],rider["whole"],rider["shadow_components"]),(without_mastery["named"],without_mastery["whole"],without_mastery["shadow_components"]))
             with self.assertRaisesRegex(ValueError,"lacks canonical control mechanics"):_kv_scenario(model,config,target,"electrokinesis","branching_bolt",0)
+
+    def test_publication_catalog_scenario_errors_fail_closed(self)->None:
+        publication=({"discipline_id":"cryokinesis","entity_id":"snow_chains","tier":0,"target_role":"primary"},)
+        for error in (RuntimeError("synthetic unavailable evaluator failure"),AuthorityError("synthetic unavailable authority failure")):
+            with self.subTest(error=type(error).__name__),tempfile.TemporaryDirectory() as directory:
+                with patch("harness.control_harness._catalog_rider_scenario",side_effect=error):
+                    with self.assertRaisesRegex(type(error),"synthetic unavailable"):
+                        run_control(DEFAULT_AUTHORITY,Path(directory),{7},1,write_headline=False,profile="headline",write_shadow=True,publication_scenarios=publication)
 
 
 if __name__=="__main__":unittest.main()

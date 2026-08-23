@@ -11,7 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any,Callable,Sequence
 
-from .authority import AuthorityModel,DEFAULT_AUTHORITY
+from .authority import AuthorityModel,AuthorityUnavailableError,DEFAULT_AUTHORITY
 from .comparison_report import NOTICE_COLUMNS,matrix_row,write_matrix
 from .control_value import DEFAULT_PRIMITIVES,DEFAULT_SCORING,load_scoring_config,shadow_rows
 from .model import DEFAULT_CATALOG,DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_PROFILE,DEFAULT_ROSTERS,PROFILE_COUNTS,Target,ability_check_success_probability,attack_probabilities,file_sha256,level_config,load_comparators,load_config,load_targets,modified_save_success_probability,save_success_probability,target_is_eligible
@@ -638,8 +638,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
                 for tier in entry["tiers"]:
                     for target_role in entry.get("target_roles",["primary"]):
                         try:values.append(_kv_scenario(model,config,target,discipline,entry["entity_id"],int(tier),str(target_role)))
-                        except Exception as error:
-                            if "unavailable" not in str(error):raise
+                        except AuthorityUnavailableError:continue
             detail.extend({"Level":target.level,"Target":target.name,**value} for value in values)
             scored=[value_row(target,"kinetic_vanguard",discipline,value,collect_detail=write_shadow) for value in values]
             if write_shadow:value_scenarios.extend(scored)
@@ -649,9 +648,7 @@ def run(authority:Path,output_dir:Path,levels:set[int],target_limit:int|None,wri
                 value_audit.append(selected);value_envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":winner["Control Value CU"],"Eldritch Knight":comparator_winners["eldritch_knight"]["Control Value CU"],"Battle Master":comparator_winners["battle_master"]["Control Value CU"]})
                 for entry in publication_by_discipline.get(discipline,[]):
                     try:publication_value=_catalog_rider_scenario(model,config,target,discipline,entry["entity_id"],entry["tier"],entry["target_role"])
-                    except Exception as error:
-                        if "unavailable" in str(error):continue
-                        raise
+                    except AuthorityUnavailableError:continue
                     catalog_scenarios.append(value_row(target,"kinetic_vanguard",discipline,publication_value,collect_detail=False,include_effectiveness=True))
             envelopes.append({"Level":target.level,"Target":target.name,"Discipline":discipline,"KV":winner["Whole-package control stick %"],"Eldritch Knight":comparator_winners["eldritch_knight"]["Whole-package control stick %"],"Battle Master":comparator_winners["battle_master"]["Whole-package control stick %"]})
     slug=model.rules_version.replace(".","-");output_dir.mkdir(parents=True,exist_ok=True)
