@@ -11,10 +11,10 @@ from pathlib import Path
 from typing import Callable
 from unittest.mock import patch
 
-from harness.authority import AuthorityError,AuthorityModel,DEFAULT_AUTHORITY,PROJECT_ROOT
+from harness.authority import AuthorityError,AuthorityModel,AuthorityUnavailableError,DEFAULT_AUTHORITY,PROJECT_ROOT
 from harness.comparison_report import BANDS,COMPARATOR_NOTICE,LEGAL_NOTICES,NOTICE_COLUMNS,PROJECT_ATTRIBUTION_NOTICE,SRD_ATTRIBUTION_NOTICE,SRD_MODIFICATION_NOTICE,SRD_SECTION_5_NOTICE,VALUE_COLUMNS,classify_envelope,matrix_row,write_matrix
-from harness.control_harness import _battle_master_retry_probability,_comparator_scenario,_composed_eldritch_knight_scenarios,_effect_available,_eldritch_strike_primer_probability,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
-from harness.control_value import DEFAULT_PRIMITIVES,DEFAULT_SCORING
+from harness.control_harness import BATTLE_MASTER_REFERENCE_SCENARIOS,ELDRITCH_KNIGHT_REFERENCE_FAMILIES,EFFECTIVE,INEFFECTIVE_NULLIFIED,INEFFECTIVE_STRUCTURAL,PARTIALLY_EFFECTIVE,_attack_action_retry_probability,_battle_master_retry_probability,_catalog_effectiveness,_catalog_rider_scenario,_comparator_scenario,_comparator_scenario_available_at_level,_composed_eldritch_knight_scenarios,_delivery_recipe,_effect_available,_eldritch_strike_primer_probability,_is_eldritch_knight_reference_scenario,_kv_retry_resources,_kv_rider_delivery_recipe,_kv_scenario,_mastery_scenario,_repeat_rider_probability,_select_control_value,run as run_control
+from harness.control_value import DEFAULT_PRIMITIVES,DEFAULT_SCORING,shadow_rows
 from harness.damage_harness import Package,Standalone,_KVDamagePlanner,_battle_master_damage,_battle_master_dpr_for_schedule,_battle_master_result,_comparator_dpr,_comparator_score,_eldritch_knight_result,_kv_dpr,_psionic_apex_packet,_rider_values,_strike_packet_options,run as run_damage
 from harness.ek_damage_planner import EKDamagePlanner,EKScore,EKState,chromatic_orb_duplicate_probability
 from harness.model import DEFAULT_COMPARATORS,DEFAULT_CONFIG,Target,attack_probabilities,file_sha256,fighter_action_schedules,load_comparators,load_config,load_targets,save_success_probability
@@ -59,7 +59,7 @@ class AuthorityProjectionTests(unittest.TestCase):
 
     def test_real_root_authority_and_complete_stable_id_inventory(self)->None:
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
-        self.assertEqual(self.model.projection["projection_version"],"1.1.0")
+        self.assertEqual(self.model.projection["projection_version"],"1.2.0")
         self.assertEqual(self.model.rules_version,"14.3.0")
         self.assertEqual(self.model.projection["schema_version"],"2.3.0")
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":1,"action_surge_allows_additional_standalone_psionic_action":False})
@@ -71,7 +71,8 @@ class AuthorityProjectionTests(unittest.TestCase):
         self.assertEqual(len(feature_ids),len(set(feature_ids)))
         self.assertEqual(set(self.model.disciplines),{"pyrokinesis","cryokinesis","psychokinesis","electrokinesis"})
         self.assertTrue(all(feature["minimum_level"]>=3 and feature["psi_cost"]>=0 for feature in self.model.features.values()))
-        self.assertTrue(all("entity_id" in feature for feature in self.model.features.values()))
+        self.assertTrue(all("entity_id" in feature and feature["title"] for feature in self.model.features.values()))
+        self.assertTrue(self.model.features["advanced_phase_step"]["advanced_training"])
 
     def test_structural_yaml_mutation_changes_projection_without_python_edit(self)->None:
         source=DEFAULT_AUTHORITY.read_text(encoding="utf-8")
@@ -84,14 +85,24 @@ class AuthorityProjectionTests(unittest.TestCase):
         self.assertEqual(self.model.disciplines["pyrokinesis"]["damage_type"],"fire")
         self.assertEqual(mutated.disciplines["pyrokinesis"]["damage_type"],"cold")
 
-    def test_missing_mechanics_and_unavailable_tier_fail_closed(self)->None:
+    def test_missing_mechanics_fail_closed(self)->None:
         source=DEFAULT_AUTHORITY.read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory() as directory:
             authority=Path(directory)/"KineticVanguard.yaml"
             authority.write_text(source.replace("  harness_mechanics:\n","  missing_harness_mechanics:\n",1),encoding="utf-8")
             with self.assertRaises(AuthorityError):AuthorityModel.load(authority)
-        with self.assertRaisesRegex(AuthorityError,"unavailable"):self.model.feature("flare",7,2)
-        with self.assertRaisesRegex(AuthorityError,"Unsupported"):self.model.feature("glacial_spike",7,9)
+
+    def test_authority_unavailability_is_narrow_and_fail_closed(self)->None:
+        self.assertTrue(issubclass(AuthorityUnavailableError,AuthorityError))
+        with self.assertRaisesRegex(AuthorityUnavailableError,"Feature flare is unavailable at Fighter level 11"):
+            self.model.feature("flare",11)
+        with self.assertRaisesRegex(AuthorityUnavailableError,"Tier 2 is unavailable at Fighter level 7"):
+            self.model.feature("glacial_spike",7,2)
+        for entity_id,tier,message in (("unknown_feature",None,"Unknown"),("glacial_spike",9,"Unsupported")):
+            with self.subTest(entity_id=entity_id,tier=tier):
+                with self.assertRaisesRegex(AuthorityError,message) as raised:
+                    self.model.feature(entity_id,7,tier)
+                self.assertNotIsInstance(raised.exception,AuthorityUnavailableError)
 
     def test_action_economy_mutation_fails_closed(self)->None:
         source=DEFAULT_AUTHORITY.read_text(encoding="utf-8")
@@ -1063,6 +1074,139 @@ class CanonicalControlTests(unittest.TestCase):
         profile=self.config["kv_profile"];bonus=self.model.kv_attack_bonus(level,int(profile["psionic_ability_modifier"]))+int(profile["archery_attack_bonus"]);hit=sum(attack_probabilities(bonus,target.ac)[1:]);attacks=int(self.config["fighter_progression"][str(level)]["attacks_per_action"])
         return 100*(1-(1-hit)**attacks)
 
+    def test_unconstrained_attack_action_retry_matches_closed_form(self)->None:
+        for attacks,probability in ((0,0.42),(1,0.42),(3,0.42),(4,0.0),(4,1.0)):
+            with self.subTest(attacks=attacks,probability=probability):
+                self.assertAlmostEqual(_attack_action_retry_probability(attacks,probability),1-(1-probability)**attacks,places=12)
+
+    def test_kv_retry_resource_projection_uses_authority_and_benchmark_inputs(self)->None:
+        resources=[_kv_retry_resources(self.model,self.config,level) for level in (7,11,15,20)]
+        self.assertEqual([row["attacks_per_action"] for row in resources],[2,3,3,4])
+        for row in resources:
+            level=row["level"];profile=self.config["kv_profile"]
+            hp=int(profile["hit_point_model"]["first_level_base"])+int(profile["constitution_modifier"])+(level-1)*(int(profile["hit_point_model"]["later_level_average"])+int(profile["constitution_modifier"]))
+            self.assertEqual(row["psi_pool"],self.model.progression("psi_points",level))
+            self.assertEqual((row["benchmark_hp"],row["blood_tax_budget"]),(hp,int(hp*float(profile["blood_tax_hp_fraction"]))))
+            self.assertEqual(row["blood_tax_by_tier"],tuple(self.model.blood_tax(level,tier) for tier in (0,1,2)))
+            self.assertEqual(row["tier_two_limit"],self.model.projection["core"]["overload"]["tier_two_limit_per_attack_action"])
+        self.assertEqual([row["overload_mastery_uses"] for row in resources],[0,0,0,1])
+
+    def test_delivery_recipe_metadata_keeps_mastery_and_rider_separate(self)->None:
+        target=self.level_target(20)
+        mastery=_mastery_scenario(self.model,self.config,target,"electrokinesis")
+        rider=_catalog_rider_scenario(self.model,self.config,target,"cryokinesis","snow_chains",0)
+        automatic=_delivery_recipe("single_activation_automatic","automatic","single_activation")
+        self.assertEqual(mastery["delivery_recipe"]["id"],"mastery_attack_action_hit_retry")
+        self.assertEqual(rider["delivery_recipe"],rider["rider_delivery_recipe"])
+        self.assertEqual(rider["delivery_recipe"]["id"],"kv_attack_action_hit_retry")
+        self.assertEqual(rider["delivery_recipe"]["gate"],"hit")
+        self.assertEqual(rider["delivery_recipe"]["save_ability"],"constitution")
+        self.assertEqual(rider["delivery_recipe"]["additional_control_gate"],"failed_save")
+        self.assertEqual(automatic["id"],"single_activation_automatic")
+        with self.assertRaisesRegex(ValueError,"Unknown delivery recipe ID"):
+            _delivery_recipe("unknown","automatic","single_activation")
+
+    def test_mixed_gate_recipes_follow_exact_effect_gates(self)->None:
+        sentinels=(
+            ("cryokinesis","glacial_spike",1,7,"constitution"),
+            ("cryokinesis","glacial_spike",2,11,"constitution"),
+            ("cryokinesis","snow_chains",0,7,"constitution"),
+            ("cryokinesis","snow_chains",1,7,"constitution"),
+            ("cryokinesis","snow_chains",2,11,"constitution"),
+        )
+        for discipline,entity,tier,level,save in sentinels:
+            with self.subTest(entity=entity,tier=tier):
+                row=_catalog_rider_scenario(self.model,self.config,self.level_target(level),discipline,entity,tier)
+                recipe=row["delivery_recipe"]
+                self.assertEqual((recipe["id"],recipe["gate"],recipe["save_ability"],recipe["additional_control_gate"]),("kv_attack_action_hit_retry","hit",save,"failed_save"))
+                self.assertNotEqual(recipe["gate"],"hit_and_failed_save")
+                feature=self.model.features[entity];expected=100*_repeat_rider_probability(self.model,self.config,level,tier,int(feature["psi_cost"]),row["reach"]/100)
+                self.assertAlmostEqual(row["whole"],expected,places=12)
+        glacial_zero=_catalog_rider_scenario(self.model,self.config,self.level_target(7),"cryokinesis","glacial_spike",0)["delivery_recipe"]
+        self.assertEqual((glacial_zero["id"],glacial_zero["gate"],glacial_zero["save_ability"],glacial_zero["additional_control_gate"]),("kv_attack_action_hit_retry","hit","",""))
+
+    def test_standalone_mixed_gate_recipes_are_automatic_initial_delivery(self)->None:
+        target=self.level_target(20)
+        for discipline,entity,save in (("cryokinesis","absolute_zero","constitution"),("psychokinesis","telekinetic_slam","strength")):
+            with self.subTest(entity=entity):
+                row=_catalog_rider_scenario(self.model,self.config,target,discipline,entity,2);recipe=row["delivery_recipe"]
+                self.assertEqual((recipe["id"],recipe["gate"],recipe["retry_model"],recipe["save_ability"],recipe["additional_control_gate"]),("single_activation_automatic","automatic","single_activation",save,"failed_save"))
+                self.assertAlmostEqual(row["whole"],100.0)
+
+    def test_pure_save_recipe_families_remain_unchanged(self)->None:
+        target=self.level_target(20)
+        frozen=_catalog_rider_scenario(self.model,self.config,target,"cryokinesis","frozen_ground",0)["delivery_recipe"]
+        self.assertEqual((frozen["id"],frozen["gate"],frozen["save_ability"],frozen["additional_control_gate"]),("single_activation_failed_save","failed_save","constitution",""))
+        for discipline,entity,save in (("pyrokinesis","flare","dexterity"),("electrokinesis","electron_burst","charisma")):
+            with self.subTest(entity=entity):
+                recipe=_catalog_rider_scenario(self.model,self.config,target,discipline,entity,2)["delivery_recipe"]
+                self.assertEqual((recipe["id"],recipe["gate"],recipe["save_ability"],recipe["additional_control_gate"]),("kv_attack_action_hit_failed_save_retry","hit_and_failed_save",save,""))
+
+    def test_delivery_recipe_target_role_filtering_and_malformed_gates_fail_closed(self)->None:
+        control={"application":"failed_save","hit_gated":True,"save":"constitution","effects":[
+            {"target_role":"primary","gate":"on_reach","outcomes":["speed_zero"]},
+            {"target_role":"primary","gate":"on_failed_save","conditions":["restrained"]},
+            {"target_role":"secondary","gate":"on_failed_save","conditions":["restrained"]},
+        ]}
+        primary=_kv_rider_delivery_recipe(control,True,"primary");secondary=_kv_rider_delivery_recipe(control,True,"secondary")
+        self.assertEqual((primary["gate"],primary["additional_control_gate"]),("hit","failed_save"))
+        self.assertEqual((secondary["gate"],secondary["additional_control_gate"]),("hit_and_failed_save",""))
+        malformed=(
+            ({**control,"effects":[{"gate":"after_damage","outcomes":["speed_zero"]}]},"Unsupported KV delivery effect gate"),
+            ({**control,"effects":[{"target_role":"secondary","gate":"on_reach","outcomes":["speed_zero"]}]},"no applicable modeled control effect"),
+            ({**control,"save":"","effects":[{"gate":"on_failed_save","conditions":["restrained"]}]},"lacks a save ability"),
+            ({**control,"application":"no_save","effects":[{"gate":"on_failed_save","conditions":["restrained"]}]},"application disagrees"),
+        )
+        for candidate,message in malformed:
+            with self.subTest(message=message),self.assertRaisesRegex(ValueError,message):_kv_rider_delivery_recipe(candidate,True,"primary")
+
+    def test_catalog_initial_delivery_is_not_repeat_save_persistence(self)->None:
+        target=next(item for item in load_targets(profile="headline",levels={20}) if item.name=="Lich")
+        package=_kv_scenario(self.model,self.config,target,"psychokinesis","mass_levitation",0)
+        catalog=_catalog_rider_scenario(self.model,self.config,target,"psychokinesis","mass_levitation",0)
+        self.assertAlmostEqual(package["whole"],90.0)
+        self.assertAlmostEqual(package["after_repeats"],72.9)
+        self.assertAlmostEqual(catalog["whole"],package["whole"])
+        self.assertAlmostEqual(catalog["after_repeats"],package["whole"])
+        self.assertNotEqual(package["whole"],package["after_repeats"])
+
+    def test_catalog_effectiveness_distinguishes_structural_full_partial_and_nullified(self)->None:
+        target=self.target();outcome={"outcomes":["speed_zero"]};condition={"conditions":["restrained"]}
+        size=_catalog_effectiveness(replace(target,size="huge"),[outcome],"primary",maximum_size="large")
+        creature_type=_catalog_effectiveness(replace(target,creature_type="monstrosity"),[outcome],"primary",required_creature_type="humanoid")
+        nullified=_catalog_effectiveness(self.target("restrained"),[condition],"primary")
+        partial=_catalog_effectiveness(self.target("restrained"),[condition,outcome],"primary")
+        effective=_catalog_effectiveness(target,[condition,outcome],"primary")
+        self.assertEqual((size["status"],size["effective"],size["reasons"]),(INEFFECTIVE_STRUCTURAL,False,["exceeds_maximum_size:large"]))
+        self.assertEqual((creature_type["status"],creature_type["effective"],creature_type["reasons"]),(INEFFECTIVE_STRUCTURAL,False,["requires_creature_type:humanoid"]))
+        self.assertEqual((nullified["status"],nullified["effective"],nullified["surviving"],nullified["reasons"]),(INEFFECTIVE_NULLIFIED,False,[],["immune_condition:restrained"]))
+        self.assertEqual((partial["status"],partial["effective"]),(PARTIALLY_EFFECTIVE,True));self.assertEqual(partial["surviving"],["outcome:speed_zero"])
+        self.assertEqual((effective["status"],effective["effective"],effective["reasons"]),(EFFECTIVE,True,[]))
+
+    def test_catalog_effectiveness_uses_dependencies_but_not_pricing_or_cu(self)->None:
+        unpriced={"outcomes":["forced_movement"],"pricing_status":"unsupported"}
+        self.assertEqual(_catalog_effectiveness(self.target(),[unpriced],"primary")["status"],EFFECTIVE)
+        dependent={"outcomes":["reaction_denial"],"requires_condition":"restrained"}
+        result=_catalog_effectiveness(self.target("restrained"),[dependent],"primary")
+        self.assertEqual((result["status"],result["reasons"]),(INEFFECTIVE_NULLIFIED,["dependency_condition_immune:restrained"]))
+
+    def test_air_elemental_snow_chains_is_partial_and_mastery_does_not_rescue_rider(self)->None:
+        target=next(item for item in load_targets(profile="headline",levels={7}) if item.name=="Air Elemental")
+        self.assertIn("restrained",target.condition_immunities)
+        for tier,expected_survivors in ((0,["outcome:speed_zero"]),(1,["outcome:speed_zero","outcome:reaction_denial"])):
+            with self.subTest(tier=tier):
+                rider=_catalog_rider_scenario(self.model,self.config,target,"cryokinesis","snow_chains",tier)
+                evidence=rider["effectiveness"]
+                self.assertTrue(rider["eligible"]);self.assertEqual(evidence["status"],PARTIALLY_EFFECTIVE);self.assertTrue(evidence["effective"])
+                self.assertEqual(evidence["reasons"],["immune_condition:restrained"]);self.assertEqual(evidence["surviving"],expected_survivors)
+                self.assertNotIn("outcome:speed_reduction",evidence["declared"]);self.assertGreater(rider["whole"],0.0)
+
+    def test_purple_worm_flare_uses_unchanged_source_facts(self)->None:
+        target=next(item for item in load_targets(profile="headline",levels={15}) if item.name=="Purple Worm")
+        self.assertNotIn("blinded",target.condition_immunities)
+        rider=_catalog_rider_scenario(self.model,self.config,target,"pyrokinesis","flare",0)
+        self.assertEqual((rider["eligible"],rider["effectiveness"]["status"]),(True,EFFECTIVE));self.assertGreater(rider["whole"],0.0)
+
     def test_bare_sap_mastery_uses_every_ordinary_attack_without_action_surge(self)->None:
         for level,attacks in ((7,2),(11,3),(15,3),(20,4)):
             with self.subTest(level=level):
@@ -1447,6 +1591,87 @@ class CommonControlSelectionTests(unittest.TestCase):
         self.assertEqual(winner["Scenario"],"eligible")
 
 
+class ComparatorReferenceEvidenceTests(unittest.TestCase):
+    @classmethod
+    def setUpClass(cls)->None:
+        cls.directory=tempfile.TemporaryDirectory();cls.root=Path(cls.directory.name)
+        cls.result=run_control(DEFAULT_AUTHORITY,cls.root,{7,11,15,20},None,write_headline=True,profile="headline",write_shadow=True)
+        with cls.result["value_paths"]["comparator_reference"].open(encoding="utf-8") as stream:cls.rows=list(csv.DictReader(stream))
+        cls.targets=load_targets(profile="headline",levels={7,11,15,20});cls.target_by_identity={(target.level,target.name):target for target in cls.targets}
+        cls.model=AuthorityModel.load();cls.config=load_config();cls.comparators=load_comparators()
+
+    @classmethod
+    def tearDownClass(cls)->None:cls.directory.cleanup()
+
+    def test_fixed_reference_inventories_and_config_sources_are_exact(self)->None:
+        self.assertEqual(tuple(item[0] for item in BATTLE_MASTER_REFERENCE_SCENARIOS),("menacing_attack","pushing_attack","trip_attack"))
+        self.assertEqual(tuple(item[0] for item in ELDRITCH_KNIGHT_REFERENCE_FAMILIES),("ray_of_frost","thunderwave","blindness_deafness","hold_person","web","hypnotic_pattern","slow"))
+        bm_config={scenario["id"] for scenario in self.comparators["control"]["battle_master"]["scenarios"]}
+        self.assertTrue(set(dict(BATTLE_MASTER_REFERENCE_SCENARIOS))<=bm_config)
+        self.assertFalse({"goading_attack","disarming_attack"}&{row["Family ID"] for row in self.rows if row["Build"]=="battle_master"})
+        self.assertEqual({(row["Build"],row["Family ID"]) for row in self.rows},{*(('battle_master',item[0]) for item in BATTLE_MASTER_REFERENCE_SCENARIOS),*(('eldritch_knight',item[0]) for item in ELDRITCH_KNIGHT_REFERENCE_FAMILIES)})
+
+    def test_battle_master_reference_values_are_exact_evaluator_outputs(self)->None:
+        target=next(item for item in self.targets if item.level==7 and item.name=="Gladiator")
+        for scenario_id,_ in BATTLE_MASTER_REFERENCE_SCENARIOS:
+            scenario=next(item for item in self.comparators["control"]["battle_master"]["scenarios"] if item["id"]==scenario_id)
+            evaluated=_comparator_scenario(self.model,self.config,self.comparators,target,"battle_master",scenario)
+            primitive=shadow_rows({"Build":"battle_master","Discipline":"all","Level":target.level,"Target":target.name,"Scenario":scenario_id},evaluated["shadow_components"],horizon=int(self.config["methodology"]["rounds"]),benchmark_locomotion_speed=target.benchmark_locomotion_speed)
+            published=next(row for row in self.rows if row["Build"]=="battle_master" and row["Family ID"]==scenario_id and row["Level"]=="7" and row["Target"]==target.name)
+            with self.subTest(scenario=scenario_id):
+                self.assertAlmostEqual(float(published["Control Value CU"]),sum(float(row["Control Value CU"]) for row in primitive))
+                self.assertAlmostEqual(float(published["Whole-package control stick %"]),float(evaluated["whole"]))
+                self.assertEqual(published["Scenario"],scenario_id)
+
+    def test_battle_master_effectiveness_tracks_immunity_size_and_prone(self)->None:
+        keyed={(row["Level"],row["Target"],row["Family ID"]):row for row in self.rows if row["Build"]=="battle_master"}
+        frightened=[target for target in self.targets if "frightened" in target.condition_immunities]
+        oversized=[target for target in self.targets if target.size in {"huge","gargantuan"}]
+        prone=[target for target in self.targets if "prone" in target.condition_immunities]
+        self.assertTrue(frightened and oversized and prone)
+        for target in frightened:self.assertEqual(keyed[(str(target.level),target.name,"menacing_attack")]["Effectiveness Status"],INEFFECTIVE_NULLIFIED)
+        for target in oversized:
+            self.assertEqual(keyed[(str(target.level),target.name,"pushing_attack")]["Effectiveness Status"],INEFFECTIVE_STRUCTURAL)
+            self.assertEqual(keyed[(str(target.level),target.name,"trip_attack")]["Effectiveness Status"],INEFFECTIVE_STRUCTURAL)
+        for target in prone:
+            if target.size not in {"huge","gargantuan"}:self.assertEqual(keyed[(str(target.level),target.name,"trip_attack")]["Effectiveness Status"],INEFFECTIVE_NULLIFIED)
+
+    def test_eldritch_knight_grouping_modes_access_and_primers_are_semantic(self)->None:
+        synthetic={"id":"unrelated_identifier","spell_id":"web","effects":[]}
+        impostor={"id":"web","spell_id":"slow","effects":[]}
+        self.assertTrue(_is_eldritch_knight_reference_scenario("web",synthetic));self.assertFalse(_is_eldritch_knight_reference_scenario("web",impostor))
+        blindness=[row for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]=="blindness_deafness" and row["Family Available At Level"]=="True"]
+        self.assertTrue(blindness);self.assertTrue(all("condition:blinded" in row["Declared Consequences"] and "hearing_option_denial" not in row["Declared Consequences"] for row in blindness))
+        ray=[row for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]=="ray_of_frost"]
+        self.assertTrue(all(row["Family Candidate Scenarios"]=="1" for row in ray))
+        thunder=[row for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]=="thunderwave"]
+        self.assertTrue(any(int(row["Family Candidate Scenarios"])>1 for row in thunder))
+        self.assertTrue(all("eldritch_strike" not in row["Save Primers"] for row in thunder if row["Level"]=="7"))
+        self.assertTrue(all(row["Primer Timing"]=="cross_turn" for row in self.rows if "mind_sliver" in row["Save Primers"]))
+        slow=next(item for item in self.comparators["control"]["eldritch_knight"]["scenarios"] if item["id"]=="slow");target=replace(self.targets[0],level=11)
+        self.assertFalse(_comparator_scenario_available_at_level(self.comparators,target,"eldritch_knight",slow))
+        changed=deepcopy(self.comparators);changed["control"]["eldritch_knight"]["spell_access"]["highest_slot_level_by_fighter_level"]["11"]=3
+        self.assertTrue(_comparator_scenario_available_at_level(changed,target,"eldritch_knight",slow))
+
+    def test_eldritch_knight_availability_target_zeros_and_per_target_selection(self)->None:
+        for family in ("hypnotic_pattern","slow"):
+            early=[row for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]==family and row["Level"] in {"7","11"}]
+            self.assertTrue(early);self.assertTrue(all(row["Family Available At Level"]=="False" and row["Scenario"]=="" for row in early))
+            self.assertTrue(all(row["Family Available At Level"]=="True" for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]==family and row["Level"] in {"15","20"}))
+        hold=[row for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]=="hold_person"]
+        nonhumanoids=[row for row in hold if self.target_by_identity[(int(row["Level"]),row["Target"])].creature_type!="humanoid"]
+        self.assertTrue(nonhumanoids);self.assertTrue(all(row["Family Available At Level"]=="True" and row["Eligible"]=="False" and float(row["Control Value CU"])==0 and float(row["Whole-package control stick %"])==0 for row in nonhumanoids))
+        web={row["Scenario"] for row in self.rows if row["Build"]=="eldritch_knight" and row["Family ID"]=="web"}
+        self.assertGreater(len(web),1)
+
+    def test_reference_derivative_does_not_change_headline_or_common_selection(self)->None:
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);plain=run_control(DEFAULT_AUTHORITY,root/"plain",{7},1,write_headline=True,profile="headline",write_shadow=False);reference=run_control(DEFAULT_AUTHORITY,root/"reference",{7},1,write_headline=True,profile="headline",write_shadow=True)
+            self.assertEqual(plain["paths"]["csv"].read_bytes(),reference["paths"]["csv"].read_bytes())
+            for name in ("kv-14-3-0-control-detail.csv","kv-14-3-0-control-selection-audit.csv"):
+                self.assertEqual((root/"plain"/name).read_bytes(),(root/"reference"/name).read_bytes())
+
+
 class SmokeAndBoundaryTests(unittest.TestCase):
     def test_damage_smoke_writes_current_detail_and_matrix_outputs(self)->None:
         with tempfile.TemporaryDirectory() as directory:
@@ -1502,8 +1727,8 @@ class SmokeAndBoundaryTests(unittest.TestCase):
     def test_control_value_detail_writes_common_transparent_outputs(self)->None:
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);control=run_control(DEFAULT_AUTHORITY,root,{20},1,write_headline=False,profile="headline",write_shadow=True)
-            self.assertEqual(control["shadow_rows"],569);self.assertEqual(control["value_scenario_rows"],186);self.assertEqual(control["value_audit_rows"],6);self.assertEqual(control["value_matrix_rows"],4)
-            self.assertEqual(set(control["value_paths"]),{"scenario_detail","selection_audit","matrix"});self.assertTrue(all(path.is_file() for path in control["value_paths"].values()))
+            self.assertEqual(control["shadow_rows"],569);self.assertEqual(control["value_scenario_rows"],186);self.assertEqual(control["catalog_scenario_rows"],4);self.assertEqual(control["comparator_reference_rows"],10);self.assertEqual(control["value_audit_rows"],6);self.assertEqual(control["value_matrix_rows"],4)
+            self.assertEqual(set(control["value_paths"]),{"scenario_detail","catalog_scenario_detail","comparator_reference","selection_audit","matrix"});self.assertTrue(all(path.is_file() for path in control["value_paths"].values()))
             with control["shadow_path"].open(encoding="utf-8") as stream:
                 rows=list(csv.DictReader(stream))
             self.assertTrue(rows);self.assertTrue(all(row["Pricing Status"] in {"candidate","context_required","unsupported"} for row in rows))
@@ -1517,6 +1742,48 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             identity=lambda row:(row["Level"],row["Target"],row["Discipline"],row["Build"],row["Selected Scenario"])
             self.assertEqual({identity(row) for row in reliability_audit},{identity(row) for row in value_audit})
             self.assertNotIn("reliability_scenario_ids",load_comparators()["control"]["eldritch_knight"])
+
+    def test_rider_only_catalog_evidence_is_isolated_from_headline_selection(self)->None:
+        with tempfile.TemporaryDirectory() as directory:
+            root=Path(directory);baseline_root=root/"baseline";catalog_root=root/"catalog"
+            baseline=run_control(DEFAULT_AUTHORITY,baseline_root,{7},1,write_headline=True,profile="headline",write_shadow=True)
+            control=run_control(
+                DEFAULT_AUTHORITY,catalog_root,{7},1,
+                write_headline=True,profile="headline",write_shadow=True,
+                publication_scenarios=(
+                    {"discipline_id":"cryokinesis","entity_id":"snow_chains","tier":0,"target_role":"primary"},
+                    {"discipline_id":"cryokinesis","entity_id":"snow_chains","tier":2,"target_role":"primary"},
+                ),
+            )
+            self.assertEqual(baseline["paths"]["csv"].read_bytes(),control["paths"]["csv"].read_bytes())
+            self.assertEqual(baseline["value_paths"]["matrix"].read_bytes(),control["value_paths"]["matrix"].read_bytes())
+            self.assertEqual(baseline["value_paths"]["selection_audit"].read_bytes(),control["value_paths"]["selection_audit"].read_bytes())
+            with control["value_paths"]["catalog_scenario_detail"].open(encoding="utf-8") as stream:
+                scenarios=list(csv.DictReader(stream))
+            extra=[row for row in scenarios if row["Build"]=="kinetic_vanguard" and row["Discipline"]=="cryokinesis" and row["Scenario"]=="snow_chains:T0"]
+            self.assertEqual(len(extra),1)
+            self.assertFalse(any(row["Scenario"]=="snow_chains:T2" for row in scenarios))
+            self.assertIn("Retained Candidate Rows",extra[0]);self.assertIn("Retained Context/Unsupported Rows",extra[0])
+            with control["value_paths"]["selection_audit"].open(encoding="utf-8") as stream:
+                winners=list(csv.DictReader(stream))
+            with baseline["value_paths"]["selection_audit"].open(encoding="utf-8") as stream:
+                baseline_winners=list(csv.DictReader(stream))
+            self.assertEqual(winners,baseline_winners)
+            model=AuthorityModel.load();config=load_config();target=load_targets(profile="headline",levels={7},limit=1)[0]
+            full=_kv_scenario(model,config,target,"cryokinesis","snow_chains",0);rider=_catalog_rider_scenario(model,config,target,"cryokinesis","snow_chains",0);mastery=_mastery_scenario(model,config,target,"cryokinesis")
+            self.assertGreater(full["mastery"],0.0);self.assertEqual(rider["mastery"],0.0);self.assertEqual(rider["whole"],full["named"]);self.assertTrue(all(not component["source_effect"].startswith("mastery:") for component in rider["shadow_components"]));self.assertTrue(all(component["source_effect"].startswith("mastery:") for component in mastery["shadow_components"]))
+            projection=deepcopy(model.projection);next(item for item in projection["disciplines"] if item["id"]=="cryokinesis")["mastery"]["control_outcomes"]=[]
+            without_mastery=_catalog_rider_scenario(AuthorityModel(projection),config,target,"cryokinesis","snow_chains",0)
+            self.assertEqual((rider["named"],rider["whole"],rider["shadow_components"]),(without_mastery["named"],without_mastery["whole"],without_mastery["shadow_components"]))
+            with self.assertRaisesRegex(ValueError,"lacks canonical control mechanics"):_kv_scenario(model,config,target,"electrokinesis","branching_bolt",0)
+
+    def test_publication_catalog_scenario_errors_fail_closed(self)->None:
+        publication=({"discipline_id":"cryokinesis","entity_id":"snow_chains","tier":0,"target_role":"primary"},)
+        for error in (RuntimeError("synthetic unavailable evaluator failure"),AuthorityError("synthetic unavailable authority failure")):
+            with self.subTest(error=type(error).__name__),tempfile.TemporaryDirectory() as directory:
+                with patch("harness.control_harness._catalog_rider_scenario",side_effect=error):
+                    with self.assertRaisesRegex(type(error),"synthetic unavailable"):
+                        run_control(DEFAULT_AUTHORITY,Path(directory),{7},1,write_headline=False,profile="headline",write_shadow=True,publication_scenarios=publication)
 
 
 if __name__=="__main__":unittest.main()

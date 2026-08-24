@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Updated canonical schema authority to 2.3.0 and the harness projection contract to 1.1.0; refined the Fighter 18 Holdout Option to deal 1d6 + the Psionic Ability modifier as force damage; added Psychokinesis's 3d8 force maturation once per Attack action, refreshed by a new Attack action from Action Surge; reduced Electron Burst's secondary damage to 1d8/2d8/3d8 while retaining 2d8/3d8/4d8 primary damage; and changed Arctic Tempest to 8d10/9d10/10d10.
+- Updated canonical schema authority to 2.3.0 and the harness projection contract to 1.2.0; refined the Fighter 18 Holdout Option to deal 1d6 + the Psionic Ability modifier as force damage; added Psychokinesis's 3d8 force maturation once per Attack action, refreshed by a new Attack action from Action Surge; reduced Electron Burst's secondary damage to 1d8/2d8/3d8 while retaining 2d8/3d8/4d8 primary damage; and changed Arctic Tempest to 8d10/9d10/10d10.
 - Added a dedicated calculated Holdout Option utility card to the Calculator / Feature Deck.
 - Audited and intentionally retained the remaining six-target Electrokinesis and three-target Cryokinesis headline damage outliers as discipline-identity and comparator-envelope results rather than applying further reductions.
 - Modernized the development container on Ubuntu 26.04 with repository-aligned Node, npm, and Python versions, native Playwright browser support, reproducible developer-agent CLI installation, and persistent local authentication state without exposing host container sockets.
@@ -20,7 +20,7 @@
 - Corrected Control Reliability benchmark methodology so bare Kinetic Mastery receives the same legal retries across one ordinary Attack action as repeatable embedded Mastery; Action Surge remains excluded, with no changes to Kinetic Vanguard or comparator mechanics.
 - Made hostile named conditions consistently require a saving throw; Flare retains its Dexterity save at every tier, and Mind Lock uses one Intelligence save for its full condition package.
 - Added the shadow Control Value scorer with its frozen Control Unit and explicit primitive transforms, resolved-status fail-closed eligibility, SRD-derived locomotion normalization, cumulative expected-occurrence displacement, correlated flat-mobility capping, transparent normalization diagnostics, and eligible-only independent scenario selection while leaving publication unchanged in that Slice-2 step.
-- Promoted Control Value from shadow-only output to the primary public control-balance metric and common package-selection methodology, with Control Value reporting mechanical consequence and Control Reliability reporting delivery of that same selected package; also added compact public methodology and control-only README regeneration without changing damage or control mechanics.
+- Published Control Value as the primary control-balance metric and Control Reliability as initial delivery of the same CU-selected package, while keeping README as the concise Single-Target Damage sanity check with one control-detail link. Exhaustive transparency now lives in `CONTROL_BENCHMARK_DETAIL.md`, including raw KV results, the exact 67-form catalog, effective coverage and exceptions, delivery recipes, full Reliability and CU methodology, and the raw Battle Master/Eldritch Knight reference scale, without changing mechanics, scoring, probability, roster, or package selection.
 
 ### Removed
 
