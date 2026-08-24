@@ -374,18 +374,30 @@ test("Feature Deck cards stay complete at low level and expose canonical content
 test("Feature Deck computes the newly projected values and authored save metadata",async()=>{
   const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=frozen_ground&level=20&modifier=5",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!;
-  let detail=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.match(normalizedDeckText(detail),/Constitution save: DC 19/u);assert.match(normalizedDeckText(detail),/Concentration.*up to 1 minute/u);
+  let detail=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.match(normalizedDeckText(detail),/Constitution save · Tiers 0–2/u);assert.match(normalizedDeckText(detail),/Concentration.*up to 1 minute/u);
   detail=clickDeckCard(document,"vectored_thrust");assert.match(normalizedDeckText(detail),/Fly Speed: 60 feet/u);assert.match(normalizedDeckText(detail),/30 \+ \(5 × Proficiency Bonus 6\) = 60 feet/u);assert.match(normalizedDeckText(detail),/Concentration.*up to 10 minutes/u);
   detail=clickDeckCard(document,"common_empathic_sense");assert.match(normalizedDeckText(detail),/Active Scan uses: 3/u);assert.match(normalizedDeckText(detail),/floor\(Proficiency Bonus 6 ÷ 2\) = 3/u);assert.match(normalizedDeckText(detail),/Passive Insight bonus: \+5/u);
   detail=clickDeckCard(document,"static_discharge");assert.match(normalizedDeckText(detail),/Total targets: 7 creatures/u);
   detail=clickDeckCard(document,"electron_burst");assert.match(normalizedDeckText(detail),/Rider damage: 4d8 on a failed save/u);assert.match(normalizedDeckText(detail),/Secondary target damage: 3d8 on a failed save/u);
   detail=clickDeckCard(document,"arctic_tempest");assert.match(normalizedDeckText(detail),/Damage: 10d10 on a failed save/u);
-  detail=clickDeckCard(document,"flare");assert.deepEqual([...detail.querySelectorAll<HTMLElement>(".calculator__tier")].map(tier=>/Dexterity save: DC 19/u.test(normalizedDeckText(tier))),[true,true,true]);
-  detail=clickDeckCard(document,"advanced_mind_lock");assert.deepEqual([...detail.querySelectorAll<HTMLElement>(".calculator__tier")].map(tier=>/Intelligence save: DC 19/u.test(normalizedDeckText(tier))),[true,true,true]);
-  detail=clickDeckCard(document,"advanced_deflection_screen");assert.match(normalizedDeckText(detail),/Damage reduction: 7d8 \+ 5/u);assert.match(normalizedDeckText(detail),/7d8 \+ \(1 × Psionic Ability Modifier 5\) = 7d8 \+ 5/u);assert.match(normalizedDeckText(detail),/Strength save: DC 19/u);
-  detail=clickDeckCard(document,"advanced_improved_phase_step");assert.match(normalizedDeckText(detail),/Damage: 4d10 on a failed save/u);assert.match(normalizedDeckText(detail),/Discipline signature save: DC 19/u);
+  detail=clickDeckCard(document,"flare");assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Dexterity save · Tiers 0–2");
+  detail=clickDeckCard(document,"advanced_mind_lock");assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Intelligence save · Tiers 0–2");
+  detail=clickDeckCard(document,"advanced_deflection_screen");assert.match(normalizedDeckText(detail),/Damage reduction: 7d8 \+ 5/u);assert.match(normalizedDeckText(detail),/7d8 \+ \(1 × Psionic Ability Modifier 5\) = 7d8 \+ 5/u);assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Strength save · Tier 2");
+  detail=clickDeckCard(document,"advanced_improved_phase_step");assert.match(normalizedDeckText(detail),/Damage: 4d10 on a failed save/u);assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Discipline signature save · Tiers 0–2");
   detail=clickDeckCard(document,"advanced_inner_reserve");assert.match(normalizedDeckText(detail),/Maximum Psi Points with Inner Reserve: 20/u);assert.match(normalizedDeckText(detail),/Base Psi Points \(16\) \+ 4 = 20/u);
   changeDeckSelect(dom,level,"9");changeDeckSelect(dom,modifier,"3");detail=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.match(normalizedDeckText(detail),/Maximum Psi Points with Inner Reserve: 13/u);
+  await settleOnboarding();dom.window.close();
+});
+
+test("Calculator owns Psionic Save DC once in shared core math",async()=>{
+  const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=flare&level=20&modifier=5",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!,modifier=root.querySelector<HTMLSelectElement>("#calculator-psi-modifier")!;
+  const assertSharedDc=(detail:HTMLElement,dc:number)=>{const core=detail.querySelector<HTMLElement>(".calculator__core")!;assert.ok(core);assert.equal(detail.querySelectorAll(".calculator__core").length,1);assert.equal([...detail.querySelectorAll("strong")].filter(label=>label.textContent==="Psionic Save DC:").length,1);assert.equal(detail.querySelectorAll(".calculator__save-calculation").length,1);assert.match(normalizedDeckText(core),new RegExp(`Damage: .*Expected avg damage: .*Psionic Save DC: ${dc} Saving throw calculation: 8 \\+ Proficiency Bonus \\([0-9]+\\) \\+ Psionic Ability Modifier \\([0-9]+\\) = ${dc}`,"u"));assert.ok([...detail.querySelectorAll<HTMLElement>(".calculator__save-group")].every(group=>!normalizedDeckText(group).includes("DC")&&!normalizedDeckText(group).includes("Saving throw calculation")));assert.ok([...detail.querySelectorAll<HTMLElement>(".calculator__tier")].every(tier=>tier.querySelector(".calculator__save")===null));};
+  let detail=root.querySelector<HTMLElement>("#calculator-feature-results")!;assertSharedDc(detail,19);assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Dexterity save · Tiers 0–2");
+  detail=clickDeckCard(document,"frozen_ground");assertSharedDc(detail,19);assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Constitution save · Tiers 0–2");
+  detail=clickDeckCard(document,"advanced_deflection_screen");assertSharedDc(detail,19);assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Strength save · Tier 2");
+  detail=clickDeckCard(document,"manifested_strike");assertSharedDc(detail,19);assert.equal(detail.querySelectorAll(".calculator__save-group").length,0);
+  changeDeckSelect(dom,level,"9");changeDeckSelect(dom,modifier,"3");detail=root.querySelector<HTMLElement>("#calculator-feature-results")!;assertSharedDc(detail,15);
   await settleOnboarding();dom.window.close();
 });
 
