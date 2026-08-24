@@ -1,0 +1,78 @@
+name: Publish development prototype
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    name: Build development prototype
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      pages: read
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v7
+        with:
+          node-version: 24.18.1
+          cache: npm
+
+      - name: Use repository npm version
+        run: npm install --global npm@11.16.0
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build development prototype
+        run: npm run build
+
+      - name: Verify non-release prototype identity
+        run: |
+          set -euo pipefail
+          test -s artifacts/KineticVanguard.prototype.html
+          grep -Fq 'NON-RELEASE PROTOTYPE' artifacts/KineticVanguard.prototype.html
+          grep -Fq '"release_status":"prototype"' artifacts/KineticVanguard.prototype.html
+          ! grep -Fq '"release_status":"release"' artifacts/KineticVanguard.prototype.html
+
+      - name: Stage minimal Pages site
+        run: |
+          set -euo pipefail
+          mkdir _site
+          install -m 0644 artifacts/KineticVanguard.prototype.html _site/index.html
+          test "$(find _site -maxdepth 1 -type f -printf '%f\n')" = index.html
+
+      - name: Configure GitHub Pages
+        uses: actions/configure-pages@v6
+
+      - name: Upload GitHub Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: _site
+
+  deploy:
+    name: Deploy development prototype
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      pages: write
+      id-token: write
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

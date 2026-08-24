@@ -50,6 +50,9 @@ def main() -> None:
     devcontainer = load_json(".devcontainer/devcontainer.json")
     post_create = (ROOT / ".devcontainer/post-create.sh").read_text(encoding="utf-8")
     ci = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    prototype_pages = (ROOT / ".github/workflows/prototype-pages.yml").read_text(
+        encoding="utf-8"
+    )
 
     package_engines = require_mapping(package.get("engines"), "package.json engines")
     expected_node = require_string(package_engines.get("node"), "package.json engines.node")
@@ -153,6 +156,24 @@ def main() -> None:
                 "CI Python version",
             ),
             expected_python,
+        ),
+        (
+            "prototype Pages Node",
+            require_match(
+                r'^\s*node-version:\s*"?([0-9]+\.[0-9]+\.[0-9]+)"?\s*$',
+                prototype_pages,
+                "prototype Pages Node version",
+            ),
+            expected_node,
+        ),
+        (
+            "prototype Pages npm",
+            require_match(
+                r'^\s*run:\s*npm install --global npm@([0-9]+\.[0-9]+\.[0-9]+)\s*$',
+                prototype_pages,
+                "prototype Pages npm version",
+            ),
+            expected_npm,
         ),
     )
 
