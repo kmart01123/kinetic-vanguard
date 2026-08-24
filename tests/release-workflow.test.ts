@@ -5,9 +5,9 @@ import YAML from "yaml";
 
 const workflowPath=".github/workflows/release-verify.yml";
 
-test("only ordinary CI and version-neutral release verification workflows remain",async()=>{
+test("only ordinary CI, development Pages, and release verification workflows remain",async()=>{
   const inventory=(await readdir(".github/workflows")).sort();
-  assert.deepEqual(inventory,["ci.yml","release-verify.yml"]);
+  assert.deepEqual(inventory,["ci.yml","prototype-pages.yml","release-verify.yml"]);
   assert.ok(inventory.every(path=>!/^publish-v\d/.test(path)));
 });
 

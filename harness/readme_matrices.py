@@ -59,6 +59,10 @@ END_MARKER = "<!-- END GENERATED BALANCE MATRICES -->"
 README_PATH = PROJECT_ROOT / "README.md"
 CONTROL_DETAIL_PATH = PROJECT_ROOT / "CONTROL_BENCHMARK_DETAIL.md"
 DAMAGE_SECTION_START = "The front-door damage view is the single-target benchmark:"
+FIGHTER_20_NOTE = (
+    "**Fighter 20 note:** [Why the current v14.3 snapshot is COLD at level 20]"
+    "(https://github.com/kmart01123/kinetic-vanguard/issues/122#issuecomment-5389467514)"
+)
 DAMAGE_SCOPES = ("primary-target DPR", "aggregate cluster DPR")
 README_DISCIPLINES = (
     "cryokinesis",
@@ -1550,6 +1554,8 @@ def render_damage_section(
             "",
             render_single_target_damage(damage_rows, disciplines),
             "",
+            FIGHTER_20_NOTE,
+            "",
             "",
         )
     )
@@ -1569,7 +1575,12 @@ def extract_damage_section(readme: str) -> str:
     if len(headings) < 2:
         raise MatrixSyncError("README damage subsection has no following control section")
     section_end = section_start + headings[1].start()
-    return region[section_start:section_end]
+    section = region[section_start:section_end]
+    if section.count(FIGHTER_20_NOTE) != 1:
+        raise MatrixSyncError(
+            "README damage subsection must contain exactly one Fighter 20 explanation link"
+        )
+    return section
 
 
 def render_control_table(
@@ -2899,29 +2910,37 @@ def render_control_value_explanation() -> str:
 
 
 def release_state_line(readme: str, rules_version: str) -> str:
-    published_lines = re.findall(r"^- Current published release:.*$", readme, re.MULTILINE)
-    development_lines = re.findall(r"^- Current development line:.*$", readme, re.MULTILINE)
+    published_lines = re.findall(r"^- Published rules:.*$", readme, re.MULTILINE)
+    development_lines = re.findall(
+        r"^- Current development prototype:.*$", readme, re.MULTILINE
+    )
     published_matches = re.findall(
-        r"^- Current published release: \*\*v(\d+\.\d+\.\d+)\*\*$",
+        r"^- Published rules: \*\*\[v(\d+\.\d+\.\d+)\]"
+        r"\(https://github\.com/kmart01123/kinetic-vanguard/releases/tag/v\1\)\*\*$",
         readme,
         re.MULTILINE,
     )
     development_matches = re.findall(
-        r"^- Current development line: \*\*(v\d+\.\d+\.\d+|None)\*\*$",
+        r"^- Current development prototype: \*\*\[v(\d+\.\d+\.\d+)\]"
+        r"\(https://kmart01123\.github\.io/kinetic-vanguard/\)\*\* — "
+        r"\*\*NON-RELEASE development build\*\*$",
         readme,
         re.MULTILINE,
+    )
+    no_development = re.findall(
+        r"^- Current development prototype: \*\*None\*\*$", readme, re.MULTILINE
     )
     if (
         len(published_lines) != 1
         or len(development_lines) != 1
         or len(published_matches) != 1
-        or len(development_matches) != 1
+        or len(development_matches) + len(no_development) != 1
     ):
         raise MatrixSyncError(
             "README must contain exactly one published and one development release-status line"
         )
     published = published_matches[0]
-    development = development_matches[0]
+    development = f"v{development_matches[0]}" if development_matches else "None"
     if published == rules_version:
         if development != "None":
             raise MatrixSyncError(

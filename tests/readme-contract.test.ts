@@ -1,5 +1,4 @@
 import assert from "node:assert/strict";
-import { createHash } from "node:crypto";
 import test from "node:test";
 import { access, readFile } from "node:fs/promises";
 import { loadAuthority } from "../src/load.js";
@@ -8,8 +7,8 @@ const parseVersion=(value:string):readonly number[]=>value.split(".").map(Number
 const compareVersions=(left:string,right:string):number=>{const a=parseVersion(left),b=parseVersion(right);for(let index=0;index<3;index+=1){const difference=(a[index]??0)-(b[index]??0);if(difference!==0)return difference;}return 0;};
 
 const readReleaseStatus=(source:string):{published:string;development:string}=>{
-  const published=[...source.matchAll(/^- Current published release: \*\*v(\d+\.\d+\.\d+)\*\*$/gm)].map(match=>match[1]!);
-  const development=[...source.matchAll(/^- Current development line: \*\*(v\d+\.\d+\.\d+|None)\*\*$/gm)].map(match=>match[1]!);
+  const published=[...source.matchAll(/^- Published rules: \*\*\[v(\d+\.\d+\.\d+)\]\(https:\/\/github\.com\/kmart01123\/kinetic-vanguard\/releases\/tag\/v\1\)\*\*$/gm)].map(match=>match[1]!);
+  const development=[...source.matchAll(/^- Current development prototype: \*\*\[v(\d+\.\d+\.\d+)\]\(https:\/\/kmart01123\.github\.io\/kinetic-vanguard\/\)\*\* — \*\*NON-RELEASE development build\*\*$/gm)].map(match=>`v${match[1]!}`);
   assert.equal(published.length,1);assert.equal(development.length,1);
   return {published:published[0]!,development:development[0]!};
 };
@@ -37,6 +36,10 @@ test("README release status matches canonical development truth",async()=>{
   const [{authority},readme]=await Promise.all([loadAuthority(),readFile("README.md","utf8")]);const release=readReleaseStatus(readme);
   assert.ok(compareVersions(release.published,authority.rules_version)<=0);
   if(release.development!=="None")assert.equal(release.development,`v${authority.rules_version}`);
+  const occurrences=(value:string):number=>readme.split(value).length-1;
+  assert.equal(occurrences("https://kmart01123.github.io/kinetic-vanguard/"),1);
+  assert.match(readme,/^- Published rules: \*\*\[v14\.2\.0\]\(https:\/\/github\.com\/kmart01123\/kinetic-vanguard\/releases\/tag\/v14\.2\.0\)\*\*$/m);
+  assert.match(readme,/^- Current development prototype:.*NON-RELEASE development build/m);
 });
 
 test("balance snapshot identity cannot claim newer authority",()=>{
@@ -58,7 +61,7 @@ test("README exposes one structurally valid headline balance snapshot",async()=>
   const tableHeader="| Level | Cryokinesis | Pyrokinesis | Psychokinesis | Electrokinesis |";assert.equal(occurrences(region,tableHeader),1);assert.equal(occurrences(readme,"\n|---|---|---|---|---|"),1);
   const lines=region.split("\n"),headerIndexes=lines.flatMap((line,index)=>line===tableHeader?[index]:[]),expectedLevels=benchmarkConfig.methodology.levels.map(String),publicResult=/^(?:IDEAL|N\/A|COLD \(-\d+(?:\.\d+)?%\)|HOT \(\+\d+(?:\.\d+)?%\))$/;
   for(const headerIndex of headerIndexes){assert.equal(lines[headerIndex+1],"|---|---|---|---|---|");const rows=lines.slice(headerIndex+2,headerIndex+2+expectedLevels.length);assert.equal(rows.length,expectedLevels.length);rows.forEach((row,rowIndex)=>{const cells=row.split("|").slice(1,-1).map(cell=>cell.trim());assert.equal(cells.length,5);assert.equal(cells[0],expectedLevels[rowIndex]);for(const cell of cells.slice(1))assert.match(cell,publicResult);});}
-  const exactDamageTable=[tableHeader,"|---|---|---|---|---|","| 7 | COLD (-6.99%) | IDEAL | COLD (-2.61%) | IDEAL |","| 11 | COLD (-19.47%) | IDEAL | COLD (-0.20%) | IDEAL |","| 15 | COLD (-18.10%) | IDEAL | IDEAL | COLD (-6.75%) |","| 20 | COLD (-41.52%) | COLD (-12.76%) | COLD (-14.95%) | COLD (-26.58%) |"].join("\n");assert.equal(occurrences(region,exactDamageTable),1);const damageStart=region.indexOf("### Single-Target Damage"),controlStart=region.indexOf("### Control benchmark",damageStart);assert.ok(damageStart>=0&&controlStart>damageStart);assert.equal(createHash("sha256").update(region.slice(damageStart,controlStart)).digest("hex"),"0e7d6a7c8563964b4ad5e6487e2a3438436821dcc19ba2c991cb0e30517cfed8");
+  const exactDamageTable=[tableHeader,"|---|---|---|---|---|","| 7 | COLD (-6.99%) | IDEAL | COLD (-2.61%) | IDEAL |","| 11 | COLD (-19.47%) | IDEAL | COLD (-0.20%) | IDEAL |","| 15 | COLD (-18.10%) | IDEAL | IDEAL | COLD (-6.75%) |","| 20 | COLD (-41.52%) | COLD (-12.76%) | COLD (-14.95%) | COLD (-26.58%) |"].join("\n");assert.equal(occurrences(region,exactDamageTable),1);const damageStart=region.indexOf("### Single-Target Damage"),controlStart=region.indexOf("### Control benchmark",damageStart);assert.ok(damageStart>=0&&controlStart>damageStart);const damageRegion=region.slice(damageStart,controlStart);const fighter20Link="**Fighter 20 note:** [Why the current v14.3 snapshot is COLD at level 20](https://github.com/kmart01123/kinetic-vanguard/issues/122#issuecomment-5389467514)";assert.equal(occurrences(damageRegion,fighter20Link),1);assert.match(damageRegion,new RegExp(`${exactDamageTable.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")}\\n\\n\\*\\*Fighter 20 note:`));
   assert.match(region,/47 creature profiles from SRD 5\.2\.1 at levels 7, 11, 15, and 20/);assert.match(region,/weighted equally within their level/);
   assert.match(region,/Battle Master and Eldritch Knight define the comparison envelope for the front-door Single-Target Damage result/);assert.match(region,/comparator-envelope benchmark, not a universal real-play balance tolerance/);assert.match(region,/Front-door damage comparator-table cells contain only the public balance classification/);assert.doesNotMatch(region,/README cells intentionally contain only/);
   assert.match(region,/Control Value and Control Reliability require more context than the front-door damage check.*exhaustive exact-form results, effective coverage, Control Unit methodology, and Reliability analysis/s);

@@ -33,6 +33,7 @@ from harness.model import (
 from harness.readme_matrices import (
     BEGIN_MARKER,
     END_MARKER,
+    FIGHTER_20_NOTE,
     NO_MODELED_CONTROL,
     PARTIALLY_PRICED,
     PRICED,
@@ -425,6 +426,14 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
         with self.assertRaisesRegex(MatrixSyncError,"cluster size 1"):
             render_single_target_damage(rows)
 
+    def test_damage_section_places_one_fighter_20_link_after_the_table(self) -> None:
+        rendered = render_damage_section(self.damage_rows)
+        table = render_single_target_damage(self.damage_rows)
+        self.assertEqual(rendered.count(FIGHTER_20_NOTE), 1)
+        self.assertGreater(
+            rendered.index(FIGHTER_20_NOTE), rendered.index(table) + len(table)
+        )
+
     def test_control_table_is_level_by_discipline_and_public_only(self) -> None:
         rendered=render_control_table(list(reversed(self.control_rows)))
         expected="\n".join(
@@ -476,8 +485,8 @@ class ReadmeMatrixRenderingTests(unittest.TestCase):
         readme="\n".join(
             (
                 "# Project",
-                "- Current published release: **v14.0.0**",
-                "- Current development line: **v14.1.0**",
+                "- Published rules: **[v14.0.0](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.0.0)**",
+                "- Current development prototype: **[v14.1.0](https://kmart01123.github.io/kinetic-vanguard/)** — **NON-RELEASE development build**",
             )
         )
         arguments=(
@@ -1324,6 +1333,13 @@ class ReadmeMatrixDelimiterTests(unittest.TestCase):
         self.assertEqual(replaced, expected)
         self.assertEqual(replace_generated_region(replaced, region), expected)
 
+    def test_damage_extraction_requires_exactly_one_fighter_20_link(self) -> None:
+        readme = readme_matrices.README_PATH.read_text(encoding="utf-8")
+        with self.assertRaisesRegex(MatrixSyncError, "exactly one Fighter 20"):
+            extract_damage_section(readme.replace(FIGHTER_20_NOTE, ""))
+        with self.assertRaisesRegex(MatrixSyncError, "exactly one Fighter 20"):
+            extract_damage_section(readme.replace(FIGHTER_20_NOTE, FIGHTER_20_NOTE * 2))
+
     def test_control_render_preserves_damage_subsection_byte_for_byte(self) -> None:
         readme = readme_matrices.README_PATH.read_text(encoding="utf-8")
         original_damage = extract_damage_section(readme)
@@ -1348,11 +1364,26 @@ class ReadmeMatrixDelimiterTests(unittest.TestCase):
 
 
 class ReadmeMatrixReleaseStateTests(unittest.TestCase):
+    @staticmethod
+    def _published(version: str) -> str:
+        return (
+            f"- Published rules: **[v{version}]"
+            f"(https://github.com/kmart01123/kinetic-vanguard/releases/tag/v{version})**"
+        )
+
+    @staticmethod
+    def _development(version: str) -> str:
+        return (
+            f"- Current development prototype: **[v{version}]"
+            "(https://kmart01123.github.io/kinetic-vanguard/)** — "
+            "**NON-RELEASE development build**"
+        )
+
     def test_development_snapshot_names_canonical_and_published_versions(self) -> None:
         readme = "\n".join(
             (
-                "- Current published release: **v14.0.0**",
-                "- Current development line: **v14.1.0**",
+                self._published("14.0.0"),
+                self._development("14.1.0"),
             )
         )
         self.assertEqual(
@@ -1363,8 +1394,8 @@ class ReadmeMatrixReleaseStateTests(unittest.TestCase):
     def test_published_snapshot_uses_the_canonical_published_version(self) -> None:
         readme = "\n".join(
             (
-                "- Current published release: **v14.1.0**",
-                "- Current development line: **None**",
+                self._published("14.1.0"),
+                "- Current development prototype: **None**",
             )
         )
         self.assertEqual(
@@ -1373,8 +1404,8 @@ class ReadmeMatrixReleaseStateTests(unittest.TestCase):
         )
 
     def test_duplicate_release_status_lines_fail_closed(self) -> None:
-        published = "- Current published release: **v14.0.0**"
-        development = "- Current development line: **v14.1.0**"
+        published = self._published("14.0.0")
+        development = self._development("14.1.0")
         cases = (
             "\n".join((published, published, development)),
             "\n".join((published, development, development)),
@@ -1385,12 +1416,12 @@ class ReadmeMatrixReleaseStateTests(unittest.TestCase):
                     release_state_line(readme, "14.1.0")
 
     def test_published_canonical_snapshot_rejects_a_live_development_line(self) -> None:
-        for development in ("v14.1.0", "v14.2.0"):
+        for development in ("14.1.0", "14.2.0"):
             with self.subTest(development=development):
                 readme = "\n".join(
                     (
-                        "- Current published release: **v14.1.0**",
-                        f"- Current development line: **{development}**",
+                        self._published("14.1.0"),
+                        self._development(development),
                     )
                 )
                 with self.assertRaisesRegex(MatrixSyncError, "requires development line None"):
@@ -1398,11 +1429,11 @@ class ReadmeMatrixReleaseStateTests(unittest.TestCase):
 
     def test_missing_or_unrelated_release_state_fails_closed(self) -> None:
         cases = (
-            "- Current published release: **v14.0.0**",
+            self._published("14.0.0"),
             "\n".join(
                 (
-                    "- Current published release: **v14.0.0**",
-                    "- Current development line: **v14.2.0**",
+                    self._published("14.0.0"),
+                    self._development("14.2.0"),
                 )
             ),
         )

@@ -6,12 +6,11 @@ Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighte
 
 ## Release status
 
-- Current published release: **v14.2.0**
-- Current development line: **v14.3.0**
-- Implementation status: Active v14.3 development
+- Published rules: **[v14.2.0](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.2.0)**
+- Current development prototype: **[v14.3.0](https://kmart01123.github.io/kinetic-vanguard/)** — **NON-RELEASE development build**
 - Canonical rules authority: `KineticVanguard.yaml`
 
-Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags. The current published release is available from the [v14.2.0 GitHub Release](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.2.0).
+Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags.
 
 Version 14.0.0 introduced the deterministic offline Calculator, advanced the authority schema to 2.0.0 for semantic rule and example structure, made Barrier require Concentration at Tier 0 and Tier 1, aligned Explosion/Implosion Tier 1 geometry, and made the canonical rules version the publication’s sole product version. Detailed changes belong in `CHANGELOG.md` and the generated publication rather than being duplicated here.
 
@@ -38,6 +37,8 @@ The front-door damage view is the single-target benchmark: primary-target DPR at
 | 11 | COLD (-19.47%) | IDEAL | COLD (-0.20%) | IDEAL |
 | 15 | COLD (-18.10%) | IDEAL | IDEAL | COLD (-6.75%) |
 | 20 | COLD (-41.52%) | COLD (-12.76%) | COLD (-14.95%) | COLD (-26.58%) |
+
+**Fighter 20 note:** [Why the current v14.3 snapshot is COLD at level 20](https://github.com/kmart01123/kinetic-vanguard/issues/122#issuecomment-5389467514)
 
 ### Control benchmark
 
