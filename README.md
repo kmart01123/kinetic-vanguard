@@ -56,14 +56,13 @@ The Calculator / Feature Deck provides one compact, rules-area-grouped index of 
 
 The Rules Reference retains shared material such as How to Play, Example Play, progression tables, the Psionic Discipline and signature-save framework, Psi Reservoir, Manifested Strike procedure, Overload, Signature Riders, and Kinetic Mastery. It provides:
 
-- Category and Topic browsing;
-- a canonical Name selector;
-- global classification filters with stable ordering and history restoration;
-- local Show and Level filters in the Subclass Feature Reference;
+- direct Topic navigation for the authority-derived shared/core inventory;
+- a canonical Name selector that routes individual features to Calculator and shared/system names to Rules Reference;
+- local Show and Level controls for the 34-row Subclass Feature Reference table;
 - responsive desktop, tablet, mobile, and print layouts;
 - keyboard, focus, forced-colors, and reduced-motion support.
 
-Deck cards, Name selections, filtered results, Start Here links, and legacy individual-feature fragments converge on deterministic Calculator deep links. Shared-system selections remain in Rules Reference. Fighter Level and Psionic Ability Modifier are native controls, future-level cards remain visible, and every selection updates the displayed calculations immediately. Longform calculations use full term names, parenthesized component values, `+` operators, and an `=` result matching the retained compact total.
+Deck cards, Name selections, Start Here links, and legacy individual-feature fragments converge on deterministic Calculator deep links. Shared-system selections remain in Rules Reference. Legacy `filters=` fragments safely canonicalize without obsolete state. Fighter Level and Psionic Ability Modifier are native controls, future-level cards remain visible, and every selection updates the displayed calculations immediately. Longform calculations use full term names, parenthesized component values, `+` operators, and an `=` result matching the retained compact total.
 
 The browser application makes no runtime network requests, does not store character state, and does not replace the rules with inferred behavior.
 
@@ -100,9 +99,9 @@ It writes `artifacts/KineticVanguard.html` with `release_status: release` and no
 
 ## Architecture
 
-The build parses restricted YAML 1.2, validates the canonical JSON Schema, performs semantic navigation, classification, authority-coverage, route, text, filtered-search integrity, and release-identity checks, constructs immutable projections, and emits one release or prototype HTML publication. Failed integrity or coverage checks stop the build rather than producing ceremonial report files.
+The build parses restricted YAML 1.2, validates the canonical JSON Schema, performs semantic navigation, classification, authority-coverage, route, text, Name-navigation integrity, and release-identity checks, constructs immutable projections, and emits one release or prototype HTML publication. Failed integrity or coverage checks stop the build rather than producing ceremonial report files.
 
-The top-level onboarding authority is canonical and validated but remains outside the 44 publishable rules entities, Name index, classification results, and progression order.
+The top-level onboarding authority is canonical and validated but remains outside the 44 publishable rules entities, Name index, and Rules Reference topic inventory.
 
 The maintained Python harnesses consume a deterministic runtime projection emitted by the existing TypeScript YAML loader and semantic validator. Kinetic Vanguard mechanics remain exclusively in YAML; project-authored methodology remains in `harness/config/`; minimal BM/EK third-party comparator parameters remain isolated in `harness/comparators/`; and pinned SRD roster data remains in `harness/data/`.
 

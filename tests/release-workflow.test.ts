@@ -29,5 +29,5 @@ test("release verification binds GitHub identity and uploads one checksummed leg
   ])assert.match(source,new RegExp(marker.replace(/[.*+?^${}()|[\]\\]/g,"\\$&")),marker);
   assert.equal((source.match(/actions\/upload-artifact@/g)??[]).length,1);
   assert.match(source,/path: release-candidate\//);
-  assert.doesNotMatch(source,/build-manifest|filtered-search-integrity|coverage-ledger|release-evidence/i);
+  assert.doesNotMatch(source,/build-manifest|coverage-ledger|release-evidence/i);
 });

@@ -1,7 +1,7 @@
 export type Placement =
   | "title" | "heading" | "body" | "table" | "label" | "option"
   | "button" | "aria-label" | "description" | "status" | "banner"
-  | "metadata" | "link" | "noscript" | "facet_count";
+  | "metadata" | "link" | "noscript";
 
 export type AuthoritativeText = Readonly<{
   kind: "authoritative";

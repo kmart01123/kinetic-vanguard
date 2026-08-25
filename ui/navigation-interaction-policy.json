@@ -1,0 +1,14 @@
+{
+  "version": 7,
+  "application_views": ["home","reference","calculator"],
+  "home_fragment": "home",
+  "calculator_fragment": "calculator",
+  "name_sort": ["primary_rules_area_order","progression_section_order","minimum_level","title_codepoint","entity_id_codepoint"],
+  "name_placeholder_token": "name_placeholder",
+  "name_reset_events": ["topic_change"],
+  "name_selection_sync_events": ["initial_load","direct_route","history_restore","successful_selection"],
+  "name_activation_focus": "retain_native_select_focus_on_desktop_and_focus_heading_on_mobile",
+  "history_state_fields": ["view","category","topic","entity","calculatorFeatureGroup","calculatorSelection","fighterLevel","psiModifier","focusOrigin"],
+  "focus_origins": ["topic","name","history","fragment","view","onboarding","calculator"],
+  "fragment_keys": ["category","topic","entity","card","group","level","modifier"]
+}
