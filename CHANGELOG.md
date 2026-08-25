@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Consolidated the Calculator's Psionic Save DC into one shared core calculation beside Manifested Strike math; feature summaries now identify only the save ability and applicable tiers.
 - Published the current non-release development prototype at a stable GitHub Pages URL and linked it from README alongside the Fighter 20 balance explanation.
 - Updated canonical schema authority to 2.3.0 and the harness projection contract to 1.2.0; refined the Fighter 18 Holdout Option to deal 1d6 + the Psionic Ability modifier as force damage; added Psychokinesis's 3d8 force maturation once per Attack action, refreshed by a new Attack action from Action Surge; reduced Electron Burst's secondary damage to 1d8/2d8/3d8 while retaining 2d8/3d8/4d8 primary damage; and changed Arctic Tempest to 8d10/9d10/10d10.
 - Added a dedicated calculated Holdout Option utility card to the Calculator / Feature Deck.
