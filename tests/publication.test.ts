@@ -4,7 +4,7 @@ import { readFile } from "node:fs/promises";
 import { JSDOM } from "jsdom";
 import { executeBuild } from "../src/build.js";
 import { loadAuthority } from "../src/load.js";
-import { buildFilterIndex } from "../src/validate.js";
+import { buildNameIndex } from "../src/validate.js";
 
 const defaultReferenceFragment="#category=common_features&topic=common_features_how_to_play_topic";
 
@@ -49,7 +49,7 @@ test("Subclass Feature Reference filters rows locally from canonical metadata",a
   const count=document.querySelector<HTMLElement>("#reference-filter-count")!,noMatches=document.querySelector<HTMLElement>("#reference-filter-no-matches")!,live=document.querySelector<HTMLElement>("#reference-filter-live")!;
   assert.equal(count.textContent,"Showing 34 of 34 features.");assert.equal(noMatches.hidden,true);
   assert.equal(live.getAttribute("role"),"status");assert.equal(live.getAttribute("aria-live"),"polite");assert.equal(live.getAttribute("aria-atomic"),"true");
-  const globalState=()=>({hash:dom.window.location.hash,history:dom.window.history.length,category:(document.querySelector("#category-select") as HTMLSelectElement).value,topic:(document.querySelector("#topic-select") as HTMLSelectElement).value,name:[...document.querySelectorAll<HTMLOptionElement>("#name-select option")].map(option=>[option.value,option.textContent]),facets:[...document.querySelectorAll<HTMLInputElement|HTMLSelectElement>("#facet-controls input,#facet-controls select")].map((control:any)=>[control.id,control.dataset.facet,control.value,"checked" in control?control.checked:null]),results:document.querySelector("#filter-results")?.textContent});const globalSnapshot=globalState();
+  const globalState=()=>({hash:dom.window.location.hash,history:dom.window.history.length,topic:(document.querySelector("#topic-select") as HTMLSelectElement).value,name:[...document.querySelectorAll<HTMLOptionElement>("#name-select option")].map(option=>[option.value,option.textContent]),obsolete:document.querySelectorAll("#category-select,#facet-controls,#filter-results,#filter-live").length});const globalSnapshot=globalState();
   const change=async(select:HTMLSelectElement,value:string)=>{select.value=value;select.focus();select.dispatchEvent(new dom.window.Event("change",{bubbles:true}));await new Promise<void>(resolve=>setImmediate(resolve));assert.equal(document.activeElement,select);};
   const apply=async(showValue:string,levelValue:string)=>{if(show.value!==showValue)await change(show,showValue);if(level.value!==levelValue)await change(level,levelValue);};
   for(const [group,features] of Object.entries(expectedGroups)){await apply(group,"");assert.deepEqual(visible(),features);assert.equal(count.textContent,`Showing ${features.length} of 34 features.`);}
@@ -79,7 +79,7 @@ test("Name control uses committed selection without redundant Open UI",async()=>
   assert.match(html,/\.controls select\{width:100%;min-width:0\}/);
 });
 
-test("rendered Name options derive level-name-ID order from canonical data and rebuild with filters",async()=>{
+test("rendered Name options derive complete level-name-ID order from canonical data",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_subclass_feature_reference_topic",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const document=dom.window.document,entityById=new Map(authority.entities.map(entity=>[entity.id,entity]));
@@ -108,18 +108,7 @@ test("rendered Name options derive level-name-ID order from canonical data and r
   assert.equal(advanced.querySelector('option[value="advanced_deflection_screen"]')?.textContent,"Deflection Screen");
   assert.equal(advanced.querySelector('option[value="advanced_phase_step"]')?.textContent,"Phase Step");
   const referenceText=document.querySelector("#entity-subclass_feature_reference")?.textContent??"";assert.match(referenceText,/Discipline 10th-Level Feature, Phase Step, Tier 2 Overload/);assert.doesNotMatch(referenceText,/Advanced Training II \(Phase Step\)/);
-  const area=document.querySelector('input[data-facet="rules_area"][value="pyrokinesis"]') as HTMLInputElement;
-  area.checked=true;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  assert.deepEqual(groups().map(group=>group.label),["Pyrokinesis"]);
-  assert.deepEqual([...groups()[0]!.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.value),pyrokinesisIds);
-  area.checked=false;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  const advancedArea=document.querySelector('input[data-facet="rules_area"][value="advanced_training"]') as HTMLInputElement;
-  advancedArea.checked=true;advancedArea.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  assert.deepEqual(groups().map(group=>group.label),["Advanced Training"]);
-  const rebuiltLabels=[...groups()[0]!.querySelectorAll<HTMLOptionElement>(":scope > option")].map(option=>option.textContent);
-  assert.deepEqual(rebuiltLabels.slice(0,2),["Deflection Screen","Phase Step"]);assert.equal(new Set(rebuiltLabels).size,rebuiltLabels.length);assert.equal(rebuiltLabels.some(label=>label?.startsWith("Advanced Training I:")||label?.startsWith("Advanced Training II:")),false);
-  advancedArea.checked=false;advancedArea.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  assert.deepEqual(groups().map(group=>group.label),expectedGroupLabels);
+  assert.equal(allOptions.length,authority.entities.length);assert.deepEqual(new Set(allOptions.map(option=>option.value)),new Set(authority.entities.map(entity=>entity.id)));
   await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
 });
 
@@ -134,46 +123,18 @@ test("paragraph text beginning with Example is not classified heuristically",asy
 test("release build requires explicit authorization",async()=>{await assert.rejects(()=>executeBuild("release"),/release\.approval_required/);});
 
 
-test("Any classifications expose the complete canonical result set in a compact disclosure",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();const index=buildFilterIndex(authority);
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html"+defaultReferenceFragment,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const document=dom.window.document;const disclosure=document.querySelector<HTMLDetailsElement>("#filter-results details.results__all")!;
-  assert.ok(disclosure);assert.equal(disclosure.open,false);assert.equal(disclosure.querySelector("summary")?.textContent,index.entities.length+" matches.");
-  const buttons=[...disclosure.querySelectorAll<HTMLButtonElement>("button")];assert.equal(buttons.length,index.entities.length);
-  assert.deepEqual(buttons.map(button=>button.textContent),index.entities.map(entity=>entity.title+" — "+authority.vocabularies.rules_areas!.find(area=>area.id===entity.primary_rules_area)!.label));
-  assert.doesNotMatch(document.querySelector("#filter-results")?.textContent??"",/Select at least one classification/);
-  await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
-});
-
-test("classification controls implement AND across facets and metadata-only results",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html"+defaultReferenceFragment,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const document=dom.window.document;const area=document.querySelector('input[data-facet="rules_area"][value="electrokinesis"]') as HTMLInputElement;area.checked=true;area.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  const role=document.querySelector("#facet-feature_role") as HTMLSelectElement;role.value="rider";role.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  const labels=[...document.querySelectorAll("#filter-results button")].map(button=>button.textContent);
-  assert.deepEqual(labels,["Static Discharge — Electrokinesis","Branching Bolt — Electrokinesis","Electron Burst — Electrokinesis"]);
-  assert.ok(!document.querySelector("#filter-results p span[data-source-unit]"));
-  await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
-});
-
-
-test("rendered filters isolate canonical areas and preserve progression order",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=common_features&topic=common_features_how_to_play_topic&filters=rules_area:psychokinesis",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
-  const document=dom.window.document;const labels=()=>[...document.querySelectorAll("#filter-results button")].map(button=>button.textContent);
-  assert.deepEqual(labels(),["Telekinetic Shove — Psychokinesis","Vectored Thrust — Psychokinesis","Explosion/Implosion — Psychokinesis","Telekinetic Slam — Psychokinesis","Mass Levitation — Psychokinesis"]);
-  assert.ok(!labels().includes("Overload — Common Features"));
-
-  const psychokinesis=document.querySelector(`input[data-facet="rules_area"][value="psychokinesis"]`) as HTMLInputElement;
-  const common=document.querySelector(`input[data-facet="rules_area"][value="common_features"]`) as HTMLInputElement;
-  common.checked=true;common.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  const multiple=labels();assert.equal(multiple.filter(label=>label==="Overload — Common Features").length,1);assert.ok(multiple.includes("Telekinetic Shove — Psychokinesis"));
-  const firstPsychokinesis=multiple.findIndex(label=>label?.endsWith("— Psychokinesis"));assert.ok(firstPsychokinesis>0);assert.ok(multiple.slice(0,firstPsychokinesis).every(label=>label?.endsWith("— Common Features")));
-
-  common.checked=false;common.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  const role=document.querySelector("#facet-feature_role") as HTMLSelectElement;role.value="rider";role.dispatchEvent(new dom.window.Event("change",{bubbles:true}));
-  assert.deepEqual(labels(),["Telekinetic Shove — Psychokinesis","Explosion/Implosion — Psychokinesis"]);assert.equal(psychokinesis.checked,true);assert.equal(new URLSearchParams(dom.window.location.hash.slice(1)).get("filters"),"rules_area:psychokinesis;feature_role:rider");
-  await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();
+test("Rules Reference removes global filters and canonicalizes legacy filter state",async()=>{
+  const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8"),{authority}=await loadAuthority(),index=buildNameIndex(authority),legacy="#category=common_features&topic=common_features_how_to_play_topic&filters=rules_area:psychokinesis;feature_role:rider";
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html"+legacy,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}}),document=dom.window.document;
+  assert.equal(dom.window.location.hash,defaultReferenceFragment);assert.equal("classifications" in dom.window.history.state,false);
+  assert.equal(document.querySelectorAll("#category-select,#facet-controls,#filter-results,#filter-live,[data-facet]").length,0);assert.doesNotMatch(document.body.textContent??"",/Filtered search|Classification filters|No matches\./u);
+  const category=authority.navigation.categories.find(item=>item.id===authority.navigation.default_category_id)!,topics=[...category.topics].sort((a,b)=>a.order-b.order);assert.deepEqual([...document.querySelectorAll<HTMLOptionElement>("#topic-select option")].map(option=>option.value),topics.map(topic=>topic.id));
+  const topicSelect=document.querySelector<HTMLSelectElement>("#topic-select")!;
+  for(const topic of topics){topicSelect.value=topic.id;topicSelect.dispatchEvent(new dom.window.Event("change",{bubbles:true}));assert.equal(dom.window.location.hash,`#category=${category.id}&topic=${topic.id}`);for(const entityId of topic.entity_ids)assert.ok(document.querySelector(`#entity-${entityId}`),`${topic.id} must expose ${entityId}`);}
+  const nameIds=[...document.querySelectorAll<HTMLOptionElement>("#name-select option")].map(option=>option.value).filter(Boolean);assert.equal(nameIds.length,index.entities.length);assert.equal(new Set(nameIds).size,nameIds.length);
+  const invalid={...structuredClone(dom.window.history.state),classifications:{rules_area:["psychokinesis"]}};dom.window.history.replaceState(invalid,"",legacy);dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate",{state:invalid}));assert.equal(dom.window.location.hash,defaultReferenceFragment);assert.equal("classifications" in dom.window.history.state,false);
+  const feature=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=cryokinesis&topic=cryokinesis_glacial_spike_topic&filters=rules_area:cryokinesis",beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});assert.match(feature.window.location.hash,/^#calculator&card=glacial_spike&/u);assert.equal(feature.window.location.hash.includes("filters="),false);
+  await new Promise<void>(resolve=>setImmediate(resolve));dom.window.close();feature.window.close();
 });
 
 test("feature metadata renders concentration only from structured authority",async()=>{
@@ -249,14 +210,14 @@ test("feature metadata renders concentration only from structured authority",asy
 });
 
 
-test("Browse topics are category-scoped and invalid category/topic state is normalized",async()=>{
+test("Browse exposes authority-derived topics and normalizes invalid category/topic state",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
   const createDom=(hash="")=>new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html${hash}`,beforeParse(window:any){window.structuredClone=globalThis.structuredClone;window.CSS={escape:(value:string)=>value};}});
   const topicTitles=(document:Document)=>[...document.querySelectorAll<HTMLOptionElement>("#topic-select option")].map(option=>option.textContent);
-  const common=createDom("#category=common_features&topic=common_features_common_overload_topic");assert.deepEqual([...common.window.document.querySelectorAll<HTMLOptionElement>("#category-select option")].map(option=>option.value),["common_features"]);assert.equal(topicTitles(common.window.document).filter(title=>title==="Overload").length,1);assert.equal(topicTitles(common.window.document).length,11);
+  const common=createDom("#category=common_features&topic=common_features_common_overload_topic");assert.equal(common.window.document.querySelector("#category-select"),null);assert.equal(topicTitles(common.window.document).filter(title=>title==="Overload").length,1);assert.equal(topicTitles(common.window.document).length,11);
   const legacy=createDom("#category=psychokinesis&topic=psychokinesis_telekinetic_shove_topic");assert.equal(legacy.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"calculator");assert.equal(legacy.window.document.querySelector("#calculator-feature-results > h3")?.textContent,"Telekinetic Shove");
   const invalid=createDom("#category=psychokinesis&topic=common_features_common_overload_topic");const invalidDocument=invalid.window.document;
-  assert.equal((invalidDocument.querySelector("#category-select") as HTMLSelectElement).value,"common_features");assert.equal((invalidDocument.querySelector("#topic-select") as HTMLSelectElement).value,"common_features_common_overload_topic");assert.equal(invalidDocument.querySelector("#entity-common_overload h2")?.textContent,"Overload");assert.equal(invalid.window.location.hash,"#category=common_features&topic=common_features_common_overload_topic");
+  assert.equal((invalidDocument.querySelector("#topic-select") as HTMLSelectElement).value,"common_features_common_overload_topic");assert.equal(invalidDocument.querySelector("#entity-common_overload h2")?.textContent,"Overload");assert.equal(invalid.window.location.hash,"#category=common_features&topic=common_features_common_overload_topic");
   await new Promise<void>(resolve=>setImmediate(resolve));common.window.close();legacy.window.close();invalid.window.close();
 });
 
@@ -286,29 +247,24 @@ test("authored lists remain in their authored entity and tier scope",async()=>{
 
 
 
-test("history restoration rejects invalid classifications and canonicalizes repaired routes",async()=>{
+test("history restoration rejects retired or invalid state and canonicalizes repaired routes",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const fragment="#category=common_features&topic=common_features_how_to_play_topic";
   const dom=new JSDOM(html,{runScripts:"dangerously",url:`https://local.invalid/KineticVanguard.prototype.html${fragment}`,beforeParse(window:any){installOnboardingBrowserShims(window);}});
   const document=dom.window.document,baseState=structuredClone(dom.window.history.state);
-  const invalidClassifications=[{entity_kind:"bogus"},{entity_kind:["feature"]},{rules_area:"common_features"},{rules_area:["common_features","common_features"]}];
-  for(const classifications of invalidClassifications){
-    const snapshot={...baseState,classifications,focusOrigin:"history"};
-    dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate",{state:snapshot}));
-    assert.deepEqual(dom.window.history.state.classifications,{});assert.equal((document.querySelector("#facet-entity_kind") as HTMLSelectElement).value,"");assert.equal((document.querySelector('input[data-facet="rules_area"][value="common_features"]') as HTMLInputElement).checked,false);assert.ok(document.querySelector("#entity-how_to_play"));
-  }
+  const retired={...baseState,classifications:{rules_area:["common_features"]},focusOrigin:"history"};dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate",{state:retired}));assert.equal("classifications" in dom.window.history.state,false);assert.ok(document.querySelector("#entity-how_to_play"));
   const invalidModifier={...baseState,psiModifier:6,focusOrigin:"history"};
   dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate",{state:invalidModifier}));
   assert.equal(dom.window.history.state.psiModifier,5);
-  const repaired={...baseState,topic:"missing_topic",entity:"how_to_play",resultRoute:"missing_topic",focusOrigin:"history"};
+  const repaired={...baseState,topic:"missing_topic",entity:"how_to_play",focusOrigin:"history"};
   dom.window.dispatchEvent(new dom.window.PopStateEvent("popstate",{state:repaired}));
   assert.equal(dom.window.location.hash,"#category=common_features&topic=common_features_how_to_play_topic&entity=how_to_play");
-  assert.equal(dom.window.history.state.topic,"common_features_how_to_play_topic");assert.equal(dom.window.history.state.resultRoute,"common_features_how_to_play_topic");assert.equal(dom.window.history.state.focusOrigin,"history");
+  assert.equal(dom.window.history.state.topic,"common_features_how_to_play_topic");assert.equal("resultRoute" in dom.window.history.state,false);assert.equal(dom.window.history.state.focusOrigin,"history");
   assert.equal((document.querySelector("#name-select") as HTMLSelectElement).value,"how_to_play");assert.ok(document.querySelector("#entity-how_to_play"));assert.equal(document.activeElement,document.body);
   await settleOnboarding();dom.window.close();
 });
 
 test("Start Here renders semantic canonical sections and every destination exposes and activates its canonical route",async()=>{
-  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();const index=buildFilterIndex(authority);
+  const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");const {authority}=await loadAuthority();const index=buildNameIndex(authority);
   const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#home",beforeParse(window:any){installOnboardingBrowserShims(window);}});
   const document=dom.window.document,onboarding=authority.onboarding,layout=document.querySelector<HTMLElement>("main.layout")!,home=document.querySelector<HTMLElement>('.home-guide[data-onboarding-id="start_here"]')!;
   assert.ok(home);assert.equal(layout.dataset.view,"home");assert.equal(document.querySelector<HTMLElement>(".controls")?.hidden,true);assert.equal(document.querySelector(".skip")?.getAttribute("href"),"#rules-content");
@@ -444,7 +400,7 @@ test("Calculator rounds displayed expected averages upward after the underlying 
 
 test("onboarding Calculator card routing is generic rather than feature-name based",async()=>{const runtime=await readFile("src/runtime.ts","utf8");assert.doesNotMatch(runtime,/function destinationControl[^\n]*blood_tax/u);assert.doesNotMatch(runtime,/function openCalculator[^\n]*blood_tax/u);});
 
-test("Name, result, onboarding, and feature links converge on canonical Calculator routes",async()=>{
+test("Name and legacy feature links converge on canonical Calculator routes",async()=>{
   const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");
   const legacy=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#category=cryokinesis&topic=cryokinesis_glacial_spike_topic",beforeParse(window:any){installOnboardingBrowserShims(window);}});
   assert.equal(legacy.window.document.querySelector<HTMLElement>("main.layout")?.dataset.view,"calculator");assert.equal(legacy.window.document.querySelector("#calculator-feature-results > h3")?.textContent,"Glacial Spike");assert.equal(legacy.window.location.hash,"#calculator&card=glacial_spike&level=20&modifier=5&group=cryokinesis");

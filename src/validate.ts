@@ -284,39 +284,27 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
 }
 
 export type ProgressionSection="foundation"|"levelled"|"reference";
-export interface FilterIndexEntry {id:string;title:string;primary_rules_area:string;rules_area_order:number;minimum_level:number|null;progression_section:ProgressionSection;progression_order:number;feature_role_order:number;classifications:Record<string,string[]>;routes:Record<string,string>}
+export interface NameIndexEntry {id:string;title:string;primary_rules_area:string;minimum_level:number|null;progression_section:ProgressionSection;routes:Record<string,string>}
 export interface NameIndexGroup {id:string;label:string;order:number;entity_ids:string[]}
-export interface FilterIndex { entities:FilterIndexEntry[];name_groups:NameIndexGroup[] }
+export interface NameIndex { entities:NameIndexEntry[];name_groups:NameIndexGroup[] }
 const progressionSectionOrder:Record<ProgressionSection,number>={foundation:0,levelled:1,reference:2};
-const numericLevel=(entry:FilterIndexEntry):number=>entry.minimum_level===null?Number.MAX_SAFE_INTEGER:Number(entry.minimum_level);
-export function compareNameEntries(a:FilterIndexEntry,b:FilterIndexEntry):number{
+const numericLevel=(entry:NameIndexEntry):number=>entry.minimum_level===null?Number.MAX_SAFE_INTEGER:Number(entry.minimum_level);
+export function compareNameEntries(a:NameIndexEntry,b:NameIndexEntry):number{
   return (progressionSectionOrder[a.progression_section]-progressionSectionOrder[b.progression_section])
     ||(numericLevel(a)-numericLevel(b))
     ||codepointCompare(a.title,b.title)
     ||codepointCompare(a.id,b.id);
 }
-export function compareFilterEntries(a:FilterIndexEntry,b:FilterIndexEntry):number{
-  return (a.rules_area_order-b.rules_area_order)
-    ||(progressionSectionOrder[a.progression_section]-progressionSectionOrder[b.progression_section])
-    ||(numericLevel(a)-numericLevel(b))
-    ||(a.progression_order-b.progression_order)
-    ||(a.feature_role_order-b.feature_role_order)
-    ||codepointCompare(a.title,b.title)
-    ||codepointCompare(a.id,b.id);
-}
-export function buildFilterIndex(authority:Authority):FilterIndex{
+export function buildNameIndex(authority:Authority):NameIndex{
   const routesByEntity=new Map<string,Map<string,string[]>>();for(const category of authority.navigation.categories)for(const topic of category.topics)for(const entityId of topic.entity_ids){const areas=routesByEntity.get(entityId)??new Map();const topics=areas.get(category.id)??[];topics.push(topic.id);areas.set(category.id,topics);routesByEntity.set(entityId,areas);}
-  const areaOrder=new Map((authority.vocabularies.rules_areas??[]).map(value=>[value.id,value.order]));
-  const roleOrder=new Map((authority.vocabularies.feature_roles??[]).map(value=>[value.id,value.order]));
-  const topicOrderByEntityArea=new Map<string,number>();for(const category of authority.navigation.categories)for(const topic of category.topics)for(const entityId of topic.entity_ids)topicOrderByEntityArea.set(`${entityId}\0${category.id}`,Math.min(topic.order,topicOrderByEntityArea.get(`${entityId}\0${category.id}`)??Number.MAX_SAFE_INTEGER));
-  const entries=authority.entities.map(entity=>{const primaryArea=entity.presentation_metadata.primary_rules_area;const areaRoutes=routesByEntity.get(entity.id)??new Map<string,string[]>();const routes=Object.fromEntries([...areaRoutes].map(([area,topics])=>[area,entity.presentation_metadata.canonical_topic_by_area[area]??topics[0]! ]));return{id:entity.id,title:entity.title,primary_rules_area:primaryArea,rules_area_order:areaOrder.get(primaryArea)!,minimum_level:entity.level??null,progression_section:(entity.level===undefined?entity.progression_section!:"levelled") as ProgressionSection,progression_order:topicOrderByEntityArea.get(`${entity.id}\0${primaryArea}`)??0,feature_role_order:entity.classifications.feature_role?roleOrder.get(entity.classifications.feature_role)!:Number.MAX_SAFE_INTEGER,classifications:{rules_area:[primaryArea],entity_kind:[entity.classifications.entity_kind],...(entity.classifications.feature_role?{feature_role:[entity.classifications.feature_role]}:{}),...(entity.classifications.acquisition_mode?{acquisition_mode:[entity.classifications.acquisition_mode]}:{})},routes};});
+  const entries=authority.entities.map(entity=>{const primaryArea=entity.presentation_metadata.primary_rules_area;const areaRoutes=routesByEntity.get(entity.id)??new Map<string,string[]>();const routes=Object.fromEntries([...areaRoutes].map(([area,topics])=>[area,entity.presentation_metadata.canonical_topic_by_area[area]??topics[0]! ]));return{id:entity.id,title:entity.title,primary_rules_area:primaryArea,minimum_level:entity.level??null,progression_section:(entity.level===undefined?entity.progression_section!:"levelled") as ProgressionSection,routes};});
   const name_groups=(authority.vocabularies.rules_areas??[]).map(area=>({id:area.id,label:area.label,order:area.order,entity_ids:entries.filter(entry=>entry.primary_rules_area===area.id).sort(compareNameEntries).map(entry=>entry.id)})).sort((a,b)=>a.order-b.order||codepointCompare(a.id,b.id));
-  return{entities:[...entries].sort(compareFilterEntries),name_groups};
+  return{entities:entries,name_groups};
 }
 
-export function buildIntegrity(authority:Authority,index:FilterIndex):Record<string,unknown>{
-  const checks=index.entities.map(item=>{const entity=authority.entities.find(candidate=>candidate.id===item.id)!;const canonicalAreas=item.classifications.rules_area!,expectedRouteAreas=isCalculatorDeckEntity(entity)?[]:[...entity.classifications.rules_area].sort();return{entity_id:item.id,identity_retrieval:item.title===entity.title,canonical_area_retrieval:canonicalAreas.length===1&&canonicalAreas[0]===item.primary_rules_area,classification_vector_retrieval:Object.entries(item.classifications).every(([facet,values])=>values.every(value=>(entity.classifications as any)[facet]?.includes?.(value)||(entity.classifications as any)[facet]===value)),route_areas:Object.keys(item.routes).sort(),expected_route_areas:expectedRouteAreas,rules_areas:[...entity.classifications.rules_area].sort()};});
-  return{version:2,entity_count:index.entities.length,all_passed:checks.every(check=>check.identity_retrieval&&check.canonical_area_retrieval&&check.classification_vector_retrieval&&JSON.stringify(check.route_areas)===JSON.stringify(check.expected_route_areas)),controlled_vocabularies:Object.fromEntries(Object.entries(authority.vocabularies).map(([name,values])=>[name,values.map(value=>value.id)])),identity_domain:index.entities.map(entity=>({id:entity.id,title:entity.title,primary_rules_area:entity.primary_rules_area})),checks};
+export function buildNameIndexIntegrity(authority:Authority,index:NameIndex):Record<string,unknown>{
+  const checks=index.entities.map(item=>{const entity=authority.entities.find(candidate=>candidate.id===item.id)!;const expectedRouteAreas=isCalculatorDeckEntity(entity)?[]:[...entity.classifications.rules_area].sort();return{entity_id:item.id,identity_retrieval:item.title===entity.title,canonical_area_retrieval:item.primary_rules_area===entity.presentation_metadata.primary_rules_area,route_areas:Object.keys(item.routes).sort(),expected_route_areas:expectedRouteAreas};});
+  return{version:1,entity_count:index.entities.length,all_passed:checks.every(check=>check.identity_retrieval&&check.canonical_area_retrieval&&JSON.stringify(check.route_areas)===JSON.stringify(check.expected_route_areas)),identity_domain:index.entities.map(entity=>({id:entity.id,title:entity.title,primary_rules_area:entity.primary_rules_area})),checks};
 }
 
 export function summarizeDiagnostics(diagnostics:Diagnostic[]):string{return diagnostics.map(item=>`${item.severity.toUpperCase()} ${item.code}${item.path?` ${item.path}`:""}: ${item.message}`).join("\n");}

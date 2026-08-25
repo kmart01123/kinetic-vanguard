@@ -53,12 +53,7 @@ test("master Name select renders canonical progression and stable renamed routes
       for(const group of observed)assert.deepEqual(group.ids.filter(id=>featureIds.has(id)),expectedFeatures[group.label],engine.name+" "+group.label+" feature order");
       const pyrokinesis=observed.find(group=>group.label==="Pyrokinesis")!;assert.ok(pyrokinesis.ids.indexOf("thermal_fracture")<pyrokinesis.ids.indexOf("furnace_strike"),engine.name+" Thermal Fracture before Furnace Strike");
       const advanced=observed.find(group=>group.label==="Advanced Training")!;assert.deepEqual(advanced.labels.slice(0,2),["Deflection Screen","Phase Step"],engine.name+" cleaned Advanced Training labels");
-      const pyroFilter=page.locator('input[data-facet="rules_area"][value="pyrokinesis"]');await pyroFilter.check();
-      const filtered=await readGroups();assert.deepEqual(filtered.map(group=>group.label),["Pyrokinesis"],engine.name+" filtered groups");assert.deepEqual(filtered[0]!.ids,pyrokinesis.ids,engine.name+" filtered rebuild order");await pyroFilter.uncheck();
-      const advancedFilter=page.locator('input[data-facet="rules_area"][value="advanced_training"]');await advancedFilter.check();
-      const rebuiltAdvanced=await readGroups();assert.deepEqual(rebuiltAdvanced.map(group=>group.label),["Advanced Training"],engine.name+" rebuilt Advanced Training group");assert.deepEqual(rebuiltAdvanced[0]!.labels.slice(0,2),["Deflection Screen","Phase Step"],engine.name+" rebuilt clean labels");
-      assert.equal(new Set(rebuiltAdvanced[0]!.ids).size,rebuiltAdvanced[0]!.ids.length,engine.name+" no duplicate Advanced Training options");assert.ok(rebuiltAdvanced[0]!.labels.every(label=>!label.startsWith("Advanced Training I:")&&!label.startsWith("Advanced Training II:")),engine.name+" no rebuilt prefixed labels");
-      const resultLabels=await page.locator("#filter-results button").allTextContents();assert.ok(resultLabels.includes("Deflection Screen — Advanced Training"));assert.ok(resultLabels.includes("Phase Step — Advanced Training"));assert.ok(resultLabels.every(label=>!label.startsWith("Advanced Training I:")&&!label.startsWith("Advanced Training II:")));await advancedFilter.uncheck();
+      assert.equal(new Set(observed.flatMap(group=>group.ids)).size,authority.entities.length,engine.name+" complete unique Name inventory");assert.equal(await page.locator("#category-select,#facet-controls,#filter-results,#filter-live").count(),0,engine.name+" obsolete controls absent");
       for(const [id,title] of [["advanced_deflection_screen","Deflection Screen"],["advanced_phase_step","Phase Step"]] as const){
         await page.goto(url);await page.evaluate(()=>{const push=history.pushState.bind(history);(window as any).__namePushCount=0;history.pushState=(...args)=>{(window as any).__namePushCount++;return push(...args);};});const historyBefore=0;await page.selectOption("#name-select",id);
         const route=new URL(page.url()).hash;assert.equal(route.startsWith(`#calculator&card=${id}&`),true);assert.equal(await page.locator("#calculator-feature-results > h3").textContent(),title);
@@ -70,7 +65,7 @@ test("master Name select renders canonical progression and stable renamed routes
   }
 });
 
-test("mobile Name and result navigation focus and reveal the selected Calculator card",async()=>{
+test("mobile keyboard Topic and Name navigation reach reference and Calculator destinations",async()=>{
   const result=await executeBuild("prototype");const url=pathToFileURL(result.htmlPath).href+defaultReferenceFragment;
   for(const engine of desktopBrowsers){
     const browser=await engine.type.launch(browserLaunchOptions);
@@ -80,7 +75,8 @@ test("mobile Name and result navigation focus and reveal the selected Calculator
         await page.waitForFunction(expected=>{const heading=document.querySelector<HTMLElement>("#calculator-feature-results > h3");if(!heading||heading.textContent!==expected)return false;const rect=heading.getBoundingClientRect();return document.activeElement===heading&&rect.top>=-1&&rect.bottom<=innerHeight+1;},title);
       };
       await page.selectOption("#name-select","ball_lightning");await assertFocusedAndVisible("Ball Lightning");assert.match(new URL(page.url()).hash,/^#calculator&card=ball_lightning&/u);
-      await page.goto(url);await page.locator('input[data-facet="rules_area"][value="electrokinesis"]').check();await page.getByRole("button",{name:"Ball Lightning — Electrokinesis"}).click();await assertFocusedAndVisible("Ball Lightning");assert.match(new URL(page.url()).hash,/^#calculator&card=ball_lightning&/u);
+      await page.goto(url);await page.focus("#topic-select");await page.keyboard.press("End");await page.waitForFunction(()=>location.hash.includes("common_features_advanced_training_progression_topic"));assert.equal(await page.locator("#topic-select").inputValue(),"common_features_advanced_training_progression_topic");assert.equal(await page.locator("#entity-advanced_training_progression > h2").textContent(),"Advanced Training Progression");
+      await page.goto(url);await page.selectOption("#name-select","common_overload");assert.equal(await page.locator("#entity-common_overload > h2").textContent(),"Overload");assert.match(new URL(page.url()).hash,/entity=common_overload$/u);
     }finally{await browser.close();}
   }
 });
@@ -346,19 +342,14 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
 });
 
 
-test("Rules area filtering is immediate, canonical, progressive, and history-safe on desktop and mobile",async()=>{
+test("simplified Topic and Name routes are canonical and history-safe on desktop and mobile",async()=>{
   const result=await executeBuild("prototype");const browser=await chromium.launch(browserLaunchOptions);
-  const expected=["Telekinetic Shove — Psychokinesis","Vectored Thrust — Psychokinesis","Explosion/Implosion — Psychokinesis","Telekinetic Slam — Psychokinesis","Mass Levitation — Psychokinesis"];
   try{
     for(const viewport of [{width:1366,height:768},{width:390,height:844}]){
       const page=await browser.newPage({viewport});await page.goto(pathToFileURL(result.htmlPath).href+defaultReferenceFragment);
-      const psychokinesis=page.locator(`input[data-facet="rules_area"][value="psychokinesis"]`),common=page.locator(`input[data-facet="rules_area"][value="common_features"]`);
-      await psychokinesis.check();await page.locator(`#filter-root[data-filter-settled="true"]`).waitFor();
-      const labels=()=>page.locator("#filter-results button").allTextContents();assert.deepEqual(await labels(),expected);assert.equal(await common.isChecked(),false);
-      await common.check();const multiple=await labels();assert.equal(multiple.filter(label=>label==="Overload — Common Features").length,1);const firstPsychokinesis=multiple.findIndex(label=>label.endsWith("— Psychokinesis"));assert.ok(firstPsychokinesis>0);assert.ok(multiple.slice(0,firstPsychokinesis).every(label=>label.endsWith("— Common Features")));
-      await page.goBack();assert.equal(await psychokinesis.isChecked(),true);assert.equal(await common.isChecked(),false);assert.deepEqual(await labels(),expected);
-      await page.goForward();assert.equal(await psychokinesis.isChecked(),true);assert.equal(await common.isChecked(),true);assert.deepEqual(await labels(),multiple);
-      await common.uncheck();assert.deepEqual(await labels(),expected);assert.ok(!(await labels()).some(label=>label.startsWith("Overload —")));await page.close();
+      assert.equal(await page.locator("#category-select,#facet-controls,#filter-results,#filter-live").count(),0);await page.selectOption("#topic-select","common_features_common_overload_topic");const topicRoute="#category=common_features&topic=common_features_common_overload_topic";assert.equal(new URL(page.url()).hash,topicRoute);assert.ok(await page.locator("#entity-common_overload").isVisible());
+      await page.selectOption("#name-select","common_overload");const entityRoute=topicRoute+"&entity=common_overload";assert.equal(new URL(page.url()).hash,entityRoute);assert.equal(await page.locator("#name-select").inputValue(),"common_overload");
+      await page.goBack();assert.equal(new URL(page.url()).hash,topicRoute);assert.equal(await page.locator("#name-select").inputValue(),"");await page.goForward();assert.equal(new URL(page.url()).hash,entityRoute);assert.equal(await page.locator("#name-select").inputValue(),"common_overload");await page.close();
     }
   }finally{await browser.close();}
 });
