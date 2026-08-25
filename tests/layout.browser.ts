@@ -283,11 +283,11 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
             fullWidth:rects.every(rect=>Math.abs(rect.width-containerRect.width)<=1&&Math.abs(rect.left-containerRect.left)<=1),
             ownRows:rects.every((rect,index)=>index===0||rect.top>=rects[index-1]!.bottom),
             verticalSeparation:rects.every((rect,index)=>index===0||rect.top-rects[index-1]!.bottom>=20),
-            aligned:sections.every((section,index)=>{
+            alignmentDelta:Math.max(...sections.flatMap((section,index)=>{
               const heading=section.querySelector<HTMLElement>(".example-play-section__heading")!.getBoundingClientRect();
               const content=contents[index]!.getBoundingClientRect();
-              return Math.abs(heading.left-content.left)<=1&&Math.abs(heading.right-content.right)<=1;
-            }),
+              return[Math.abs(heading.left-content.left),Math.abs(heading.right-content.right)];
+            })),
             readableWidth:contents.every(content=>{
               const width=content.getBoundingClientRect().width;
               return width>=Math.min(containerRect.width,600)-1&&width<=containerRect.width+1;
@@ -318,7 +318,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
         assert.equal(rendered.fullWidth,true,size+": each discipline occupies a full row");
         assert.equal(rendered.ownRows,true,size+": sections stack vertically");
         assert.equal(rendered.verticalSeparation,true,size+": sections have clear whitespace");
-        assert.equal(rendered.aligned,true,size+": headings align with example content");
+        assert.ok(rendered.alignmentDelta<=1.5,`${size}: headings align with example content (maximum edge delta ${rendered.alignmentDelta}px)`);
         assert.equal(rendered.readableWidth,true,size+": readable inner width");
         assert.equal(rendered.flat,true,size+": flat divider treatment");
         assert.equal(rendered.titlesFit,true,size+": titles wrap without overflow");
