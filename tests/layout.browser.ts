@@ -318,7 +318,7 @@ test("Example Play uses one flat, full-width row per discipline at every viewpor
         assert.equal(rendered.fullWidth,true,size+": each discipline occupies a full row");
         assert.equal(rendered.ownRows,true,size+": sections stack vertically");
         assert.equal(rendered.verticalSeparation,true,size+": sections have clear whitespace");
-        assert.ok(rendered.alignmentDelta<=1.5,`${size}: headings align with example content (maximum edge delta ${rendered.alignmentDelta}px)`);
+        assert.ok(rendered.alignmentDelta<=1,`${size}: headings align with example content (maximum edge delta ${rendered.alignmentDelta}px)`);
         assert.equal(rendered.readableWidth,true,size+": readable inner width");
         assert.equal(rendered.flat,true,size+": flat divider treatment");
         assert.equal(rendered.titlesFit,true,size+": titles wrap without overflow");
