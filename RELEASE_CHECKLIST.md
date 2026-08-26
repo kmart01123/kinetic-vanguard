@@ -5,6 +5,7 @@ Use this checklist for an actual release. Frozen release refs and published GitH
 ## Prepare and freeze the candidate
 
 - [ ] Finish and independently review the release-prep pull request.
+- [ ] Reconcile `CHANGELOG.md` from development history into concise final release outcomes; remove stale intermediate wording and implementation-diary detail before freezing the candidate.
 - [ ] Set the canonical `rules_version`, release notes, and `CHANGELOG.md` for `X.Y.Z`.
 - [ ] Confirm whether rules, comparators, roster, methodology, or benchmark code changed. Run fresh analytical evidence only when that input-aware policy requires it.
 - [ ] Squash-merge the exact candidate and record the merged commit SHA.
