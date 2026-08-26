@@ -61,7 +61,7 @@ class AuthorityProjectionTests(unittest.TestCase):
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
         self.assertEqual(self.model.projection["projection_version"],"1.2.0")
         self.assertEqual(self.model.rules_version,"14.3.0")
-        self.assertEqual(self.model.projection["schema_version"],"2.3.0")
+        self.assertEqual(self.model.projection["schema_version"],"2.4.0")
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":1,"action_surge_allows_additional_standalone_psionic_action":False})
         self.assertEqual(self.model.holdout_formula(17)["kind"],"halve_total_rounded_down")
         self.assertEqual(self.model.holdout_formula(18),{"minimum_level":18,"maximum_level":20,"kind":"dice_plus_psionic_ability_modifier","count":1,"sides":6})

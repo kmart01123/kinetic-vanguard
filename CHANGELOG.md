@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Moved Blood Tax under Start Here’s Terms to Know instead of presenting it as an early standalone onboarding card.
 - Simplified Rules Reference navigation to direct authority-derived Topics and Name routing, removing obsolete global classification filters, result lists, Category chrome, and filter URL/history state while preserving canonical deep links and legacy routing.
 - Consolidated the Calculator's Psionic Save DC into one shared core calculation beside Manifested Strike math; feature summaries now identify only the save ability and applicable tiers.
 - Published the current non-release development prototype at a stable GitHub Pages URL and linked it from README alongside the Fighter 20 balance explanation.
