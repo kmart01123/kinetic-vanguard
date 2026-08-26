@@ -239,7 +239,7 @@
     },
     "onboarding": {
       "type":"object","additionalProperties":false,
-      "required":["id","title","introduction","primary_paths","blood_tax","disciplines","basic_turn","build_checklist","glossary","next_destinations"],
+      "required":["id","title","introduction","primary_paths","disciplines","basic_turn","build_checklist","glossary","next_destinations"],
       "properties": {
         "id":{"$ref":"#/$defs/id"},
         "title":{"type":"string","minLength":1},
@@ -248,10 +248,6 @@
           "properties":{"summary":{"type":"string","minLength":1},"no_psi_note":{"type":"string","minLength":1},"orientation":{"type":"string","minLength":1}}
         },
         "primary_paths":{"type":"array","items":{"$ref":"#/$defs/onboardingLink"},"minItems":4,"maxItems":4},
-        "blood_tax":{
-          "type":"object","additionalProperties":false,"required":["id","title","description","destination"],
-          "properties":{"id":{"$ref":"#/$defs/id"},"title":{"type":"string","minLength":1},"description":{"type":"string","minLength":1},"destination":{"$ref":"#/$defs/onboardingDestination"}}
-        },
         "disciplines":{
           "type":"object","additionalProperties":false,"required":["id","title","cards"],
           "properties":{"id":{"$ref":"#/$defs/id"},"title":{"type":"string","minLength":1},"cards":{"type":"array","items":{"$ref":"#/$defs/onboardingLink"},"minItems":4,"maxItems":4}}
@@ -271,7 +267,7 @@
         },
         "glossary":{
           "type":"object","additionalProperties":false,"required":["id","title","entries"],
-          "properties":{"id":{"$ref":"#/$defs/id"},"title":{"type":"string","minLength":1},"entries":{"type":"array","items":{"$ref":"#/$defs/onboardingGlossaryEntry"},"minItems":5,"maxItems":5}}
+          "properties":{"id":{"$ref":"#/$defs/id"},"title":{"type":"string","minLength":1},"entries":{"type":"array","items":{"$ref":"#/$defs/onboardingGlossaryEntry"},"minItems":6,"maxItems":6}}
         },
         "next_destinations":{
           "type":"object","additionalProperties":false,"required":["id","title","items"],

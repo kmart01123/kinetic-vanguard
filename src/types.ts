@@ -278,7 +278,6 @@ export interface Onboarding {
     orientation: string;
   };
   primary_paths: OnboardingLink[];
-  blood_tax: OnboardingLink & { description: string };
   disciplines: {
     id: string;
     title: string;

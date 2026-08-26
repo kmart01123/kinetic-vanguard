@@ -4644,7 +4644,7 @@ navigation:
           title: Advanced Training Progression
   default_category_id: common_features
 rules_version: 14.3.0
-schema_version: 2.3.0
+schema_version: 2.4.0
 vocabularies:
   acquisition_modes:
     - id: granted
@@ -4693,13 +4693,6 @@ vocabularies:
       label: Electrokinesis
       order: 5
 onboarding:
-  blood_tax:
-    description: Overloading a rider or standalone psionic feature makes you take psychic damage called Blood Tax when you declare it. Tier 1 equals your Proficiency Bonus; Tier 2 equals twice your Proficiency Bonus. A declared rider’s Blood Tax remains spent if the attack misses. Use the Blood Tax Calculator card to see the exact damage for your Fighter level.
-    destination:
-      card_id: blood_tax
-      kind: calculator
-    id: start_blood_tax
-    title: Calculate Blood Tax
   basic_turn:
     destinations:
       - destination:
@@ -4811,19 +4804,25 @@ onboarding:
           kind: entity
         id: term_psi
         title: Psi
-      - definition: Overload strengthens a rider or standalone psionic feature by making you take Blood Tax.
+      - definition: The choice to advance a rider or standalone psionic feature to a higher tier. Blood Tax is the associated cost.
         destination:
           entity_id: common_overload
           kind: entity
-        id: term_overload_blood_tax
-        title: Overload and Blood Tax
+        id: term_overload
+        title: Overload
+      - definition: Psychic damage you take when declaring Overload. Use the Blood Tax Calculator card for the exact level-aware amount.
+        destination:
+          card_id: blood_tax
+          kind: calculator
+        id: term_blood_tax
+        title: Blood Tax
     id: terms_to_know
     title: Terms to Know
   id: start_here
   introduction:
     no_psi_note: Manifested Strike costs no Psi. You can use it even when you have no Psi Points remaining.
     orientation: Use Calculator / Feature Deck for complete individual feature rules and quick-reference calculations. Use Rules Reference for shared subclass systems and chassis rules such as Psi, Manifested Strike procedure, Overload, rider rules, progression, and worked examples.
-    summary: A Kinetic Vanguard is a Fighter who replaces weapon attacks with ranged psionic Manifested Strikes, enhances those strikes with riders, and can take psychic damage called Blood Tax to Overload psionic techniques.
+    summary: A Kinetic Vanguard is a Fighter who replaces weapon attacks with ranged psionic Manifested Strikes, enhances those strikes with riders, and can Overload psionic techniques for stronger effects.
   next_destinations:
     id: where_to_go_next
     items:

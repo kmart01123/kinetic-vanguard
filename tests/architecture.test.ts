@@ -52,7 +52,7 @@ test("onboarding semantic mutations produce focused diagnostics",async()=>{
   expectCode("onboarding.id_duplicate",candidate=>{candidate.onboarding.primary_paths[1].id=candidate.onboarding.primary_paths[0].id;});
   expectCode("onboarding.section_unknown",candidate=>{candidate.onboarding.primary_paths[0].destination.section_id="missing_section";});
   expectCode("onboarding.category_unknown",candidate=>{candidate.onboarding.next_destinations.items.at(-1).destination.category_id="missing_category";});
-  expectCode("onboarding.calculator_card_area_mismatch",candidate=>{candidate.onboarding.blood_tax.destination.rules_area="pyrokinesis";});
+  expectCode("onboarding.calculator_card_area_mismatch",candidate=>{candidate.onboarding.glossary.entries.find((entry:any)=>entry.id==="term_blood_tax").destination.rules_area="pyrokinesis";});
   expectCode("onboarding.entity_unknown",candidate=>{candidate.onboarding.build_checklist.items[0].destination.entity_id="missing_entity";});
   expectCode("onboarding.external_url",candidate=>{candidate.onboarding.introduction.orientation="Read https://example.invalid for more rules.";});
 });
