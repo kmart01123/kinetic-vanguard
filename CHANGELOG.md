@@ -1,6 +1,6 @@
 # Changelog
 
-## 14.3.0 — Unreleased
+## 14.3.0 — 2026-08-26
 
 ### Changed
 
