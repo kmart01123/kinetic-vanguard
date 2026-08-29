@@ -41,9 +41,9 @@ test("README release status matches canonical development truth",async()=>{
   assert.ok(compareVersions(release.published,authority.rules_version)<=0);
   if(release.development!=="None")assert.equal(release.development,`v${authority.rules_version}`);
   const occurrences=(value:string):number=>readme.split(value).length-1;
-  assert.equal(occurrences("https://kmart01123.github.io/kinetic-vanguard/"),1);
-  assert.match(readme,/^- Published rules: \*\*\[v14\.2\.0\]\(https:\/\/github\.com\/kmart01123\/kinetic-vanguard\/releases\/tag\/v14\.2\.0\)\*\*$/m);
-  assert.match(readme,/^- Current development prototype:.*NON-RELEASE development build/m);
+  assert.equal(occurrences("https://kmart01123.github.io/kinetic-vanguard/"),0);
+  assert.match(readme,/^- Published rules: \*\*\[v14\.3\.0\]\(https:\/\/github\.com\/kmart01123\/kinetic-vanguard\/releases\/tag\/v14\.3\.0\)\*\*$/m);
+  assert.match(readme,/^- Current development prototype: \*\*None\*\*$/m);
 });
 
 test("README release status accepts one active development prototype",()=>{
