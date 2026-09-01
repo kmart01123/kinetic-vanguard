@@ -58,146 +58,17 @@ calculator:
   fighter_level_maximum: 20
   psionic_ability_modifier_minimum: 0
   psionic_ability_modifier_maximum: 5
-  proficiency_bonus_bands:
-    - minimum_level: 3
-      maximum_level: 4
-      value: 2
-    - minimum_level: 5
-      maximum_level: 8
-      value: 3
-    - minimum_level: 9
-      maximum_level: 12
-      value: 4
-    - minimum_level: 13
-      maximum_level: 16
-      value: 5
-    - minimum_level: 17
-      maximum_level: 20
-      value: 6
-  psi_point_bands:
-    - minimum_level: 3
-      maximum_level: 4
-      value: 4
-    - minimum_level: 5
-      maximum_level: 6
-      value: 6
-    - minimum_level: 7
-      maximum_level: 8
-      value: 7
-    - minimum_level: 9
-      maximum_level: 10
-      value: 9
-    - minimum_level: 11
-      maximum_level: 12
-      value: 10
-    - minimum_level: 13
-      maximum_level: 14
-      value: 12
-    - minimum_level: 15
-      maximum_level: 16
-      value: 13
-    - minimum_level: 17
-      maximum_level: 18
-      value: 15
-    - minimum_level: 19
-      maximum_level: 20
-      value: 16
-  psionic_focus_bands:
-    - minimum_level: 3
-      maximum_level: 8
-      value: 1
-    - minimum_level: 9
-      maximum_level: 16
-      value: 2
-    - minimum_level: 17
-      maximum_level: 20
-      value: 3
-  manifested_strike_die_bands:
-    - minimum_level: 3
-      maximum_level: 4
-      value: 6
-    - minimum_level: 5
-      maximum_level: 10
-      value: 8
-    - minimum_level: 11
-      maximum_level: 16
-      value: 10
-    - minimum_level: 17
-      maximum_level: 20
-      value: 12
-  tier_minimum_levels:
-    - tier: 0
-      minimum_level: 3
-    - tier: 1
-      minimum_level: 3
-    - tier: 2
-      minimum_level: 10
+  proficiency_bonus_bands: {entity_id: common_psi_reservoir, derived_from: system_mechanics, field: proficiency_bonus_bands}
+  psi_point_bands: {entity_id: common_psi_reservoir, derived_from: system_mechanics, field: psi_point_bands}
+  psionic_focus_bands: {entity_id: common_manifested_strike, derived_from: system_mechanics, field: psionic_focus_bands}
+  manifested_strike_die_bands: {entity_id: common_manifested_strike, derived_from: system_mechanics, field: manifested_strike_die_bands}
+  tier_minimum_levels: {entity_id: common_overload, derived_from: system_mechanics, field: tier_minimum_levels}
   harness_mechanics:
-    action_economy:
-      standalone_psionic_action_limit_per_turn: 1
-      action_surge_allows_additional_standalone_psionic_action: false
-    manifested_strike:
-      entity_id: common_manifested_strike
-      rider_repeatability: per_manifested_strike
-      damage_type_source: discipline
-      holdout:
-        damage_type: force
-        declaration_timing: before_attack_roll
-        formulas:
-          - minimum_level: 3
-            maximum_level: 17
-            kind: halve_total_rounded_down
-          - minimum_level: 18
-            maximum_level: 20
-            kind: dice_plus_psionic_ability_modifier
-            count: 1
-            sides: 6
-      critical_dice_multiplier: 2
-      attack_bonus:
-        base: 0
-        components: [psionic_ability_modifier, proficiency_bonus, psionic_focus]
-      save_dc:
-        base: 8
-        components: [proficiency_bonus, psionic_ability_modifier]
-    overload:
-      entity_id: common_overload
-      blood_tax_per_tier:
-        base: 0
-        proficiency_bonus_multiplier: 1
-      tier_two_limit_per_attack_action: 1
-      mastery:
-        minimum_level: 18
-        uses_per_rest: 1
-        blood_tax_divisor: 2
-        minimum_per_overload: 1
-    psionic_apex:
-      minimum_level: 18
-      psychokinesis_manifested_strike_hit:
-        discipline_id: psychokinesis
-        uses_per_attack_action: 1
-        reset: start_of_each_attack_action
-        damage_type: force
-        damage: {kind: dice, count: 3, sides: 8}
-        critical_dice_multiplier: 1
-        psi_cost: 0
-        blood_tax: 0
-    disciplines:
-      - id: pyrokinesis
-        damage_type: fire
-        signature_save: dexterity
-        mastery: {kind: graze, damage: psionic_ability_modifier, control_outcomes: []}
-      - id: cryokinesis
-        damage_type: cold
-        signature_save: constitution
-        mastery: {kind: slow, damage_required: true, control_outcomes: [speed_reduction], control_duration: until_start_next_turn, control_magnitude_feet: 10}
-      - id: psychokinesis
-        damage_type: force
-        signature_save: strength
-        mastery: {kind: push, maximum_size: large, control_outcomes: [forced_movement], control_duration: instantaneous, control_magnitude_feet: 10}
-      - id: electrokinesis
-        damage_type: lightning
-        signature_save: charisma
-        mastery: {kind: sap, control_outcomes: [attack_disadvantage], control_duration: until_start_next_turn, attack_scope: next_attack}
+    action_economy: {entity_id: common_overload, derived_from: system_mechanics, field: action_economy}
+    manifested_strike: {entity_id: common_manifested_strike, derived_from: system_mechanics, field: manifested_strike}
+    overload: {entity_id: common_overload, derived_from: system_mechanics, field: overload}
+    psionic_apex: {entity_id: advanced_training_progression, derived_from: system_mechanics, field: psionic_apex}
+    disciplines: {entity_id: common_kinetic_mastery, derived_from: system_mechanics, field: disciplines}
     feature_rules:
       - {entity_id: glacial_spike, derived_from: entity_mechanics}
       - {entity_id: snow_chains, derived_from: entity_mechanics}
@@ -1148,6 +1019,19 @@ entities:
     id: common_overload
     kind: feature
     level: 3
+    system_mechanics:
+      tier_minimum_levels:
+        - {tier: 0, minimum_level: 3}
+        - {tier: 1, minimum_level: 3}
+        - {tier: 2, minimum_level: 10}
+      action_economy:
+        standalone_psionic_action_limit_per_turn: 1
+        action_surge_allows_additional_standalone_psionic_action: false
+      overload:
+        entity_id: common_overload
+        blood_tax_per_tier: {base: 0, proficiency_bonus_multiplier: 1}
+        tier_two_limit_per_attack_action: 1
+        mastery: {minimum_level: 18, uses_per_rest: 1, blood_tax_divisor: 2, minimum_per_overload: 1}
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: common_features
@@ -1886,6 +1770,23 @@ entities:
     id: common_psi_reservoir
     kind: feature
     level: 3
+    system_mechanics:
+      proficiency_bonus_bands:
+        - {minimum_level: 3, maximum_level: 4, value: 2}
+        - {minimum_level: 5, maximum_level: 8, value: 3}
+        - {minimum_level: 9, maximum_level: 12, value: 4}
+        - {minimum_level: 13, maximum_level: 16, value: 5}
+        - {minimum_level: 17, maximum_level: 20, value: 6}
+      psi_point_bands:
+        - {minimum_level: 3, maximum_level: 4, value: 4}
+        - {minimum_level: 5, maximum_level: 6, value: 6}
+        - {minimum_level: 7, maximum_level: 8, value: 7}
+        - {minimum_level: 9, maximum_level: 10, value: 9}
+        - {minimum_level: 11, maximum_level: 12, value: 10}
+        - {minimum_level: 13, maximum_level: 14, value: 12}
+        - {minimum_level: 15, maximum_level: 16, value: 13}
+        - {minimum_level: 17, maximum_level: 18, value: 15}
+        - {minimum_level: 19, maximum_level: 20, value: 16}
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: common_features
@@ -2055,6 +1956,29 @@ entities:
     id: common_manifested_strike
     kind: feature
     level: 3
+    system_mechanics:
+      psionic_focus_bands:
+        - {minimum_level: 3, maximum_level: 8, value: 1}
+        - {minimum_level: 9, maximum_level: 16, value: 2}
+        - {minimum_level: 17, maximum_level: 20, value: 3}
+      manifested_strike_die_bands:
+        - {minimum_level: 3, maximum_level: 4, value: 6}
+        - {minimum_level: 5, maximum_level: 10, value: 8}
+        - {minimum_level: 11, maximum_level: 16, value: 10}
+        - {minimum_level: 17, maximum_level: 20, value: 12}
+      manifested_strike:
+        entity_id: common_manifested_strike
+        rider_repeatability: per_manifested_strike
+        damage_type_source: discipline
+        holdout:
+          damage_type: force
+          declaration_timing: before_attack_roll
+          formulas:
+            - {minimum_level: 3, maximum_level: 17, kind: halve_total_rounded_down}
+            - {minimum_level: 18, maximum_level: 20, kind: dice_plus_psionic_ability_modifier, count: 1, sides: 6}
+        critical_dice_multiplier: 2
+        attack_bonus: {base: 0, components: [psionic_ability_modifier, proficiency_bonus, psionic_focus]}
+        save_dc: {base: 8, components: [proficiency_bonus, psionic_ability_modifier]}
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: common_features
@@ -2172,6 +2096,15 @@ entities:
     id: common_kinetic_mastery
     kind: feature
     level: 3
+    system_mechanics:
+      disciplines:
+        - id: pyrokinesis
+          damage_type: fire
+          signature_save: dexterity
+          mastery: {kind: graze, damage: psionic_ability_modifier, control_outcomes: []}
+        - {id: cryokinesis, damage_type: cold, signature_save: constitution, mastery: {kind: slow, damage_required: true, control_outcomes: [speed_reduction], control_duration: until_start_next_turn, control_magnitude_feet: 10}}
+        - {id: psychokinesis, damage_type: force, signature_save: strength, mastery: {kind: push, maximum_size: large, control_outcomes: [forced_movement], control_duration: instantaneous, control_magnitude_feet: 10}}
+        - {id: electrokinesis, damage_type: lightning, signature_save: charisma, mastery: {kind: sap, control_outcomes: [attack_disadvantage], control_duration: until_start_next_turn, attack_scope: next_attack}}
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: common_features
@@ -2370,6 +2303,18 @@ entities:
         type: paragraph
     id: advanced_training_progression
     kind: system
+    system_mechanics:
+      psionic_apex:
+        minimum_level: 18
+        psychokinesis_manifested_strike_hit:
+          discipline_id: psychokinesis
+          uses_per_attack_action: 1
+          reset: start_of_each_attack_action
+          damage_type: force
+          damage: {kind: dice, count: 3, sides: 8}
+          critical_dice_multiplier: 1
+          psi_cost: 0
+          blood_tax: 0
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: common_features
@@ -5529,7 +5474,7 @@ navigation:
           title: Advanced Training Progression
   default_category_id: common_features
 rules_version: 14.3.0
-schema_version: 2.5.0
+schema_version: 2.6.0
 vocabularies:
   acquisition_modes:
     - id: granted

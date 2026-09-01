@@ -126,14 +126,18 @@
       "type":"object","additionalProperties":false,"required":["entity_id","derived_from"],
       "properties":{"entity_id":{"$ref":"#/$defs/id"},"derived_from":{"const":"entity_mechanics"}}
     },
+    "systemMechanicsProjectionReference": {
+      "type":"object","additionalProperties":false,"required":["entity_id","derived_from","field"],
+      "properties":{"entity_id":{"$ref":"#/$defs/id"},"derived_from":{"const":"system_mechanics"},"field":{"enum":["proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels","action_economy","manifested_strike","overload","psionic_apex","disciplines"]}}
+    },
     "harnessMechanics": {
       "type":"object","additionalProperties":false,"required":["action_economy","manifested_strike","overload","psionic_apex","disciplines","feature_rules"],
       "properties":{
-        "action_economy":{"type":"object","additionalProperties":false,"required":["standalone_psionic_action_limit_per_turn","action_surge_allows_additional_standalone_psionic_action"],"properties":{"standalone_psionic_action_limit_per_turn":{"const":1},"action_surge_allows_additional_standalone_psionic_action":{"const":false}}},
-        "manifested_strike":{"type":"object","additionalProperties":false,"required":["entity_id","rider_repeatability","damage_type_source","holdout","critical_dice_multiplier","attack_bonus","save_dc"],"properties":{"entity_id":{"const":"common_manifested_strike"},"rider_repeatability":{"const":"per_manifested_strike"},"damage_type_source":{"const":"discipline"},"holdout":{"type":"object","additionalProperties":false,"required":["damage_type","declaration_timing","formulas"],"properties":{"damage_type":{"const":"force"},"declaration_timing":{"const":"before_attack_roll"},"formulas":{"type":"array","minItems":2,"maxItems":2,"items":{"oneOf":[{"type":"object","additionalProperties":false,"required":["minimum_level","maximum_level","kind"],"properties":{"minimum_level":{"const":3},"maximum_level":{"const":17},"kind":{"const":"halve_total_rounded_down"}}},{"type":"object","additionalProperties":false,"required":["minimum_level","maximum_level","kind","count","sides"],"properties":{"minimum_level":{"const":18},"maximum_level":{"const":20},"kind":{"const":"dice_plus_psionic_ability_modifier"},"count":{"const":1},"sides":{"const":6}}}]}}}},"critical_dice_multiplier":{"const":2},"attack_bonus":{"type":"object","additionalProperties":false,"required":["base","components"],"properties":{"base":{"type":"integer"},"components":{"type":"array","items":{"enum":["psionic_ability_modifier","proficiency_bonus","psionic_focus"]},"minItems":1,"uniqueItems":true}}},"save_dc":{"type":"object","additionalProperties":false,"required":["base","components"],"properties":{"base":{"type":"integer"},"components":{"type":"array","items":{"enum":["psionic_ability_modifier","proficiency_bonus","psionic_focus"]},"minItems":1,"uniqueItems":true}}}}},
-        "overload":{"type":"object","additionalProperties":false,"required":["entity_id","blood_tax_per_tier","tier_two_limit_per_attack_action","mastery"],"properties":{"entity_id":{"const":"common_overload"},"blood_tax_per_tier":{"type":"object","additionalProperties":false,"required":["base","proficiency_bonus_multiplier"],"properties":{"base":{"type":"integer"},"proficiency_bonus_multiplier":{"type":"integer","minimum":1}}},"tier_two_limit_per_attack_action":{"const":1},"mastery":{"type":"object","additionalProperties":false,"required":["minimum_level","uses_per_rest","blood_tax_divisor","minimum_per_overload"],"properties":{"minimum_level":{"const":18},"uses_per_rest":{"const":1},"blood_tax_divisor":{"const":2},"minimum_per_overload":{"const":1}}}}},
-        "psionic_apex":{"type":"object","additionalProperties":false,"required":["minimum_level","psychokinesis_manifested_strike_hit"],"properties":{"minimum_level":{"const":18},"psychokinesis_manifested_strike_hit":{"type":"object","additionalProperties":false,"required":["discipline_id","uses_per_attack_action","reset","damage_type","damage","critical_dice_multiplier","psi_cost","blood_tax"],"properties":{"discipline_id":{"const":"psychokinesis"},"uses_per_attack_action":{"const":1},"reset":{"const":"start_of_each_attack_action"},"damage_type":{"const":"force"},"damage":{"type":"object","additionalProperties":false,"required":["kind","count","sides"],"properties":{"kind":{"const":"dice"},"count":{"const":3},"sides":{"const":8}}},"critical_dice_multiplier":{"const":1},"psi_cost":{"const":0},"blood_tax":{"const":0}}}}},
-        "disciplines":{"type":"array","items":{"$ref":"#/$defs/harnessDiscipline"},"minItems":4,"maxItems":4},
+        "action_economy":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
+        "manifested_strike":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
+        "overload":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
+        "psionic_apex":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
+        "disciplines":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
         "feature_rules":{"type":"array","items":{"oneOf":[{"$ref":"#/$defs/harnessFeatureRule"},{"$ref":"#/$defs/mechanicsProjectionReference"}]},"minItems":20}
       }
     },
@@ -148,11 +152,11 @@
         "fighter_level_maximum":{"const":20},
         "psionic_ability_modifier_minimum":{"const":0},
         "psionic_ability_modifier_maximum":{"const":5},
-        "proficiency_bonus_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
-        "psi_point_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
-        "psionic_focus_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
-        "manifested_strike_die_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
-        "tier_minimum_levels":{"type":"array","items":{"$ref":"#/$defs/calculatorTierMinimumLevel"},"minItems":3,"maxItems":3},
+        "proficiency_bonus_bands":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
+        "psi_point_bands":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
+        "psionic_focus_bands":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
+        "manifested_strike_die_bands":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
+        "tier_minimum_levels":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
         "harness_mechanics":{"$ref":"#/$defs/harnessMechanics"},
         "features":{"type":"array","items":{"oneOf":[{"$ref":"#/$defs/calculatorFeature"},{"$ref":"#/$defs/mechanicsProjectionReference"}]},"minItems":1},
         "utility_cards":{"type":"array","items":{"$ref":"#/$defs/calculatorUtilityCard"},"minItems":3,"maxItems":3}
@@ -257,6 +261,21 @@
       "anyOf":[{"required":["steps"],"properties":{"steps":{}}},{"required":["tiers"],"properties":{"tiers":{}}}]
     },
     "entityMechanics": {"type":"object","additionalProperties":false,"required":["surfaces"],"properties":{"surfaces":{"type":"array","items":{"$ref":"#/$defs/mechanicsSurface"},"minItems":1}}},
+    "systemMechanics": {
+      "type":"object","additionalProperties":false,"minProperties":1,
+      "properties":{
+        "proficiency_bonus_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
+        "psi_point_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
+        "psionic_focus_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
+        "manifested_strike_die_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
+        "tier_minimum_levels":{"type":"array","items":{"$ref":"#/$defs/calculatorTierMinimumLevel"},"minItems":3,"maxItems":3},
+        "action_economy":{"type":"object","additionalProperties":false,"required":["standalone_psionic_action_limit_per_turn","action_surge_allows_additional_standalone_psionic_action"],"properties":{"standalone_psionic_action_limit_per_turn":{"const":1},"action_surge_allows_additional_standalone_psionic_action":{"const":false}}},
+        "manifested_strike":{"type":"object","additionalProperties":false,"required":["entity_id","rider_repeatability","damage_type_source","holdout","critical_dice_multiplier","attack_bonus","save_dc"],"properties":{"entity_id":{"const":"common_manifested_strike"},"rider_repeatability":{"const":"per_manifested_strike"},"damage_type_source":{"const":"discipline"},"holdout":{"type":"object","additionalProperties":false,"required":["damage_type","declaration_timing","formulas"],"properties":{"damage_type":{"const":"force"},"declaration_timing":{"const":"before_attack_roll"},"formulas":{"type":"array","minItems":2,"maxItems":2,"items":{"oneOf":[{"type":"object","additionalProperties":false,"required":["minimum_level","maximum_level","kind"],"properties":{"minimum_level":{"const":3},"maximum_level":{"const":17},"kind":{"const":"halve_total_rounded_down"}}},{"type":"object","additionalProperties":false,"required":["minimum_level","maximum_level","kind","count","sides"],"properties":{"minimum_level":{"const":18},"maximum_level":{"const":20},"kind":{"const":"dice_plus_psionic_ability_modifier"},"count":{"const":1},"sides":{"const":6}}}]}}}},"critical_dice_multiplier":{"const":2},"attack_bonus":{"type":"object","additionalProperties":false,"required":["base","components"],"properties":{"base":{"type":"integer"},"components":{"type":"array","items":{"enum":["psionic_ability_modifier","proficiency_bonus","psionic_focus"]},"minItems":1,"uniqueItems":true}}},"save_dc":{"type":"object","additionalProperties":false,"required":["base","components"],"properties":{"base":{"type":"integer"},"components":{"type":"array","items":{"enum":["psionic_ability_modifier","proficiency_bonus","psionic_focus"]},"minItems":1,"uniqueItems":true}}}}},
+        "overload":{"type":"object","additionalProperties":false,"required":["entity_id","blood_tax_per_tier","tier_two_limit_per_attack_action","mastery"],"properties":{"entity_id":{"const":"common_overload"},"blood_tax_per_tier":{"type":"object","additionalProperties":false,"required":["base","proficiency_bonus_multiplier"],"properties":{"base":{"type":"integer"},"proficiency_bonus_multiplier":{"type":"integer","minimum":1}}},"tier_two_limit_per_attack_action":{"const":1},"mastery":{"type":"object","additionalProperties":false,"required":["minimum_level","uses_per_rest","blood_tax_divisor","minimum_per_overload"],"properties":{"minimum_level":{"const":18},"uses_per_rest":{"const":1},"blood_tax_divisor":{"const":2},"minimum_per_overload":{"const":1}}}}},
+        "psionic_apex":{"type":"object","additionalProperties":false,"required":["minimum_level","psychokinesis_manifested_strike_hit"],"properties":{"minimum_level":{"const":18},"psychokinesis_manifested_strike_hit":{"type":"object","additionalProperties":false,"required":["discipline_id","uses_per_attack_action","reset","damage_type","damage","critical_dice_multiplier","psi_cost","blood_tax"],"properties":{"discipline_id":{"const":"psychokinesis"},"uses_per_attack_action":{"const":1},"reset":{"const":"start_of_each_attack_action"},"damage_type":{"const":"force"},"damage":{"type":"object","additionalProperties":false,"required":["kind","count","sides"],"properties":{"kind":{"const":"dice"},"count":{"const":3},"sides":{"const":8}}},"critical_dice_multiplier":{"const":1},"psi_cost":{"const":0},"blood_tax":{"const":0}}}}},
+        "disciplines":{"type":"array","items":{"$ref":"#/$defs/harnessDiscipline"},"minItems":4,"maxItems":4}
+      }
+    },
     "classifications": {
       "type":"object","additionalProperties":false,"required":["rules_area","entity_kind"],
       "properties":{"rules_area":{"type":"array","items":{"$ref":"#/$defs/id"},"minItems":1,"uniqueItems":true},"entity_kind":{"$ref":"#/$defs/id"},"feature_role":{"$ref":"#/$defs/id"},"acquisition_mode":{"$ref":"#/$defs/id"}}
@@ -268,7 +287,7 @@
         "id":{"$ref":"#/$defs/id"},"title":{"type":"string","minLength":1},"short_title":{"type":"string","minLength":1},
         "publishable":{"const":true},"kind":{"$ref":"#/$defs/id"},
         "level":{"type":"integer","minimum":1,"maximum":20},"progression_section":{"enum":["foundation","reference"]},"psi_cost":{"type":"integer","minimum":0},"activation":{"$ref":"#/$defs/id"},"requires_concentration":{"type":"boolean"},"concentration_tiers":{"type":"array","items":{"type":"integer","minimum":0,"maximum":2},"minItems":1,"uniqueItems":true},"concentration_duration":{"type":"string","minLength":1},
-        "content":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1},"mechanics":{"$ref":"#/$defs/entityMechanics"},
+        "content":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1},"mechanics":{"$ref":"#/$defs/entityMechanics"},"system_mechanics":{"$ref":"#/$defs/systemMechanics"},
         "classifications":{"$ref":"#/$defs/classifications"},
         "presentation_metadata":{"type":"object","additionalProperties":false,"required":["primary_rules_area","canonical_topic_by_area"],"properties":{"primary_rules_area":{"$ref":"#/$defs/id"},"canonical_topic_by_area":{"type":"object","additionalProperties":{"$ref":"#/$defs/id"}},"presentation_owner":{"const":"calculator_deck"}}},
         "related_entity_ids":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true}

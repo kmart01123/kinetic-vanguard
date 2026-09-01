@@ -68,6 +68,17 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
     if(entity.concentration_duration===undefined)diagnostics.push({severity:"error",code:"entity.concentration_tiers_duration",message:`${entity.id} concentration tiers require a concentration duration`,path:`/entities/${entityIndex}/concentration_duration`});
   }
   const calculator=authority.calculator;
+  const systemTargets:Record<string,unknown>={
+    proficiency_bonus_bands:calculator.proficiency_bonus_bands,psi_point_bands:calculator.psi_point_bands,psionic_focus_bands:calculator.psionic_focus_bands,manifested_strike_die_bands:calculator.manifested_strike_die_bands,tier_minimum_levels:calculator.tier_minimum_levels,
+    action_economy:calculator.harness_mechanics.action_economy,manifested_strike:calculator.harness_mechanics.manifested_strike,overload:calculator.harness_mechanics.overload,psionic_apex:calculator.harness_mechanics.psionic_apex,disciplines:calculator.harness_mechanics.disciplines
+  };
+  const systemOwners=new Map<string,string>();
+  for(const [entityIndex,entity] of authority.entities.entries())for(const [field,value] of Object.entries(entity.system_mechanics??{})){
+    const prior=systemOwners.get(field),path=`/entities/${entityIndex}/system_mechanics/${field}`;
+    if(prior)diagnostics.push({severity:"error",code:"system_mechanics.owner_duplicate",message:`${field} is authored by both ${prior} and ${entity.id}`,path});else systemOwners.set(field,entity.id);
+    if(canonicalJson(value)!==canonicalJson(systemTargets[field]))diagnostics.push({severity:"error",code:"system_mechanics.projection_equivalence",message:`${entity.id} ${field} does not reproduce its Calculator/harness projection`,path});
+  }
+  for(const field of Object.keys(systemTargets))if(!systemOwners.has(field))diagnostics.push({severity:"error",code:"system_mechanics.owner_missing",message:`${field} has no canonical entity system_mechanics owner`,path:"/entities"});
   const expectedDefaults={default_card_id:"manifested_strike",default_fighter_level:20,default_psionic_ability_modifier:5} as const;
   for(const [field,expected] of Object.entries(expectedDefaults))if(calculator[field as keyof typeof expectedDefaults]!==expected)diagnostics.push({severity:"error",code:"calculator.default",message:`Calculator ${field} must be ${expected}`,path:`/calculator/${field}`});
   if(calculator.default_fighter_level<calculator.fighter_level_minimum||calculator.default_fighter_level>calculator.fighter_level_maximum)diagnostics.push({severity:"error",code:"calculator.default_level",message:"Calculator default Fighter level is outside its supported range",path:"/calculator/default_fighter_level"});

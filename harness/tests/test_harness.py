@@ -61,7 +61,7 @@ class AuthorityProjectionTests(unittest.TestCase):
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
         self.assertEqual(self.model.projection["projection_version"],"1.2.0")
         self.assertEqual(self.model.rules_version,"14.3.0")
-        self.assertEqual(self.model.projection["schema_version"],"2.5.0")
+        self.assertEqual(self.model.projection["schema_version"],"2.6.0")
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":1,"action_surge_allows_additional_standalone_psionic_action":False})
         self.assertEqual(self.model.holdout_formula(17)["kind"],"halve_total_rounded_down")
         self.assertEqual(self.model.holdout_formula(18),{"minimum_level":18,"maximum_level":20,"kind":"dice_plus_psionic_ability_modifier","count":1,"sides":6})
@@ -76,11 +76,11 @@ class AuthorityProjectionTests(unittest.TestCase):
 
     def test_structural_yaml_mutation_changes_projection_without_python_edit(self)->None:
         source=DEFAULT_AUTHORITY.read_text(encoding="utf-8")
-        probe="id: pyrokinesis\n        damage_type: fire"
+        probe="id: pyrokinesis\n          damage_type: fire"
         self.assertIn(probe,source)
         with tempfile.TemporaryDirectory() as directory:
             authority=Path(directory)/"KineticVanguard.yaml"
-            authority.write_text(source.replace(probe,"id: pyrokinesis\n        damage_type: cold",1),encoding="utf-8")
+            authority.write_text(source.replace(probe,"id: pyrokinesis\n          damage_type: cold",1),encoding="utf-8")
             mutated=AuthorityModel.load(authority)
         self.assertEqual(self.model.disciplines["pyrokinesis"]["damage_type"],"fire")
         self.assertEqual(mutated.disciplines["pyrokinesis"]["damage_type"],"cold")

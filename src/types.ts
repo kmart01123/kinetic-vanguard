@@ -148,6 +148,7 @@ export interface Entity {
   concentration_tiers?: Array<0|1|2>;
   concentration_duration?: string;
   mechanics?: EntityMechanics;
+  system_mechanics?: EntitySystemMechanics;
   content: ContentBlock[];
   classifications: {
     rules_area: string[];
@@ -287,6 +288,20 @@ export interface HarnessMechanics {
   psionic_apex:{minimum_level:18;psychokinesis_manifested_strike_hit:{discipline_id:"psychokinesis";uses_per_attack_action:1;reset:"start_of_each_attack_action";damage_type:"force";damage:{kind:"dice";count:3;sides:8};critical_dice_multiplier:1;psi_cost:0;blood_tax:0}};
   disciplines:HarnessDiscipline[];
   feature_rules:HarnessFeatureRule[];
+}
+
+export type SystemMechanicsField="proficiency_bonus_bands"|"psi_point_bands"|"psionic_focus_bands"|"manifested_strike_die_bands"|"tier_minimum_levels"|"action_economy"|"manifested_strike"|"overload"|"psionic_apex"|"disciplines";
+export interface EntitySystemMechanics {
+  proficiency_bonus_bands?:CalculatorLevelBand[];
+  psi_point_bands?:CalculatorLevelBand[];
+  psionic_focus_bands?:CalculatorLevelBand[];
+  manifested_strike_die_bands?:CalculatorLevelBand[];
+  tier_minimum_levels?:CalculatorTierMinimumLevel[];
+  action_economy?:HarnessMechanics["action_economy"];
+  manifested_strike?:HarnessMechanics["manifested_strike"];
+  overload?:HarnessMechanics["overload"];
+  psionic_apex?:HarnessMechanics["psionic_apex"];
+  disciplines?:HarnessDiscipline[];
 }
 
 export interface Calculator {

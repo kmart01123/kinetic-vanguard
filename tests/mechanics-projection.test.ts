@@ -18,6 +18,18 @@ const compatibilityHashes:Record<string,{calculator:string;harness:string}>={
   static_discharge:{calculator:"fed529b22681cc4ec20e3f5f52b592a4feaf2c4912d47716db6884ff0d034e61",harness:"c1b353dd0df039f04a7c9417b1878426b60f92f17bbbff90855d9678895dc999"}
 };
 const hash=(value:unknown)=>createHash("sha256").update(canonicalJson(value)).digest("hex");
+const systemFields=["proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels","action_economy","manifested_strike","overload","psionic_apex","disciplines"];
+
+test("shared progressions and core mechanics are entity-owned and consumer fields are references",async()=>{
+  const [{authority},source]=await Promise.all([loadAuthority(),readFile("KineticVanguard.yaml","utf8")]),raw=YAML.parse(source) as any;
+  const references=[...systemFields.slice(0,5).map(field=>raw.calculator[field]),...systemFields.slice(5).map(field=>raw.calculator.harness_mechanics[field])];
+  assert.ok(references.every(reference=>reference.derived_from==="system_mechanics"&&reference.field&&reference.entity_id));
+  assert.deepEqual(references.map(reference=>reference.field),systemFields);
+  const owners=raw.entities.flatMap((entity:any)=>Object.keys(entity.system_mechanics??{}).map(field=>[field,entity.id]));
+  assert.deepEqual(owners.map(([field]:string[])=>field).sort(),[...systemFields].sort());
+  const hydrated=[...systemFields.slice(0,5).map(field=>(authority.calculator as any)[field]),...systemFields.slice(5).map(field=>(authority.calculator.harness_mechanics as any)[field])];
+  assert.equal(hash(hydrated),"687d71895e63f7fcc2448f2b2eb71a0bdd7cfd0615455e65f12bda4dca987147");
+});
 
 test("every machine-consumed ability authors mechanics once and materializes legacy-compatible consumer contracts",async()=>{
   const [{authority},source]=await Promise.all([loadAuthority(),readFile("KineticVanguard.yaml","utf8")]),raw=YAML.parse(source) as any,entities=authority.entities.filter(entity=>entity.mechanics);
@@ -44,4 +56,10 @@ test("neutral mechanics drift fails closed against legacy projections",async()=>
   assert.ok(validateSemantics(brokenReplacement).some(diagnostic=>diagnostic.code==="mechanics.replacement_reference"));
   const brokenMode=structuredClone(authority) as any,explosion=brokenMode.entities.find((entity:any)=>entity.id==="explosion_implosion"),movement=explosion.mechanics.surfaces[0].tiers[0].steps.find((step:any)=>step.kind==="saving_throw").failure.find((step:any)=>step.kind==="forced_movement");movement.directions[0].mode="missing_mode";
   assert.ok(validateSemantics(brokenMode).some(diagnostic=>diagnostic.code==="mechanics.mode_reference"));
+});
+
+test("shared-system drift fails closed against hydrated consumer projections",async()=>{
+  const {authority}=await loadAuthority(),candidate=structuredClone(authority) as any;
+  candidate.entities.find((entity:any)=>entity.id==="common_psi_reservoir").system_mechanics.psi_point_bands[0].value+=1;
+  assert.ok(validateSemantics(candidate).some(diagnostic=>diagnostic.code==="system_mechanics.projection_equivalence"));
 });

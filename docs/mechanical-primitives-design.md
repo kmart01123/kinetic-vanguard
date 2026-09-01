@@ -211,17 +211,18 @@ No sentinel requires a composite rider or a generic opaque “custom effect” p
 
 ## Migration sequence
 
-The schema 2.5.0 migration completes the first five steps:
+The schema 2.6.0 migration completes the ability migration and the shared-system authority pass:
 
 1. **Complete:** add schema/types for `mechanics.surfaces` and the bounded production vocabulary.
 2. **Complete:** add the six sentinel mechanics blocks beside their player-facing content.
 3. **Complete:** prove exact compatibility with the prior Calculator/harness contracts through locked projection snapshots.
 4. **Complete:** replace the sentinel Calculator and harness mechanical rows with ordered `derived_from: entity_mechanics` references; the canonical loader materializes the unchanged consumer contracts.
 5. **Complete:** migrate every remaining Calculator/harness ability, expanding primitives only for demonstrated needs. All 30 Calculator rows and all 27 harness feature rules are now ordered derivation references.
-6. Change consumers that benefit from richer semantics to read neutral mechanics directly.
-7. Remove the Calculator and harness projection registries after complete coverage, if their ordering and membership are derived elsewhere.
-8. Remove the temporary legacy-equivalence layer and advance the projection contract as required.
+6. **Complete:** move every machine-consumed shared progression and core field beside its canonical rules entity under `system_mechanics`. The five Calculator progression fields and five harness core fields are now derivation references, and validation requires exactly one owner for each field.
+7. Change consumers that benefit from richer semantics to read neutral mechanics directly.
+8. Remove the Calculator and harness projection registries after complete coverage, if their ordering and membership are derived elsewhere.
+9. Remove the temporary compatibility layers and advance the projection contract as required.
 
-Authority schema 2.5.0 is additive and does not change playable rules, so `rules_version` remains 14.3.0. The harness projection remains 1.2.0 because its emitted contract and values are unchanged. Utility abilities with no Calculator or harness consumer remain fully authoritative in player-facing content; the migration does not invent benchmark data for them.
+Authority schema 2.6.0 is additive and does not change playable rules, so `rules_version` remains 14.3.0. The harness projection remains 1.2.0 because its emitted contract and values are unchanged. Player-facing content remains canonical for complete wording and procedures, and utility abilities with no Calculator or harness consumer remain authoritative there; the migration does not invent machine data or benchmark policy for facts no code consumes.
 
 At every step, canonical rules wording and numerical outcomes remain unchanged. Full damage/control benchmark regeneration is required only if mechanics, methodology, comparator data, roster data, or evaluator behavior changes; structural equivalence should be established with focused sentinel and projection tests first.

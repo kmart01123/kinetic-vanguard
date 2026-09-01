@@ -10,6 +10,26 @@ export interface LoadedAuthority { authority: Authority; sourceBytes: Buffer; di
 interface MechanicsProjectionReference {entity_id:string;derived_from:"entity_mechanics"}
 const isMechanicsProjectionReference=(value:unknown):value is MechanicsProjectionReference=>typeof value==="object"&&value!==null&&(value as Record<string,unknown>).derived_from==="entity_mechanics"&&typeof (value as Record<string,unknown>).entity_id==="string";
 
+interface SystemMechanicsProjectionReference {entity_id:string;derived_from:"system_mechanics";field:string}
+const isSystemMechanicsProjectionReference=(value:unknown):value is SystemMechanicsProjectionReference=>typeof value==="object"&&value!==null&&(value as Record<string,unknown>).derived_from==="system_mechanics"&&typeof (value as Record<string,unknown>).entity_id==="string"&&typeof (value as Record<string,unknown>).field==="string";
+
+function materializeSystemMechanicsProjections(authority:Authority,diagnostics:Diagnostic[]):void{
+  const entityById=new Map(authority.entities.map(entity=>[entity.id,entity]));
+  const calculator=authority.calculator as unknown as Record<string,unknown>,harness=(calculator.harness_mechanics as Record<string,unknown>);
+  const slots:Array<{owner:Record<string,unknown>;field:string;path:string}>=[
+    ...["proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels"].map(field=>({owner:calculator,field,path:`/calculator/${field}`})),
+    ...["action_economy","manifested_strike","overload","psionic_apex","disciplines"].map(field=>({owner:harness,field,path:`/calculator/harness_mechanics/${field}`}))
+  ];
+  for(const slot of slots){
+    const source=slot.owner[slot.field];
+    if(!isSystemMechanicsProjectionReference(source)){diagnostics.push({severity:"error",code:"system_mechanics.legacy_source",message:`${slot.field} must be derived from system_mechanics`,path:slot.path});continue;}
+    if(source.field!==slot.field){diagnostics.push({severity:"error",code:"system_mechanics.field_mismatch",message:`${slot.field} cannot derive from ${source.field}`,path:slot.path});continue;}
+    const entity=entityById.get(source.entity_id),projected=entity?.system_mechanics?.[source.field as keyof NonNullable<typeof entity.system_mechanics>];
+    if(projected===undefined){diagnostics.push({severity:"error",code:"system_mechanics.reference",message:`${source.entity_id} does not provide ${source.field}`,path:slot.path});continue;}
+    slot.owner[slot.field]=structuredClone(projected);
+  }
+}
+
 function materializeMechanicsProjections(authority:Authority,diagnostics:Diagnostic[]):void{
   const entityById=new Map(authority.entities.map(entity=>[entity.id,entity]));
   authority.calculator.features=(authority.calculator.features as unknown[]).map((source,index)=>{
@@ -58,6 +78,6 @@ export async function loadAuthority(authorityPath="KineticVanguard.yaml",schemaP
   const addFormats=((addFormatsModule as any).default??addFormatsModule) as (ajv:any)=>void;
   const ajv=new Ajv2020({allErrors:true,strict:true});addFormats(ajv);const validate=ajv.compile(schema);
   if(!validate(authority))for(const error of validate.errors??[])diagnostics.push({severity:"error",code:"schema.invalid",message:`${error.instancePath||"/"} ${error.message??"is invalid"}`,path:error.instancePath||"/"});
-  if(!diagnostics.some(diagnostic=>diagnostic.severity==="error"))materializeMechanicsProjections(authority,diagnostics);
+  if(!diagnostics.some(diagnostic=>diagnostic.severity==="error")){materializeSystemMechanicsProjections(authority,diagnostics);materializeMechanicsProjections(authority,diagnostics);}
   return{authority,sourceBytes,diagnostics};
 }
