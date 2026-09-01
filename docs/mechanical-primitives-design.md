@@ -16,7 +16,7 @@ This document is a behavior-preserving architecture decision for issue [#132](ht
 
 ## Field audit
 
-The exhaustive machine-readable audit is [mechanical-field-dispositions.json](../policy/mechanical-field-dispositions.json). Every currently populated field under `calculator.features` and `calculator.harness_mechanics.feature_rules` has one disposition:
+The exhaustive machine-readable audit is [mechanical-field-dispositions.json](../policy/mechanical-field-dispositions.json). Every historical consumer field formerly authored under `calculator.features` and `calculator.harness_mechanics.feature_rules` has one disposition:
 
 - **Promote:** the field already expresses a neutral rules fact.
 - **Generalize:** preserve the fact under a neutral name or structure.
@@ -211,7 +211,7 @@ No sentinel requires a composite rider or a generic opaque “custom effect” p
 
 ## Migration sequence
 
-The schema 2.6.0 migration completes the ability migration and the shared-system authority pass:
+The schema 2.7.0 migration completes the ability migration, shared-system authority pass, and direct-consumer transition:
 
 1. **Complete:** add schema/types for `mechanics.surfaces` and the bounded production vocabulary.
 2. **Complete:** add the six sentinel mechanics blocks beside their player-facing content.
@@ -219,10 +219,10 @@ The schema 2.6.0 migration completes the ability migration and the shared-system
 4. **Complete:** replace the sentinel Calculator and harness mechanical rows with ordered `derived_from: entity_mechanics` references; the canonical loader materializes the unchanged consumer contracts.
 5. **Complete:** migrate every remaining Calculator/harness ability, expanding primitives only for demonstrated needs. All 30 Calculator rows and all 27 harness feature rules are now ordered derivation references.
 6. **Complete:** move every machine-consumed shared progression and core field beside its canonical rules entity under `system_mechanics`. The five Calculator progression fields and five harness core fields are now derivation references, and validation requires exactly one owner for each field.
-7. Change consumers that benefit from richer semantics to read neutral mechanics directly.
-8. Remove the Calculator and harness projection registries after complete coverage, if their ordering and membership are derived elsewhere.
-9. Remove the temporary compatibility layers and advance the projection contract as required.
+7. **Complete:** make the publication Calculator and harness adapter derive their consumer views directly from canonical entity mechanics.
+8. **Complete:** remove the Calculator and harness projection registries; membership and ordering now derive from canonical entity order.
+9. **Complete:** remove loader materialization and legacy-equivalence validation, and advance the harness projection contract for canonical ordering.
 
-Authority schema 2.6.0 is additive and does not change playable rules, so `rules_version` remains 14.3.0. The harness projection remains 1.2.0 because its emitted contract and values are unchanged. Player-facing content remains canonical for complete wording and procedures, and utility abilities with no Calculator or harness consumer remain authoritative there; the migration does not invent machine data or benchmark policy for facts no code consumes.
+Authority schema 2.7.0 removes the obsolete consumer registries without changing playable rules, so `rules_version` remains 14.3.0. Harness projection 1.3.0 preserves the existing fields and values while adopting canonical entity order. Player-facing content remains canonical for complete wording and procedures, and utility abilities with no Calculator or harness consumer remain authoritative there; the migration does not invent machine data or benchmark policy for facts no code consumes.
 
 At every step, canonical rules wording and numerical outcomes remain unchanged. Full damage/control benchmark regeneration is required only if mechanics, methodology, comparator data, roster data, or evaluator behavior changes; structural equivalence should be established with focused sentinel and projection tests first.

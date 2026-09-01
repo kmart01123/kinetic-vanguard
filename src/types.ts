@@ -304,7 +304,7 @@ export interface EntitySystemMechanics {
   disciplines?:HarnessDiscipline[];
 }
 
-export interface Calculator {
+export interface CalculatorConfig {
   default_card_id: string;
   default_fighter_level: number;
   default_psionic_ability_modifier: number;
@@ -312,6 +312,10 @@ export interface Calculator {
   fighter_level_maximum: number;
   psionic_ability_modifier_minimum: number;
   psionic_ability_modifier_maximum: number;
+  utility_cards: CalculatorUtilityCard[];
+}
+
+export interface CalculatorProjection extends CalculatorConfig {
   proficiency_bonus_bands: CalculatorLevelBand[];
   psi_point_bands: CalculatorLevelBand[];
   psionic_focus_bands: CalculatorLevelBand[];
@@ -319,7 +323,6 @@ export interface Calculator {
   tier_minimum_levels: CalculatorTierMinimumLevel[];
   harness_mechanics: HarnessMechanics;
   features: CalculatorFeature[];
-  utility_cards: CalculatorUtilityCard[];
 }
 
 export interface Topic { id: string; title: string; entity_ids: string[]; order: number }
@@ -388,7 +391,7 @@ export interface Authority {
     order: number; vocabulary: string;
   }>;
   entities: Entity[];
-  calculator: Calculator;
+  calculator: CalculatorConfig;
   navigation: { default_category_id: string; categories: Category[] };
   onboarding: Onboarding;
   audits?: Array<{id:string; assertion:string; subject_ids:string[]}>;

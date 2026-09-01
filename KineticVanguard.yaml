@@ -58,76 +58,6 @@ calculator:
   fighter_level_maximum: 20
   psionic_ability_modifier_minimum: 0
   psionic_ability_modifier_maximum: 5
-  proficiency_bonus_bands: {entity_id: common_psi_reservoir, derived_from: system_mechanics, field: proficiency_bonus_bands}
-  psi_point_bands: {entity_id: common_psi_reservoir, derived_from: system_mechanics, field: psi_point_bands}
-  psionic_focus_bands: {entity_id: common_manifested_strike, derived_from: system_mechanics, field: psionic_focus_bands}
-  manifested_strike_die_bands: {entity_id: common_manifested_strike, derived_from: system_mechanics, field: manifested_strike_die_bands}
-  tier_minimum_levels: {entity_id: common_overload, derived_from: system_mechanics, field: tier_minimum_levels}
-  harness_mechanics:
-    action_economy: {entity_id: common_overload, derived_from: system_mechanics, field: action_economy}
-    manifested_strike: {entity_id: common_manifested_strike, derived_from: system_mechanics, field: manifested_strike}
-    overload: {entity_id: common_overload, derived_from: system_mechanics, field: overload}
-    psionic_apex: {entity_id: advanced_training_progression, derived_from: system_mechanics, field: psionic_apex}
-    disciplines: {entity_id: common_kinetic_mastery, derived_from: system_mechanics, field: disciplines}
-    feature_rules:
-      - {entity_id: glacial_spike, derived_from: entity_mechanics}
-      - {entity_id: snow_chains, derived_from: entity_mechanics}
-      - {entity_id: frozen_ground, derived_from: entity_mechanics}
-      - {entity_id: arctic_tempest, derived_from: entity_mechanics}
-      - {entity_id: absolute_zero, derived_from: entity_mechanics}
-      - {entity_id: ember_bolt, derived_from: entity_mechanics}
-      - {entity_id: thermal_fracture, derived_from: entity_mechanics}
-      - {entity_id: cinder_lance, derived_from: entity_mechanics}
-      - {entity_id: flare, derived_from: entity_mechanics}
-      - {entity_id: furnace_strike, derived_from: entity_mechanics}
-      - {entity_id: telekinetic_shove, derived_from: entity_mechanics}
-      - {entity_id: vectored_thrust, derived_from: entity_mechanics}
-      - {entity_id: explosion_implosion, derived_from: entity_mechanics}
-      - {entity_id: telekinetic_slam, derived_from: entity_mechanics}
-      - {entity_id: mass_levitation, derived_from: entity_mechanics}
-      - {entity_id: static_discharge, derived_from: entity_mechanics}
-      - {entity_id: branching_bolt, derived_from: entity_mechanics}
-      - {entity_id: electron_burst, derived_from: entity_mechanics}
-      - {entity_id: advanced_mind_shred, derived_from: entity_mechanics}
-      - {entity_id: advanced_mind_lock, derived_from: entity_mechanics}
-      - {entity_id: forked_lightning, derived_from: entity_mechanics}
-      - {entity_id: ball_lightning, derived_from: entity_mechanics}
-      - {entity_id: advanced_phase_step, derived_from: entity_mechanics}
-      - {entity_id: advanced_deflection_screen, derived_from: entity_mechanics}
-      - {entity_id: advanced_beguile, derived_from: entity_mechanics}
-      - {entity_id: advanced_gravitic_press, derived_from: entity_mechanics}
-      - {entity_id: advanced_improved_phase_step, derived_from: entity_mechanics}
-  features:
-    - {entity_id: glacial_spike, derived_from: entity_mechanics}
-    - {entity_id: snow_chains, derived_from: entity_mechanics}
-    - {entity_id: ember_bolt, derived_from: entity_mechanics}
-    - {entity_id: thermal_fracture, derived_from: entity_mechanics}
-    - {entity_id: cinder_lance, derived_from: entity_mechanics}
-    - {entity_id: flare, derived_from: entity_mechanics}
-    - {entity_id: furnace_strike, derived_from: entity_mechanics}
-    - {entity_id: telekinetic_shove, derived_from: entity_mechanics}
-    - {entity_id: explosion_implosion, derived_from: entity_mechanics}
-    - {entity_id: static_discharge, derived_from: entity_mechanics}
-    - {entity_id: branching_bolt, derived_from: entity_mechanics}
-    - {entity_id: electron_burst, derived_from: entity_mechanics}
-    - {entity_id: advanced_mind_shred, derived_from: entity_mechanics}
-    - {entity_id: advanced_mind_lock, derived_from: entity_mechanics}
-    - {entity_id: arctic_tempest, derived_from: entity_mechanics}
-    - {entity_id: absolute_zero, derived_from: entity_mechanics}
-    - {entity_id: telekinetic_slam, derived_from: entity_mechanics}
-    - {entity_id: mass_levitation, derived_from: entity_mechanics}
-    - {entity_id: forked_lightning, derived_from: entity_mechanics}
-    - {entity_id: ball_lightning, derived_from: entity_mechanics}
-    - {entity_id: frozen_ground, derived_from: entity_mechanics}
-    - {entity_id: vectored_thrust, derived_from: entity_mechanics}
-    - {entity_id: common_empathic_sense, derived_from: entity_mechanics}
-    - {entity_id: common_vanguard_training, derived_from: entity_mechanics}
-    - {entity_id: advanced_deflection_screen, derived_from: entity_mechanics}
-    - {entity_id: advanced_phase_step, derived_from: entity_mechanics}
-    - {entity_id: advanced_beguile, derived_from: entity_mechanics}
-    - {entity_id: advanced_gravitic_press, derived_from: entity_mechanics}
-    - {entity_id: advanced_improved_phase_step, derived_from: entity_mechanics}
-    - {entity_id: advanced_inner_reserve, derived_from: entity_mechanics}
   utility_cards:
     - id: manifested_strike
       source_entity_id: common_manifested_strike
@@ -5474,7 +5404,7 @@ navigation:
           title: Advanced Training Progression
   default_category_id: common_features
 rules_version: 14.3.0
-schema_version: 2.6.0
+schema_version: 2.7.0
 vocabularies:
   acquisition_modes:
     - id: granted

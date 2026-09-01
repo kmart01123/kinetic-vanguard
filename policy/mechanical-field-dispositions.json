@@ -1,6 +1,6 @@
 {
   "format_version": 1,
-  "purpose": "Classify every currently authored Calculator and harness feature-mechanics field before migration to neutral per-entity mechanics.",
+  "purpose": "Record the disposition of every historical Calculator and harness feature-mechanics field removed during migration to neutral per-entity mechanics.",
   "dispositions": {
     "promote": "Move the fact into neutral canonical mechanics without changing its meaning.",
     "generalize": "Move the fact into neutral canonical mechanics under a less consumer-specific shape or name.",

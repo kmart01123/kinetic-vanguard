@@ -1,6 +1,7 @@
-import type { Authority, Diagnostic, MechanicsStep, MechanicsSurface, MechanicsTier } from "./types.js";
-import { canonicalJson,codepointCompare } from "./canonical.js";
+import type { Authority, CalculatorLevelBand, CalculatorProjection, Diagnostic, MechanicsStep, MechanicsSurface, MechanicsTier } from "./types.js";
+import { codepointCompare } from "./canonical.js";
 import { projectCalculatorMechanics,projectHarnessMechanics } from "./mechanics.js";
+import { deriveCalculatorProjection,systemMechanicsFields } from "./mechanics-selectors.js";
 
 function duplicateDiagnostics(values:string[],code:string,label:string):Diagnostic[]{const seen=new Set<string>();const diagnostics:Diagnostic[]=[];for(const value of values){if(seen.has(value))diagnostics.push({severity:"error",code,message:`Duplicate ${label}: ${value}`});seen.add(value);}return diagnostics;}
 function vocabulary(authority:Authority,name:string):Set<string>{return new Set((authority.vocabularies[name]??[]).map(value=>value.id));}
@@ -48,7 +49,7 @@ function collectOnboardingDestinations(value:unknown,path="/onboarding",result:L
 function collectOnboardingStrings(value:unknown,result:string[]=[]):string[]{
   if(typeof value==="string"){result.push(value);return result;}if(Array.isArray(value)){value.forEach(item=>collectOnboardingStrings(item,result));return result;}if(value&&typeof value==="object")Object.values(value).forEach(item=>collectOnboardingStrings(item,result));return result;
 }
-function validateCalculatorLevelBands(bands:Authority["calculator"]["proficiency_bonus_bands"],minimumLevel:number,maximumLevel:number,label:string,path:string):Diagnostic[]{
+function validateCalculatorLevelBands(bands:CalculatorLevelBand[],minimumLevel:number,maximumLevel:number,label:string,path:string):Diagnostic[]{
   const diagnostics:Diagnostic[]=[];const coverage=new Map<number,number>();
   for(const [index,band] of bands.entries()){
     if(band.minimum_level>band.maximum_level)diagnostics.push({severity:"error",code:"calculator.band_range",message:`${label} band ${index+1} has minimum level ${band.minimum_level} after maximum level ${band.maximum_level}`,path:`${path}/${index}`});
@@ -67,18 +68,16 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
     if(entity.requires_concentration!==true)diagnostics.push({severity:"error",code:"entity.concentration_tiers_requirement",message:`${entity.id} concentration tiers require requires_concentration: true`,path:`/entities/${entityIndex}/requires_concentration`});
     if(entity.concentration_duration===undefined)diagnostics.push({severity:"error",code:"entity.concentration_tiers_duration",message:`${entity.id} concentration tiers require a concentration duration`,path:`/entities/${entityIndex}/concentration_duration`});
   }
-  const calculator=authority.calculator;
-  const systemTargets:Record<string,unknown>={
-    proficiency_bonus_bands:calculator.proficiency_bonus_bands,psi_point_bands:calculator.psi_point_bands,psionic_focus_bands:calculator.psionic_focus_bands,manifested_strike_die_bands:calculator.manifested_strike_die_bands,tier_minimum_levels:calculator.tier_minimum_levels,
-    action_economy:calculator.harness_mechanics.action_economy,manifested_strike:calculator.harness_mechanics.manifested_strike,overload:calculator.harness_mechanics.overload,psionic_apex:calculator.harness_mechanics.psionic_apex,disciplines:calculator.harness_mechanics.disciplines
-  };
   const systemOwners=new Map<string,string>();
   for(const [entityIndex,entity] of authority.entities.entries())for(const [field,value] of Object.entries(entity.system_mechanics??{})){
     const prior=systemOwners.get(field),path=`/entities/${entityIndex}/system_mechanics/${field}`;
     if(prior)diagnostics.push({severity:"error",code:"system_mechanics.owner_duplicate",message:`${field} is authored by both ${prior} and ${entity.id}`,path});else systemOwners.set(field,entity.id);
-    if(canonicalJson(value)!==canonicalJson(systemTargets[field]))diagnostics.push({severity:"error",code:"system_mechanics.projection_equivalence",message:`${entity.id} ${field} does not reproduce its Calculator/harness projection`,path});
+    void value;
   }
-  for(const field of Object.keys(systemTargets))if(!systemOwners.has(field))diagnostics.push({severity:"error",code:"system_mechanics.owner_missing",message:`${field} has no canonical entity system_mechanics owner`,path:"/entities"});
+  for(const field of systemMechanicsFields)if(!systemOwners.has(field))diagnostics.push({severity:"error",code:"system_mechanics.owner_missing",message:`${field} has no canonical entity system_mechanics owner`,path:"/entities"});
+  if(diagnostics.some(item=>item.code.startsWith("system_mechanics.owner_")))return diagnostics;
+  let calculator:CalculatorProjection;
+  try{calculator=deriveCalculatorProjection(authority);}catch(error){diagnostics.push({severity:"error",code:"mechanics.projection",message:`Canonical mechanics cannot produce consumer views: ${error instanceof Error?error.message:String(error)}`,path:"/entities"});return diagnostics;}
   const expectedDefaults={default_card_id:"manifested_strike",default_fighter_level:20,default_psionic_ability_modifier:5} as const;
   for(const [field,expected] of Object.entries(expectedDefaults))if(calculator[field as keyof typeof expectedDefaults]!==expected)diagnostics.push({severity:"error",code:"calculator.default",message:`Calculator ${field} must be ${expected}`,path:`/calculator/${field}`});
   if(calculator.default_fighter_level<calculator.fighter_level_minimum||calculator.default_fighter_level>calculator.fighter_level_maximum)diagnostics.push({severity:"error",code:"calculator.default_level",message:"Calculator default Fighter level is outside its supported range",path:"/calculator/default_fighter_level"});
@@ -88,7 +87,6 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
   const projectedRiderIds=calculator.features.filter(feature=>feature.delivery==="on_hit_rider").map(feature=>feature.entity_id).sort(codepointCompare);
   const deckRiderIds=authority.entities.filter(entity=>isCalculatorDeckEntity(entity)&&entity.activation==="on_hit"&&entity.classifications.feature_role==="rider").map(entity=>entity.id).sort(codepointCompare);
   if(JSON.stringify(projectedRiderIds)!==JSON.stringify(deckRiderIds))diagnostics.push({severity:"error",code:"calculator.rider_coverage",message:"Every deck-owned on-hit rider must retain a Calculator projection exactly once",path:"/calculator/features"});
-  const calculatorFeaturesById=new Map(calculator.features.map(feature=>[feature.entity_id,feature])),harnessRulesById=new Map(calculator.harness_mechanics.feature_rules.map(rule=>[rule.entity_id,rule]));
   for(const [entityIndex,entity] of authority.entities.entries())if(entity.mechanics){
     const mechanicsPath=`/entities/${entityIndex}/mechanics`,surfaceIds=entity.mechanics.surfaces.map(surface=>surface.id);diagnostics.push(...duplicateDiagnostics(surfaceIds,"mechanics.surface_duplicate",`${entity.id} mechanics surface`).map(diagnostic=>({...diagnostic,path:`${mechanicsPath}/surfaces`})));
     for(const [surfaceIndex,surface] of entity.mechanics.surfaces.entries()){
@@ -97,10 +95,7 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
       diagnostics.push(...mechanicsTierDiagnostics(entity.id,surface,surface.tiers??[],`${mechanicsPath}/surfaces/${surfaceIndex}/tiers`));
     }
     try{
-      const projectedCalculator=projectCalculatorMechanics(entity),legacyCalculator=calculatorFeaturesById.get(entity.id)??null;
-      if(canonicalJson(projectedCalculator)!==canonicalJson(legacyCalculator))diagnostics.push({severity:"error",code:"mechanics.calculator_equivalence",message:`${entity.id} neutral mechanics do not reproduce its Calculator projection`,path:mechanicsPath});
-      const projectedHarness=projectHarnessMechanics(entity),legacyHarness=harnessRulesById.get(entity.id)??null;
-      if(canonicalJson(projectedHarness)!==canonicalJson(legacyHarness))diagnostics.push({severity:"error",code:"mechanics.harness_equivalence",message:`${entity.id} neutral mechanics do not reproduce its harness projection`,path:mechanicsPath});
+      projectCalculatorMechanics(entity);projectHarnessMechanics(entity);
     }catch(error){diagnostics.push({severity:"error",code:"mechanics.projection",message:`${entity.id} neutral mechanics cannot be projected: ${error instanceof Error?error.message:String(error)}`,path:mechanicsPath});}
   }
   const utilityIds=calculator.utility_cards.map(card=>card.id);diagnostics.push(...duplicateDiagnostics(utilityIds,"calculator.utility_duplicate","calculator utility card ID"));

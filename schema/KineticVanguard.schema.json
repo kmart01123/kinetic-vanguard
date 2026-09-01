@@ -58,42 +58,6 @@
       "type":"object","additionalProperties":false,"required":["tier","minimum_level"],
       "properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"minimum_level":{"type":"integer","minimum":3,"maximum":20}}
     },
-    "calculatorDamage": {
-      "oneOf": [
-        {"type":"object","additionalProperties":false,"required":["kind","resolution"],"properties":{"kind":{"const":"none"},"resolution":{"enum":["always","failed_save","half_on_success"]}}},
-        {"type":"object","additionalProperties":false,"required":["kind","resolution","value"],"properties":{"kind":{"const":"fixed"},"resolution":{"enum":["always","failed_save","half_on_success"]},"value":{"type":"integer","minimum":0}}},
-        {"type":"object","additionalProperties":false,"required":["kind","resolution","count","sides"],"properties":{"kind":{"const":"dice"},"resolution":{"enum":["always","failed_save","half_on_success"]},"count":{"type":"integer","minimum":1},"sides":{"type":"integer","minimum":2}}},
-        {"type":"object","additionalProperties":false,"required":["kind","resolution","count"],"properties":{"kind":{"const":"manifested_strike_dice"},"resolution":{"enum":["always","failed_save","half_on_success"]},"count":{"type":"integer","minimum":1}}},
-        {"type":"object","additionalProperties":false,"required":["kind","resolution"],"properties":{"kind":{"const":"psionic_ability_modifier"},"resolution":{"enum":["always","failed_save","half_on_success"]},"multiplier":{"type":"integer","minimum":1}}}
-      ]
-    },
-    "calculatorTier": {
-      "type":"object","additionalProperties":false,"required":["tier","damage"],
-      "properties":{
-        "tier":{"type":"integer","minimum":0,"maximum":2},
-        "damage":{"$ref":"#/$defs/calculatorDamage"},
-        "secondary_damage":{"$ref":"#/$defs/calculatorDamage"},
-        "save":{"enum":["strength","constitution","dexterity","intelligence","charisma","discipline_signature"]}
-      }
-    },
-    "calculatorMetric": {
-      "oneOf": [
-        {"type":"object","additionalProperties":false,"required":["kind","label","unit","values"],"properties":{"kind":{"const":"fixed_plus_proficiency_bonus_multiplier"},"label":{"enum":["fly_speed","total_targets"]},"unit":{"enum":["feet","creatures"]},"values":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["tier","fixed","multiplier"],"properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"fixed":{"type":"integer","minimum":0},"multiplier":{"type":"integer","minimum":0}}},"minItems":3,"maxItems":3}}},
-        {"type":"object","additionalProperties":false,"required":["kind","label","divisor"],"properties":{"kind":{"const":"floor_proficiency_bonus_divisor"},"label":{"const":"uses_per_rest"},"divisor":{"type":"integer","minimum":1}}},
-        {"type":"object","additionalProperties":false,"required":["kind","label","multiplier"],"properties":{"kind":{"const":"psionic_ability_modifier_multiplier"},"label":{"enum":["passive_insight_bonus","chosen_skill_bonus"]},"multiplier":{"type":"integer","minimum":1}}},
-        {"type":"object","additionalProperties":false,"required":["kind","label","values"],"properties":{"kind":{"const":"dice_plus_psionic_ability_modifier"},"label":{"const":"damage_reduction"},"values":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["tier","count","sides","multiplier"],"properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"count":{"type":"integer","minimum":1},"sides":{"type":"integer","minimum":2},"multiplier":{"type":"integer","minimum":1}}},"minItems":3,"maxItems":3}}},
-        {"type":"object","additionalProperties":false,"required":["kind","label","value"],"properties":{"kind":{"const":"psi_points_plus_fixed"},"label":{"const":"maximum_psi_points"},"value":{"type":"integer","minimum":1}}}
-      ]
-    },
-    "calculatorFeature": {
-      "type":"object","additionalProperties":false,"required":["entity_id","delivery"],"minProperties":3,
-      "properties":{
-        "entity_id":{"$ref":"#/$defs/id"},
-        "delivery":{"enum":["on_hit_rider","standalone","passive"]},
-        "tiers":{"type":"array","items":{"$ref":"#/$defs/calculatorTier"},"minItems":3,"maxItems":3},
-        "metrics":{"type":"array","items":{"$ref":"#/$defs/calculatorMetric"},"minItems":1}
-      }
-    },
     "calculatorUtilityCard": {
       "type":"object","additionalProperties":false,"required":["id","source_entity_id","calculation_kind"],
       "properties":{"id":{"enum":["manifested_strike","holdout_option","blood_tax"]},"source_entity_id":{"$ref":"#/$defs/id"},"calculation_kind":{"enum":["manifested_strike","holdout_option","blood_tax"]},"context":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["entity_id","content_block_indexes"],"properties":{"entity_id":{"$ref":"#/$defs/id"},"content_block_indexes":{"type":"array","items":{"type":"integer","minimum":0},"minItems":1,"uniqueItems":true}}},"minItems":1},"related_card_ids":{"type":"array","items":{"enum":["manifested_strike","holdout_option","blood_tax"]},"minItems":1,"uniqueItems":true}}
@@ -106,44 +70,9 @@
       "type":"object","additionalProperties":false,"required":["id","damage_type","signature_save","mastery"],
       "properties":{"id":{"enum":["pyrokinesis","cryokinesis","psychokinesis","electrokinesis"]},"damage_type":{"enum":["fire","cold","force","lightning"]},"signature_save":{"enum":["strength","constitution","dexterity","charisma"]},"mastery":{"$ref":"#/$defs/harnessMastery"}}
     },
-    "harnessTargeting": {
-      "type":"object","additionalProperties":false,"required":["tier","kind"],
-      "properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"kind":{"enum":["fixed_additional","proficiency_bonus_additional","cluster_remainder"]},"additional_targets":{"type":"integer","minimum":1}}
-    },
-    "harnessControlEffect": {
-      "type":"object","additionalProperties":false,"required":["gate","duration"],
-      "properties":{"gate":{"enum":["on_reach","on_failed_save","while_in_area"]},"conditions":{"type":"array","items":{"enum":["blinded","charmed","incapacitated","prone","restrained","stunned"]},"uniqueItems":true},"outcomes":{"type":"array","items":{"enum":["attack_disadvantage","forced_movement","movement_option_denial","reaction_denial","speed_reduction","speed_zero"]},"uniqueItems":true},"duration":{"enum":["instantaneous","until_end_current_turn","until_start_next_turn","until_end_next_turn","while_in_area","one_minute_concentration","one_hour","eight_hours"]},"target_role":{"enum":["primary","secondary","all"]},"requires_condition":{"enum":["blinded","charmed","incapacitated","prone","restrained","stunned"]},"magnitude_feet":{"type":"integer","minimum":1},"failed_save_magnitude_feet":{"type":"integer","minimum":1},"successful_save_magnitude_feet":{"type":"integer","minimum":1},"attack_scope":{"enum":["next_attack","all_attacks"]}}
-    },
-    "harnessControlTier": {
-      "type":"object","additionalProperties":false,"required":["tier","application","effects"],
-      "properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"application":{"enum":["failed_save","no_save"]},"save":{"enum":["strength","constitution","dexterity","intelligence","charisma","discipline_signature"]},"hit_gated":{"type":"boolean"},"effects":{"type":"array","items":{"$ref":"#/$defs/harnessControlEffect"},"minItems":1},"maximum_size":{"enum":["tiny","small","medium","large","huge","gargantuan"]},"required_creature_type":{"enum":["humanoid"]},"repeat_save_trigger":{"const":"start_of_affected_turn"},"repeat_save_disadvantage":{"type":"boolean"}}
-    },
-    "harnessFeatureRule": {
-      "type":"object","additionalProperties":false,"required":["entity_id","discipline_ids","damage_type"],
-      "properties":{"entity_id":{"$ref":"#/$defs/id"},"discipline_ids":{"type":"array","items":{"enum":["pyrokinesis","cryokinesis","psychokinesis","electrokinesis"]},"minItems":1,"uniqueItems":true},"damage_type":{"enum":["discipline","cold","fire","force","lightning","psychic"]},"ignore_resistance_tiers":{"type":"array","items":{"type":"integer","minimum":0,"maximum":2},"uniqueItems":true},"replaces_mastery":{"type":"boolean"},"requires_additional_target":{"type":"boolean"},"targeting_by_tier":{"type":"array","items":{"$ref":"#/$defs/harnessTargeting"}},"armor_class_reduction_by_tier":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["tier","value"],"properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"value":{"type":"integer","minimum":1}}}},"damage_repetition":{"const":"remaining_round_starts"},"damage_timing":{"const":"start_of_affected_turn_after_repeat_save"},"starts_persistent_zone":{"type":"boolean"},"control_tiers":{"type":"array","items":{"$ref":"#/$defs/harnessControlTier"},"minItems":1}}
-    },
-    "mechanicsProjectionReference": {
-      "type":"object","additionalProperties":false,"required":["entity_id","derived_from"],
-      "properties":{"entity_id":{"$ref":"#/$defs/id"},"derived_from":{"const":"entity_mechanics"}}
-    },
-    "systemMechanicsProjectionReference": {
-      "type":"object","additionalProperties":false,"required":["entity_id","derived_from","field"],
-      "properties":{"entity_id":{"$ref":"#/$defs/id"},"derived_from":{"const":"system_mechanics"},"field":{"enum":["proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels","action_economy","manifested_strike","overload","psionic_apex","disciplines"]}}
-    },
-    "harnessMechanics": {
-      "type":"object","additionalProperties":false,"required":["action_economy","manifested_strike","overload","psionic_apex","disciplines","feature_rules"],
-      "properties":{
-        "action_economy":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
-        "manifested_strike":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
-        "overload":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
-        "psionic_apex":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
-        "disciplines":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
-        "feature_rules":{"type":"array","items":{"oneOf":[{"$ref":"#/$defs/harnessFeatureRule"},{"$ref":"#/$defs/mechanicsProjectionReference"}]},"minItems":20}
-      }
-    },
     "calculator": {
       "type":"object","additionalProperties":false,
-      "required":["default_card_id","default_fighter_level","default_psionic_ability_modifier","fighter_level_minimum","fighter_level_maximum","psionic_ability_modifier_minimum","psionic_ability_modifier_maximum","proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels","harness_mechanics","features","utility_cards"],
+      "required":["default_card_id","default_fighter_level","default_psionic_ability_modifier","fighter_level_minimum","fighter_level_maximum","psionic_ability_modifier_minimum","psionic_ability_modifier_maximum","utility_cards"],
       "properties":{
         "default_card_id":{"$ref":"#/$defs/id"},
         "default_fighter_level":{"type":"integer","minimum":3,"maximum":20},
@@ -152,13 +81,6 @@
         "fighter_level_maximum":{"const":20},
         "psionic_ability_modifier_minimum":{"const":0},
         "psionic_ability_modifier_maximum":{"const":5},
-        "proficiency_bonus_bands":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
-        "psi_point_bands":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
-        "psionic_focus_bands":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
-        "manifested_strike_die_bands":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
-        "tier_minimum_levels":{"$ref":"#/$defs/systemMechanicsProjectionReference"},
-        "harness_mechanics":{"$ref":"#/$defs/harnessMechanics"},
-        "features":{"type":"array","items":{"oneOf":[{"$ref":"#/$defs/calculatorFeature"},{"$ref":"#/$defs/mechanicsProjectionReference"}]},"minItems":1},
         "utility_cards":{"type":"array","items":{"$ref":"#/$defs/calculatorUtilityCard"},"minItems":3,"maxItems":3}
       }
     },

@@ -7,7 +7,7 @@ export function clientRuntime(model: any): void {
   const areas: Map<string,any> = new Map(areaValues.map((value: any) => [value.id, value]));
   const entities: Map<string,any> = new Map(model.authority.entities.map((entity: any) => [entity.id, entity]));
   const categories: Map<string,any> = new Map(model.authority.navigation.categories.map((category: any) => [category.id, category]));
-  const calculator=model.authority.calculator;
+  const calculator=model.calculator;
   const calculatorFeatures:Map<string,any>=new Map(calculator.features.map((feature:any)=>[feature.entity_id,feature]));
   const calculatorUtilities:Map<string,any>=new Map(calculator.utility_cards.map((card:any)=>[card.id,card]));
   const isCalculatorDeckEntity=(entity:any):boolean=>entity?.presentation_metadata?.presentation_owner==="calculator_deck"||(entity?.kind==="feature"&&entity?.presentation_metadata?.primary_rules_area!=="common_features");

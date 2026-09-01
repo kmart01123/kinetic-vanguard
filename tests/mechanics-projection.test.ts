@@ -5,6 +5,7 @@ import test from "node:test";
 import YAML from "yaml";
 import { canonicalJson } from "../src/canonical.js";
 import { projectCalculatorMechanics,projectHarnessMechanics } from "../src/mechanics.js";
+import { deriveCalculatorProjection } from "../src/mechanics-selectors.js";
 import { loadAuthority } from "../src/load.js";
 import { validateSemantics } from "../src/validate.js";
 
@@ -20,46 +21,44 @@ const compatibilityHashes:Record<string,{calculator:string;harness:string}>={
 const hash=(value:unknown)=>createHash("sha256").update(canonicalJson(value)).digest("hex");
 const systemFields=["proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels","action_economy","manifested_strike","overload","psionic_apex","disciplines"];
 
-test("shared progressions and core mechanics are entity-owned and consumer fields are references",async()=>{
+test("shared progressions and core mechanics are entity-owned without Calculator or harness registries",async()=>{
   const [{authority},source]=await Promise.all([loadAuthority(),readFile("KineticVanguard.yaml","utf8")]),raw=YAML.parse(source) as any;
-  const references=[...systemFields.slice(0,5).map(field=>raw.calculator[field]),...systemFields.slice(5).map(field=>raw.calculator.harness_mechanics[field])];
-  assert.ok(references.every(reference=>reference.derived_from==="system_mechanics"&&reference.field&&reference.entity_id));
-  assert.deepEqual(references.map(reference=>reference.field),systemFields);
+  for(const field of [...systemFields,"features","harness_mechanics"])assert.equal(raw.calculator[field],undefined,field);
   const owners=raw.entities.flatMap((entity:any)=>Object.keys(entity.system_mechanics??{}).map(field=>[field,entity.id]));
   assert.deepEqual(owners.map(([field]:string[])=>field).sort(),[...systemFields].sort());
-  const hydrated=[...systemFields.slice(0,5).map(field=>(authority.calculator as any)[field]),...systemFields.slice(5).map(field=>(authority.calculator.harness_mechanics as any)[field])];
+  const calculator=deriveCalculatorProjection(authority),hydrated=[...systemFields.slice(0,5).map(field=>(calculator as any)[field]),...systemFields.slice(5).map(field=>(calculator.harness_mechanics as any)[field])];
   assert.equal(hash(hydrated),"687d71895e63f7fcc2448f2b2eb71a0bdd7cfd0615455e65f12bda4dca987147");
 });
 
-test("every machine-consumed ability authors mechanics once and materializes legacy-compatible consumer contracts",async()=>{
+test("every machine-consumed ability authors mechanics once and derives consumer contracts",async()=>{
   const [{authority},source]=await Promise.all([loadAuthority(),readFile("KineticVanguard.yaml","utf8")]),raw=YAML.parse(source) as any,entities=authority.entities.filter(entity=>entity.mechanics);
-  const calculatorIds=authority.calculator.features.map(feature=>feature.entity_id).sort(),harnessIds=authority.calculator.harness_mechanics.feature_rules.map(rule=>rule.entity_id).sort();
+  const projection=deriveCalculatorProjection(authority),calculatorIds=projection.features.map(feature=>feature.entity_id).sort(),harnessIds=projection.harness_mechanics.feature_rules.map(rule=>rule.entity_id).sort();
   assert.equal(calculatorIds.length,30);assert.equal(harnessIds.length,27);assert.deepEqual(entities.map(entity=>entity.id).sort(),calculatorIds);
-  assert.ok(raw.calculator.features.every((feature:any)=>feature.derived_from==="entity_mechanics"));assert.deepEqual(raw.calculator.features.map((feature:any)=>feature.entity_id).sort(),calculatorIds);
-  assert.ok(raw.calculator.harness_mechanics.feature_rules.every((rule:any)=>rule.derived_from==="entity_mechanics"));assert.deepEqual(raw.calculator.harness_mechanics.feature_rules.map((rule:any)=>rule.entity_id).sort(),harnessIds);
-  assert.equal(hash(authority.calculator.features),"a3cbda263042d291fcc80c7be4601a82d5231412b86d499b88246d502ba33a3c");
-  assert.equal(hash(authority.calculator.harness_mechanics.feature_rules),"017128bf1149c6bbaa5719a89dc0414a7e15a87c5911e118179f2ae4c69776ae");
+  assert.equal(raw.calculator.features,undefined);assert.equal(raw.calculator.harness_mechanics,undefined);
+  assert.equal(hash(projection.features),"d65242939b39170bc69d333f43cea17aace02313b61a3620f745144425e0220d");
+  assert.equal(hash(projection.harness_mechanics.feature_rules),"7f2e225107b7b443a421934022c570b573ba14ba86af64cc8fc8f32129d16bac");
   for(const entity of entities){
-    const calculator=authority.calculator.features.find(feature=>feature.entity_id===entity.id);assert.ok(calculator,entity.id);assert.deepEqual(projectCalculatorMechanics(entity),calculator,`${entity.id} Calculator projection`);
-    const harness=authority.calculator.harness_mechanics.feature_rules.find(rule=>rule.entity_id===entity.id)??null;assert.deepEqual(projectHarnessMechanics(entity),harness,`${entity.id} harness projection`);
+    const calculator=projection.features.find(feature=>feature.entity_id===entity.id);assert.ok(calculator,entity.id);assert.deepEqual(projectCalculatorMechanics(entity),calculator,`${entity.id} Calculator projection`);
+    const harness=projection.harness_mechanics.feature_rules.find(rule=>rule.entity_id===entity.id)??null;assert.deepEqual(projectHarnessMechanics(entity),harness,`${entity.id} harness projection`);
     if(sentinelIds.includes(entity.id)){assert.equal(hash(calculator),compatibilityHashes[entity.id]!.calculator,`${entity.id} Calculator compatibility contract`);assert.equal(hash(harness),compatibilityHashes[entity.id]!.harness,`${entity.id} harness compatibility contract`);}
   }
 });
 
-test("neutral mechanics drift fails closed against legacy projections",async()=>{
+test("neutral mechanics changes flow directly to consumers and structural drift fails closed",async()=>{
   const {authority}=await loadAuthority(),candidate=structuredClone(authority) as any;
   const ember=candidate.entities.find((entity:any)=>entity.id==="ember_bolt"),damage=ember.mechanics.surfaces[0].tiers[0].steps.find((step:any)=>step.kind==="damage");damage.value.value=3;
-  assert.ok(validateSemantics(candidate).some(diagnostic=>diagnostic.code==="mechanics.calculator_equivalence"));
+  assert.notEqual(hash(deriveCalculatorProjection(candidate).features),hash(deriveCalculatorProjection(authority).features));
   const staticDischarge=candidate.entities.find((entity:any)=>entity.id==="static_discharge"),reaction=staticDischarge.mechanics.surfaces[0].tiers[2].steps.find((step:any)=>step.kind==="saving_throw").failure[0];reaction.duration="until_end_next_turn";
-  assert.ok(validateSemantics(candidate).some(diagnostic=>diagnostic.code==="mechanics.harness_equivalence"));
+  assert.notEqual(hash(deriveCalculatorProjection(candidate).harness_mechanics.feature_rules),hash(deriveCalculatorProjection(authority).harness_mechanics.feature_rules));
   const brokenReplacement=structuredClone(authority) as any,glacial=brokenReplacement.entities.find((entity:any)=>entity.id==="glacial_spike"),replacement=glacial.mechanics.surfaces[0].tiers[1].steps.find((step:any)=>step.kind==="saving_throw").failure[0];replacement.replaces="missing_step";
   assert.ok(validateSemantics(brokenReplacement).some(diagnostic=>diagnostic.code==="mechanics.replacement_reference"));
   const brokenMode=structuredClone(authority) as any,explosion=brokenMode.entities.find((entity:any)=>entity.id==="explosion_implosion"),movement=explosion.mechanics.surfaces[0].tiers[0].steps.find((step:any)=>step.kind==="saving_throw").failure.find((step:any)=>step.kind==="forced_movement");movement.directions[0].mode="missing_mode";
   assert.ok(validateSemantics(brokenMode).some(diagnostic=>diagnostic.code==="mechanics.mode_reference"));
 });
 
-test("shared-system drift fails closed against hydrated consumer projections",async()=>{
+test("shared-system changes flow directly to consumers and retain semantic validation",async()=>{
   const {authority}=await loadAuthority(),candidate=structuredClone(authority) as any;
   candidate.entities.find((entity:any)=>entity.id==="common_psi_reservoir").system_mechanics.psi_point_bands[0].value+=1;
-  assert.ok(validateSemantics(candidate).some(diagnostic=>diagnostic.code==="system_mechanics.projection_equivalence"));
+  assert.equal(deriveCalculatorProjection(candidate).psi_point_bands[0]!.value,5);
+  assert.ok(validateSemantics(candidate).some(diagnostic=>diagnostic.code==="calculator.psi_point_progression"));
 });

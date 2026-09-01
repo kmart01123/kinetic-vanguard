@@ -59,9 +59,9 @@ class AuthorityProjectionTests(unittest.TestCase):
 
     def test_real_root_authority_and_complete_stable_id_inventory(self)->None:
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
-        self.assertEqual(self.model.projection["projection_version"],"1.2.0")
+        self.assertEqual(self.model.projection["projection_version"],"1.3.0")
         self.assertEqual(self.model.rules_version,"14.3.0")
-        self.assertEqual(self.model.projection["schema_version"],"2.6.0")
+        self.assertEqual(self.model.projection["schema_version"],"2.7.0")
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":1,"action_surge_allows_additional_standalone_psionic_action":False})
         self.assertEqual(self.model.holdout_formula(17)["kind"],"halve_total_rounded_down")
         self.assertEqual(self.model.holdout_formula(18),{"minimum_level":18,"maximum_level":20,"kind":"dice_plus_psionic_ability_modifier","count":1,"sides":6})
@@ -89,7 +89,7 @@ class AuthorityProjectionTests(unittest.TestCase):
         source=DEFAULT_AUTHORITY.read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory() as directory:
             authority=Path(directory)/"KineticVanguard.yaml"
-            authority.write_text(source.replace("  harness_mechanics:\n","  missing_harness_mechanics:\n",1),encoding="utf-8")
+            authority.write_text(source.replace("      action_economy:\n","      missing_action_economy:\n",1),encoding="utf-8")
             with self.assertRaises(AuthorityError):AuthorityModel.load(authority)
 
     def test_authority_unavailability_is_narrow_and_fail_closed(self)->None:

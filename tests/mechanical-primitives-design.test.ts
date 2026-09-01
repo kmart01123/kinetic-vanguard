@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { readFile } from "node:fs/promises";
 import { loadAuthority } from "../src/load.js";
+import { deriveCalculatorProjection } from "../src/mechanics-selectors.js";
 
 type Disposition="promote"|"generalize"|"derive"|"benchmark_only";
 type Audit={
@@ -16,13 +17,13 @@ const values=(rows:readonly Record<string,unknown>[],field:string):string[]=>[..
 
 test("mechanical field audit covers every populated Calculator and harness source field",async()=>{
   const [{authority},auditSource,design]=await Promise.all([loadAuthority(),readFile("policy/mechanical-field-dispositions.json","utf8"),readFile("docs/mechanical-primitives-design.md","utf8")]);
-  const audit=JSON.parse(auditSource) as Audit;assert.equal(audit.format_version,1);
-  const calculatorFeatures=authority.calculator.features as unknown as Record<string,unknown>[];
+  const audit=JSON.parse(auditSource) as Audit;assert.equal(audit.format_version,1);const calculator=deriveCalculatorProjection(authority);
+  const calculatorFeatures=calculator.features as unknown as Record<string,unknown>[];
   const calculatorTiers=calculatorFeatures.flatMap(row=>(row.tiers??[]) as Record<string,unknown>[]);
   const calculatorDamage=calculatorTiers.flatMap(row=>[row.damage,row.secondary_damage].filter((value):value is Record<string,unknown>=>value!==undefined));
   const calculatorMetrics=calculatorFeatures.flatMap(row=>(row.metrics??[]) as Record<string,unknown>[]);
   const calculatorMetricValues=calculatorMetrics.flatMap(row=>(row.values??[]) as Record<string,unknown>[]);
-  const harnessRules=authority.calculator.harness_mechanics.feature_rules as unknown as Record<string,unknown>[];
+  const harnessRules=calculator.harness_mechanics.feature_rules as unknown as Record<string,unknown>[];
   const harnessTargeting=harnessRules.flatMap(row=>(row.targeting_by_tier??[]) as Record<string,unknown>[]);
   const harnessArmorReduction=harnessRules.flatMap(row=>(row.armor_class_reduction_by_tier??[]) as Record<string,unknown>[]);
   const harnessControlTiers=harnessRules.flatMap(row=>(row.control_tiers??[]) as Record<string,unknown>[]);
