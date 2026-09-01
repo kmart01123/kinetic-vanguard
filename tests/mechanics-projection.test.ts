@@ -44,6 +44,12 @@ test("every machine-consumed ability authors mechanics once and derives consumer
   }
 });
 
+test("Branching Bolt neutral targeting preserves the released 15-foot arc",async()=>{
+  const {authority}=await loadAuthority(),branchingBolt=authority.entities.find(entity=>entity.id==="branching_bolt");assert.ok(branchingBolt?.mechanics);
+  const ranges=branchingBolt.mechanics.surfaces.flatMap(surface=>(surface.tiers??[]).map(tier=>"within_feet" in tier.targeting?tier.targeting.within_feet:null));
+  assert.deepEqual(ranges,[15,15,15]);
+});
+
 test("neutral mechanics changes flow directly to consumers and structural drift fails closed",async()=>{
   const {authority}=await loadAuthority(),candidate=structuredClone(authority) as any;
   const ember=candidate.entities.find((entity:any)=>entity.id==="ember_bolt"),damage=ember.mechanics.surfaces[0].tiers[0].steps.find((step:any)=>step.kind==="damage");damage.value.value=3;

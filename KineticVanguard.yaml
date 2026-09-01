@@ -3927,7 +3927,7 @@ entities:
             - tier: 0
               targeting:
                 kind: struck_plus_additional
-                within_feet: 30
+                within_feet: 15
                 additional_count:
                   kind: fixed
                   value: 1
@@ -3940,7 +3940,7 @@ entities:
             - tier: 1
               targeting:
                 kind: struck_plus_additional
-                within_feet: 30
+                within_feet: 15
                 additional_count:
                   kind: fixed
                   value: 2
@@ -3953,7 +3953,7 @@ entities:
             - tier: 2
               targeting:
                 kind: struck_plus_additional
-                within_feet: 30
+                within_feet: 15
                 additional_count:
                   kind: fixed
                   value: 3
