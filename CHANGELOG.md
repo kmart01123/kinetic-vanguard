@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- Completed the behavior-preserving rider-first representation migration for every machine-consumed ability: all 30 Calculator entries and 27 harness feature rules now derive from neutral per-entity mechanical primitives with locked aggregate and sentinel output snapshots. The complete field-disposition audit keeps benchmark scenario and scoring policy outside canonical rules mechanics.
+- Advanced the additive authority schema contract from 2.4.0 to 2.5.0 without changing `rules_version` 14.3.0, playable mechanics, Calculator output, harness output, or the harness projection contract.
+
 ## 14.3.0 — 2026-08-26
 
 ### Changed

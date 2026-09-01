@@ -1,8 +1,28 @@
-import type { Authority, Diagnostic } from "./types.js";
-import { codepointCompare } from "./canonical.js";
+import type { Authority, Diagnostic, MechanicsStep, MechanicsSurface, MechanicsTier } from "./types.js";
+import { canonicalJson,codepointCompare } from "./canonical.js";
+import { projectCalculatorMechanics,projectHarnessMechanics } from "./mechanics.js";
 
 function duplicateDiagnostics(values:string[],code:string,label:string):Diagnostic[]{const seen=new Set<string>();const diagnostics:Diagnostic[]=[];for(const value of values){if(seen.has(value))diagnostics.push({severity:"error",code,message:`Duplicate ${label}: ${value}`});seen.add(value);}return diagnostics;}
 function vocabulary(authority:Authority,name:string):Set<string>{return new Set((authority.vocabularies[name]??[]).map(value=>value.id));}
+function mechanicsStepDiagnostics(entityId:string,surface:MechanicsSurface,steps:MechanicsStep[],path:string):Diagnostic[]{
+  const diagnostics:Diagnostic[]=[],seenStepIds=new Set<string>(),modeIds=new Set((surface.modes??[]).map(mode=>mode.id));
+  const visitSteps=(rows:MechanicsStep[],rowsPath:string)=>{for(const [index,step] of rows.entries()){
+    const stepPath=`${rowsPath}/${index}`;
+    if("replaces" in step&&step.replaces&&!seenStepIds.has(step.replaces))diagnostics.push({severity:"error",code:"mechanics.replacement_reference",message:`${entityId} replacement target must be an earlier step in the same tier: ${step.replaces}`,path:stepPath});
+    if("id" in step&&step.id){if(seenStepIds.has(step.id))diagnostics.push({severity:"error",code:"mechanics.step_duplicate",message:`${entityId} mechanics step ID is duplicated: ${step.id}`,path:stepPath});seenStepIds.add(step.id);}
+    if(step.kind==="forced_movement")for(const [directionIndex,direction] of (step.directions??[]).entries())if(!modeIds.has(direction.mode))diagnostics.push({severity:"error",code:"mechanics.mode_reference",message:`${entityId} forced-movement direction references unknown mode: ${direction.mode}`,path:`${stepPath}/directions/${directionIndex}/mode`});
+    if(step.kind==="saving_throw"){visitSteps(step.failure,`${stepPath}/failure`);visitSteps(step.success??[],`${stepPath}/success`);}
+  }};
+  visitSteps(steps,path);return diagnostics;
+}
+function mechanicsTierDiagnostics(entityId:string,surface:MechanicsSurface,tiers:MechanicsTier[],path:string):Diagnostic[]{
+  const diagnostics:Diagnostic[]=duplicateDiagnostics(tiers.map(tier=>String(tier.tier)),"mechanics.tier_duplicate",`${entityId} ${surface.id} tier`).map(diagnostic=>({...diagnostic,path}));
+  for(const [tierIndex,tier] of tiers.entries()){
+    diagnostics.push(...mechanicsStepDiagnostics(entityId,surface,tier.steps??[],`${path}/${tierIndex}/steps`));
+    for(const [eventIndex,event] of (tier.events??[]).entries())diagnostics.push(...mechanicsStepDiagnostics(entityId,surface,event.steps,`${path}/${tierIndex}/events/${eventIndex}/steps`));
+  }
+  return diagnostics;
+}
 const inlineText=(nodes:any[]|undefined):string=>nodes?.map(node=>node.text??node.label??String(node.value?.value??"")).join("")??"";
 export const isCalculatorDeckEntity=(entity:Authority["entities"][number]):boolean=>entity.presentation_metadata.presentation_owner==="calculator_deck"||(entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area!=="common_features");
 
@@ -57,6 +77,21 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
   const projectedRiderIds=calculator.features.filter(feature=>feature.delivery==="on_hit_rider").map(feature=>feature.entity_id).sort(codepointCompare);
   const deckRiderIds=authority.entities.filter(entity=>isCalculatorDeckEntity(entity)&&entity.activation==="on_hit"&&entity.classifications.feature_role==="rider").map(entity=>entity.id).sort(codepointCompare);
   if(JSON.stringify(projectedRiderIds)!==JSON.stringify(deckRiderIds))diagnostics.push({severity:"error",code:"calculator.rider_coverage",message:"Every deck-owned on-hit rider must retain a Calculator projection exactly once",path:"/calculator/features"});
+  const calculatorFeaturesById=new Map(calculator.features.map(feature=>[feature.entity_id,feature])),harnessRulesById=new Map(calculator.harness_mechanics.feature_rules.map(rule=>[rule.entity_id,rule]));
+  for(const [entityIndex,entity] of authority.entities.entries())if(entity.mechanics){
+    const mechanicsPath=`/entities/${entityIndex}/mechanics`,surfaceIds=entity.mechanics.surfaces.map(surface=>surface.id);diagnostics.push(...duplicateDiagnostics(surfaceIds,"mechanics.surface_duplicate",`${entity.id} mechanics surface`).map(diagnostic=>({...diagnostic,path:`${mechanicsPath}/surfaces`})));
+    for(const [surfaceIndex,surface] of entity.mechanics.surfaces.entries()){
+      diagnostics.push(...duplicateDiagnostics((surface.modes??[]).map(mode=>mode.id),"mechanics.mode_duplicate",`${entity.id} ${surface.id} mode`).map(diagnostic=>({...diagnostic,path:`${mechanicsPath}/surfaces/${surfaceIndex}/modes`})));
+      diagnostics.push(...mechanicsStepDiagnostics(entity.id,surface,surface.steps??[],`${mechanicsPath}/surfaces/${surfaceIndex}/steps`));
+      diagnostics.push(...mechanicsTierDiagnostics(entity.id,surface,surface.tiers??[],`${mechanicsPath}/surfaces/${surfaceIndex}/tiers`));
+    }
+    try{
+      const projectedCalculator=projectCalculatorMechanics(entity),legacyCalculator=calculatorFeaturesById.get(entity.id)??null;
+      if(canonicalJson(projectedCalculator)!==canonicalJson(legacyCalculator))diagnostics.push({severity:"error",code:"mechanics.calculator_equivalence",message:`${entity.id} neutral mechanics do not reproduce its Calculator projection`,path:mechanicsPath});
+      const projectedHarness=projectHarnessMechanics(entity),legacyHarness=harnessRulesById.get(entity.id)??null;
+      if(canonicalJson(projectedHarness)!==canonicalJson(legacyHarness))diagnostics.push({severity:"error",code:"mechanics.harness_equivalence",message:`${entity.id} neutral mechanics do not reproduce its harness projection`,path:mechanicsPath});
+    }catch(error){diagnostics.push({severity:"error",code:"mechanics.projection",message:`${entity.id} neutral mechanics cannot be projected: ${error instanceof Error?error.message:String(error)}`,path:mechanicsPath});}
+  }
   const utilityIds=calculator.utility_cards.map(card=>card.id);diagnostics.push(...duplicateDiagnostics(utilityIds,"calculator.utility_duplicate","calculator utility card ID"));
   if(JSON.stringify([...utilityIds].sort(codepointCompare))!==JSON.stringify(["blood_tax","holdout_option","manifested_strike"]))diagnostics.push({severity:"error",code:"calculator.utility_coverage",message:"Calculator utility cards must be exactly Manifested Strike, Holdout Option, and Blood Tax",path:"/calculator/utility_cards"});
   for(const [utilityIndex,card] of calculator.utility_cards.entries()){

@@ -199,802 +199,64 @@ calculator:
         signature_save: charisma
         mastery: {kind: sap, control_outcomes: [attack_disadvantage], control_duration: until_start_next_turn, attack_scope: next_attack}
     feature_rules:
-      - entity_id: glacial_spike
-        discipline_ids: [cryokinesis]
-        damage_type: discipline
-        replaces_mastery: true
-        control_tiers:
-          - tier: 0
-            application: no_save
-            hit_gated: true
-            effects: [{gate: on_reach, outcomes: [speed_reduction], duration: until_end_next_turn, magnitude_feet: 10}]
-          - tier: 1
-            application: failed_save
-            save: constitution
-            hit_gated: true
-            effects:
-              - {gate: on_reach, outcomes: [speed_reduction], duration: until_end_next_turn, magnitude_feet: 10}
-              - {gate: on_failed_save, outcomes: [speed_zero], duration: until_end_next_turn}
-          - tier: 2
-            application: failed_save
-            save: constitution
-            hit_gated: true
-            effects:
-              - {gate: on_reach, outcomes: [speed_reduction], duration: until_end_next_turn, magnitude_feet: 10}
-              - {gate: on_failed_save, conditions: [restrained], duration: until_end_next_turn}
-      - entity_id: snow_chains
-        discipline_ids: [cryokinesis]
-        damage_type: discipline
-        control_tiers:
-          - tier: 0
-            application: failed_save
-            save: constitution
-            hit_gated: true
-            effects:
-              - {gate: on_reach, outcomes: [speed_zero], duration: until_end_next_turn}
-              - {gate: on_failed_save, conditions: [restrained], duration: until_end_next_turn}
-          - tier: 1
-            application: failed_save
-            save: constitution
-            hit_gated: true
-            effects:
-              - {gate: on_reach, outcomes: [speed_zero], duration: until_end_next_turn}
-              - {gate: on_failed_save, conditions: [restrained], duration: until_end_next_turn}
-              - {gate: on_failed_save, outcomes: [reaction_denial], duration: until_start_next_turn}
-          - tier: 2
-            application: failed_save
-            save: constitution
-            hit_gated: true
-            effects:
-              - {gate: on_reach, outcomes: [speed_zero], duration: until_end_next_turn}
-              - {gate: on_failed_save, conditions: [stunned], duration: until_end_next_turn}
-              - {gate: on_failed_save, outcomes: [reaction_denial], duration: until_start_next_turn}
-      - entity_id: frozen_ground
-        discipline_ids: [cryokinesis]
-        damage_type: discipline
-        control_tiers:
-          - tier: 0
-            application: failed_save
-            save: constitution
-            effects: [{gate: on_failed_save, outcomes: [speed_zero], duration: until_end_current_turn}]
-          - tier: 2
-            application: failed_save
-            save: constitution
-            effects: [{gate: on_failed_save, conditions: [restrained], duration: until_end_next_turn}]
-      - entity_id: arctic_tempest
-        discipline_ids: [cryokinesis]
-        damage_type: discipline
-        targeting_by_tier: [{tier: 0, kind: fixed_additional, additional_targets: 2}, {tier: 1, kind: fixed_additional, additional_targets: 2}, {tier: 2, kind: fixed_additional, additional_targets: 2}]
-        control_tiers:
-          - {tier: 0, application: failed_save, save: constitution, effects: [{gate: on_failed_save, conditions: [restrained], duration: until_end_next_turn}]}
-          - {tier: 2, application: failed_save, save: constitution, effects: [{gate: on_failed_save, conditions: [stunned], duration: until_end_next_turn}]}
-      - entity_id: absolute_zero
-        discipline_ids: [cryokinesis]
-        damage_type: discipline
-        control_tiers:
-          - {tier: 0, application: failed_save, save: constitution, effects: [{gate: on_failed_save, outcomes: [speed_zero], duration: until_end_next_turn}]}
-          - tier: 1
-            application: failed_save
-            save: constitution
-            effects:
-              - {gate: on_failed_save, outcomes: [speed_zero], duration: until_end_next_turn}
-              - {gate: on_failed_save, conditions: [restrained], duration: until_end_next_turn}
-          - tier: 2
-            application: failed_save
-            save: constitution
-            effects:
-              - {gate: on_reach, outcomes: [speed_zero], duration: until_end_next_turn}
-              - {gate: on_failed_save, conditions: [stunned], duration: until_end_next_turn}
-      - {entity_id: ember_bolt, discipline_ids: [pyrokinesis], damage_type: discipline}
-      - entity_id: thermal_fracture
-        discipline_ids: [pyrokinesis]
-        damage_type: discipline
-        armor_class_reduction_by_tier: [{tier: 0, value: 1}, {tier: 1, value: 2}, {tier: 2, value: 3}]
-      - {entity_id: cinder_lance, discipline_ids: [pyrokinesis], damage_type: fire, ignore_resistance_tiers: [2]}
-      - entity_id: flare
-        discipline_ids: [pyrokinesis]
-        damage_type: fire
-        ignore_resistance_tiers: [2]
-        control_tiers:
-          - {tier: 0, application: failed_save, save: dexterity, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
-          - {tier: 1, application: failed_save, save: dexterity, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
-          - {tier: 2, application: failed_save, save: dexterity, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
-      - {entity_id: furnace_strike, discipline_ids: [pyrokinesis], damage_type: fire, ignore_resistance_tiers: [2]}
-      - entity_id: telekinetic_shove
-        discipline_ids: [psychokinesis]
-        damage_type: discipline
-        replaces_mastery: true
-        control_tiers:
-          - {tier: 0, application: failed_save, save: strength, hit_gated: true, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, magnitude_feet: 10}]}
-          - {tier: 1, application: failed_save, save: strength, hit_gated: true, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, magnitude_feet: 15}]}
-          - tier: 2
-            application: failed_save
-            save: strength
-            hit_gated: true
-            effects:
-              - {gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, magnitude_feet: 20}
-              - {gate: on_failed_save, outcomes: [speed_zero], duration: until_end_next_turn}
-      - {entity_id: vectored_thrust, discipline_ids: [psychokinesis], damage_type: discipline}
-      - entity_id: explosion_implosion
-        discipline_ids: [psychokinesis]
-        damage_type: force
-        targeting_by_tier: [{tier: 0, kind: cluster_remainder}, {tier: 1, kind: cluster_remainder}, {tier: 2, kind: cluster_remainder}]
-        control_tiers:
-          - tier: 0
-            application: failed_save
-            save: strength
-            hit_gated: true
-            effects:
-              - {gate: on_failed_save, conditions: [restrained], duration: until_end_next_turn, target_role: all}
-              - {gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, target_role: secondary, magnitude_feet: 15}
-          - tier: 1
-            application: failed_save
-            save: strength
-            hit_gated: true
-            effects:
-              - {gate: on_failed_save, conditions: [restrained], duration: until_end_next_turn, target_role: all}
-              - {gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, target_role: secondary, magnitude_feet: 30}
-      - entity_id: telekinetic_slam
-        discipline_ids: [psychokinesis]
-        damage_type: force
-        control_tiers:
-          - {tier: 0, application: failed_save, save: strength, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, magnitude_feet: 10}]}
-          - {tier: 1, application: failed_save, save: strength, effects: [{gate: on_failed_save, outcomes: [forced_movement], duration: instantaneous, magnitude_feet: 20}]}
-          - tier: 2
-            application: failed_save
-            save: strength
-            effects:
-              - {gate: on_reach, outcomes: [forced_movement], duration: instantaneous, failed_save_magnitude_feet: 30, successful_save_magnitude_feet: 10}
-              - {gate: on_failed_save, outcomes: [speed_zero], duration: until_end_next_turn}
-      - entity_id: mass_levitation
-        discipline_ids: [psychokinesis]
-        damage_type: force
-        damage_timing: start_of_affected_turn_after_repeat_save
-        control_tiers:
-          - tier: 0
-            application: failed_save
-            save: strength
-            maximum_size: large
-            repeat_save_trigger: start_of_affected_turn
-            effects: [{gate: on_failed_save, conditions: [restrained], duration: one_minute_concentration}]
-          - tier: 1
-            application: failed_save
-            save: strength
-            maximum_size: large
-            repeat_save_trigger: start_of_affected_turn
-            repeat_save_disadvantage: true
-            effects:
-              - {gate: on_failed_save, conditions: [restrained], duration: one_minute_concentration}
-              - {gate: on_failed_save, outcomes: [forced_movement], duration: one_minute_concentration, requires_condition: restrained, magnitude_feet: 15}
-      - entity_id: static_discharge
-        discipline_ids: [electrokinesis]
-        damage_type: discipline
-        targeting_by_tier:
-          - {tier: 0, kind: fixed_additional, additional_targets: 1}
-          - {tier: 1, kind: proficiency_bonus_additional}
-          - {tier: 2, kind: proficiency_bonus_additional}
-        control_tiers:
-          - {tier: 2, application: failed_save, save: charisma, hit_gated: true, effects: [{gate: on_failed_save, outcomes: [reaction_denial], duration: until_start_next_turn}]}
-      - entity_id: branching_bolt
-        discipline_ids: [electrokinesis]
-        damage_type: lightning
-        targeting_by_tier:
-          - {tier: 0, kind: fixed_additional, additional_targets: 1}
-          - {tier: 1, kind: fixed_additional, additional_targets: 2}
-          - {tier: 2, kind: fixed_additional, additional_targets: 3}
-      - entity_id: electron_burst
-        discipline_ids: [electrokinesis]
-        damage_type: lightning
-        targeting_by_tier: [{tier: 0, kind: cluster_remainder}, {tier: 1, kind: cluster_remainder}, {tier: 2, kind: cluster_remainder}]
-        control_tiers:
-          - {tier: 2, application: failed_save, save: charisma, hit_gated: true, effects: [{gate: on_failed_save, outcomes: [reaction_denial, attack_disadvantage], duration: until_start_next_turn, attack_scope: all_attacks}]}
-      - {entity_id: advanced_mind_shred, discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis], damage_type: psychic, ignore_resistance_tiers: [2]}
-      - entity_id: advanced_mind_lock
-        discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
-        damage_type: psychic
-        control_tiers:
-          - {tier: 0, application: failed_save, save: intelligence, hit_gated: true, effects: [{gate: on_failed_save, conditions: [blinded], duration: until_end_next_turn}]}
-          - tier: 1
-            application: failed_save
-            save: intelligence
-            hit_gated: true
-            effects: [{gate: on_failed_save, conditions: [blinded, incapacitated], duration: until_end_next_turn}]
-          - tier: 2
-            application: failed_save
-            save: intelligence
-            hit_gated: true
-            effects: [{gate: on_failed_save, conditions: [blinded, stunned], duration: until_end_next_turn}]
-      - entity_id: forked_lightning
-        discipline_ids: [electrokinesis]
-        damage_type: lightning
-        targeting_by_tier: [{tier: 0, kind: fixed_additional, additional_targets: 3}, {tier: 1, kind: fixed_additional, additional_targets: 4}, {tier: 2, kind: fixed_additional, additional_targets: 5}]
-        control_tiers:
-          - tier: 2
-            application: failed_save
-            save: charisma
-            effects:
-              - {gate: on_failed_save, outcomes: [reaction_denial, attack_disadvantage], duration: until_start_next_turn, target_role: all, attack_scope: all_attacks}
-              - {gate: on_failed_save, outcomes: [speed_zero], duration: until_start_next_turn, target_role: primary}
-      - entity_id: ball_lightning
-        discipline_ids: [electrokinesis]
-        damage_type: lightning
-        damage_repetition: remaining_round_starts
-        starts_persistent_zone: true
-        targeting_by_tier: [{tier: 0, kind: cluster_remainder}, {tier: 1, kind: cluster_remainder}, {tier: 2, kind: cluster_remainder}]
-        control_tiers:
-          - {tier: 2, application: failed_save, save: charisma, effects: [{gate: on_failed_save, outcomes: [reaction_denial, attack_disadvantage], duration: while_in_area, attack_scope: all_attacks}]}
-      - entity_id: advanced_phase_step
-        discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
-        damage_type: discipline
-        control_tiers:
-          - {tier: 2, application: failed_save, save: discipline_signature, effects: [{gate: on_failed_save, outcomes: [reaction_denial], duration: until_start_next_turn}]}
-      - entity_id: advanced_deflection_screen
-        discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
-        damage_type: force
-        control_tiers:
-          - tier: 2
-            application: failed_save
-            save: strength
-            effects:
-              - {gate: on_reach, outcomes: [forced_movement], duration: instantaneous, failed_save_magnitude_feet: 15, successful_save_magnitude_feet: 5}
-              - {gate: on_failed_save, conditions: [prone], duration: instantaneous}
-      - entity_id: advanced_beguile
-        discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
-        damage_type: psychic
-        control_tiers:
-          - {tier: 0, application: failed_save, save: charisma, required_creature_type: humanoid, effects: [{gate: on_failed_save, conditions: [charmed], duration: one_hour}]}
-      - entity_id: advanced_gravitic_press
-        discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
-        damage_type: force
-        control_tiers:
-          - tier: 0
-            application: failed_save
-            save: strength
-            effects:
-              - {gate: while_in_area, outcomes: [speed_reduction], duration: while_in_area}
-              - {gate: on_failed_save, outcomes: [reaction_denial], duration: until_start_next_turn}
-          - tier: 1
-            application: failed_save
-            save: strength
-            effects:
-              - {gate: while_in_area, outcomes: [speed_reduction, attack_disadvantage], duration: while_in_area, attack_scope: all_attacks}
-              - {gate: on_failed_save, outcomes: [reaction_denial], duration: until_start_next_turn}
-          - tier: 2
-            application: failed_save
-            save: strength
-            effects:
-              - {gate: while_in_area, outcomes: [speed_reduction, attack_disadvantage], duration: while_in_area, attack_scope: all_attacks}
-              - {gate: on_failed_save, outcomes: [reaction_denial, speed_zero], duration: until_start_next_turn}
-      - entity_id: advanced_improved_phase_step
-        discipline_ids: [pyrokinesis, cryokinesis, psychokinesis, electrokinesis]
-        damage_type: force
-        control_tiers:
-          - {tier: 2, application: failed_save, save: discipline_signature, effects: [{gate: on_failed_save, outcomes: [reaction_denial], duration: until_start_next_turn}]}
+      - {entity_id: glacial_spike, derived_from: entity_mechanics}
+      - {entity_id: snow_chains, derived_from: entity_mechanics}
+      - {entity_id: frozen_ground, derived_from: entity_mechanics}
+      - {entity_id: arctic_tempest, derived_from: entity_mechanics}
+      - {entity_id: absolute_zero, derived_from: entity_mechanics}
+      - {entity_id: ember_bolt, derived_from: entity_mechanics}
+      - {entity_id: thermal_fracture, derived_from: entity_mechanics}
+      - {entity_id: cinder_lance, derived_from: entity_mechanics}
+      - {entity_id: flare, derived_from: entity_mechanics}
+      - {entity_id: furnace_strike, derived_from: entity_mechanics}
+      - {entity_id: telekinetic_shove, derived_from: entity_mechanics}
+      - {entity_id: vectored_thrust, derived_from: entity_mechanics}
+      - {entity_id: explosion_implosion, derived_from: entity_mechanics}
+      - {entity_id: telekinetic_slam, derived_from: entity_mechanics}
+      - {entity_id: mass_levitation, derived_from: entity_mechanics}
+      - {entity_id: static_discharge, derived_from: entity_mechanics}
+      - {entity_id: branching_bolt, derived_from: entity_mechanics}
+      - {entity_id: electron_burst, derived_from: entity_mechanics}
+      - {entity_id: advanced_mind_shred, derived_from: entity_mechanics}
+      - {entity_id: advanced_mind_lock, derived_from: entity_mechanics}
+      - {entity_id: forked_lightning, derived_from: entity_mechanics}
+      - {entity_id: ball_lightning, derived_from: entity_mechanics}
+      - {entity_id: advanced_phase_step, derived_from: entity_mechanics}
+      - {entity_id: advanced_deflection_screen, derived_from: entity_mechanics}
+      - {entity_id: advanced_beguile, derived_from: entity_mechanics}
+      - {entity_id: advanced_gravitic_press, derived_from: entity_mechanics}
+      - {entity_id: advanced_improved_phase_step, derived_from: entity_mechanics}
   features:
-    - entity_id: glacial_spike
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: fixed
-            resolution: always
-            value: 2
-        - tier: 1
-          damage:
-            kind: fixed
-            resolution: always
-            value: 2
-          save: constitution
-        - tier: 2
-          damage:
-            kind: fixed
-            resolution: always
-            value: 2
-          save: constitution
-    - entity_id: snow_chains
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: none
-            resolution: always
-          save: constitution
-        - tier: 1
-          damage:
-            kind: none
-            resolution: always
-          save: constitution
-        - tier: 2
-          damage:
-            kind: none
-            resolution: always
-          save: constitution
-    - entity_id: ember_bolt
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: fixed
-            resolution: always
-            value: 2
-        - tier: 1
-          damage:
-            kind: fixed
-            resolution: always
-            value: 4
-        - tier: 2
-          damage:
-            kind: fixed
-            resolution: always
-            value: 6
-    - entity_id: thermal_fracture
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: none
-            resolution: always
-        - tier: 1
-          damage:
-            kind: none
-            resolution: always
-        - tier: 2
-          damage:
-            kind: none
-            resolution: always
-    - entity_id: cinder_lance
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: manifested_strike_dice
-            resolution: always
-            count: 2
-        - tier: 1
-          damage:
-            kind: manifested_strike_dice
-            resolution: always
-            count: 3
-        - tier: 2
-          damage:
-            kind: manifested_strike_dice
-            resolution: always
-            count: 4
-    - entity_id: flare
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: dice
-            resolution: always
-            count: 3
-            sides: 10
-          save: dexterity
-        - tier: 1
-          damage:
-            kind: dice
-            resolution: always
-            count: 4
-            sides: 10
-          save: dexterity
-        - tier: 2
-          damage:
-            kind: dice
-            resolution: always
-            count: 5
-            sides: 10
-          save: dexterity
-    - entity_id: furnace_strike
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: dice
-            resolution: always
-            count: 5
-            sides: 10
-        - tier: 1
-          damage:
-            kind: dice
-            resolution: always
-            count: 7
-            sides: 10
-        - tier: 2
-          damage:
-            kind: dice
-            resolution: always
-            count: 9
-            sides: 10
-    - entity_id: telekinetic_shove
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: fixed
-            resolution: always
-            value: 2
-          save: strength
-        - tier: 1
-          damage:
-            kind: fixed
-            resolution: always
-            value: 2
-          save: strength
-        - tier: 2
-          damage:
-            kind: fixed
-            resolution: always
-            value: 2
-          save: strength
-    - entity_id: explosion_implosion
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: none
-            resolution: always
-          save: strength
-        - tier: 1
-          damage:
-            kind: none
-            resolution: always
-          save: strength
-        - tier: 2
-          damage:
-            kind: psionic_ability_modifier
-            resolution: failed_save
-          save: strength
-    - entity_id: static_discharge
-      delivery: on_hit_rider
-      metrics:
-        - kind: fixed_plus_proficiency_bonus_multiplier
-          label: total_targets
-          unit: creatures
-          values:
-            - {tier: 0, fixed: 2, multiplier: 0}
-            - {tier: 1, fixed: 1, multiplier: 1}
-            - {tier: 2, fixed: 1, multiplier: 1}
-      tiers:
-        - tier: 0
-          damage:
-            kind: fixed
-            resolution: always
-            value: 2
-        - tier: 1
-          damage:
-            kind: fixed
-            resolution: always
-            value: 2
-        - tier: 2
-          damage:
-            kind: fixed
-            resolution: always
-            value: 2
-          save: charisma
-    - entity_id: branching_bolt
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: manifested_strike_dice
-            resolution: always
-            count: 1
-        - tier: 1
-          damage:
-            kind: manifested_strike_dice
-            resolution: always
-            count: 1
-        - tier: 2
-          damage:
-            kind: manifested_strike_dice
-            resolution: always
-            count: 1
-    - entity_id: electron_burst
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 2
-            sides: 8
-          secondary_damage:
-            kind: dice
-            resolution: half_on_success
-            count: 1
-            sides: 8
-          save: charisma
-        - tier: 1
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 3
-            sides: 8
-          secondary_damage:
-            kind: dice
-            resolution: half_on_success
-            count: 2
-            sides: 8
-          save: charisma
-        - tier: 2
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 4
-            sides: 8
-          secondary_damage:
-            kind: dice
-            resolution: half_on_success
-            count: 3
-            sides: 8
-          save: charisma
-    - entity_id: advanced_mind_shred
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: dice
-            resolution: always
-            count: 2
-            sides: 8
-        - tier: 1
-          damage:
-            kind: dice
-            resolution: always
-            count: 3
-            sides: 8
-        - tier: 2
-          damage:
-            kind: dice
-            resolution: always
-            count: 4
-            sides: 8
-    - entity_id: advanced_mind_lock
-      delivery: on_hit_rider
-      tiers:
-        - tier: 0
-          damage:
-            kind: none
-            resolution: always
-          save: intelligence
-        - tier: 1
-          damage:
-            kind: none
-            resolution: always
-          save: intelligence
-        - tier: 2
-          damage:
-            kind: none
-            resolution: always
-          save: intelligence
-    - entity_id: arctic_tempest
-      delivery: standalone
-      tiers:
-        - tier: 0
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 8
-            sides: 10
-          save: constitution
-        - tier: 1
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 9
-            sides: 10
-          save: constitution
-        - tier: 2
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 10
-            sides: 10
-          save: constitution
-    - entity_id: absolute_zero
-      delivery: standalone
-      tiers:
-        - tier: 0
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 10
-            sides: 10
-          save: constitution
-        - tier: 1
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 12
-            sides: 10
-          save: constitution
-        - tier: 2
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 14
-            sides: 10
-          save: constitution
-    - entity_id: telekinetic_slam
-      delivery: standalone
-      tiers:
-        - tier: 0
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 8
-            sides: 10
-          save: strength
-        - tier: 1
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 10
-            sides: 10
-          save: strength
-        - tier: 2
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 12
-            sides: 10
-          save: strength
-    - entity_id: mass_levitation
-      delivery: standalone
-      tiers:
-        - tier: 0
-          damage:
-            kind: none
-            resolution: always
-          save: strength
-        - tier: 1
-          damage:
-            kind: none
-            resolution: always
-          save: strength
-        - tier: 2
-          damage:
-            kind: psionic_ability_modifier
-            resolution: failed_save
-            multiplier: 2
-          save: strength
-    - entity_id: forked_lightning
-      delivery: standalone
-      tiers:
-        - tier: 0
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 8
-            sides: 8
-          secondary_damage:
-            kind: dice
-            resolution: half_on_success
-            count: 4
-            sides: 8
-          save: charisma
-        - tier: 1
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 10
-            sides: 8
-          secondary_damage:
-            kind: dice
-            resolution: half_on_success
-            count: 5
-            sides: 8
-          save: charisma
-        - tier: 2
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 12
-            sides: 8
-          secondary_damage:
-            kind: dice
-            resolution: half_on_success
-            count: 6
-            sides: 8
-          save: charisma
-    - entity_id: ball_lightning
-      delivery: standalone
-      tiers:
-        - tier: 0
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 4
-            sides: 8
-          save: charisma
-        - tier: 1
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 4
-            sides: 8
-          save: charisma
-        - tier: 2
-          damage:
-            kind: dice
-            resolution: half_on_success
-            count: 4
-            sides: 8
-          save: charisma
-    - entity_id: frozen_ground
-      delivery: standalone
-      tiers:
-        - {tier: 0, damage: {kind: none, resolution: always}, save: constitution}
-        - {tier: 1, damage: {kind: none, resolution: always}, save: constitution}
-        - {tier: 2, damage: {kind: none, resolution: always}, save: constitution}
-    - entity_id: vectored_thrust
-      delivery: standalone
-      metrics:
-        - kind: fixed_plus_proficiency_bonus_multiplier
-          label: fly_speed
-          unit: feet
-          values:
-            - {tier: 0, fixed: 30, multiplier: 0}
-            - {tier: 1, fixed: 30, multiplier: 5}
-            - {tier: 2, fixed: 30, multiplier: 5}
-      tiers:
-        - {tier: 0, damage: {kind: none, resolution: always}}
-        - {tier: 1, damage: {kind: none, resolution: always}}
-        - {tier: 2, damage: {kind: none, resolution: always}}
-    - entity_id: common_empathic_sense
-      delivery: passive
-      metrics:
-        - {kind: floor_proficiency_bonus_divisor, label: uses_per_rest, divisor: 2}
-        - {kind: psionic_ability_modifier_multiplier, label: passive_insight_bonus, multiplier: 1}
-      tiers:
-        - {tier: 0, damage: {kind: none, resolution: always}}
-        - {tier: 1, damage: {kind: none, resolution: always}}
-        - {tier: 2, damage: {kind: none, resolution: always}}
-    - entity_id: common_vanguard_training
-      delivery: passive
-      metrics:
-        - {kind: psionic_ability_modifier_multiplier, label: chosen_skill_bonus, multiplier: 1}
-    - entity_id: advanced_deflection_screen
-      delivery: standalone
-      metrics:
-        - kind: dice_plus_psionic_ability_modifier
-          label: damage_reduction
-          values:
-            - {tier: 0, count: 3, sides: 8, multiplier: 1}
-            - {tier: 1, count: 5, sides: 8, multiplier: 1}
-            - {tier: 2, count: 7, sides: 8, multiplier: 1}
-      tiers:
-        - {tier: 0, damage: {kind: none, resolution: always}}
-        - {tier: 1, damage: {kind: none, resolution: always}}
-        - {tier: 2, damage: {kind: none, resolution: always}, save: strength}
-    - entity_id: advanced_phase_step
-      delivery: standalone
-      tiers:
-        - {tier: 0, damage: {kind: none, resolution: always}}
-        - {tier: 1, damage: {kind: none, resolution: always}}
-        - {tier: 2, damage: {kind: none, resolution: always}, save: discipline_signature}
-    - entity_id: advanced_beguile
-      delivery: standalone
-      tiers:
-        - {tier: 0, damage: {kind: none, resolution: always}, save: charisma}
-        - {tier: 1, damage: {kind: none, resolution: always}, save: charisma}
-        - {tier: 2, damage: {kind: none, resolution: always}, save: charisma}
-    - entity_id: advanced_gravitic_press
-      delivery: standalone
-      tiers:
-        - {tier: 0, damage: {kind: none, resolution: always}, save: strength}
-        - {tier: 1, damage: {kind: none, resolution: always}, save: strength}
-        - {tier: 2, damage: {kind: none, resolution: always}, save: strength}
-    - entity_id: advanced_improved_phase_step
-      delivery: standalone
-      tiers:
-        - {tier: 0, damage: {kind: dice, resolution: half_on_success, count: 2, sides: 10}, save: discipline_signature}
-        - {tier: 1, damage: {kind: dice, resolution: half_on_success, count: 3, sides: 10}, save: discipline_signature}
-        - {tier: 2, damage: {kind: dice, resolution: half_on_success, count: 4, sides: 10}, save: discipline_signature}
-    - entity_id: advanced_inner_reserve
-      delivery: passive
-      metrics:
-        - {kind: psi_points_plus_fixed, label: maximum_psi_points, value: 4}
+    - {entity_id: glacial_spike, derived_from: entity_mechanics}
+    - {entity_id: snow_chains, derived_from: entity_mechanics}
+    - {entity_id: ember_bolt, derived_from: entity_mechanics}
+    - {entity_id: thermal_fracture, derived_from: entity_mechanics}
+    - {entity_id: cinder_lance, derived_from: entity_mechanics}
+    - {entity_id: flare, derived_from: entity_mechanics}
+    - {entity_id: furnace_strike, derived_from: entity_mechanics}
+    - {entity_id: telekinetic_shove, derived_from: entity_mechanics}
+    - {entity_id: explosion_implosion, derived_from: entity_mechanics}
+    - {entity_id: static_discharge, derived_from: entity_mechanics}
+    - {entity_id: branching_bolt, derived_from: entity_mechanics}
+    - {entity_id: electron_burst, derived_from: entity_mechanics}
+    - {entity_id: advanced_mind_shred, derived_from: entity_mechanics}
+    - {entity_id: advanced_mind_lock, derived_from: entity_mechanics}
+    - {entity_id: arctic_tempest, derived_from: entity_mechanics}
+    - {entity_id: absolute_zero, derived_from: entity_mechanics}
+    - {entity_id: telekinetic_slam, derived_from: entity_mechanics}
+    - {entity_id: mass_levitation, derived_from: entity_mechanics}
+    - {entity_id: forked_lightning, derived_from: entity_mechanics}
+    - {entity_id: ball_lightning, derived_from: entity_mechanics}
+    - {entity_id: frozen_ground, derived_from: entity_mechanics}
+    - {entity_id: vectored_thrust, derived_from: entity_mechanics}
+    - {entity_id: common_empathic_sense, derived_from: entity_mechanics}
+    - {entity_id: common_vanguard_training, derived_from: entity_mechanics}
+    - {entity_id: advanced_deflection_screen, derived_from: entity_mechanics}
+    - {entity_id: advanced_phase_step, derived_from: entity_mechanics}
+    - {entity_id: advanced_beguile, derived_from: entity_mechanics}
+    - {entity_id: advanced_gravitic_press, derived_from: entity_mechanics}
+    - {entity_id: advanced_improved_phase_step, derived_from: entity_mechanics}
+    - {entity_id: advanced_inner_reserve, derived_from: entity_mechanics}
   utility_cards:
     - id: manifested_strike
       source_entity_id: common_manifested_strike
@@ -2964,6 +2226,46 @@ entities:
     id: common_empathic_sense
     kind: feature
     level: 7
+    mechanics:
+      surfaces:
+        - id: passive
+          delivery:
+            kind: passive
+          steps:
+            - kind: skill_modifier
+              metric: passive_insight_bonus
+              value:
+                kind: psionic_ability_modifier
+                multiplier: 1
+              duration: continuous
+        - id: active_scan
+          delivery:
+            kind: standalone
+            activation: bonus_action
+          limits:
+            uses:
+              kind: floor_proficiency_bonus_divisor
+              divisor: 2
+            recovery: short_or_long_rest
+          tiers:
+            - tier: 0
+              targeting:
+                kind: eligible_creatures_in_range
+                range_feet: 15
+              steps:
+                - kind: sense_snapshot
+            - tier: 1
+              targeting:
+                kind: eligible_creatures_in_range
+                range_feet: 30
+              steps:
+                - kind: sense_snapshot
+            - tier: 2
+              targeting:
+                kind: eligible_creatures_in_range
+                range_feet: 60
+              steps:
+                - kind: sense_snapshot
     presentation_metadata:
       canonical_topic_by_area: {}
       presentation_owner: calculator_deck
@@ -2984,6 +2286,17 @@ entities:
     id: common_vanguard_training
     kind: feature
     level: 7
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: passive
+          steps:
+            - kind: metric
+              metric: chosen_skill_bonus
+              value:
+                kind: psionic_ability_modifier
+                multiplier: 1
     presentation_metadata:
       canonical_topic_by_area: {}
       presentation_owner: calculator_deck
@@ -3085,6 +2398,71 @@ entities:
     id: glacial_spike
     kind: feature
     level: 3
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          interactions:
+            kinetic_mastery: replace
+          tiers:
+            - tier: 0
+              targeting:
+                kind: struck_target
+              steps:
+                - id: rider_damage
+                  kind: damage
+                  damage_type: discipline
+                  value:
+                    kind: fixed
+                    value: 2
+                - id: speed_effect
+                  kind: speed_modifier
+                  feet: -10
+                  duration: until_end_next_turn
+            - tier: 1
+              targeting:
+                kind: struck_target
+              steps:
+                - id: rider_damage
+                  kind: damage
+                  damage_type: discipline
+                  value:
+                    kind: fixed
+                    value: 2
+                - id: speed_effect
+                  kind: speed_modifier
+                  feet: -10
+                  duration: until_end_next_turn
+                - kind: saving_throw
+                  ability: constitution
+                  failure:
+                    - kind: speed_zero
+                      duration: until_end_next_turn
+                      replaces: speed_effect
+            - tier: 2
+              targeting:
+                kind: struck_target
+              steps:
+                - id: rider_damage
+                  kind: damage
+                  damage_type: discipline
+                  value:
+                    kind: fixed
+                    value: 2
+                - id: speed_effect
+                  kind: speed_modifier
+                  feet: -10
+                  duration: until_end_next_turn
+                - kind: saving_throw
+                  ability: constitution
+                  failure:
+                    - kind: condition
+                      condition: restrained
+                      duration: until_end_next_turn
+                      replaces: speed_effect
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: cryokinesis
@@ -3113,6 +2491,63 @@ entities:
     id: snow_chains
     kind: feature
     level: 7
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          damage_type: discipline
+          tiers:
+            - tier: 0
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: speed_zero
+                  package_id: control_0
+                  duration: until_end_next_turn
+                - kind: saving_throw
+                  ability: constitution
+                  failure:
+                    - kind: condition
+                      condition: restrained
+                      package_id: control_1
+                      duration: until_end_next_turn
+            - tier: 1
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: speed_zero
+                  package_id: control_0
+                  duration: until_end_next_turn
+                - kind: saving_throw
+                  ability: constitution
+                  failure:
+                    - kind: condition
+                      condition: restrained
+                      package_id: control_1
+                      duration: until_end_next_turn
+                    - kind: reaction_denial
+                      package_id: control_2
+                      duration: until_start_next_turn
+            - tier: 2
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: speed_zero
+                  package_id: control_0
+                  duration: until_end_next_turn
+                - kind: saving_throw
+                  ability: constitution
+                  failure:
+                    - kind: condition
+                      condition: stunned
+                      package_id: control_1
+                      duration: until_end_next_turn
+                    - kind: reaction_denial
+                      package_id: control_2
+                      duration: until_start_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: cryokinesis
@@ -3186,6 +2621,83 @@ entities:
     id: frozen_ground
     kind: feature
     level: 10
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: action
+          tiers:
+            - tier: 0
+              targeting:
+                kind: area
+                shape: cylinder
+                origin: point_within_range
+                radius_feet: 15
+                height_feet: 20
+                placement_range_feet: 60
+                persistent: true
+              steps:
+                - kind: difficult_terrain
+                  duration: one_minute_concentration
+              events:
+                - triggers:
+                    - enters_area_first_time_on_turn
+                    - starts_turn_in_area
+                  steps:
+                    - kind: saving_throw
+                      ability: constitution
+                      independent_per_target: true
+                      failure:
+                        - kind: speed_zero
+                          duration: until_end_current_turn
+            - tier: 1
+              targeting:
+                kind: area
+                shape: cylinder
+                origin: point_within_range
+                radius_feet: 25
+                height_feet: 20
+                placement_range_feet: 60
+                persistent: true
+              steps:
+                - kind: difficult_terrain
+                  duration: one_minute_concentration
+              events:
+                - triggers:
+                    - enters_area_first_time_on_turn
+                    - starts_turn_in_area
+                  steps:
+                    - kind: saving_throw
+                      ability: constitution
+                      independent_per_target: true
+                      failure:
+                        - kind: speed_zero
+                          duration: until_end_current_turn
+            - tier: 2
+              targeting:
+                kind: area
+                shape: cylinder
+                origin: point_within_range
+                radius_feet: 25
+                height_feet: 20
+                placement_range_feet: 60
+                persistent: true
+              steps:
+                - kind: difficult_terrain
+                  duration: one_minute_concentration
+              events:
+                - triggers:
+                    - enters_area_first_time_on_turn
+                    - starts_turn_in_area
+                  steps:
+                    - kind: saving_throw
+                      ability: constitution
+                      independent_per_target: true
+                      failure:
+                        - kind: condition
+                          condition: restrained
+                          duration: until_end_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: cryokinesis
@@ -3216,6 +2728,80 @@ entities:
     id: arctic_tempest
     kind: feature
     level: 15
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: action
+          damage_type: discipline
+          tiers:
+            - tier: 0
+              targeting:
+                kind: selected_targets
+                range_feet: 60
+                count:
+                  kind: fixed
+                  value: 3
+              steps:
+                - kind: saving_throw
+                  ability: constitution
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: discipline
+                      value:
+                        kind: dice
+                        count: 8
+                        sides: 10
+                    - kind: condition
+                      condition: restrained
+                      package_id: control_0
+                      duration: until_end_next_turn
+            - tier: 1
+              targeting:
+                kind: selected_targets
+                range_feet: 60
+                count:
+                  kind: fixed
+                  value: 3
+              steps:
+                - kind: saving_throw
+                  ability: constitution
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: discipline
+                      value:
+                        kind: dice
+                        count: 9
+                        sides: 10
+                    - kind: condition
+                      condition: restrained
+                      package_id: control_0
+                      duration: until_end_next_turn
+            - tier: 2
+              targeting:
+                kind: selected_targets
+                range_feet: 60
+                count:
+                  kind: fixed
+                  value: 3
+              steps:
+                - kind: saving_throw
+                  ability: constitution
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: discipline
+                      value:
+                        kind: dice
+                        count: 10
+                        sides: 10
+                    - kind: condition
+                      condition: stunned
+                      package_id: control_0
+                      duration: until_end_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: cryokinesis
@@ -3244,6 +2830,73 @@ entities:
     id: absolute_zero
     kind: feature
     level: 20
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: action
+          damage_type: discipline
+          tiers:
+            - tier: 0
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: constitution
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: discipline
+                      value:
+                        kind: dice
+                        count: 10
+                        sides: 10
+                    - kind: speed_zero
+                      package_id: control_0
+                      duration: until_end_next_turn
+            - tier: 1
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: constitution
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: discipline
+                      value:
+                        kind: dice
+                        count: 12
+                        sides: 10
+                    - kind: speed_zero
+                      package_id: control_0
+                      duration: until_end_next_turn
+                    - kind: condition
+                      condition: restrained
+                      package_id: control_1
+                      duration: until_end_next_turn
+            - tier: 2
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: speed_zero
+                  package_id: control_0
+                  duration: until_end_next_turn
+                - kind: saving_throw
+                  ability: constitution
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: discipline
+                      value:
+                        kind: dice
+                        count: 14
+                        sides: 10
+                    - kind: condition
+                      condition: stunned
+                      package_id: control_1
+                      duration: until_end_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: cryokinesis
@@ -3272,6 +2925,41 @@ entities:
     id: ember_bolt
     kind: feature
     level: 3
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          tiers:
+            - tier: 0
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: discipline
+                  value:
+                    kind: fixed
+                    value: 2
+            - tier: 1
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: discipline
+                  value:
+                    kind: fixed
+                    value: 4
+            - tier: 2
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: discipline
+                  value:
+                    kind: fixed
+                    value: 6
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: pyrokinesis
@@ -3300,6 +2988,33 @@ entities:
     id: thermal_fracture
     kind: feature
     level: 7
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          damage_type: discipline
+          tiers:
+            - tier: 0
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: armor_class_modifier
+                  value: -1
+            - tier: 1
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: armor_class_modifier
+                  value: -2
+            - tier: 2
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: armor_class_modifier
+                  value: -3
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: pyrokinesis
@@ -3328,6 +3043,43 @@ entities:
     id: cinder_lance
     kind: feature
     level: 10
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          damage_type: fire
+          tiers:
+            - tier: 0
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: fire
+                  value:
+                    kind: manifested_strike_dice
+                    count: 2
+            - tier: 1
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: fire
+                  value:
+                    kind: manifested_strike_dice
+                    count: 3
+            - tier: 2
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: fire
+                  value:
+                    kind: manifested_strike_dice
+                    count: 4
+                  ignores_resistance: true
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: pyrokinesis
@@ -3356,6 +3108,67 @@ entities:
     id: flare
     kind: feature
     level: 15
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          damage_type: fire
+          tiers:
+            - tier: 0
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: fire
+                  value:
+                    kind: dice
+                    count: 3
+                    sides: 10
+                - kind: saving_throw
+                  ability: dexterity
+                  failure:
+                    - kind: condition
+                      condition: blinded
+                      package_id: control_0
+                      duration: until_end_next_turn
+            - tier: 1
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: fire
+                  value:
+                    kind: dice
+                    count: 4
+                    sides: 10
+                - kind: saving_throw
+                  ability: dexterity
+                  failure:
+                    - kind: condition
+                      condition: blinded
+                      package_id: control_0
+                      duration: until_end_next_turn
+            - tier: 2
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: fire
+                  value:
+                    kind: dice
+                    count: 5
+                    sides: 10
+                  ignores_resistance: true
+                - kind: saving_throw
+                  ability: dexterity
+                  failure:
+                    - kind: condition
+                      condition: blinded
+                      package_id: control_0
+                      duration: until_end_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: pyrokinesis
@@ -3384,6 +3197,46 @@ entities:
     id: furnace_strike
     kind: feature
     level: 20
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          damage_type: fire
+          tiers:
+            - tier: 0
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: fire
+                  value:
+                    kind: dice
+                    count: 5
+                    sides: 10
+            - tier: 1
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: fire
+                  value:
+                    kind: dice
+                    count: 7
+                    sides: 10
+            - tier: 2
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: fire
+                  value:
+                    kind: dice
+                    count: 9
+                    sides: 10
+                  ignores_resistance: true
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: pyrokinesis
@@ -3457,6 +3310,68 @@ entities:
     id: telekinetic_shove
     kind: feature
     level: 3
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          damage_type: discipline
+          interactions:
+            kinetic_mastery: replace
+          tiers:
+            - tier: 0
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: discipline
+                  value:
+                    kind: fixed
+                    value: 2
+                - kind: saving_throw
+                  ability: strength
+                  failure:
+                    - kind: forced_movement
+                      feet: 10
+                      package_id: control_0
+                      duration: instantaneous
+            - tier: 1
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: discipline
+                  value:
+                    kind: fixed
+                    value: 2
+                - kind: saving_throw
+                  ability: strength
+                  failure:
+                    - kind: forced_movement
+                      feet: 15
+                      package_id: control_0
+                      duration: instantaneous
+            - tier: 2
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: discipline
+                  value:
+                    kind: fixed
+                    value: 2
+                - kind: saving_throw
+                  ability: strength
+                  failure:
+                    - kind: forced_movement
+                      feet: 20
+                      package_id: control_0
+                      duration: instantaneous
+                    - kind: speed_zero
+                      package_id: control_1
+                      duration: until_end_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: psychokinesis
@@ -3485,6 +3400,47 @@ entities:
     id: vectored_thrust
     kind: feature
     level: 7
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: bonus_action
+          damage_type: discipline
+          tiers:
+            - tier: 0
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: metric
+                  metric: fly_speed
+                  unit: feet
+                  value:
+                    kind: fixed_plus_proficiency_bonus_multiplier
+                    fixed: 30
+                    multiplier: 0
+            - tier: 1
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: metric
+                  metric: fly_speed
+                  unit: feet
+                  value:
+                    kind: fixed_plus_proficiency_bonus_multiplier
+                    fixed: 30
+                    multiplier: 5
+            - tier: 2
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: metric
+                  metric: fly_speed
+                  unit: feet
+                  value:
+                    kind: fixed_plus_proficiency_bonus_multiplier
+                    fixed: 30
+                    multiplier: 5
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: psychokinesis
@@ -3566,6 +3522,95 @@ entities:
     id: explosion_implosion
     kind: feature
     level: 10
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          modes:
+            - id: explosion
+            - id: implosion
+          tiers:
+            - tier: 0
+              targeting:
+                kind: area
+                shape: sphere
+                origin: struck_target
+                radius_feet: 15
+              steps:
+                - kind: saving_throw
+                  ability: strength
+                  independent_per_target: true
+                  failure:
+                    - kind: condition
+                      target: all
+                      condition: restrained
+                      duration: until_end_next_turn
+                    - kind: forced_movement
+                      target: secondary
+                      feet: 15
+                      duration: instantaneous
+                      directions:
+                        - mode: explosion
+                          direction: away_from_origin
+                        - mode: implosion
+                          direction: toward_origin
+            - tier: 1
+              targeting:
+                kind: area
+                shape: sphere
+                origin: struck_target
+                radius_feet: 30
+              steps:
+                - kind: saving_throw
+                  ability: strength
+                  independent_per_target: true
+                  failure:
+                    - kind: condition
+                      target: all
+                      condition: restrained
+                      duration: until_end_next_turn
+                    - kind: forced_movement
+                      target: secondary
+                      feet: 30
+                      duration: instantaneous
+                      directions:
+                        - mode: explosion
+                          direction: away_from_origin
+                        - mode: implosion
+                          direction: toward_origin
+            - tier: 2
+              targeting:
+                kind: area
+                shape: sphere
+                origin: struck_target
+                radius_feet: 30
+              steps:
+                - kind: saving_throw
+                  ability: strength
+                  independent_per_target: true
+                  failure:
+                    - kind: condition
+                      target: all
+                      condition: restrained
+                      duration: until_end_next_turn
+                    - kind: forced_movement
+                      target: secondary
+                      feet: 30
+                      duration: instantaneous
+                      directions:
+                        - mode: explosion
+                          direction: away_from_origin
+                        - mode: implosion
+                          direction: toward_origin
+                    - kind: damage
+                      target: all
+                      damage_type: force
+                      value:
+                        kind: psionic_ability_modifier
+                        multiplier: 1
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: psychokinesis
@@ -3635,6 +3680,72 @@ entities:
     id: telekinetic_slam
     kind: feature
     level: 15
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: action
+          damage_type: force
+          tiers:
+            - tier: 0
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: strength
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: force
+                      value:
+                        kind: dice
+                        count: 8
+                        sides: 10
+                    - kind: forced_movement
+                      feet: 10
+                      package_id: control_0
+                      duration: instantaneous
+            - tier: 1
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: strength
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: force
+                      value:
+                        kind: dice
+                        count: 10
+                        sides: 10
+                    - kind: forced_movement
+                      feet: 20
+                      package_id: control_0
+                      duration: instantaneous
+            - tier: 2
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: forced_movement
+                  feet: 30
+                  success_feet: 10
+                  package_id: control_0
+                  duration: instantaneous
+                - kind: saving_throw
+                  ability: strength
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: force
+                      value:
+                        kind: dice
+                        count: 12
+                        sides: 10
+                    - kind: speed_zero
+                      package_id: control_1
+                      duration: until_end_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: psychokinesis
@@ -3700,6 +3811,74 @@ entities:
     id: mass_levitation
     kind: feature
     level: 20
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: action
+          damage_type: force
+          recurrence: start_of_affected_turn_after_repeat_save
+          tiers:
+            - tier: 0
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: strength
+                  maximum_size: large
+                  repeat:
+                    trigger: start_of_affected_turn
+                  failure:
+                    - kind: condition
+                      condition: restrained
+                      package_id: control_0
+                      duration: one_minute_concentration
+            - tier: 1
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: strength
+                  maximum_size: large
+                  repeat:
+                    trigger: start_of_affected_turn
+                    disadvantage: true
+                  failure:
+                    - kind: condition
+                      condition: restrained
+                      package_id: control_0
+                      duration: one_minute_concentration
+                    - kind: forced_movement
+                      feet: 15
+                      requires_condition: restrained
+                      package_id: control_1
+                      duration: one_minute_concentration
+            - tier: 2
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: strength
+                  maximum_size: large
+                  repeat:
+                    trigger: start_of_affected_turn
+                    disadvantage: true
+                  failure:
+                    - kind: damage
+                      damage_type: force
+                      value:
+                        kind: psionic_ability_modifier
+                        multiplier: 2
+                    - kind: condition
+                      condition: restrained
+                      package_id: control_0
+                      duration: one_minute_concentration
+                    - kind: forced_movement
+                      feet: 15
+                      requires_condition: restrained
+                      package_id: control_1
+                      duration: one_minute_concentration
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: psychokinesis
@@ -3771,6 +3950,64 @@ entities:
     id: static_discharge
     kind: feature
     level: 3
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          tiers:
+            - tier: 0
+              targeting:
+                kind: struck_plus_additional
+                within_feet: 5
+                additional_count:
+                  kind: fixed
+                  value: 1
+              steps:
+                - kind: damage
+                  target: all
+                  damage_type: discipline
+                  value:
+                    kind: fixed
+                    value: 2
+            - tier: 1
+              targeting:
+                kind: struck_plus_additional
+                within_feet: 5
+                additional_count:
+                  kind: proficiency_bonus
+                  multiplier: 1
+              steps:
+                - kind: damage
+                  target: all
+                  damage_type: discipline
+                  value:
+                    kind: fixed
+                    value: 2
+            - tier: 2
+              targeting:
+                kind: struck_plus_additional
+                within_feet: 5
+                additional_count:
+                  kind: proficiency_bonus
+                  multiplier: 1
+              steps:
+                - kind: damage
+                  target: all
+                  damage_type: discipline
+                  value:
+                    kind: fixed
+                    value: 2
+                - kind: saving_throw
+                  ability: charisma
+                  independent_per_target: true
+                  resolve_even_if_damage_prevented: true
+                  failure:
+                    - kind: reaction_denial
+                      target: all
+                      duration: until_start_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: electrokinesis
@@ -3803,6 +4040,54 @@ entities:
     id: branching_bolt
     kind: feature
     level: 7
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          damage_type: lightning
+          tiers:
+            - tier: 0
+              targeting:
+                kind: struck_plus_additional
+                within_feet: 30
+                additional_count:
+                  kind: fixed
+                  value: 1
+              steps:
+                - kind: damage
+                  damage_type: lightning
+                  value:
+                    kind: manifested_strike_dice
+                    count: 1
+            - tier: 1
+              targeting:
+                kind: struck_plus_additional
+                within_feet: 30
+                additional_count:
+                  kind: fixed
+                  value: 2
+              steps:
+                - kind: damage
+                  damage_type: lightning
+                  value:
+                    kind: manifested_strike_dice
+                    count: 1
+            - tier: 2
+              targeting:
+                kind: struck_plus_additional
+                within_feet: 30
+                additional_count:
+                  kind: fixed
+                  value: 3
+              steps:
+                - kind: damage
+                  damage_type: lightning
+                  value:
+                    kind: manifested_strike_dice
+                    count: 1
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: electrokinesis
@@ -3831,6 +4116,95 @@ entities:
     id: electron_burst
     kind: feature
     level: 10
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          damage_type: lightning
+          tiers:
+            - tier: 0
+              targeting:
+                kind: area
+                shape: sphere
+                origin: struck_target
+                radius_feet: 10
+              steps:
+                - kind: saving_throw
+                  ability: charisma
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      target: secondary
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 1
+                        sides: 8
+                    - kind: damage
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 2
+                        sides: 8
+            - tier: 1
+              targeting:
+                kind: area
+                shape: sphere
+                origin: struck_target
+                radius_feet: 10
+              steps:
+                - kind: saving_throw
+                  ability: charisma
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      target: secondary
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 2
+                        sides: 8
+                    - kind: damage
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 3
+                        sides: 8
+            - tier: 2
+              targeting:
+                kind: area
+                shape: sphere
+                origin: struck_target
+                radius_feet: 10
+              steps:
+                - kind: saving_throw
+                  ability: charisma
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      target: secondary
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 3
+                        sides: 8
+                    - kind: damage
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 4
+                        sides: 8
+                    - kind: reaction_denial
+                      package_id: control_0
+                      duration: until_start_next_turn
+                    - kind: attack_modifier
+                      modifier: disadvantage
+                      scope: all_attacks
+                      package_id: control_0
+                      duration: until_start_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: electrokinesis
@@ -3950,6 +4324,103 @@ entities:
     id: forked_lightning
     kind: feature
     level: 15
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: action
+          damage_type: lightning
+          tiers:
+            - tier: 0
+              targeting:
+                kind: primary_plus_additional
+                within_feet: 30
+                additional_count:
+                  kind: fixed
+                  value: 3
+              steps:
+                - kind: saving_throw
+                  ability: charisma
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      target: secondary
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 4
+                        sides: 8
+                    - kind: damage
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 8
+                        sides: 8
+            - tier: 1
+              targeting:
+                kind: primary_plus_additional
+                within_feet: 30
+                additional_count:
+                  kind: fixed
+                  value: 4
+              steps:
+                - kind: saving_throw
+                  ability: charisma
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      target: secondary
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 5
+                        sides: 8
+                    - kind: damage
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 10
+                        sides: 8
+            - tier: 2
+              targeting:
+                kind: primary_plus_additional
+                within_feet: 30
+                additional_count:
+                  kind: fixed
+                  value: 5
+              steps:
+                - kind: saving_throw
+                  ability: charisma
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      target: secondary
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 6
+                        sides: 8
+                    - kind: damage
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 12
+                        sides: 8
+                    - kind: reaction_denial
+                      package_id: control_0
+                      target: all
+                      duration: until_start_next_turn
+                    - kind: attack_modifier
+                      modifier: disadvantage
+                      scope: all_attacks
+                      package_id: control_0
+                      target: all
+                      duration: until_start_next_turn
+                    - kind: speed_zero
+                      package_id: control_1
+                      target: primary
+                      duration: until_start_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: electrokinesis
@@ -4034,6 +4505,80 @@ entities:
     id: ball_lightning
     kind: feature
     level: 20
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: action
+          damage_type: lightning
+          recurrence: remaining_round_starts
+          tiers:
+            - tier: 0
+              targeting:
+                kind: area
+                shape: sphere
+                origin: point_within_range
+                radius_feet: 15
+                placement_range_feet: 60
+                persistent: true
+              steps:
+                - kind: saving_throw
+                  ability: charisma
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 4
+                        sides: 8
+            - tier: 1
+              targeting:
+                kind: area
+                shape: sphere
+                origin: point_within_range
+                radius_feet: 30
+                placement_range_feet: 60
+                persistent: true
+              steps:
+                - kind: saving_throw
+                  ability: charisma
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 4
+                        sides: 8
+            - tier: 2
+              targeting:
+                kind: area
+                shape: sphere
+                origin: point_within_range
+                radius_feet: 30
+                placement_range_feet: 60
+                persistent: true
+              steps:
+                - kind: saving_throw
+                  ability: charisma
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: lightning
+                      value:
+                        kind: dice
+                        count: 4
+                        sides: 8
+                    - kind: reaction_denial
+                      package_id: control_0
+                      duration: while_in_area
+                    - kind: attack_modifier
+                      modifier: disadvantage
+                      scope: all_attacks
+                      package_id: control_0
+                      duration: while_in_area
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: electrokinesis
@@ -4110,6 +4655,59 @@ entities:
     id: advanced_deflection_screen
     kind: feature
     level: 5
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: reaction
+          damage_type: force
+          tiers:
+            - tier: 0
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: metric
+                  metric: damage_reduction
+                  value:
+                    kind: dice_plus_psionic_ability_modifier
+                    count: 3
+                    sides: 8
+                    multiplier: 1
+            - tier: 1
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: metric
+                  metric: damage_reduction
+                  value:
+                    kind: dice_plus_psionic_ability_modifier
+                    count: 5
+                    sides: 8
+                    multiplier: 1
+            - tier: 2
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: forced_movement
+                  feet: 15
+                  success_feet: 5
+                  package_id: control_0
+                  duration: instantaneous
+                - kind: metric
+                  metric: damage_reduction
+                  value:
+                    kind: dice_plus_psionic_ability_modifier
+                    count: 7
+                    sides: 8
+                    multiplier: 1
+                - kind: saving_throw
+                  ability: strength
+                  failure:
+                    - kind: condition
+                      condition: prone
+                      package_id: control_1
+                      duration: instantaneous
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: advanced_training
@@ -4139,6 +4737,30 @@ entities:
     id: advanced_phase_step
     kind: feature
     level: 10
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: bonus_action
+          damage_type: discipline
+          tiers:
+            - tier: 0
+              targeting:
+                kind: authored_procedure
+            - tier: 1
+              targeting:
+                kind: authored_procedure
+            - tier: 2
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: discipline_signature
+                  failure:
+                    - kind: reaction_denial
+                      package_id: control_0
+                      duration: until_start_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: advanced_training
@@ -4168,6 +4790,46 @@ entities:
     id: advanced_mind_shred
     kind: feature
     level: 15
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          damage_type: psychic
+          tiers:
+            - tier: 0
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: psychic
+                  value:
+                    kind: dice
+                    count: 2
+                    sides: 8
+            - tier: 1
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: psychic
+                  value:
+                    kind: dice
+                    count: 3
+                    sides: 8
+            - tier: 2
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: damage
+                  damage_type: psychic
+                  value:
+                    kind: dice
+                    count: 4
+                    sides: 8
+                  ignores_resistance: true
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: advanced_training
@@ -4279,6 +4941,50 @@ entities:
     id: advanced_beguile
     kind: feature
     level: 15
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: action
+          damage_type: psychic
+          tiers:
+            - tier: 0
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: charisma
+                  required_creature_type: humanoid
+                  failure:
+                    - kind: condition
+                      condition: charmed
+                      package_id: control_0
+                      duration: one_hour
+            - tier: 1
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: charisma
+                  required_creature_type: humanoid
+                  failure:
+                    - kind: condition
+                      condition: charmed
+                      package_id: control_0
+                      duration: one_hour
+            - tier: 2
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: charisma
+                  required_creature_type: humanoid
+                  failure:
+                    - kind: condition
+                      condition: charmed
+                      package_id: control_0
+                      duration: one_hour
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: advanced_training
@@ -4310,6 +5016,56 @@ entities:
     id: advanced_mind_lock
     kind: feature
     level: 15
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: rider
+            declaration: before_attack_roll
+            resolution: manifested_strike_hit
+          damage_type: psychic
+          tiers:
+            - tier: 0
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: saving_throw
+                  ability: intelligence
+                  failure:
+                    - kind: condition
+                      condition: blinded
+                      package_id: control_0
+                      duration: until_end_next_turn
+            - tier: 1
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: saving_throw
+                  ability: intelligence
+                  failure:
+                    - kind: condition
+                      condition: blinded
+                      package_id: control_0
+                      duration: until_end_next_turn
+                    - kind: condition
+                      condition: incapacitated
+                      package_id: control_0
+                      duration: until_end_next_turn
+            - tier: 2
+              targeting:
+                kind: struck_target
+              steps:
+                - kind: saving_throw
+                  ability: intelligence
+                  failure:
+                    - kind: condition
+                      condition: blinded
+                      package_id: control_0
+                      duration: until_end_next_turn
+                    - kind: condition
+                      condition: stunned
+                      package_id: control_0
+                      duration: until_end_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: advanced_training
@@ -4380,6 +5136,71 @@ entities:
     id: advanced_gravitic_press
     kind: feature
     level: 15
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: action
+          damage_type: force
+          tiers:
+            - tier: 0
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: speed_reduction
+                  package_id: control_0
+                  application: while_in_area
+                  duration: while_in_area
+                - kind: saving_throw
+                  ability: strength
+                  failure:
+                    - kind: reaction_denial
+                      package_id: control_1
+                      duration: until_start_next_turn
+            - tier: 1
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: speed_reduction
+                  package_id: control_0
+                  application: while_in_area
+                  duration: while_in_area
+                - kind: attack_modifier
+                  modifier: disadvantage
+                  scope: all_attacks
+                  package_id: control_0
+                  application: while_in_area
+                  duration: while_in_area
+                - kind: saving_throw
+                  ability: strength
+                  failure:
+                    - kind: reaction_denial
+                      package_id: control_1
+                      duration: until_start_next_turn
+            - tier: 2
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: speed_reduction
+                  package_id: control_0
+                  application: while_in_area
+                  duration: while_in_area
+                - kind: attack_modifier
+                  modifier: disadvantage
+                  scope: all_attacks
+                  package_id: control_0
+                  application: while_in_area
+                  duration: while_in_area
+                - kind: saving_throw
+                  ability: strength
+                  failure:
+                    - kind: reaction_denial
+                      package_id: control_1
+                      duration: until_start_next_turn
+                    - kind: speed_zero
+                      package_id: control_1
+                      duration: until_start_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: advanced_training
@@ -4492,6 +5313,59 @@ entities:
     id: advanced_improved_phase_step
     kind: feature
     level: 15
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: standalone
+            activation: bonus_action
+          damage_type: force
+          tiers:
+            - tier: 0
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: discipline_signature
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: force
+                      value:
+                        kind: dice
+                        count: 2
+                        sides: 10
+            - tier: 1
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: discipline_signature
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: force
+                      value:
+                        kind: dice
+                        count: 3
+                        sides: 10
+            - tier: 2
+              targeting:
+                kind: authored_procedure
+              steps:
+                - kind: saving_throw
+                  ability: discipline_signature
+                  damage_on_success: half
+                  failure:
+                    - kind: damage
+                      damage_type: force
+                      value:
+                        kind: dice
+                        count: 4
+                        sides: 10
+                    - kind: reaction_denial
+                      package_id: control_0
+                      duration: until_start_next_turn
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: advanced_training
@@ -4533,6 +5407,17 @@ entities:
     id: advanced_inner_reserve
     kind: feature
     level: 15
+    mechanics:
+      surfaces:
+        - id: main
+          delivery:
+            kind: passive
+          steps:
+            - kind: metric
+              metric: maximum_psi_points
+              value:
+                kind: psi_points_plus_fixed
+                value: 4
     presentation_metadata:
       canonical_topic_by_area: {}
       primary_rules_area: advanced_training
@@ -4644,7 +5529,7 @@ navigation:
           title: Advanced Training Progression
   default_category_id: common_features
 rules_version: 14.3.0
-schema_version: 2.4.0
+schema_version: 2.5.0
 vocabularies:
   acquisition_modes:
     - id: granted

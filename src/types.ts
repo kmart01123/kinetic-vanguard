@@ -79,6 +79,60 @@ export interface ContentBlock {
   result?: ExamplePhaseBlock[];
 }
 
+export type MechanicsDuration="instantaneous"|"until_end_current_turn"|"until_start_next_turn"|"until_end_next_turn"|"continuous"|"while_in_area"|"one_minute_concentration"|"one_hour";
+export type MechanicsValue=
+  | {kind:"fixed";value:number}
+  | {kind:"dice";count:number;sides:number}
+  | {kind:"manifested_strike_dice";count:number}
+  | {kind:"psionic_ability_modifier";multiplier:number}
+  | {kind:"proficiency_bonus";multiplier:number}
+  | {kind:"floor_proficiency_bonus_divisor";divisor:number}
+  | {kind:"fixed_plus_proficiency_bonus_multiplier";fixed:number;multiplier:number}
+  | {kind:"dice_plus_psionic_ability_modifier";count:number;sides:number;multiplier:number}
+  | {kind:"psi_points_plus_fixed";value:number};
+export type MechanicsDelivery=
+  | {kind:"rider";declaration:"before_attack_roll";resolution:"manifested_strike_hit"}
+  | {kind:"standalone";activation:"action"|"bonus_action"|"reaction"}
+  | {kind:"passive"};
+export type MechanicsTargeting=
+  | {kind:"authored_procedure"}
+  | {kind:"self"}
+  | {kind:"struck_target"}
+  | {kind:"struck_plus_additional";within_feet:number;additional_count:Extract<MechanicsValue,{kind:"fixed"|"proficiency_bonus"}>}
+  | {kind:"primary_plus_additional";within_feet:number;additional_count:Extract<MechanicsValue,{kind:"fixed"|"proficiency_bonus"}>}
+  | {kind:"selected_targets";range_feet:number;count:Extract<MechanicsValue,{kind:"fixed"|"proficiency_bonus"}>}
+  | {kind:"area";shape:"sphere"|"cylinder";origin:"struck_target"|"point_within_range";radius_feet:number;height_feet?:number;placement_range_feet?:number;persistent?:boolean}
+  | {kind:"eligible_creatures_in_range";range_feet:number};
+export type MechanicsTargetRole="all"|"primary"|"secondary";
+export type MechanicsStep=
+  | {id?:string;kind:"damage";target?:MechanicsTargetRole;damage_type:"discipline"|"cold"|"fire"|"force"|"lightning"|"psychic";value:MechanicsValue;ignores_resistance?:boolean}
+  | {id?:string;package_id?:string;application?:"while_in_area";kind:"speed_modifier";target?:MechanicsTargetRole;feet:number;duration:MechanicsDuration}
+  | {id?:string;package_id?:string;application?:"while_in_area";kind:"speed_zero";target?:MechanicsTargetRole;duration:MechanicsDuration;replaces?:string}
+  | {id?:string;package_id?:string;application?:"while_in_area";kind:"condition";target?:MechanicsTargetRole;condition:"blinded"|"charmed"|"incapacitated"|"prone"|"restrained"|"stunned";duration:MechanicsDuration;replaces?:string}
+  | {id?:string;package_id?:string;application?:"while_in_area";kind:"reaction_denial";target?:MechanicsTargetRole;duration:MechanicsDuration}
+  | {id?:string;package_id?:string;application?:"while_in_area";kind:"forced_movement";target?:MechanicsTargetRole;feet:number;success_feet?:number;duration:MechanicsDuration;directions?:Array<{mode:string;direction:"away_from_origin"|"toward_origin"}>;requires_condition?:"blinded"|"charmed"|"incapacitated"|"prone"|"restrained"|"stunned"}
+  | {kind:"saving_throw";ability:"strength"|"constitution"|"dexterity"|"intelligence"|"charisma"|"discipline_signature";damage_on_success?:"half";independent_per_target?:boolean;resolve_even_if_damage_prevented?:boolean;maximum_size?:"tiny"|"small"|"medium"|"large"|"huge"|"gargantuan";required_creature_type?:"humanoid";repeat?:{trigger:"start_of_affected_turn";disadvantage?:boolean};failure:MechanicsStep[];success?:MechanicsStep[]}
+  | {kind:"difficult_terrain";target?:MechanicsTargetRole;duration:MechanicsDuration}
+  | {package_id?:string;application?:"while_in_area";kind:"speed_reduction";target?:MechanicsTargetRole;duration:MechanicsDuration}
+  | {package_id?:string;application?:"while_in_area";kind:"attack_modifier";target?:MechanicsTargetRole;modifier:"disadvantage";scope:"next_attack"|"all_attacks";duration:MechanicsDuration}
+  | {kind:"armor_class_modifier";value:number}
+  | {kind:"metric";metric:"fly_speed"|"damage_reduction"|"chosen_skill_bonus"|"maximum_psi_points";unit?:"feet";value:MechanicsValue}
+  | {kind:"skill_modifier";metric:"passive_insight_bonus"|"chosen_skill_bonus";value:Extract<MechanicsValue,{kind:"psionic_ability_modifier"}>;duration:"continuous"}
+  | {kind:"sense_snapshot"};
+export interface MechanicsTier {tier:0|1|2;targeting:MechanicsTargeting;steps?:MechanicsStep[];events?:Array<{triggers:Array<"enters_area_first_time_on_turn"|"starts_turn_in_area">;steps:MechanicsStep[]}>}
+export interface MechanicsSurface {
+  id:string;
+  delivery:MechanicsDelivery;
+  damage_type?:"discipline"|"cold"|"fire"|"force"|"lightning"|"psychic";
+  recurrence?:"remaining_round_starts"|"start_of_affected_turn_after_repeat_save";
+  interactions?:{kinetic_mastery:"replace"};
+  modes?:Array<{id:string}>;
+  limits?:{uses:Extract<MechanicsValue,{kind:"floor_proficiency_bonus_divisor"}>;recovery:"short_or_long_rest"};
+  steps?:MechanicsStep[];
+  tiers?:MechanicsTier[];
+}
+export interface EntityMechanics {surfaces:MechanicsSurface[]}
+
 
 export interface Entity {
   id: string;
@@ -93,6 +147,7 @@ export interface Entity {
   requires_concentration?: boolean;
   concentration_tiers?: Array<0|1|2>;
   concentration_duration?: string;
+  mechanics?: EntityMechanics;
   content: ContentBlock[];
   classifications: {
     rules_area: string[];

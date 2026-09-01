@@ -122,6 +122,10 @@
       "type":"object","additionalProperties":false,"required":["entity_id","discipline_ids","damage_type"],
       "properties":{"entity_id":{"$ref":"#/$defs/id"},"discipline_ids":{"type":"array","items":{"enum":["pyrokinesis","cryokinesis","psychokinesis","electrokinesis"]},"minItems":1,"uniqueItems":true},"damage_type":{"enum":["discipline","cold","fire","force","lightning","psychic"]},"ignore_resistance_tiers":{"type":"array","items":{"type":"integer","minimum":0,"maximum":2},"uniqueItems":true},"replaces_mastery":{"type":"boolean"},"requires_additional_target":{"type":"boolean"},"targeting_by_tier":{"type":"array","items":{"$ref":"#/$defs/harnessTargeting"}},"armor_class_reduction_by_tier":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["tier","value"],"properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"value":{"type":"integer","minimum":1}}}},"damage_repetition":{"const":"remaining_round_starts"},"damage_timing":{"const":"start_of_affected_turn_after_repeat_save"},"starts_persistent_zone":{"type":"boolean"},"control_tiers":{"type":"array","items":{"$ref":"#/$defs/harnessControlTier"},"minItems":1}}
     },
+    "mechanicsProjectionReference": {
+      "type":"object","additionalProperties":false,"required":["entity_id","derived_from"],
+      "properties":{"entity_id":{"$ref":"#/$defs/id"},"derived_from":{"const":"entity_mechanics"}}
+    },
     "harnessMechanics": {
       "type":"object","additionalProperties":false,"required":["action_economy","manifested_strike","overload","psionic_apex","disciplines","feature_rules"],
       "properties":{
@@ -130,7 +134,7 @@
         "overload":{"type":"object","additionalProperties":false,"required":["entity_id","blood_tax_per_tier","tier_two_limit_per_attack_action","mastery"],"properties":{"entity_id":{"const":"common_overload"},"blood_tax_per_tier":{"type":"object","additionalProperties":false,"required":["base","proficiency_bonus_multiplier"],"properties":{"base":{"type":"integer"},"proficiency_bonus_multiplier":{"type":"integer","minimum":1}}},"tier_two_limit_per_attack_action":{"const":1},"mastery":{"type":"object","additionalProperties":false,"required":["minimum_level","uses_per_rest","blood_tax_divisor","minimum_per_overload"],"properties":{"minimum_level":{"const":18},"uses_per_rest":{"const":1},"blood_tax_divisor":{"const":2},"minimum_per_overload":{"const":1}}}}},
         "psionic_apex":{"type":"object","additionalProperties":false,"required":["minimum_level","psychokinesis_manifested_strike_hit"],"properties":{"minimum_level":{"const":18},"psychokinesis_manifested_strike_hit":{"type":"object","additionalProperties":false,"required":["discipline_id","uses_per_attack_action","reset","damage_type","damage","critical_dice_multiplier","psi_cost","blood_tax"],"properties":{"discipline_id":{"const":"psychokinesis"},"uses_per_attack_action":{"const":1},"reset":{"const":"start_of_each_attack_action"},"damage_type":{"const":"force"},"damage":{"type":"object","additionalProperties":false,"required":["kind","count","sides"],"properties":{"kind":{"const":"dice"},"count":{"const":3},"sides":{"const":8}}},"critical_dice_multiplier":{"const":1},"psi_cost":{"const":0},"blood_tax":{"const":0}}}}},
         "disciplines":{"type":"array","items":{"$ref":"#/$defs/harnessDiscipline"},"minItems":4,"maxItems":4},
-        "feature_rules":{"type":"array","items":{"$ref":"#/$defs/harnessFeatureRule"},"minItems":20}
+        "feature_rules":{"type":"array","items":{"oneOf":[{"$ref":"#/$defs/harnessFeatureRule"},{"$ref":"#/$defs/mechanicsProjectionReference"}]},"minItems":20}
       }
     },
     "calculator": {
@@ -150,7 +154,7 @@
         "manifested_strike_die_bands":{"type":"array","items":{"$ref":"#/$defs/calculatorLevelBand"},"minItems":1},
         "tier_minimum_levels":{"type":"array","items":{"$ref":"#/$defs/calculatorTierMinimumLevel"},"minItems":3,"maxItems":3},
         "harness_mechanics":{"$ref":"#/$defs/harnessMechanics"},
-        "features":{"type":"array","items":{"$ref":"#/$defs/calculatorFeature"},"minItems":1},
+        "features":{"type":"array","items":{"oneOf":[{"$ref":"#/$defs/calculatorFeature"},{"$ref":"#/$defs/mechanicsProjectionReference"}]},"minItems":1},
         "utility_cards":{"type":"array","items":{"$ref":"#/$defs/calculatorUtilityCard"},"minItems":3,"maxItems":3}
       }
     },
@@ -192,6 +196,67 @@
         {"type":"object","additionalProperties":false,"required":["type","discipline","heading","title","setup","activation","rolls_or_saves","damage","effects","result"],"properties":{"type":{"const":"example_play_section"},"discipline":{"enum":["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]},"heading":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"title":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"setup":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"activation":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"rolls_or_saves":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"damage":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"effects":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"result":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1}}}
       ]
     },
+    "mechanicsValue": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"fixed"},"value":{"type":"integer","minimum":0}}},
+        {"type":"object","additionalProperties":false,"required":["kind","count","sides"],"properties":{"kind":{"const":"dice"},"count":{"type":"integer","minimum":1},"sides":{"type":"integer","minimum":2}}},
+        {"type":"object","additionalProperties":false,"required":["kind","count"],"properties":{"kind":{"const":"manifested_strike_dice"},"count":{"type":"integer","minimum":1}}},
+        {"type":"object","additionalProperties":false,"required":["kind","multiplier"],"properties":{"kind":{"const":"psionic_ability_modifier"},"multiplier":{"type":"integer","minimum":1}}},
+        {"type":"object","additionalProperties":false,"required":["kind","multiplier"],"properties":{"kind":{"const":"proficiency_bonus"},"multiplier":{"type":"integer","minimum":1}}},
+        {"type":"object","additionalProperties":false,"required":["kind","divisor"],"properties":{"kind":{"const":"floor_proficiency_bonus_divisor"},"divisor":{"type":"integer","minimum":1}}},
+        {"type":"object","additionalProperties":false,"required":["kind","fixed","multiplier"],"properties":{"kind":{"const":"fixed_plus_proficiency_bonus_multiplier"},"fixed":{"type":"integer"},"multiplier":{"type":"integer","minimum":0}}},
+        {"type":"object","additionalProperties":false,"required":["kind","count","sides","multiplier"],"properties":{"kind":{"const":"dice_plus_psionic_ability_modifier"},"count":{"type":"integer","minimum":1},"sides":{"type":"integer","minimum":2},"multiplier":{"type":"integer","minimum":1}}},
+        {"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"psi_points_plus_fixed"},"value":{"type":"integer","minimum":1}}}
+      ]
+    },
+    "mechanicsDelivery": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["kind","declaration","resolution"],"properties":{"kind":{"const":"rider"},"declaration":{"const":"before_attack_roll"},"resolution":{"const":"manifested_strike_hit"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","activation"],"properties":{"kind":{"const":"standalone"},"activation":{"enum":["action","bonus_action","reaction"]}}},
+        {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"const":"passive"}}}
+      ]
+    },
+    "mechanicsTargeting": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"const":"authored_procedure"}}},
+        {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"const":"self"}}},
+        {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"const":"struck_target"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","within_feet","additional_count"],"properties":{"kind":{"const":"struck_plus_additional"},"within_feet":{"type":"integer","minimum":1},"additional_count":{"oneOf":[{"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"fixed"},"value":{"type":"integer","minimum":1}}},{"type":"object","additionalProperties":false,"required":["kind","multiplier"],"properties":{"kind":{"const":"proficiency_bonus"},"multiplier":{"const":1}}}]}}},
+        {"type":"object","additionalProperties":false,"required":["kind","within_feet","additional_count"],"properties":{"kind":{"const":"primary_plus_additional"},"within_feet":{"type":"integer","minimum":1},"additional_count":{"oneOf":[{"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"fixed"},"value":{"type":"integer","minimum":1}}},{"type":"object","additionalProperties":false,"required":["kind","multiplier"],"properties":{"kind":{"const":"proficiency_bonus"},"multiplier":{"const":1}}}]}}},
+        {"type":"object","additionalProperties":false,"required":["kind","range_feet","count"],"properties":{"kind":{"const":"selected_targets"},"range_feet":{"type":"integer","minimum":1},"count":{"oneOf":[{"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"fixed"},"value":{"type":"integer","minimum":1}}},{"type":"object","additionalProperties":false,"required":["kind","multiplier"],"properties":{"kind":{"const":"proficiency_bonus"},"multiplier":{"const":1}}}]}}},
+        {"type":"object","additionalProperties":false,"required":["kind","shape","origin","radius_feet"],"properties":{"kind":{"const":"area"},"shape":{"enum":["sphere","cylinder"]},"origin":{"enum":["struck_target","point_within_range"]},"radius_feet":{"type":"integer","minimum":1},"height_feet":{"type":"integer","minimum":1},"placement_range_feet":{"type":"integer","minimum":1},"persistent":{"type":"boolean"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","range_feet"],"properties":{"kind":{"const":"eligible_creatures_in_range"},"range_feet":{"type":"integer","minimum":1}}}
+      ]
+    },
+    "mechanicsStep": {
+      "oneOf": [
+        {"type":"object","additionalProperties":false,"required":["kind","damage_type","value"],"properties":{"id":{"$ref":"#/$defs/id"},"kind":{"const":"damage"},"target":{"enum":["all","primary","secondary"]},"damage_type":{"enum":["discipline","cold","fire","force","lightning","psychic"]},"value":{"$ref":"#/$defs/mechanicsValue"},"ignores_resistance":{"type":"boolean"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","feet","duration"],"properties":{"id":{"$ref":"#/$defs/id"},"package_id":{"$ref":"#/$defs/id"},"application":{"const":"while_in_area"},"kind":{"const":"speed_modifier"},"target":{"enum":["all","primary","secondary"]},"feet":{"type":"integer","maximum":-1},"duration":{"$ref":"#/$defs/mechanicsDuration"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","duration"],"properties":{"id":{"$ref":"#/$defs/id"},"package_id":{"$ref":"#/$defs/id"},"application":{"const":"while_in_area"},"kind":{"const":"speed_zero"},"target":{"enum":["all","primary","secondary"]},"duration":{"$ref":"#/$defs/mechanicsDuration"},"replaces":{"$ref":"#/$defs/id"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","condition","duration"],"properties":{"id":{"$ref":"#/$defs/id"},"package_id":{"$ref":"#/$defs/id"},"application":{"const":"while_in_area"},"kind":{"const":"condition"},"target":{"enum":["all","primary","secondary"]},"condition":{"enum":["blinded","charmed","incapacitated","prone","restrained","stunned"]},"duration":{"$ref":"#/$defs/mechanicsDuration"},"replaces":{"$ref":"#/$defs/id"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","duration"],"properties":{"id":{"$ref":"#/$defs/id"},"package_id":{"$ref":"#/$defs/id"},"application":{"const":"while_in_area"},"kind":{"const":"reaction_denial"},"target":{"enum":["all","primary","secondary"]},"duration":{"$ref":"#/$defs/mechanicsDuration"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","feet","duration"],"properties":{"id":{"$ref":"#/$defs/id"},"package_id":{"$ref":"#/$defs/id"},"application":{"const":"while_in_area"},"kind":{"const":"forced_movement"},"target":{"enum":["all","primary","secondary"]},"feet":{"type":"integer","minimum":1},"success_feet":{"type":"integer","minimum":1},"duration":{"$ref":"#/$defs/mechanicsDuration"},"directions":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["mode","direction"],"properties":{"mode":{"$ref":"#/$defs/id"},"direction":{"enum":["away_from_origin","toward_origin"]}}},"minItems":1},"requires_condition":{"enum":["blinded","charmed","incapacitated","prone","restrained","stunned"]}}},
+        {"type":"object","additionalProperties":false,"required":["kind","ability","failure"],"properties":{"kind":{"const":"saving_throw"},"ability":{"enum":["strength","constitution","dexterity","intelligence","charisma","discipline_signature"]},"damage_on_success":{"const":"half"},"independent_per_target":{"type":"boolean"},"resolve_even_if_damage_prevented":{"type":"boolean"},"maximum_size":{"enum":["tiny","small","medium","large","huge","gargantuan"]},"required_creature_type":{"const":"humanoid"},"repeat":{"type":"object","additionalProperties":false,"required":["trigger"],"properties":{"trigger":{"const":"start_of_affected_turn"},"disadvantage":{"type":"boolean"}}},"failure":{"type":"array","items":{"$ref":"#/$defs/mechanicsStep"},"minItems":1},"success":{"type":"array","items":{"$ref":"#/$defs/mechanicsStep"},"minItems":1}}},
+        {"type":"object","additionalProperties":false,"required":["kind","duration"],"properties":{"kind":{"const":"difficult_terrain"},"target":{"enum":["all","primary","secondary"]},"duration":{"$ref":"#/$defs/mechanicsDuration"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","duration"],"properties":{"package_id":{"$ref":"#/$defs/id"},"application":{"const":"while_in_area"},"kind":{"const":"speed_reduction"},"target":{"enum":["all","primary","secondary"]},"duration":{"$ref":"#/$defs/mechanicsDuration"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","modifier","scope","duration"],"properties":{"package_id":{"$ref":"#/$defs/id"},"application":{"const":"while_in_area"},"kind":{"const":"attack_modifier"},"target":{"enum":["all","primary","secondary"]},"modifier":{"const":"disadvantage"},"scope":{"enum":["next_attack","all_attacks"]},"duration":{"$ref":"#/$defs/mechanicsDuration"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"armor_class_modifier"},"value":{"type":"integer","maximum":-1}}},
+        {"type":"object","additionalProperties":false,"required":["kind","metric","value"],"properties":{"kind":{"const":"metric"},"metric":{"enum":["fly_speed","damage_reduction","chosen_skill_bonus","maximum_psi_points"]},"unit":{"const":"feet"},"value":{"$ref":"#/$defs/mechanicsValue"}}},
+        {"type":"object","additionalProperties":false,"required":["kind","metric","value","duration"],"properties":{"kind":{"const":"skill_modifier"},"metric":{"enum":["passive_insight_bonus","chosen_skill_bonus"]},"value":{"type":"object","additionalProperties":false,"required":["kind","multiplier"],"properties":{"kind":{"const":"psionic_ability_modifier"},"multiplier":{"type":"integer","minimum":1}}},"duration":{"const":"continuous"}}},
+        {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"const":"sense_snapshot"}}}
+      ]
+    },
+    "mechanicsDuration": {"enum":["instantaneous","until_end_current_turn","until_start_next_turn","until_end_next_turn","continuous","while_in_area","one_minute_concentration","one_hour"]},
+    "mechanicsTier": {
+      "type":"object","additionalProperties":false,"required":["tier","targeting"],
+      "properties":{"tier":{"type":"integer","minimum":0,"maximum":2},"targeting":{"$ref":"#/$defs/mechanicsTargeting"},"steps":{"type":"array","items":{"$ref":"#/$defs/mechanicsStep"},"minItems":1},"events":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["triggers","steps"],"properties":{"triggers":{"type":"array","items":{"enum":["enters_area_first_time_on_turn","starts_turn_in_area"]},"minItems":1,"uniqueItems":true},"steps":{"type":"array","items":{"$ref":"#/$defs/mechanicsStep"},"minItems":1}}},"minItems":1}}
+    },
+    "mechanicsSurface": {
+      "type":"object","additionalProperties":false,"required":["id","delivery"],
+      "properties":{"id":{"$ref":"#/$defs/id"},"delivery":{"$ref":"#/$defs/mechanicsDelivery"},"damage_type":{"enum":["discipline","cold","fire","force","lightning","psychic"]},"recurrence":{"enum":["remaining_round_starts","start_of_affected_turn_after_repeat_save"]},"interactions":{"type":"object","additionalProperties":false,"required":["kinetic_mastery"],"properties":{"kinetic_mastery":{"const":"replace"}}},"modes":{"type":"array","items":{"type":"object","additionalProperties":false,"required":["id"],"properties":{"id":{"$ref":"#/$defs/id"}}},"minItems":1},"limits":{"type":"object","additionalProperties":false,"required":["uses","recovery"],"properties":{"uses":{"type":"object","additionalProperties":false,"required":["kind","divisor"],"properties":{"kind":{"const":"floor_proficiency_bonus_divisor"},"divisor":{"type":"integer","minimum":1}}},"recovery":{"const":"short_or_long_rest"}}},"steps":{"type":"array","items":{"$ref":"#/$defs/mechanicsStep"},"minItems":1},"tiers":{"type":"array","items":{"$ref":"#/$defs/mechanicsTier"},"minItems":1}},
+      "anyOf":[{"required":["steps"],"properties":{"steps":{}}},{"required":["tiers"],"properties":{"tiers":{}}}]
+    },
+    "entityMechanics": {"type":"object","additionalProperties":false,"required":["surfaces"],"properties":{"surfaces":{"type":"array","items":{"$ref":"#/$defs/mechanicsSurface"},"minItems":1}}},
     "classifications": {
       "type":"object","additionalProperties":false,"required":["rules_area","entity_kind"],
       "properties":{"rules_area":{"type":"array","items":{"$ref":"#/$defs/id"},"minItems":1,"uniqueItems":true},"entity_kind":{"$ref":"#/$defs/id"},"feature_role":{"$ref":"#/$defs/id"},"acquisition_mode":{"$ref":"#/$defs/id"}}
@@ -203,7 +268,7 @@
         "id":{"$ref":"#/$defs/id"},"title":{"type":"string","minLength":1},"short_title":{"type":"string","minLength":1},
         "publishable":{"const":true},"kind":{"$ref":"#/$defs/id"},
         "level":{"type":"integer","minimum":1,"maximum":20},"progression_section":{"enum":["foundation","reference"]},"psi_cost":{"type":"integer","minimum":0},"activation":{"$ref":"#/$defs/id"},"requires_concentration":{"type":"boolean"},"concentration_tiers":{"type":"array","items":{"type":"integer","minimum":0,"maximum":2},"minItems":1,"uniqueItems":true},"concentration_duration":{"type":"string","minLength":1},
-        "content":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1},
+        "content":{"type":"array","items":{"$ref":"#/$defs/block"},"minItems":1},"mechanics":{"$ref":"#/$defs/entityMechanics"},
         "classifications":{"$ref":"#/$defs/classifications"},
         "presentation_metadata":{"type":"object","additionalProperties":false,"required":["primary_rules_area","canonical_topic_by_area"],"properties":{"primary_rules_area":{"$ref":"#/$defs/id"},"canonical_topic_by_area":{"type":"object","additionalProperties":{"$ref":"#/$defs/id"}},"presentation_owner":{"const":"calculator_deck"}}},
         "related_entity_ids":{"type":"array","items":{"$ref":"#/$defs/id"},"uniqueItems":true}
