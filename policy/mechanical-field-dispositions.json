@@ -66,13 +66,13 @@
         "control_tiers": {"disposition": "generalize", "target": "surface tier steps"},
         "damage_repetition": {"disposition": "generalize", "target": "canonical recurring trigger; benchmark horizon remains external"},
         "damage_timing": {"disposition": "promote", "target": "ordered trigger/step timing"},
-        "damage_type": {"disposition": "generalize", "target": "damage effect type or discipline-derived default"},
+        "damage_type": {"disposition": "generalize", "target": "explicit concrete damage type or named Manifested Strike runtime dependency"},
         "discipline_ids": {"disposition": "derive", "target": "entity rules-area applicability plus explicit universal applicability"},
         "entity_id": {"disposition": "derive", "target": "containing entity.id"},
         "ignore_resistance_tiers": {"disposition": "generalize", "target": "tier-local damage effect resistance handling"},
         "replaces_mastery": {"disposition": "generalize", "target": "delivery interaction with Kinetic Mastery"},
         "starts_persistent_zone": {"disposition": "derive", "target": "persistent area lifecycle and triggers"},
-        "targeting_by_tier": {"disposition": "generalize", "target": "tier target selectors and cardinality formulas"}
+        "targeting_by_tier": {"disposition": "generalize", "target": "independent targeting topology plus tier selector and cardinality mechanics"}
       }
     },
     "harness_targeting": {
@@ -100,7 +100,7 @@
         "repeat_save_disadvantage": {"disposition": "promote", "target": "repeat saving-throw roll mode"},
         "repeat_save_trigger": {"disposition": "generalize", "target": "recurring saving-throw trigger"},
         "required_creature_type": {"disposition": "generalize", "target": "target eligibility restriction"},
-        "save": {"disposition": "generalize", "target": "saving_throw step"},
+        "save": {"disposition": "generalize", "target": "saving_throw step with a concrete ability or complete feature-local discipline mapping"},
         "tier": {"disposition": "promote", "target": "surface tier identifier"}
       }
     },

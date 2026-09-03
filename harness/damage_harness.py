@@ -100,6 +100,18 @@ def _rule_damage(target:Target,damage:dict[str,Any],damage_type:str,strike_die:i
     raise ValueError(f"Unsupported damage resolution: {resolution}")
 
 
+def _resolve_feature_damage_type(value:Any,discipline:dict[str,Any])->str:
+    if isinstance(value,str):return value
+    if isinstance(value,dict) and value=={"kind":"manifested_strike_damage_type"}:return str(discipline["damage_type"])
+    raise ValueError(f"Unsupported canonical feature damage type: {value}")
+
+
+def _resolve_feature_save(value:Any,discipline_id:str)->str:
+    if isinstance(value,str):return value
+    if isinstance(value,dict) and value.get("kind")=="discipline_mapping":return str(value["by_discipline"][discipline_id])
+    raise ValueError(f"Unsupported canonical feature save: {value}")
+
+
 def _strike_packet_options(model:AuthorityModel,target:Target,discipline_id:str,level:int,psi_modifier:int,strike_die:int)->tuple[tuple[str,tuple[float,float,float]],...]:
     """Return every undominated pre-roll Manifested Strike damage-type declaration."""
     discipline=model.disciplines[discipline_id];core=model.projection["core"]["manifested_strike"];normal_type=discipline["damage_type"];holdout=core["holdout"];force_type=holdout["damage_type"];holdout_formula=model.holdout_formula(level)
@@ -128,10 +140,10 @@ def _psionic_apex_packet(model:AuthorityModel,target:Target,discipline_id:str,le
 
 def _rider_values(model:AuthorityModel,target:Target,discipline_id:str,cluster_size:int,level:int,pb:int,psi_modifier:int,strike_die:int,package:Package)->tuple[float,float]:
     if package.entity_id is None:return 0.0,0.0
-    rule=model.features[package.entity_id];tier_row=next(item for item in rule["damage_tiers"] if int(item["tier"])==package.tier);discipline=model.disciplines[discipline_id];damage_type=discipline["damage_type"] if rule["damage_type"]=="discipline" else rule["damage_type"]
+    rule=model.features[package.entity_id];tier_row=next(item for item in rule["damage_tiers"] if int(item["tier"])==package.tier);discipline=model.disciplines[discipline_id];damage_type=_resolve_feature_damage_type(rule["damage_type"],discipline)
     save=tier_row.get("save");save_probability=None
     if save:
-        save=model.disciplines[discipline_id]["signature_save"] if save=="discipline_signature" else save
+        save=_resolve_feature_save(save,discipline_id)
         save_probability=save_success_probability(target,save,model.kv_save_dc(level,psi_modifier))
     ignore=package.tier in rule.get("ignore_resistance_tiers",[]);primary=_rule_damage(target,tier_row["damage"],damage_type,strike_die,psi_modifier,save_probability,ignore)
     count=_target_count(rule,package.tier,cluster_size,pb);secondary_damage=tier_row.get("secondary_damage",tier_row["damage"]);secondary=_rule_damage(target,secondary_damage,damage_type,strike_die,psi_modifier,save_probability,ignore)

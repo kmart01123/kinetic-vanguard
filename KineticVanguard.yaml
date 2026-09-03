@@ -2094,6 +2094,9 @@ entities:
         - id: passive
           delivery:
             kind: passive
+          targeting:
+            topology: none
+            kind: none
           steps:
             - kind: skill_modifier
               metric: passive_insight_bonus
@@ -2113,18 +2116,21 @@ entities:
           tiers:
             - tier: 0
               targeting:
+                topology: discrete_multi
                 kind: eligible_creatures_in_range
                 range_feet: 15
               steps:
                 - kind: sense_snapshot
             - tier: 1
               targeting:
+                topology: discrete_multi
                 kind: eligible_creatures_in_range
                 range_feet: 30
               steps:
                 - kind: sense_snapshot
             - tier: 2
               targeting:
+                topology: discrete_multi
                 kind: eligible_creatures_in_range
                 range_feet: 60
               steps:
@@ -2154,6 +2160,9 @@ entities:
         - id: main
           delivery:
             kind: passive
+          targeting:
+            topology: none
+            kind: none
           steps:
             - kind: metric
               metric: chosen_skill_bonus
@@ -2278,6 +2287,7 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
           interactions:
@@ -2285,11 +2295,12 @@ entities:
           tiers:
             - tier: 0
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - id: rider_damage
                   kind: damage
-                  damage_type: discipline
+                  damage_type: cold
                   value:
                     kind: fixed
                     value: 2
@@ -2299,11 +2310,12 @@ entities:
                   duration: until_end_next_turn
             - tier: 1
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - id: rider_damage
                   kind: damage
-                  damage_type: discipline
+                  damage_type: cold
                   value:
                     kind: fixed
                     value: 2
@@ -2319,11 +2331,12 @@ entities:
                       replaces: speed_effect
             - tier: 2
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - id: rider_damage
                   kind: damage
-                  damage_type: discipline
+                  damage_type: cold
                   value:
                     kind: fixed
                     value: 2
@@ -2371,12 +2384,14 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
-          damage_type: discipline
+          damage_type: cold
           tiers:
             - tier: 0
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: speed_zero
@@ -2391,6 +2406,7 @@ entities:
                       duration: until_end_next_turn
             - tier: 1
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: speed_zero
@@ -2408,6 +2424,7 @@ entities:
                       duration: until_start_next_turn
             - tier: 2
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: speed_zero
@@ -2502,9 +2519,11 @@ entities:
           delivery:
             kind: standalone
             activation: action
+          damage_type: cold
           tiers:
             - tier: 0
               targeting:
+                topology: area
                 kind: area
                 shape: cylinder
                 origin: point_within_range
@@ -2528,6 +2547,7 @@ entities:
                           duration: until_end_current_turn
             - tier: 1
               targeting:
+                topology: area
                 kind: area
                 shape: cylinder
                 origin: point_within_range
@@ -2551,6 +2571,7 @@ entities:
                           duration: until_end_current_turn
             - tier: 2
               targeting:
+                topology: area
                 kind: area
                 shape: cylinder
                 origin: point_within_range
@@ -2609,10 +2630,11 @@ entities:
           delivery:
             kind: standalone
             activation: action
-          damage_type: discipline
+          damage_type: cold
           tiers:
             - tier: 0
               targeting:
+                topology: discrete_multi
                 kind: selected_targets
                 range_feet: 60
                 count:
@@ -2624,7 +2646,7 @@ entities:
                   damage_on_success: half
                   failure:
                     - kind: damage
-                      damage_type: discipline
+                      damage_type: cold
                       value:
                         kind: dice
                         count: 8
@@ -2635,6 +2657,7 @@ entities:
                       duration: until_end_next_turn
             - tier: 1
               targeting:
+                topology: discrete_multi
                 kind: selected_targets
                 range_feet: 60
                 count:
@@ -2646,7 +2669,7 @@ entities:
                   damage_on_success: half
                   failure:
                     - kind: damage
-                      damage_type: discipline
+                      damage_type: cold
                       value:
                         kind: dice
                         count: 9
@@ -2657,6 +2680,7 @@ entities:
                       duration: until_end_next_turn
             - tier: 2
               targeting:
+                topology: discrete_multi
                 kind: selected_targets
                 range_feet: 60
                 count:
@@ -2668,7 +2692,7 @@ entities:
                   damage_on_success: half
                   failure:
                     - kind: damage
-                      damage_type: discipline
+                      damage_type: cold
                       value:
                         kind: dice
                         count: 10
@@ -2711,18 +2735,20 @@ entities:
           delivery:
             kind: standalone
             activation: action
-          damage_type: discipline
+          damage_type: cold
           tiers:
             - tier: 0
               targeting:
-                kind: authored_procedure
+                topology: single
+                kind: selected_target
+                range_feet: 60
               steps:
                 - kind: saving_throw
                   ability: constitution
                   damage_on_success: half
                   failure:
                     - kind: damage
-                      damage_type: discipline
+                      damage_type: cold
                       value:
                         kind: dice
                         count: 10
@@ -2732,14 +2758,16 @@ entities:
                       duration: until_end_next_turn
             - tier: 1
               targeting:
-                kind: authored_procedure
+                topology: single
+                kind: selected_target
+                range_feet: 60
               steps:
                 - kind: saving_throw
                   ability: constitution
                   damage_on_success: half
                   failure:
                     - kind: damage
-                      damage_type: discipline
+                      damage_type: cold
                       value:
                         kind: dice
                         count: 12
@@ -2753,7 +2781,9 @@ entities:
                       duration: until_end_next_turn
             - tier: 2
               targeting:
-                kind: authored_procedure
+                topology: single
+                kind: selected_target
+                range_feet: 60
               steps:
                 - kind: speed_zero
                   package_id: control_0
@@ -2763,7 +2793,7 @@ entities:
                   damage_on_success: half
                   failure:
                     - kind: damage
-                      damage_type: discipline
+                      damage_type: cold
                       value:
                         kind: dice
                         count: 14
@@ -2805,33 +2835,37 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
           tiers:
             - tier: 0
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
-                  damage_type: discipline
+                  damage_type: fire
                   value:
                     kind: fixed
                     value: 2
             - tier: 1
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
-                  damage_type: discipline
+                  damage_type: fire
                   value:
                     kind: fixed
                     value: 4
             - tier: 2
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
-                  damage_type: discipline
+                  damage_type: fire
                   value:
                     kind: fixed
                     value: 6
@@ -2868,24 +2902,28 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
-          damage_type: discipline
+          damage_type: fire
           tiers:
             - tier: 0
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: armor_class_modifier
                   value: -1
             - tier: 1
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: armor_class_modifier
                   value: -2
             - tier: 2
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: armor_class_modifier
@@ -2923,12 +2961,14 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
           damage_type: fire
           tiers:
             - tier: 0
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
@@ -2938,6 +2978,7 @@ entities:
                     count: 2
             - tier: 1
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
@@ -2947,6 +2988,7 @@ entities:
                     count: 3
             - tier: 2
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
@@ -2988,12 +3030,14 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
           damage_type: fire
           tiers:
             - tier: 0
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
@@ -3011,6 +3055,7 @@ entities:
                       duration: until_end_next_turn
             - tier: 1
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
@@ -3028,6 +3073,7 @@ entities:
                       duration: until_end_next_turn
             - tier: 2
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
@@ -3077,12 +3123,14 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
           damage_type: fire
           tiers:
             - tier: 0
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
@@ -3093,6 +3141,7 @@ entities:
                     sides: 10
             - tier: 1
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
@@ -3103,6 +3152,7 @@ entities:
                     sides: 10
             - tier: 2
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
@@ -3190,18 +3240,20 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
-          damage_type: discipline
+          damage_type: force
           interactions:
             kinetic_mastery: replace
           tiers:
             - tier: 0
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
-                  damage_type: discipline
+                  damage_type: force
                   value:
                     kind: fixed
                     value: 2
@@ -3214,10 +3266,11 @@ entities:
                       duration: instantaneous
             - tier: 1
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
-                  damage_type: discipline
+                  damage_type: force
                   value:
                     kind: fixed
                     value: 2
@@ -3230,10 +3283,11 @@ entities:
                       duration: instantaneous
             - tier: 2
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
-                  damage_type: discipline
+                  damage_type: force
                   value:
                     kind: fixed
                     value: 2
@@ -3281,11 +3335,12 @@ entities:
           delivery:
             kind: standalone
             activation: bonus_action
-          damage_type: discipline
+          damage_type: force
           tiers:
             - tier: 0
               targeting:
-                kind: authored_procedure
+                topology: self
+                kind: self
               steps:
                 - kind: metric
                   metric: fly_speed
@@ -3296,7 +3351,8 @@ entities:
                     multiplier: 0
             - tier: 1
               targeting:
-                kind: authored_procedure
+                topology: self
+                kind: self
               steps:
                 - kind: metric
                   metric: fly_speed
@@ -3307,7 +3363,8 @@ entities:
                     multiplier: 5
             - tier: 2
               targeting:
-                kind: authored_procedure
+                topology: self
+                kind: self
               steps:
                 - kind: metric
                   metric: fly_speed
@@ -3402,6 +3459,7 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
           modes:
@@ -3410,6 +3468,7 @@ entities:
           tiers:
             - tier: 0
               targeting:
+                topology: area
                 kind: area
                 shape: sphere
                 origin: struck_target
@@ -3434,6 +3493,7 @@ entities:
                           direction: toward_origin
             - tier: 1
               targeting:
+                topology: area
                 kind: area
                 shape: sphere
                 origin: struck_target
@@ -3458,6 +3518,7 @@ entities:
                           direction: toward_origin
             - tier: 2
               targeting:
+                topology: area
                 kind: area
                 shape: sphere
                 origin: struck_target
@@ -3565,7 +3626,9 @@ entities:
           tiers:
             - tier: 0
               targeting:
-                kind: authored_procedure
+                topology: single
+                kind: selected_target
+                range_feet: 60
               steps:
                 - kind: saving_throw
                   ability: strength
@@ -3583,7 +3646,9 @@ entities:
                       duration: instantaneous
             - tier: 1
               targeting:
-                kind: authored_procedure
+                topology: single
+                kind: selected_target
+                range_feet: 60
               steps:
                 - kind: saving_throw
                   ability: strength
@@ -3601,7 +3666,9 @@ entities:
                       duration: instantaneous
             - tier: 2
               targeting:
-                kind: authored_procedure
+                topology: single
+                kind: selected_target
+                range_feet: 60
               steps:
                 - kind: forced_movement
                   feet: 30
@@ -3697,7 +3764,14 @@ entities:
           tiers:
             - tier: 0
               targeting:
-                kind: authored_procedure
+                topology: discrete_multi
+                kind: weighted_target_slots
+                range_feet: 60
+                slots: 5
+                size_costs:
+                  medium_or_smaller: 1
+                  large: 2
+                unique_targets: true
               steps:
                 - kind: saving_throw
                   ability: strength
@@ -3711,7 +3785,14 @@ entities:
                       duration: one_minute_concentration
             - tier: 1
               targeting:
-                kind: authored_procedure
+                topology: discrete_multi
+                kind: weighted_target_slots
+                range_feet: 60
+                slots: 5
+                size_costs:
+                  medium_or_smaller: 1
+                  large: 2
+                unique_targets: true
               steps:
                 - kind: saving_throw
                   ability: strength
@@ -3731,7 +3812,14 @@ entities:
                       duration: one_minute_concentration
             - tier: 2
               targeting:
-                kind: authored_procedure
+                topology: discrete_multi
+                kind: weighted_target_slots
+                range_feet: 60
+                slots: 5
+                size_costs:
+                  medium_or_smaller: 1
+                  large: 2
+                unique_targets: true
               steps:
                 - kind: saving_throw
                   ability: strength
@@ -3830,11 +3918,13 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
           tiers:
             - tier: 0
               targeting:
+                topology: discrete_multi
                 kind: struck_plus_additional
                 within_feet: 5
                 additional_count:
@@ -3843,12 +3933,13 @@ entities:
               steps:
                 - kind: damage
                   target: all
-                  damage_type: discipline
+                  damage_type: lightning
                   value:
                     kind: fixed
                     value: 2
             - tier: 1
               targeting:
+                topology: discrete_multi
                 kind: struck_plus_additional
                 within_feet: 5
                 additional_count:
@@ -3857,12 +3948,13 @@ entities:
               steps:
                 - kind: damage
                   target: all
-                  damage_type: discipline
+                  damage_type: lightning
                   value:
                     kind: fixed
                     value: 2
             - tier: 2
               targeting:
+                topology: discrete_multi
                 kind: struck_plus_additional
                 within_feet: 5
                 additional_count:
@@ -3871,7 +3963,7 @@ entities:
               steps:
                 - kind: damage
                   target: all
-                  damage_type: discipline
+                  damage_type: lightning
                   value:
                     kind: fixed
                     value: 2
@@ -3920,12 +4012,14 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
           damage_type: lightning
           tiers:
             - tier: 0
               targeting:
+                topology: discrete_multi
                 kind: struck_plus_additional
                 within_feet: 15
                 additional_count:
@@ -3939,6 +4033,7 @@ entities:
                     count: 1
             - tier: 1
               targeting:
+                topology: discrete_multi
                 kind: struck_plus_additional
                 within_feet: 15
                 additional_count:
@@ -3952,6 +4047,7 @@ entities:
                     count: 1
             - tier: 2
               targeting:
+                topology: discrete_multi
                 kind: struck_plus_additional
                 within_feet: 15
                 additional_count:
@@ -3996,12 +4092,14 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
           damage_type: lightning
           tiers:
             - tier: 0
               targeting:
+                topology: area
                 kind: area
                 shape: sphere
                 origin: struck_target
@@ -4026,6 +4124,7 @@ entities:
                         sides: 8
             - tier: 1
               targeting:
+                topology: area
                 kind: area
                 shape: sphere
                 origin: struck_target
@@ -4050,6 +4149,7 @@ entities:
                         sides: 8
             - tier: 2
               targeting:
+                topology: area
                 kind: area
                 shape: sphere
                 origin: struck_target
@@ -4209,6 +4309,7 @@ entities:
           tiers:
             - tier: 0
               targeting:
+                topology: discrete_multi
                 kind: primary_plus_additional
                 within_feet: 30
                 additional_count:
@@ -4234,6 +4335,7 @@ entities:
                         sides: 8
             - tier: 1
               targeting:
+                topology: discrete_multi
                 kind: primary_plus_additional
                 within_feet: 30
                 additional_count:
@@ -4259,6 +4361,7 @@ entities:
                         sides: 8
             - tier: 2
               targeting:
+                topology: discrete_multi
                 kind: primary_plus_additional
                 within_feet: 30
                 additional_count:
@@ -4391,6 +4494,7 @@ entities:
           tiers:
             - tier: 0
               targeting:
+                topology: area
                 kind: area
                 shape: sphere
                 origin: point_within_range
@@ -4410,6 +4514,7 @@ entities:
                         sides: 8
             - tier: 1
               targeting:
+                topology: area
                 kind: area
                 shape: sphere
                 origin: point_within_range
@@ -4429,6 +4534,7 @@ entities:
                         sides: 8
             - tier: 2
               targeting:
+                topology: area
                 kind: area
                 shape: sphere
                 origin: point_within_range
@@ -4540,7 +4646,8 @@ entities:
           tiers:
             - tier: 0
               targeting:
-                kind: authored_procedure
+                topology: self
+                kind: self
               steps:
                 - kind: metric
                   metric: damage_reduction
@@ -4551,7 +4658,8 @@ entities:
                     multiplier: 1
             - tier: 1
               targeting:
-                kind: authored_procedure
+                topology: self
+                kind: self
               steps:
                 - kind: metric
                   metric: damage_reduction
@@ -4562,7 +4670,8 @@ entities:
                     multiplier: 1
             - tier: 2
               targeting:
-                kind: authored_procedure
+                topology: single
+                kind: originating_creature_if_any
               steps:
                 - kind: forced_movement
                   feet: 15
@@ -4618,20 +4727,34 @@ entities:
           delivery:
             kind: standalone
             activation: bonus_action
-          damage_type: discipline
+          damage_type:
+            kind: manifested_strike_damage_type
           tiers:
             - tier: 0
               targeting:
-                kind: authored_procedure
+                topology: self
+                kind: self
             - tier: 1
               targeting:
-                kind: authored_procedure
+                topology: self
+                kind: self
             - tier: 2
               targeting:
-                kind: authored_procedure
+                topology: area
+                kind: area
+                shape: sphere
+                origin: departure_or_arrival_space
+                radius_feet: 5
+                selection: creatures_of_choice
               steps:
                 - kind: saving_throw
-                  ability: discipline_signature
+                  ability:
+                    kind: discipline_mapping
+                    by_discipline:
+                      cryokinesis: constitution
+                      pyrokinesis: dexterity
+                      psychokinesis: strength
+                      electrokinesis: charisma
                   failure:
                     - kind: reaction_denial
                       package_id: control_0
@@ -4670,12 +4793,14 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
           damage_type: psychic
           tiers:
             - tier: 0
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
@@ -4686,6 +4811,7 @@ entities:
                     sides: 8
             - tier: 1
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
@@ -4696,6 +4822,7 @@ entities:
                     sides: 8
             - tier: 2
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: damage
@@ -4826,7 +4953,8 @@ entities:
           tiers:
             - tier: 0
               targeting:
-                kind: authored_procedure
+                topology: single
+                kind: selected_target
               steps:
                 - kind: saving_throw
                   ability: charisma
@@ -4838,7 +4966,8 @@ entities:
                       duration: one_hour
             - tier: 1
               targeting:
-                kind: authored_procedure
+                topology: single
+                kind: selected_target
               steps:
                 - kind: saving_throw
                   ability: charisma
@@ -4850,7 +4979,12 @@ entities:
                       duration: one_hour
             - tier: 2
               targeting:
-                kind: authored_procedure
+                topology: discrete_multi
+                kind: selected_targets
+                range_feet: 60
+                count:
+                  kind: fixed
+                  value: 5
               steps:
                 - kind: saving_throw
                   ability: charisma
@@ -4896,12 +5030,14 @@ entities:
         - id: main
           delivery:
             kind: rider
+            rider_slot: manifested_strike
             declaration: before_attack_roll
             resolution: manifested_strike_hit
           damage_type: psychic
           tiers:
             - tier: 0
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: saving_throw
@@ -4913,6 +5049,7 @@ entities:
                       duration: until_end_next_turn
             - tier: 1
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: saving_throw
@@ -4928,6 +5065,7 @@ entities:
                       duration: until_end_next_turn
             - tier: 2
               targeting:
+                topology: single
                 kind: struck_target
               steps:
                 - kind: saving_throw
@@ -5021,7 +5159,14 @@ entities:
           tiers:
             - tier: 0
               targeting:
-                kind: authored_procedure
+                topology: area
+                kind: area
+                shape: cylinder
+                origin: point_within_range
+                radius_feet: 15
+                height_feet: 20
+                placement_range_feet: 60
+                persistent: true
               steps:
                 - kind: speed_reduction
                   package_id: control_0
@@ -5035,7 +5180,14 @@ entities:
                       duration: until_start_next_turn
             - tier: 1
               targeting:
-                kind: authored_procedure
+                topology: area
+                kind: area
+                shape: cylinder
+                origin: point_within_range
+                radius_feet: 15
+                height_feet: 20
+                placement_range_feet: 60
+                persistent: true
               steps:
                 - kind: speed_reduction
                   package_id: control_0
@@ -5055,7 +5207,14 @@ entities:
                       duration: until_start_next_turn
             - tier: 2
               targeting:
-                kind: authored_procedure
+                topology: area
+                kind: area
+                shape: cylinder
+                origin: point_within_range
+                radius_feet: 15
+                height_feet: 20
+                placement_range_feet: 60
+                persistent: true
               steps:
                 - kind: speed_reduction
                   package_id: control_0
@@ -5194,46 +5353,89 @@ entities:
           delivery:
             kind: standalone
             activation: bonus_action
-          damage_type: force
+          damage_type:
+            kind: manifested_strike_damage_type
           tiers:
             - tier: 0
               targeting:
-                kind: authored_procedure
+                topology: area
+                kind: area
+                shape: sphere
+                origin: departure_or_arrival_space
+                radius_feet: 5
+                selection: creatures_of_choice
+                maximum_targets: 3
+                excludes_self: true
               steps:
                 - kind: saving_throw
-                  ability: discipline_signature
+                  ability:
+                    kind: discipline_mapping
+                    by_discipline:
+                      cryokinesis: constitution
+                      pyrokinesis: dexterity
+                      psychokinesis: strength
+                      electrokinesis: charisma
                   damage_on_success: half
                   failure:
                     - kind: damage
-                      damage_type: force
+                      damage_type:
+                        kind: manifested_strike_damage_type
                       value:
                         kind: dice
                         count: 2
                         sides: 10
             - tier: 1
               targeting:
-                kind: authored_procedure
+                topology: area
+                kind: area
+                shape: sphere
+                origin: departure_or_arrival_space
+                radius_feet: 5
+                selection: creatures_of_choice
+                maximum_targets: 3
+                excludes_self: true
               steps:
                 - kind: saving_throw
-                  ability: discipline_signature
+                  ability:
+                    kind: discipline_mapping
+                    by_discipline:
+                      cryokinesis: constitution
+                      pyrokinesis: dexterity
+                      psychokinesis: strength
+                      electrokinesis: charisma
                   damage_on_success: half
                   failure:
                     - kind: damage
-                      damage_type: force
+                      damage_type:
+                        kind: manifested_strike_damage_type
                       value:
                         kind: dice
                         count: 3
                         sides: 10
             - tier: 2
               targeting:
-                kind: authored_procedure
+                topology: area
+                kind: area
+                shape: sphere
+                origin: departure_or_arrival_space
+                radius_feet: 5
+                selection: creatures_of_choice
+                maximum_targets: 3
+                excludes_self: true
               steps:
                 - kind: saving_throw
-                  ability: discipline_signature
+                  ability:
+                    kind: discipline_mapping
+                    by_discipline:
+                      cryokinesis: constitution
+                      pyrokinesis: dexterity
+                      psychokinesis: strength
+                      electrokinesis: charisma
                   damage_on_success: half
                   failure:
                     - kind: damage
-                      damage_type: force
+                      damage_type:
+                        kind: manifested_strike_damage_type
                       value:
                         kind: dice
                         count: 4
@@ -5287,6 +5489,9 @@ entities:
         - id: main
           delivery:
             kind: passive
+          targeting:
+            topology: none
+            kind: none
           steps:
             - kind: metric
               metric: maximum_psi_points

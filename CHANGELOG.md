@@ -4,7 +4,7 @@
 
 ### Changed
 
-- Completed the behavior-preserving rider-first representation migration for every machine-consumed ability: all 30 Calculator entries and 27 harness feature rules now derive from neutral per-entity mechanical primitives with locked aggregate and sentinel output snapshots. The complete field-disposition audit keeps benchmark scenario and scoring policy outside canonical rules mechanics.
+- Completed the behavior-preserving rider-first representation migration for every machine-consumed ability: delivery and targeting topology are independent, all riders share one Manifested Strike rider slot, known selectors replace opaque topology, and canonical mechanics author concrete D&D damage/save facts or bounded feature-local runtime mappings. All 30 Calculator entries and 27 harness feature rules derive from those neutral per-entity primitives; benchmark scenario and scoring policy remain outside canonical rules mechanics.
 - Consolidated the ten shared progression and core-mechanics fields under their canonical rules entities: level bands, Overload access and action economy, Manifested Strike and Holdout math, Discipline masteries, and Psionic Apex.
 - Removed the Calculator and harness mechanics registries from YAML. The browser publication and Python harness adapter now build deterministic consumer views directly from entity `mechanics` and `system_mechanics`, and the loader no longer mutates the parsed authority.
 - Advanced the authority schema contract from 2.4.0 through 2.7.0 and the harness projection contract to 1.3.0 without changing `rules_version` 14.3.0 or playable mechanics. Projection arrays now follow canonical entity order.

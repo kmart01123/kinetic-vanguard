@@ -10,7 +10,9 @@ The target removes the present three-way representation of the same facts:
 2. Calculator-specific damage, save, delivery, and metric rows;
 3. harness-specific damage, targeting, and control rows.
 
-Structured mechanics will become canonical for facts consumed by code. Authored content will remain canonical for complete player-facing wording and procedures that are not machine-modeled. Semantic validation must keep the two surfaces consistent. Generated prose is not a goal.
+Structured mechanics are canonical for facts consumed by code. Authored content remains canonical for complete player-facing wording and procedures that are not machine-modeled. Semantic validation keeps the two surfaces consistent. Generated prose is not a goal.
+
+The finalized model has two orthogonal axes: delivery declares the lifecycle, while targeting declares topology plus bounded selector detail. Combined labels such as `single_target_rider`, `area_rider`, and `standalone_area` are never schema or runtime types.
 
 This document is a behavior-preserving architecture decision for issue [#132](https://github.com/kmart01123/kinetic-vanguard/issues/132). It does not authorize balance changes or reinterpret existing rules.
 
@@ -28,8 +30,8 @@ The exhaustive machine-readable audit is [mechanical-field-dispositions.json](..
 - exact activation and rider declaration/resolution timing;
 - target selectors, roles, eligibility restrictions, and cardinality formulas;
 - area geometry, origin, occupancy, and recurring triggers;
-- damage types, formulas, target roles, and Resistance handling;
-- saving-throw ability and success/failure branches;
+- concrete damage types, genuine runtime damage-type dependencies, formulas, target roles, and Resistance handling;
+- concrete saving-throw abilities, bounded feature-local discipline mappings, and success/failure branches;
 - conditions, forced movement, Speed changes, reaction denial, roll modifiers, and durations;
 - repeat saves, repeat-save roll mode, and effect dependencies;
 - Kinetic Mastery replacement behavior;
@@ -64,38 +66,50 @@ mechanics:
     - id: main
       delivery:
         kind: rider
+        rider_slot: manifested_strike
         declaration: before_attack_roll
         resolution: manifested_strike_hit
       tiers:
         - tier: 0
-          targeting: ...
+          targeting:
+            topology: single
+            kind: struck_target
           steps: ...
 ```
 
 ### Delivery
 
-The initial delivery vocabulary is:
+The delivery vocabulary is:
 
-- `rider`: declared before a Manifested Strike attack roll and resolved on that strike's hit;
+- `rider`: occupies the single `manifested_strike` rider slot, is declared before that attack roll, and resolves on that strike's hit;
 - `standalone`: retains an explicit `action`, `bonus_action`, or `reaction` activation;
 - `passive`: continuously modifies another canonical value or rule.
 
-There is no composite-rider delivery. An `area_rider` is represented by `delivery.kind: rider` plus area targeting. “Area rider” remains a useful inventory name, not a separate declaration lifecycle.
+There is no composite-rider delivery or area-specific rider lifecycle. “Area rider” is only shorthand for `delivery.kind: rider` plus `targeting.topology: area`.
 
 The existing one-rider-per-swing rule is a shared Manifested Strike constraint and must be validated across all surfaces with `delivery.kind: rider`. Kinetic Mastery remains a separate strike property rather than consuming the rider allowance.
 
 ### Targeting
 
-The production vocabulary includes these neutral selectors:
+Every mechanically modeled tier, or an untiered surface, declares one independent topology: `single`, `discrete_multi`, `area`, `self`, or `none`.
 
-- `self`;
+Bounded selector kinds beneath that topology retain the details needed by current mechanics:
+
+- `none` and `self`;
 - `struck_target`;
-- `additional_creatures` anchored to another selector, with fixed or Proficiency Bonus cardinality and a distance limit;
-- `creatures_in_area`, with role refinement for the struck/primary creature and other/secondary creatures;
-- `area`, with shape, origin, dimensions, placement range, and persistence;
+- `selected_target` and an optional explicit range;
+- `struck_plus_additional`, `primary_plus_additional`, and `selected_targets`, with explicit range or distance and cardinality;
+- `weighted_target_slots` for Mass Levitation's slot budget, size costs, and unique-target rule;
+- `area`, with shape, origin, dimensions, placement range, persistence, and any choice/limit refinement;
 - `eligible_creatures_in_range` for Active Scan.
 
-Target roles are selectors, not benchmark roles. Benchmark grouping such as “cluster remainder” is derived later.
+`discrete_multi` never receives fake geometry, and `area` always provides geometry and origin. Target roles are rules selectors, not benchmark roles. Benchmark grouping such as “cluster remainder” is derived later.
+
+### Explicit D&D facts
+
+Discipline-specific feature mechanics author their concrete damage type and ordinary save directly: Cryokinesis uses cold/Constitution, Pyrokinesis fire/Dexterity, Psychokinesis force/Strength, and Electrokinesis lightning/Charisma. Consumers do not consult discipline metadata to reconstruct those facts.
+
+Universal features that use the selected Discipline's save contain the complete four-discipline mapping in their own saving-throw step. A genuine runtime dependency uses a narrowly named reference rather than an alias: Improved Phase Step uses `manifested_strike_damage_type` because its authored damage type follows the current Manifested Strike type.
 
 ### Values
 
@@ -123,7 +137,7 @@ A tier contains ordered steps. The step vocabulary is deliberately bounded:
 - `reaction_denial`;
 - `skill_modifier`;
 - `sense_snapshot`;
-- `create_area` and an area's event-triggered steps;
+- an area's event-triggered steps;
 - `difficult_terrain`;
 - `movement_mode_denial`;
 - `uses` for a rest-restored activation limit.
@@ -134,7 +148,7 @@ Harness summary labels such as `on_reach` and `application: failed_save` disappe
 
 ## Detailed example: Glacial Spike
 
-The following is the production source shape introduced by authority schema 2.5.0:
+The following is the finalized production source shape in authority schema 2.7.0:
 
 ```yaml
 mechanics:
@@ -142,28 +156,33 @@ mechanics:
     - id: main
       delivery:
         kind: rider
+        rider_slot: manifested_strike
         declaration: before_attack_roll
         resolution: manifested_strike_hit
       interactions:
         kinetic_mastery: replace
-      targeting:
-        kind: struck_target
       tiers:
         - tier: 0
+          targeting:
+            topology: single
+            kind: struck_target
           steps:
             - id: rider_damage
               kind: damage
-              damage_type: discipline
+              damage_type: cold
               value: {kind: fixed, value: 2}
             - id: speed_effect
               kind: speed_modifier
               feet: -10
               duration: until_end_next_turn
         - tier: 1
+          targeting:
+            topology: single
+            kind: struck_target
           steps:
             - id: rider_damage
               kind: damage
-              damage_type: discipline
+              damage_type: cold
               value: {kind: fixed, value: 2}
             - id: speed_effect
               kind: speed_modifier
@@ -176,10 +195,13 @@ mechanics:
                   duration: until_end_next_turn
                   replaces: speed_effect
         - tier: 2
+          targeting:
+            topology: single
+            kind: struck_target
           steps:
             - id: rider_damage
               kind: damage
-              damage_type: discipline
+              damage_type: cold
               value: {kind: fixed, value: 2}
             - id: speed_effect
               kind: speed_modifier

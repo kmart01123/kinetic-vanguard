@@ -19,6 +19,9 @@ test("harness projection reads the real authority and joins mechanics by stable 
   assert.ok(projection.features.every(item=>!Object.hasOwn(item,"repeatability")));
   assert.ok(projection.disciplines.every(item=>item.id&&item.damage_type&&item.signature_save&&item.mastery));
   assert.ok(projection.features.some(item=>item.damage_tiers.length&&item.control_tiers?.length));
+  assert.equal(projection.features.find(item=>item.entity_id==="glacial_spike")?.damage_type,"cold");
+  assert.deepEqual(projection.features.find(item=>item.entity_id==="advanced_phase_step")?.control_tiers?.[0]?.save,{kind:"discipline_mapping",by_discipline:{cryokinesis:"constitution",pyrokinesis:"dexterity",psychokinesis:"strength",electrokinesis:"charisma"}});
+  assert.deepEqual(projection.features.find(item=>item.entity_id==="advanced_improved_phase_step")?.damage_type,{kind:"manifested_strike_damage_type"});
 });
 
 test("harness semantic mutations fail with focused diagnostics",async()=>{

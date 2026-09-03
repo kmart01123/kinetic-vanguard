@@ -1,26 +1,53 @@
-import type { Authority, CalculatorLevelBand, CalculatorProjection, Diagnostic, MechanicsStep, MechanicsSurface, MechanicsTier } from "./types.js";
+import type { Authority, CalculatorLevelBand, CalculatorProjection, ConcreteDamageType, ConcreteSaveAbility, Diagnostic, MechanicsStep, MechanicsSurface, MechanicsTargeting, MechanicsTier } from "./types.js";
 import { codepointCompare } from "./canonical.js";
 import { projectCalculatorMechanics,projectHarnessMechanics } from "./mechanics.js";
 import { deriveCalculatorProjection,systemMechanicsFields } from "./mechanics-selectors.js";
 
 function duplicateDiagnostics(values:string[],code:string,label:string):Diagnostic[]{const seen=new Set<string>();const diagnostics:Diagnostic[]=[];for(const value of values){if(seen.has(value))diagnostics.push({severity:"error",code,message:`Duplicate ${label}: ${value}`});seen.add(value);}return diagnostics;}
 function vocabulary(authority:Authority,name:string):Set<string>{return new Set((authority.vocabularies[name]??[]).map(value=>value.id));}
-function mechanicsStepDiagnostics(entityId:string,surface:MechanicsSurface,steps:MechanicsStep[],path:string):Diagnostic[]{
+const containsDamage=(steps:MechanicsStep[]):boolean=>steps.some(step=>step.kind==="damage"||(step.kind==="saving_throw"&&(containsDamage(step.failure)||containsDamage(step.success??[]))));
+const supportsIndependentTargets=(targeting:MechanicsTargeting|undefined):boolean=>targeting?.topology==="discrete_multi"||targeting?.topology==="area";
+function targetingDiagnostics(entityId:string,targeting:MechanicsTargeting|undefined,path:string):Diagnostic[]{
+  if(!targeting)return[{severity:"error",code:"mechanics.targeting_required",message:`${entityId} mechanics require explicit targeting topology and selector data`,path}];
+  const diagnostics:Diagnostic[]=[];
+  if(targeting.topology==="area"){
+    if(targeting.shape==="cylinder"&&targeting.height_feet===undefined)diagnostics.push({severity:"error",code:"mechanics.area_geometry",message:`${entityId} Cylinder targeting requires an explicit height`,path});
+    if(targeting.shape==="sphere"&&targeting.height_feet!==undefined)diagnostics.push({severity:"error",code:"mechanics.area_geometry",message:`${entityId} Sphere targeting cannot define Cylinder height`,path});
+    if(targeting.origin==="point_within_range"&&targeting.placement_range_feet===undefined)diagnostics.push({severity:"error",code:"mechanics.area_origin",message:`${entityId} point-selected area targeting requires explicit placement range`,path});
+    if(targeting.origin!=="point_within_range"&&targeting.placement_range_feet!==undefined)diagnostics.push({severity:"error",code:"mechanics.area_origin",message:`${entityId} ${targeting.origin} area targeting cannot define a point-placement range`,path});
+    if((targeting.maximum_targets!==undefined||targeting.excludes_self!==undefined)&&targeting.selection!=="creatures_of_choice")diagnostics.push({severity:"error",code:"mechanics.area_selection",message:`${entityId} area target limits require creatures-of-choice selection`,path});
+  }
+  if(targeting.topology==="discrete_multi"){
+    if((targeting.kind==="struck_plus_additional"||targeting.kind==="primary_plus_additional")&&(!targeting.within_feet||!(targeting.additional_count as any)?.kind))diagnostics.push({severity:"error",code:"mechanics.discrete_multi_selection",message:`${entityId} additional-target mechanics require distance and cardinality`,path});
+    if(targeting.kind==="selected_targets"&&(!targeting.range_feet||!(targeting.count as any)?.kind))diagnostics.push({severity:"error",code:"mechanics.discrete_multi_selection",message:`${entityId} selected-target mechanics require range and cardinality`,path});
+    if(targeting.kind==="weighted_target_slots"&&(!targeting.range_feet||!targeting.slots||!targeting.size_costs||targeting.unique_targets!==true))diagnostics.push({severity:"error",code:"mechanics.discrete_multi_selection",message:`${entityId} weighted target slots require range, slot budget, size costs, and unique targets`,path});
+    if(targeting.kind==="eligible_creatures_in_range"&&!targeting.range_feet)diagnostics.push({severity:"error",code:"mechanics.discrete_multi_selection",message:`${entityId} eligible-creature targeting requires range`,path});
+  }
+  return diagnostics;
+}
+function mechanicsStepDiagnostics(entityId:string,surface:MechanicsSurface,steps:MechanicsStep[],path:string,targeting?:MechanicsTier["targeting"],tierHasDamage=false):Diagnostic[]{
   const diagnostics:Diagnostic[]=[],seenStepIds=new Set<string>(),modeIds=new Set((surface.modes??[]).map(mode=>mode.id));
   const visitSteps=(rows:MechanicsStep[],rowsPath:string)=>{for(const [index,step] of rows.entries()){
     const stepPath=`${rowsPath}/${index}`;
     if("replaces" in step&&step.replaces&&!seenStepIds.has(step.replaces))diagnostics.push({severity:"error",code:"mechanics.replacement_reference",message:`${entityId} replacement target must be an earlier step in the same tier: ${step.replaces}`,path:stepPath});
     if("id" in step&&step.id){if(seenStepIds.has(step.id))diagnostics.push({severity:"error",code:"mechanics.step_duplicate",message:`${entityId} mechanics step ID is duplicated: ${step.id}`,path:stepPath});seenStepIds.add(step.id);}
+    if(targeting?.topology==="single"&&"target" in step&&step.target==="secondary")diagnostics.push({severity:"error",code:"mechanics.single_secondary_target",message:`${entityId} single-target mechanics cannot define an independent secondary target`,path:stepPath});
     if(step.kind==="forced_movement")for(const [directionIndex,direction] of (step.directions??[]).entries())if(!modeIds.has(direction.mode))diagnostics.push({severity:"error",code:"mechanics.mode_reference",message:`${entityId} forced-movement direction references unknown mode: ${direction.mode}`,path:`${stepPath}/directions/${directionIndex}/mode`});
-    if(step.kind==="saving_throw"){visitSteps(step.failure,`${stepPath}/failure`);visitSteps(step.success??[],`${stepPath}/success`);}
+    if(step.kind==="saving_throw"){
+      if(step.independent_per_target&&!supportsIndependentTargets(targeting))diagnostics.push({severity:"error",code:"mechanics.independent_save_targeting",message:`${entityId} independent per-target saves require explicit multi-target mechanics`,path:stepPath});
+      if(step.resolve_even_if_damage_prevented&&!tierHasDamage)diagnostics.push({severity:"error",code:"mechanics.damage_independent_save_requires_damage",message:`${entityId} damage-independent save resolution requires damage in the same mechanics tier`,path:stepPath});
+      visitSteps(step.failure,`${stepPath}/failure`);visitSteps(step.success??[],`${stepPath}/success`);
+    }
   }};
   visitSteps(steps,path);return diagnostics;
 }
 function mechanicsTierDiagnostics(entityId:string,surface:MechanicsSurface,tiers:MechanicsTier[],path:string):Diagnostic[]{
   const diagnostics:Diagnostic[]=duplicateDiagnostics(tiers.map(tier=>String(tier.tier)),"mechanics.tier_duplicate",`${entityId} ${surface.id} tier`).map(diagnostic=>({...diagnostic,path}));
   for(const [tierIndex,tier] of tiers.entries()){
-    diagnostics.push(...mechanicsStepDiagnostics(entityId,surface,tier.steps??[],`${path}/${tierIndex}/steps`));
-    for(const [eventIndex,event] of (tier.events??[]).entries())diagnostics.push(...mechanicsStepDiagnostics(entityId,surface,event.steps,`${path}/${tierIndex}/events/${eventIndex}/steps`));
+    diagnostics.push(...targetingDiagnostics(entityId,tier.targeting,`${path}/${tierIndex}/targeting`));
+    const tierHasDamage=containsDamage([...(tier.steps??[]),...(tier.events??[]).flatMap(event=>event.steps)]);
+    diagnostics.push(...mechanicsStepDiagnostics(entityId,surface,tier.steps??[],`${path}/${tierIndex}/steps`,tier.targeting,tierHasDamage));
+    for(const [eventIndex,event] of (tier.events??[]).entries())diagnostics.push(...mechanicsStepDiagnostics(entityId,surface,event.steps,`${path}/${tierIndex}/events/${eventIndex}/steps`,tier.targeting,tierHasDamage));
   }
   return diagnostics;
 }
@@ -60,85 +87,28 @@ function validateCalculatorLevelBands(bands:CalculatorLevelBand[],minimumLevel:n
   return diagnostics;
 }
 
-export function validateSemantics(authority:Authority):Diagnostic[]{
+const disciplineFacts:Record<string,{damage:ConcreteDamageType;save:ConcreteSaveAbility}>={
+  cryokinesis:{damage:"cold",save:"constitution"},
+  pyrokinesis:{damage:"fire",save:"dexterity"},
+  psychokinesis:{damage:"force",save:"strength"},
+  electrokinesis:{damage:"lightning",save:"charisma"}
+};
+function explicitDisciplineDiagnostics(entityId:string,steps:MechanicsStep[],path:string,expected:{damage:ConcreteDamageType;save:ConcreteSaveAbility}):Diagnostic[]{
   const diagnostics:Diagnostic[]=[];
-  const entities=new Map(authority.entities.map(entity=>[entity.id,entity]));
-  diagnostics.push(...duplicateDiagnostics(authority.entities.map(entity=>entity.id),"entity.duplicate","entity ID"));
-  for(const [entityIndex,entity] of authority.entities.entries())if(entity.concentration_tiers!==undefined){
-    if(entity.requires_concentration!==true)diagnostics.push({severity:"error",code:"entity.concentration_tiers_requirement",message:`${entity.id} concentration tiers require requires_concentration: true`,path:`/entities/${entityIndex}/requires_concentration`});
-    if(entity.concentration_duration===undefined)diagnostics.push({severity:"error",code:"entity.concentration_tiers_duration",message:`${entity.id} concentration tiers require a concentration duration`,path:`/entities/${entityIndex}/concentration_duration`});
-  }
-  const systemOwners=new Map<string,string>();
-  for(const [entityIndex,entity] of authority.entities.entries())for(const [field,value] of Object.entries(entity.system_mechanics??{})){
-    const prior=systemOwners.get(field),path=`/entities/${entityIndex}/system_mechanics/${field}`;
-    if(prior)diagnostics.push({severity:"error",code:"system_mechanics.owner_duplicate",message:`${field} is authored by both ${prior} and ${entity.id}`,path});else systemOwners.set(field,entity.id);
-    void value;
-  }
-  for(const field of systemMechanicsFields)if(!systemOwners.has(field))diagnostics.push({severity:"error",code:"system_mechanics.owner_missing",message:`${field} has no canonical entity system_mechanics owner`,path:"/entities"});
-  if(diagnostics.some(item=>item.code.startsWith("system_mechanics.owner_")))return diagnostics;
-  let calculator:CalculatorProjection;
-  try{calculator=deriveCalculatorProjection(authority);}catch(error){diagnostics.push({severity:"error",code:"mechanics.projection",message:`Canonical mechanics cannot produce consumer views: ${error instanceof Error?error.message:String(error)}`,path:"/entities"});return diagnostics;}
-  const expectedDefaults={default_card_id:"manifested_strike",default_fighter_level:20,default_psionic_ability_modifier:5} as const;
-  for(const [field,expected] of Object.entries(expectedDefaults))if(calculator[field as keyof typeof expectedDefaults]!==expected)diagnostics.push({severity:"error",code:"calculator.default",message:`Calculator ${field} must be ${expected}`,path:`/calculator/${field}`});
-  if(calculator.default_fighter_level<calculator.fighter_level_minimum||calculator.default_fighter_level>calculator.fighter_level_maximum)diagnostics.push({severity:"error",code:"calculator.default_level",message:"Calculator default Fighter level is outside its supported range",path:"/calculator/default_fighter_level"});
-  if(calculator.default_psionic_ability_modifier<calculator.psionic_ability_modifier_minimum||calculator.default_psionic_ability_modifier>calculator.psionic_ability_modifier_maximum)diagnostics.push({severity:"error",code:"calculator.default_modifier",message:"Calculator default Psionic Ability modifier is outside its supported range",path:"/calculator/default_psionic_ability_modifier"});
-  const calculatorFeatureIds=calculator.features.map(feature=>feature.entity_id);
-  diagnostics.push(...duplicateDiagnostics(calculatorFeatureIds,"calculator.feature_duplicate","calculator feature entity ID"));
-  const projectedRiderIds=calculator.features.filter(feature=>feature.delivery==="on_hit_rider").map(feature=>feature.entity_id).sort(codepointCompare);
-  const deckRiderIds=authority.entities.filter(entity=>isCalculatorDeckEntity(entity)&&entity.activation==="on_hit"&&entity.classifications.feature_role==="rider").map(entity=>entity.id).sort(codepointCompare);
-  if(JSON.stringify(projectedRiderIds)!==JSON.stringify(deckRiderIds))diagnostics.push({severity:"error",code:"calculator.rider_coverage",message:"Every deck-owned on-hit rider must retain a Calculator projection exactly once",path:"/calculator/features"});
-  for(const [entityIndex,entity] of authority.entities.entries())if(entity.mechanics){
-    const mechanicsPath=`/entities/${entityIndex}/mechanics`,surfaceIds=entity.mechanics.surfaces.map(surface=>surface.id);diagnostics.push(...duplicateDiagnostics(surfaceIds,"mechanics.surface_duplicate",`${entity.id} mechanics surface`).map(diagnostic=>({...diagnostic,path:`${mechanicsPath}/surfaces`})));
-    for(const [surfaceIndex,surface] of entity.mechanics.surfaces.entries()){
-      diagnostics.push(...duplicateDiagnostics((surface.modes??[]).map(mode=>mode.id),"mechanics.mode_duplicate",`${entity.id} ${surface.id} mode`).map(diagnostic=>({...diagnostic,path:`${mechanicsPath}/surfaces/${surfaceIndex}/modes`})));
-      diagnostics.push(...mechanicsStepDiagnostics(entity.id,surface,surface.steps??[],`${mechanicsPath}/surfaces/${surfaceIndex}/steps`));
-      diagnostics.push(...mechanicsTierDiagnostics(entity.id,surface,surface.tiers??[],`${mechanicsPath}/surfaces/${surfaceIndex}/tiers`));
+  const visit=(rows:MechanicsStep[],rowsPath:string)=>rows.forEach((step,index)=>{
+    const stepPath=`${rowsPath}/${index}`;
+    if(step.kind==="damage"&&step.damage_type!==expected.damage)diagnostics.push({severity:"error",code:"mechanics.discipline_damage_type",message:`${entityId} must author its concrete ${expected.damage} damage type`,path:`${stepPath}/damage_type`});
+    if(step.kind==="saving_throw"){
+      if(step.ability!==expected.save)diagnostics.push({severity:"error",code:"mechanics.discipline_save",message:`${entityId} must author its concrete ${expected.save} saving throw`,path:`${stepPath}/ability`});
+      visit(step.failure,`${stepPath}/failure`);visit(step.success??[],`${stepPath}/success`);
     }
-    try{
-      projectCalculatorMechanics(entity);projectHarnessMechanics(entity);
-    }catch(error){diagnostics.push({severity:"error",code:"mechanics.projection",message:`${entity.id} neutral mechanics cannot be projected: ${error instanceof Error?error.message:String(error)}`,path:mechanicsPath});}
-  }
-  const utilityIds=calculator.utility_cards.map(card=>card.id);diagnostics.push(...duplicateDiagnostics(utilityIds,"calculator.utility_duplicate","calculator utility card ID"));
-  if(JSON.stringify([...utilityIds].sort(codepointCompare))!==JSON.stringify(["blood_tax","holdout_option","manifested_strike"]))diagnostics.push({severity:"error",code:"calculator.utility_coverage",message:"Calculator utility cards must be exactly Manifested Strike, Holdout Option, and Blood Tax",path:"/calculator/utility_cards"});
-  for(const [utilityIndex,card] of calculator.utility_cards.entries()){
-    const path=`/calculator/utility_cards/${utilityIndex}`,source=entities.get(card.source_entity_id);
-    if(!source)diagnostics.push({severity:"error",code:"calculator.utility_source_unknown",message:`Calculator utility ${card.id} references unknown source entity ${card.source_entity_id}`,path:`${path}/source_entity_id`});
-    if(card.id!==card.calculation_kind)diagnostics.push({severity:"error",code:"calculator.utility_kind",message:`Calculator utility ${card.id} must use its matching typed calculation kind`,path:`${path}/calculation_kind`});
-    for(const relatedId of card.related_card_ids??[]){
-      if(relatedId===card.id)diagnostics.push({severity:"error",code:"calculator.utility_related_self",message:`Calculator utility ${card.id} cannot relate to itself`,path:`${path}/related_card_ids`});
-      if(!utilityIds.includes(relatedId))diagnostics.push({severity:"error",code:"calculator.utility_related_unknown",message:`Calculator utility ${card.id} references unknown related card ${relatedId}`,path:`${path}/related_card_ids`});
-    }
-    for(const [contextIndex,context] of (card.context??[]).entries()){
-      const contextEntity=entities.get(context.entity_id),contextPath=`${path}/context/${contextIndex}`;
-      if(!contextEntity)diagnostics.push({severity:"error",code:"calculator.utility_context_unknown",message:`Calculator utility ${card.id} references unknown context entity ${context.entity_id}`,path:`${contextPath}/entity_id`});
-      else for(const blockIndex of context.content_block_indexes)if(!contextEntity.content[blockIndex])diagnostics.push({severity:"error",code:"calculator.utility_context_block",message:`Calculator utility ${card.id} references missing ${context.entity_id} content block ${blockIndex}`,path:`${contextPath}/content_block_indexes`});
-    }
-  }
-  const tierMinimums=calculator.tier_minimum_levels.map(item=>item.tier);diagnostics.push(...duplicateDiagnostics(tierMinimums.map(String),"calculator.tier_minimum_duplicate","calculator tier minimum"));
-  const expectedTierMinimums=[[0,3],[1,3],[2,10]] as const;
-  if(JSON.stringify(calculator.tier_minimum_levels.map(item=>[item.tier,item.minimum_level]))!==JSON.stringify(expectedTierMinimums))diagnostics.push({severity:"error",code:"calculator.tier_minimum_levels",message:"Calculator tier minimum levels must be Tier 0 at level 3, Tier 1 at level 3, and Tier 2 at level 10",path:"/calculator/tier_minimum_levels"});
-  const harness=calculator.harness_mechanics;
-  if(JSON.stringify(harness.action_economy)!==JSON.stringify({standalone_psionic_action_limit_per_turn:1,action_surge_allows_additional_standalone_psionic_action:false}))diagnostics.push({severity:"error",code:"harness.action_economy",message:"Harness action economy must allow at most one standalone psionic Action per turn and no additional standalone activation from Action Surge",path:"/calculator/harness_mechanics/action_economy"});
-  if(harness.manifested_strike.rider_repeatability!=="per_manifested_strike")diagnostics.push({severity:"error",code:"harness.rider_repeatability",message:"Manifested Strike riders must use the supported per_manifested_strike repeatability contract",path:"/calculator/harness_mechanics/manifested_strike/rider_repeatability"});
-  const expectedHoldout={damage_type:"force",declaration_timing:"before_attack_roll",formulas:[{minimum_level:3,maximum_level:17,kind:"halve_total_rounded_down"},{minimum_level:18,maximum_level:20,kind:"dice_plus_psionic_ability_modifier",count:1,sides:6}]};
-  if(JSON.stringify(harness.manifested_strike.holdout)!==JSON.stringify(expectedHoldout))diagnostics.push({severity:"error",code:"harness.holdout_formula",message:"Holdout must retain the level-banded base and Refined Holdout formulas",path:"/calculator/harness_mechanics/manifested_strike/holdout"});
-  if(JSON.stringify(harness.manifested_strike.attack_bonus)!==JSON.stringify({base:0,components:["psionic_ability_modifier","proficiency_bonus","psionic_focus"]}))diagnostics.push({severity:"error",code:"harness.attack_formula",message:"Manifested Strike attack bonus must use its canonical base and ordered components",path:"/calculator/harness_mechanics/manifested_strike/attack_bonus"});
-  if(JSON.stringify(harness.manifested_strike.save_dc)!==JSON.stringify({base:8,components:["proficiency_bonus","psionic_ability_modifier"]}))diagnostics.push({severity:"error",code:"harness.save_dc_formula",message:"Kinetic Vanguard save DC must use its canonical base and ordered components",path:"/calculator/harness_mechanics/manifested_strike/save_dc"});
-  if(JSON.stringify(harness.overload.blood_tax_per_tier)!==JSON.stringify({base:0,proficiency_bonus_multiplier:1}))diagnostics.push({severity:"error",code:"harness.blood_tax_formula",message:"Blood Tax per tier must use its canonical base and Proficiency Bonus multiplier",path:"/calculator/harness_mechanics/overload/blood_tax_per_tier"});
-  if(JSON.stringify(harness.overload.mastery)!==JSON.stringify({minimum_level:18,uses_per_rest:1,blood_tax_divisor:2,minimum_per_overload:1}))diagnostics.push({severity:"error",code:"harness.overload_mastery",message:"Overload Mastery must retain its canonical level, use, divisor, and minimum",path:"/calculator/harness_mechanics/overload/mastery"});
-  const expectedApex={minimum_level:18,psychokinesis_manifested_strike_hit:{discipline_id:"psychokinesis",uses_per_attack_action:1,reset:"start_of_each_attack_action",damage_type:"force",damage:{kind:"dice",count:3,sides:8},critical_dice_multiplier:1,psi_cost:0,blood_tax:0}};
-  if(JSON.stringify(harness.psionic_apex)!==JSON.stringify(expectedApex))diagnostics.push({severity:"error",code:"harness.psionic_apex",message:"Psionic Apex must retain the once-per-Attack-action Psychokinesis damage packet",path:"/calculator/harness_mechanics/psionic_apex"});
-  const disciplineIds=harness.disciplines.map(item=>item.id);
-  diagnostics.push(...duplicateDiagnostics(disciplineIds,"harness.discipline_duplicate","harness discipline ID"));
-  const expectedDisciplines=["cryokinesis","electrokinesis","psychokinesis","pyrokinesis"];
-  if(JSON.stringify([...disciplineIds].sort(codepointCompare))!==JSON.stringify(expectedDisciplines))diagnostics.push({severity:"error",code:"harness.discipline_coverage",message:"Harness mechanics must define exactly the four Kinetic Disciplines",path:"/calculator/harness_mechanics/disciplines"});
-  for(const [disciplineIndex,discipline] of harness.disciplines.entries()){
-    const mastery=discipline.mastery,path=`/calculator/harness_mechanics/disciplines/${disciplineIndex}/mastery`,outcomes=new Set(mastery.control_outcomes);
-    if((outcomes.has("speed_reduction")||outcomes.has("forced_movement"))&&(!mastery.control_duration||mastery.control_magnitude_feet===undefined))diagnostics.push({severity:"error",code:"harness.mastery_control_measurement",message:`${discipline.id} measured mastery control requires duration and feet magnitude`,path});
-    if(outcomes.has("attack_disadvantage")&&(!mastery.control_duration||!mastery.attack_scope))diagnostics.push({severity:"error",code:"harness.mastery_attack_scope",message:`${discipline.id} attack impairment requires duration and attack scope`,path});
-    if(!mastery.control_outcomes.length&&(mastery.control_duration||mastery.control_magnitude_feet!==undefined||mastery.attack_scope))diagnostics.push({severity:"error",code:"harness.mastery_control_extra",message:`${discipline.id} non-control mastery cannot define control measurement fields`,path});
-  }
-  const featureRules=harness.feature_rules,featureRuleIds=featureRules.map(item=>item.entity_id);
+  });
+  visit(steps,path);return diagnostics;
+}
+
+export function validateHarnessFeatureRules(authority:Authority,calculator:CalculatorProjection):Diagnostic[]{
+  const diagnostics:Diagnostic[]=[],entities=new Map(authority.entities.map(entity=>[entity.id,entity])),expectedDisciplines=["cryokinesis","electrokinesis","psychokinesis","pyrokinesis"];
+  const featureRules=calculator.harness_mechanics.feature_rules,featureRuleIds=featureRules.map(item=>item.entity_id),calculatorFeatureIds=calculator.features.map(feature=>feature.entity_id);
   diagnostics.push(...duplicateDiagnostics(featureRuleIds,"harness.feature_duplicate","harness feature entity ID"));
   const missingShared=featureRuleIds.filter(id=>!calculatorFeatureIds.includes(id));
   if(missingShared.length)diagnostics.push({severity:"error",code:"harness.feature_coverage",message:`Harness mechanics require missing Calculator projections: ${missingShared.join(", ")}`,path:"/calculator/features"});
@@ -184,6 +154,110 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
       if(control.repeat_save_disadvantage&&!control.repeat_save_trigger)diagnostics.push({severity:"error",code:"harness.repeat_save_disadvantage",message:`${rule.entity_id} Tier ${control.tier} repeat-save Disadvantage requires a repeat-save trigger`,path:controlPath});
     }
   }
+  return diagnostics;
+}
+
+export function validateSemantics(authority:Authority):Diagnostic[]{
+  const diagnostics:Diagnostic[]=[];
+  const entities=new Map(authority.entities.map(entity=>[entity.id,entity]));
+  diagnostics.push(...duplicateDiagnostics(authority.entities.map(entity=>entity.id),"entity.duplicate","entity ID"));
+  for(const [entityIndex,entity] of authority.entities.entries())if(entity.concentration_tiers!==undefined){
+    if(entity.requires_concentration!==true)diagnostics.push({severity:"error",code:"entity.concentration_tiers_requirement",message:`${entity.id} concentration tiers require requires_concentration: true`,path:`/entities/${entityIndex}/requires_concentration`});
+    if(entity.concentration_duration===undefined)diagnostics.push({severity:"error",code:"entity.concentration_tiers_duration",message:`${entity.id} concentration tiers require a concentration duration`,path:`/entities/${entityIndex}/concentration_duration`});
+  }
+  const systemOwners=new Map<string,string>();
+  for(const [entityIndex,entity] of authority.entities.entries())for(const [field,value] of Object.entries(entity.system_mechanics??{})){
+    const prior=systemOwners.get(field),path=`/entities/${entityIndex}/system_mechanics/${field}`;
+    if(prior)diagnostics.push({severity:"error",code:"system_mechanics.owner_duplicate",message:`${field} is authored by both ${prior} and ${entity.id}`,path});else systemOwners.set(field,entity.id);
+    void value;
+  }
+  for(const field of systemMechanicsFields)if(!systemOwners.has(field))diagnostics.push({severity:"error",code:"system_mechanics.owner_missing",message:`${field} has no canonical entity system_mechanics owner`,path:"/entities"});
+  if(diagnostics.some(item=>item.code.startsWith("system_mechanics.owner_")))return diagnostics;
+  for(const [entityIndex,entity] of authority.entities.entries()){
+    const disciplineId=entity.classifications.rules_area.find(area=>disciplineFacts[area]),expectedDiscipline=disciplineId?disciplineFacts[disciplineId]:undefined;
+    for(const [surfaceIndex,surface] of (entity.mechanics?.surfaces??[]).entries()){
+      const surfacePath=`/entities/${entityIndex}/mechanics/surfaces/${surfaceIndex}`;
+      if(surface.steps)diagnostics.push(...targetingDiagnostics(entity.id,surface.targeting,`${surfacePath}/targeting`));
+      if(expectedDiscipline&&surface.damage_type!==undefined&&surface.damage_type!==expectedDiscipline.damage)diagnostics.push({severity:"error",code:"mechanics.discipline_damage_type",message:`${entity.id} must author its concrete ${expectedDiscipline.damage} damage type`,path:`${surfacePath}/damage_type`});
+      if(expectedDiscipline)diagnostics.push(...explicitDisciplineDiagnostics(entity.id,surface.steps??[],`${surfacePath}/steps`,expectedDiscipline));
+      for(const [tierIndex,tier] of (surface.tiers??[]).entries()){
+        diagnostics.push(...targetingDiagnostics(entity.id,tier.targeting,`${surfacePath}/tiers/${tierIndex}/targeting`));
+        if(expectedDiscipline){diagnostics.push(...explicitDisciplineDiagnostics(entity.id,tier.steps??[],`${surfacePath}/tiers/${tierIndex}/steps`,expectedDiscipline));for(const [eventIndex,event] of (tier.events??[]).entries())diagnostics.push(...explicitDisciplineDiagnostics(entity.id,event.steps,`${surfacePath}/tiers/${tierIndex}/events/${eventIndex}/steps`,expectedDiscipline));}
+      }
+    }
+  }
+  if(diagnostics.some(item=>item.code.startsWith("mechanics.targeting_")||item.code.startsWith("mechanics.area_")||item.code.startsWith("mechanics.discrete_multi_")||item.code==="mechanics.discipline_damage_type"))return diagnostics;
+  let calculator:CalculatorProjection;
+  try{calculator=deriveCalculatorProjection(authority);}catch(error){diagnostics.push({severity:"error",code:"mechanics.projection",message:`Canonical mechanics cannot produce consumer views: ${error instanceof Error?error.message:String(error)}`,path:"/entities"});return diagnostics;}
+  const expectedDefaults={default_card_id:"manifested_strike",default_fighter_level:20,default_psionic_ability_modifier:5} as const;
+  for(const [field,expected] of Object.entries(expectedDefaults))if(calculator[field as keyof typeof expectedDefaults]!==expected)diagnostics.push({severity:"error",code:"calculator.default",message:`Calculator ${field} must be ${expected}`,path:`/calculator/${field}`});
+  if(calculator.default_fighter_level<calculator.fighter_level_minimum||calculator.default_fighter_level>calculator.fighter_level_maximum)diagnostics.push({severity:"error",code:"calculator.default_level",message:"Calculator default Fighter level is outside its supported range",path:"/calculator/default_fighter_level"});
+  if(calculator.default_psionic_ability_modifier<calculator.psionic_ability_modifier_minimum||calculator.default_psionic_ability_modifier>calculator.psionic_ability_modifier_maximum)diagnostics.push({severity:"error",code:"calculator.default_modifier",message:"Calculator default Psionic Ability modifier is outside its supported range",path:"/calculator/default_psionic_ability_modifier"});
+  const calculatorFeatureIds=calculator.features.map(feature=>feature.entity_id);
+  diagnostics.push(...duplicateDiagnostics(calculatorFeatureIds,"calculator.feature_duplicate","calculator feature entity ID"));
+  const projectedRiderIds=calculator.features.filter(feature=>feature.delivery==="on_hit_rider").map(feature=>feature.entity_id).sort(codepointCompare);
+  const deckRiderIds=authority.entities.filter(entity=>isCalculatorDeckEntity(entity)&&entity.activation==="on_hit"&&entity.classifications.feature_role==="rider").map(entity=>entity.id).sort(codepointCompare);
+  if(JSON.stringify(projectedRiderIds)!==JSON.stringify(deckRiderIds))diagnostics.push({severity:"error",code:"calculator.rider_coverage",message:"Every deck-owned on-hit rider must retain a Calculator projection exactly once",path:"/calculator/features"});
+  for(const [entityIndex,entity] of authority.entities.entries())if(entity.mechanics){
+    const mechanicsPath=`/entities/${entityIndex}/mechanics`,surfaceIds=entity.mechanics.surfaces.map(surface=>surface.id);diagnostics.push(...duplicateDiagnostics(surfaceIds,"mechanics.surface_duplicate",`${entity.id} mechanics surface`).map(diagnostic=>({...diagnostic,path:`${mechanicsPath}/surfaces`})));
+    for(const [surfaceIndex,surface] of entity.mechanics.surfaces.entries()){
+      const surfacePath=`${mechanicsPath}/surfaces/${surfaceIndex}`,targetingRows=[...(surface.targeting?[surface.targeting]:[]),...(surface.tiers??[]).map(tier=>tier.targeting)];
+      diagnostics.push(...duplicateDiagnostics((surface.modes??[]).map(mode=>mode.id),"mechanics.mode_duplicate",`${entity.id} ${surface.id} mode`).map(diagnostic=>({...diagnostic,path:`${surfacePath}/modes`})));
+      if(surface.steps)diagnostics.push(...targetingDiagnostics(entity.id,surface.targeting,`${surfacePath}/targeting`));
+      if(surface.steps&&surface.tiers)diagnostics.push({severity:"error",code:"mechanics.surface_shape",message:`${entity.id} mechanics surface cannot mix untiered steps with tiers`,path:surfacePath});
+      if(surface.delivery.kind==="passive"&&targetingRows.some(targeting=>targeting.topology!=="none"))diagnostics.push({severity:"error",code:"mechanics.passive_targeting",message:`${entity.id} passive mechanics must use no-target topology`,path:surfacePath});
+      if(surface.delivery.kind==="rider"&&targetingRows.some(targeting=>targeting.topology==="self"||targeting.topology==="none"))diagnostics.push({severity:"error",code:"mechanics.rider_targeting",message:`${entity.id} rider mechanics require creature or area targeting`,path:surfacePath});
+      if(surface.delivery.kind==="rider"&&(entity.activation!=="on_hit"||entity.classifications.feature_role!=="rider"))diagnostics.push({severity:"error",code:"mechanics.rider_delivery",message:`${entity.id} rider delivery must match its on-hit rider classification`,path:`${surfacePath}/delivery`});
+      if(surface.delivery.kind==="standalone"&&entity.activation!=="passive"&&surface.delivery.activation!==entity.activation)diagnostics.push({severity:"error",code:"mechanics.standalone_activation",message:`${entity.id} standalone delivery must retain its authored activation`,path:`${surfacePath}/delivery/activation`});
+      if(surface.delivery.kind==="passive"&&entity.activation!=="passive")diagnostics.push({severity:"error",code:"mechanics.passive_activation",message:`${entity.id} passive delivery must retain passive activation`,path:`${surfacePath}/delivery`});
+      diagnostics.push(...mechanicsStepDiagnostics(entity.id,surface,surface.steps??[],`${surfacePath}/steps`,surface.targeting,containsDamage(surface.steps??[])));
+      diagnostics.push(...mechanicsTierDiagnostics(entity.id,surface,surface.tiers??[],`${surfacePath}/tiers`));
+    }
+    try{
+      projectCalculatorMechanics(entity);projectHarnessMechanics(entity);
+    }catch(error){diagnostics.push({severity:"error",code:"mechanics.projection",message:`${entity.id} neutral mechanics cannot be projected: ${error instanceof Error?error.message:String(error)}`,path:mechanicsPath});}
+  }
+  const utilityIds=calculator.utility_cards.map(card=>card.id);diagnostics.push(...duplicateDiagnostics(utilityIds,"calculator.utility_duplicate","calculator utility card ID"));
+  if(JSON.stringify([...utilityIds].sort(codepointCompare))!==JSON.stringify(["blood_tax","holdout_option","manifested_strike"]))diagnostics.push({severity:"error",code:"calculator.utility_coverage",message:"Calculator utility cards must be exactly Manifested Strike, Holdout Option, and Blood Tax",path:"/calculator/utility_cards"});
+  for(const [utilityIndex,card] of calculator.utility_cards.entries()){
+    const path=`/calculator/utility_cards/${utilityIndex}`,source=entities.get(card.source_entity_id);
+    if(!source)diagnostics.push({severity:"error",code:"calculator.utility_source_unknown",message:`Calculator utility ${card.id} references unknown source entity ${card.source_entity_id}`,path:`${path}/source_entity_id`});
+    if(card.id!==card.calculation_kind)diagnostics.push({severity:"error",code:"calculator.utility_kind",message:`Calculator utility ${card.id} must use its matching typed calculation kind`,path:`${path}/calculation_kind`});
+    for(const relatedId of card.related_card_ids??[]){
+      if(relatedId===card.id)diagnostics.push({severity:"error",code:"calculator.utility_related_self",message:`Calculator utility ${card.id} cannot relate to itself`,path:`${path}/related_card_ids`});
+      if(!utilityIds.includes(relatedId))diagnostics.push({severity:"error",code:"calculator.utility_related_unknown",message:`Calculator utility ${card.id} references unknown related card ${relatedId}`,path:`${path}/related_card_ids`});
+    }
+    for(const [contextIndex,context] of (card.context??[]).entries()){
+      const contextEntity=entities.get(context.entity_id),contextPath=`${path}/context/${contextIndex}`;
+      if(!contextEntity)diagnostics.push({severity:"error",code:"calculator.utility_context_unknown",message:`Calculator utility ${card.id} references unknown context entity ${context.entity_id}`,path:`${contextPath}/entity_id`});
+      else for(const blockIndex of context.content_block_indexes)if(!contextEntity.content[blockIndex])diagnostics.push({severity:"error",code:"calculator.utility_context_block",message:`Calculator utility ${card.id} references missing ${context.entity_id} content block ${blockIndex}`,path:`${contextPath}/content_block_indexes`});
+    }
+  }
+  const tierMinimums=calculator.tier_minimum_levels.map(item=>item.tier);diagnostics.push(...duplicateDiagnostics(tierMinimums.map(String),"calculator.tier_minimum_duplicate","calculator tier minimum"));
+  const expectedTierMinimums=[[0,3],[1,3],[2,10]] as const;
+  if(JSON.stringify(calculator.tier_minimum_levels.map(item=>[item.tier,item.minimum_level]))!==JSON.stringify(expectedTierMinimums))diagnostics.push({severity:"error",code:"calculator.tier_minimum_levels",message:"Calculator tier minimum levels must be Tier 0 at level 3, Tier 1 at level 3, and Tier 2 at level 10",path:"/calculator/tier_minimum_levels"});
+  const harness=calculator.harness_mechanics;
+  if(JSON.stringify(harness.action_economy)!==JSON.stringify({standalone_psionic_action_limit_per_turn:1,action_surge_allows_additional_standalone_psionic_action:false}))diagnostics.push({severity:"error",code:"harness.action_economy",message:"Harness action economy must allow at most one standalone psionic Action per turn and no additional standalone activation from Action Surge",path:"/calculator/harness_mechanics/action_economy"});
+  if(harness.manifested_strike.rider_repeatability!=="per_manifested_strike")diagnostics.push({severity:"error",code:"harness.rider_repeatability",message:"Manifested Strike riders must use the supported per_manifested_strike repeatability contract",path:"/calculator/harness_mechanics/manifested_strike/rider_repeatability"});
+  const expectedHoldout={damage_type:"force",declaration_timing:"before_attack_roll",formulas:[{minimum_level:3,maximum_level:17,kind:"halve_total_rounded_down"},{minimum_level:18,maximum_level:20,kind:"dice_plus_psionic_ability_modifier",count:1,sides:6}]};
+  if(JSON.stringify(harness.manifested_strike.holdout)!==JSON.stringify(expectedHoldout))diagnostics.push({severity:"error",code:"harness.holdout_formula",message:"Holdout must retain the level-banded base and Refined Holdout formulas",path:"/calculator/harness_mechanics/manifested_strike/holdout"});
+  if(JSON.stringify(harness.manifested_strike.attack_bonus)!==JSON.stringify({base:0,components:["psionic_ability_modifier","proficiency_bonus","psionic_focus"]}))diagnostics.push({severity:"error",code:"harness.attack_formula",message:"Manifested Strike attack bonus must use its canonical base and ordered components",path:"/calculator/harness_mechanics/manifested_strike/attack_bonus"});
+  if(JSON.stringify(harness.manifested_strike.save_dc)!==JSON.stringify({base:8,components:["proficiency_bonus","psionic_ability_modifier"]}))diagnostics.push({severity:"error",code:"harness.save_dc_formula",message:"Kinetic Vanguard save DC must use its canonical base and ordered components",path:"/calculator/harness_mechanics/manifested_strike/save_dc"});
+  if(JSON.stringify(harness.overload.blood_tax_per_tier)!==JSON.stringify({base:0,proficiency_bonus_multiplier:1}))diagnostics.push({severity:"error",code:"harness.blood_tax_formula",message:"Blood Tax per tier must use its canonical base and Proficiency Bonus multiplier",path:"/calculator/harness_mechanics/overload/blood_tax_per_tier"});
+  if(JSON.stringify(harness.overload.mastery)!==JSON.stringify({minimum_level:18,uses_per_rest:1,blood_tax_divisor:2,minimum_per_overload:1}))diagnostics.push({severity:"error",code:"harness.overload_mastery",message:"Overload Mastery must retain its canonical level, use, divisor, and minimum",path:"/calculator/harness_mechanics/overload/mastery"});
+  const expectedApex={minimum_level:18,psychokinesis_manifested_strike_hit:{discipline_id:"psychokinesis",uses_per_attack_action:1,reset:"start_of_each_attack_action",damage_type:"force",damage:{kind:"dice",count:3,sides:8},critical_dice_multiplier:1,psi_cost:0,blood_tax:0}};
+  if(JSON.stringify(harness.psionic_apex)!==JSON.stringify(expectedApex))diagnostics.push({severity:"error",code:"harness.psionic_apex",message:"Psionic Apex must retain the once-per-Attack-action Psychokinesis damage packet",path:"/calculator/harness_mechanics/psionic_apex"});
+  const disciplineIds=harness.disciplines.map(item=>item.id);
+  diagnostics.push(...duplicateDiagnostics(disciplineIds,"harness.discipline_duplicate","harness discipline ID"));
+  const expectedDisciplines=["cryokinesis","electrokinesis","psychokinesis","pyrokinesis"];
+  if(JSON.stringify([...disciplineIds].sort(codepointCompare))!==JSON.stringify(expectedDisciplines))diagnostics.push({severity:"error",code:"harness.discipline_coverage",message:"Harness mechanics must define exactly the four Kinetic Disciplines",path:"/calculator/harness_mechanics/disciplines"});
+  for(const [disciplineIndex,discipline] of harness.disciplines.entries()){
+    const mastery=discipline.mastery,path=`/calculator/harness_mechanics/disciplines/${disciplineIndex}/mastery`,outcomes=new Set(mastery.control_outcomes);
+    if((outcomes.has("speed_reduction")||outcomes.has("forced_movement"))&&(!mastery.control_duration||mastery.control_magnitude_feet===undefined))diagnostics.push({severity:"error",code:"harness.mastery_control_measurement",message:`${discipline.id} measured mastery control requires duration and feet magnitude`,path});
+    if(outcomes.has("attack_disadvantage")&&(!mastery.control_duration||!mastery.attack_scope))diagnostics.push({severity:"error",code:"harness.mastery_attack_scope",message:`${discipline.id} attack impairment requires duration and attack scope`,path});
+    if(!mastery.control_outcomes.length&&(mastery.control_duration||mastery.control_magnitude_feet!==undefined||mastery.attack_scope))diagnostics.push({severity:"error",code:"harness.mastery_control_extra",message:`${discipline.id} non-control mastery cannot define control measurement fields`,path});
+  }
+  diagnostics.push(...validateHarnessFeatureRules(authority,calculator));
   for(const [featureIndex,feature] of calculator.features.entries()){
     const featurePath=`/calculator/features/${featureIndex}`,entity=entities.get(feature.entity_id);
     if(!entity)diagnostics.push({severity:"error",code:"calculator.feature_unknown",message:`Calculator references unknown feature entity ${feature.entity_id}`,path:`${featurePath}/entity_id`});

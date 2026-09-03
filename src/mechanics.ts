@@ -4,6 +4,7 @@ const disciplineIds=["pyrokinesis","cryokinesis","psychokinesis","electrokinesis
 type Gate="on_reach"|"on_failed_save"|"while_in_area";
 type SavingStep=Extract<MechanicsStep,{kind:"saving_throw"}>;
 interface LocatedStep {step:MechanicsStep;gate:Gate;save?:CalculatorSave;halfOnSuccess?:boolean;saving?:SavingStep}
+const uniqueValues=<T>(values:T[]):T[]=>[...new Map(values.map(value=>[JSON.stringify(value),value])).values()];
 
 const calculatorDelivery=(surfaces:MechanicsSurface[]):CalculatorFeature["delivery"]=>surfaces.some(surface=>surface.delivery.kind==="rider")?"on_hit_rider":surfaces.some(surface=>surface.delivery.kind==="passive")?"passive":"standalone";
 
@@ -29,7 +30,7 @@ function mechanicsDamage(value:MechanicsValue,resolution:CalculatorDamage["resol
 
 const savingThrow=(tier:MechanicsTier):CalculatorSave|undefined=>{
   const saves=[...(tier.steps??[]),...(tier.events??[]).flatMap(event=>event.steps)].flatMap(function collect(step):CalculatorSave[]{return step.kind==="saving_throw"?[step.ability,...step.failure.flatMap(collect),...(step.success??[]).flatMap(collect)]:[];});
-  const unique=[...new Set(saves)];if(unique.length>1)throw new Error(`Tier ${tier.tier} uses multiple Calculator saving throws`);return unique[0];
+  const unique=uniqueValues(saves);if(unique.length>1)throw new Error(`Tier ${tier.tier} uses multiple Calculator saving throws`);return unique[0];
 };
 
 function calculatorTier(tier:MechanicsTier):NonNullable<CalculatorFeature["tiers"]>[number]{
@@ -110,7 +111,7 @@ function mergeControlEffects(effects:ProjectedControlEffect[]):HarnessControlEff
 
 function harnessControlTier(tier:MechanicsTier,hitGated:boolean):HarnessControlTier|null{
   const located=tierSteps(tier),effects=mergeControlEffects(located.map(item=>controlEffect(item,tier.targeting.kind==="area")).filter((effect):effect is HarnessControlEffect=>effect!==null));if(!effects.length)return null;
-  const failed=located.filter(item=>item.gate==="on_failed_save"&&item.save),saves=[...new Set(failed.map(item=>item.save!))];if(saves.length>1)throw new Error(`Tier ${tier.tier} uses multiple harness control saving throws`);
+  const failed=located.filter(item=>item.gate==="on_failed_save"&&item.save),saves=uniqueValues(failed.map(item=>item.save!));if(saves.length>1)throw new Error(`Tier ${tier.tier} uses multiple harness control saving throws`);
   const saving=failed[0]?.saving,application=saves.length?"failed_save":"no_save";
   return{tier:tier.tier,application,...(saves[0]?{save:saves[0]}:{}),...(hitGated?{hit_gated:true}:{}),effects,...(saving?.maximum_size?{maximum_size:saving.maximum_size}:{}),...(saving?.required_creature_type?{required_creature_type:saving.required_creature_type}:{}),...(saving?.repeat?{repeat_save_trigger:saving.repeat.trigger,...(saving.repeat.disadvantage?{repeat_save_disadvantage:true}:{})}:{})};
 }
@@ -131,7 +132,7 @@ export function projectHarnessMechanics(entity:Entity):HarnessFeatureRule|null{
   if(!entity.mechanics)return null;const surfaces=entity.mechanics.surfaces,tiers=surfaces.flatMap(surface=>(surface.tiers??[]).map(tier=>({surface,tier}))).sort((left,right)=>left.tier.tier-right.tier.tier);
   const hasHarnessFacts=surfaces.some(surface=>surface.damage_type)||tiers.some(({tier})=>tierSteps(tier).some(item=>item.step.kind==="damage"||item.step.kind==="armor_class_modifier"||controlEffect(item,tier.targeting.kind==="area")!==null));if(!hasHarnessFacts)return null;
   const authoredDisciplines=entity.classifications.rules_area.filter((area):area is typeof disciplineIds[number]=>disciplineIds.includes(area as typeof disciplineIds[number]));if(!authoredDisciplines.length&&entity.classifications.rules_area.includes("advanced_training"))authoredDisciplines.push(...disciplineIds);
-  const damageTypes=[...new Set([...surfaces.flatMap(surface=>surface.damage_type?[surface.damage_type]:[]),...tiers.flatMap(({tier})=>tierSteps(tier).flatMap(item=>item.step.kind==="damage"?[item.step.damage_type]:[]))])];const damage_type=damageTypes[0]??(authoredDisciplines.length?"discipline":null);if(!damage_type)throw new Error(`${entity.id} lacks a neutral damage type`);if(damageTypes.length>1)throw new Error(`${entity.id} uses multiple neutral damage types`);
+  const damageTypes=uniqueValues([...surfaces.flatMap(surface=>surface.damage_type?[surface.damage_type]:[]),...tiers.flatMap(({tier})=>tierSteps(tier).flatMap(item=>item.step.kind==="damage"?[item.step.damage_type]:[]))]);const damage_type=damageTypes[0];if(!damage_type)throw new Error(`${entity.id} lacks an explicit damage type`);if(damageTypes.length>1)throw new Error(`${entity.id} uses multiple explicit damage types`);
   const targeting=tiers.map(({surface,tier})=>harnessTargeting(tier,surface)).filter((row):row is NonNullable<HarnessFeatureRule["targeting_by_tier"]>[number]=>row!==null);
   const controls:HarnessControlTier[]=[];let previousTier:MechanicsTier|undefined;for(const {surface,tier} of tiers){const control=harnessControlTier(tier,surface.delivery.kind==="rider"),damageSignature=(candidate:MechanicsTier|undefined)=>candidate?tierSteps(candidate).filter(item=>item.step.kind==="damage").map(item=>item.step):[],currentDamage=damageSignature(tier),priorDamage=damageSignature(previousTier),scaledRestatement=surface.delivery.kind==="rider"&&currentDamage.length>0&&priorDamage.length>0&&JSON.stringify(currentDamage)!==JSON.stringify(priorDamage);if(control&&(!controls.length||!samePackage(control,controls.at(-1)!)||scaledRestatement))controls.push(control);previousTier=tier;}
   const ignored=tiers.filter(({tier})=>tierSteps(tier).some(item=>item.step.kind==="damage"&&item.step.ignores_resistance)).map(({tier})=>tier.tier);

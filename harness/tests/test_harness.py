@@ -1325,7 +1325,7 @@ class CanonicalControlTests(unittest.TestCase):
                 control=next(item for item in self.model.features[entity_id]["control_tiers"] if int(item["tier"])==tier)
                 one=reach
                 if control["application"]=="failed_save":
-                    save=control["save"];save=self.model.disciplines[discipline]["signature_save"] if save=="discipline_signature" else save
+                    save=control["save"];self.assertIsInstance(save,str)
                     one=reach*(1-save_success_probability(target,save,self.model.kv_save_dc(target.level,5)))
                 self.assertGreater(row["named"],100*one)
 
