@@ -64,7 +64,7 @@ def _cluster_signature(model:AuthorityModel,config:dict[str,Any],discipline_id:s
     """Identify cluster sizes that expose the same legal damage choices and target counts."""
     profile=config["kv_profile"];pb=model.progression("proficiency_bonus",level);tier_minimum={int(row["tier"]):int(row["minimum_level"]) for row in model.projection["progressions"]["tier_minimum_levels"]};excluded={item["entity_id"] for item in config["damage_matrix"]["excluded_stateful_features"]};signature=[]
     for rule in model.features.values():
-        if rule["entity_id"] in excluded or discipline_id not in rule["discipline_ids"] or rule["damage_delivery"] not in {"on_hit_rider","standalone"} or level<int(rule["minimum_level"]):continue
+        if rule["entity_id"] in excluded or "damage_type" not in rule or discipline_id not in rule["discipline_ids"] or rule["damage_delivery"] not in {"on_hit_rider","standalone"} or level<int(rule["minimum_level"]):continue
         if profile["advanced_training_policy"]=="disabled" and rule["selectable_advanced_training"]:continue
         if rule.get("requires_additional_target") and cluster_size<2:continue
         for tier_row in rule["damage_tiers"]:
@@ -98,12 +98,6 @@ def _rule_damage(target:Target,damage:dict[str,Any],damage_type:str,strike_die:i
         half=sum(probability*profiled(value//2) for value,probability in distribution.items())
         return (1-save_probability)*full+save_probability*half
     raise ValueError(f"Unsupported damage resolution: {resolution}")
-
-
-def _resolve_feature_damage_type(value:Any,discipline:dict[str,Any])->str:
-    if isinstance(value,str):return value
-    if isinstance(value,dict) and value=={"kind":"manifested_strike_damage_type"}:return str(discipline["damage_type"])
-    raise ValueError(f"Unsupported canonical feature damage type: {value}")
 
 
 def _resolve_feature_save(value:Any,discipline_id:str)->str:
@@ -140,7 +134,8 @@ def _psionic_apex_packet(model:AuthorityModel,target:Target,discipline_id:str,le
 
 def _rider_values(model:AuthorityModel,target:Target,discipline_id:str,cluster_size:int,level:int,pb:int,psi_modifier:int,strike_die:int,package:Package)->tuple[float,float]:
     if package.entity_id is None:return 0.0,0.0
-    rule=model.features[package.entity_id];tier_row=next(item for item in rule["damage_tiers"] if int(item["tier"])==package.tier);discipline=model.disciplines[discipline_id];damage_type=_resolve_feature_damage_type(rule["damage_type"],discipline)
+    rule=model.features[package.entity_id];tier_row=next(item for item in rule["damage_tiers"] if int(item["tier"])==package.tier);damage_type=rule["damage_type"]
+    if not isinstance(damage_type,str):raise ValueError(f"Unsupported canonical feature damage type: {damage_type}")
     save=tier_row.get("save");save_probability=None
     if save:
         save=_resolve_feature_save(save,discipline_id)
@@ -315,7 +310,7 @@ def _kv_dpr_for_schedule(model:AuthorityModel,config:dict[str,Any],target:Target
     for round_index in range(len(action_slots)):
         standalones=[]
         for rule in model.features.values():
-            if rule["entity_id"] in exclusions or discipline_id not in rule["discipline_ids"] or rule["damage_delivery"]!="standalone" or level<int(rule["minimum_level"]):continue
+            if rule["entity_id"] in exclusions or "damage_type" not in rule or discipline_id not in rule["discipline_ids"] or rule["damage_delivery"]!="standalone" or level<int(rule["minimum_level"]):continue
             if profile["advanced_training_policy"]=="disabled" and rule["selectable_advanced_training"]:continue
             if rule.get("requires_additional_target") and cluster_size<2:continue
             for tier_row in rule["damage_tiers"]:

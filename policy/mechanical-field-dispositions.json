@@ -66,7 +66,7 @@
         "control_tiers": {"disposition": "generalize", "target": "surface tier steps"},
         "damage_repetition": {"disposition": "generalize", "target": "canonical recurring trigger; benchmark horizon remains external"},
         "damage_timing": {"disposition": "promote", "target": "ordered trigger/step timing"},
-        "damage_type": {"disposition": "generalize", "target": "explicit concrete damage type or named Manifested Strike runtime dependency"},
+        "damage_type": {"disposition": "generalize", "target": "explicit concrete damage type when the feature deals damage"},
         "discipline_ids": {"disposition": "derive", "target": "entity rules-area applicability plus explicit universal applicability"},
         "entity_id": {"disposition": "derive", "target": "containing entity.id"},
         "ignore_resistance_tiers": {"disposition": "generalize", "target": "tier-local damage effect resistance handling"},

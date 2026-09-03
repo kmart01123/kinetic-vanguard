@@ -32,11 +32,12 @@ test("rider repeatability is one fail-closed Manifested Strike contract",async()
   }finally{await rm(directory,{recursive:true,force:true});}
 });
 
-test("schema rejects combined delivery classes and opaque targeting topology",async()=>{
+test("schema rejects non-surface delivery classes and opaque targeting topology",async()=>{
   const source=await readFile("KineticVanguard.yaml","utf8"),directory=await mkdtemp(join(tmpdir(),"kv-orthogonal-"));
   try{
     for(const [name,edited] of [
       ["combined-delivery",source.replace("kind: rider\n            rider_slot: manifested_strike","kind: area_rider\n            rider_slot: manifested_strike")],
+      ["mixed-delivery",source.replace("kind: rider\n            rider_slot: manifested_strike","kind: mixed\n            rider_slot: manifested_strike")],
       ["opaque-targeting",source.replace("topology: single\n                kind: struck_target","topology: single_target_rider\n                kind: authored_procedure")]
     ] as const){const path=join(directory,`${name}.yaml`);await writeFile(path,edited);const invalid=await loadAuthority(path);assert.ok(invalid.diagnostics.some(item=>item.code==="schema.invalid"&&item.path?.includes("mechanics")),name);}
   }finally{await rm(directory,{recursive:true,force:true});}

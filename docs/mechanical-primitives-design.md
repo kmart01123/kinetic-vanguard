@@ -109,7 +109,7 @@ Bounded selector kinds beneath that topology retain the details needed by curren
 
 Discipline-specific feature mechanics author their concrete damage type and ordinary save directly: Cryokinesis uses cold/Constitution, Pyrokinesis fire/Dexterity, Psychokinesis force/Strength, and Electrokinesis lightning/Charisma. Consumers do not consult discipline metadata to reconstruct those facts.
 
-Universal features that use the selected Discipline's save contain the complete four-discipline mapping in their own saving-throw step. A genuine runtime dependency uses a narrowly named reference rather than an alias: Improved Phase Step uses `manifested_strike_damage_type` because its authored damage type follows the current Manifested Strike type.
+Universal features that use the selected Discipline's save contain the complete four-discipline mapping in their own saving-throw step. Improved Phase Step records `force` because the v14.3 machine authority uses force even though its player-facing prose says Manifested Strike damage type. This representation migration preserves the machine contract; issue #136 owns the approved later correction to explicit force prose and fixed Strength saves for the Phase Step family.
 
 ### Values
 

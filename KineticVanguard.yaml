@@ -4727,8 +4727,6 @@ entities:
           delivery:
             kind: standalone
             activation: bonus_action
-          damage_type:
-            kind: manifested_strike_damage_type
           tiers:
             - tier: 0
               targeting:
@@ -5353,8 +5351,7 @@ entities:
           delivery:
             kind: standalone
             activation: bonus_action
-          damage_type:
-            kind: manifested_strike_damage_type
+          damage_type: force
           tiers:
             - tier: 0
               targeting:
@@ -5378,8 +5375,7 @@ entities:
                   damage_on_success: half
                   failure:
                     - kind: damage
-                      damage_type:
-                        kind: manifested_strike_damage_type
+                      damage_type: force
                       value:
                         kind: dice
                         count: 2
@@ -5406,8 +5402,7 @@ entities:
                   damage_on_success: half
                   failure:
                     - kind: damage
-                      damage_type:
-                        kind: manifested_strike_damage_type
+                      damage_type: force
                       value:
                         kind: dice
                         count: 3
@@ -5434,8 +5429,7 @@ entities:
                   damage_on_success: half
                   failure:
                     - kind: damage
-                      damage_type:
-                        kind: manifested_strike_damage_type
+                      damage_type: force
                       value:
                         kind: dice
                         count: 4

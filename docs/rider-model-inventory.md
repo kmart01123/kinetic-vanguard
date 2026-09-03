@@ -18,8 +18,7 @@ Delivery is one of:
 
 - `rider`: declared for one Manifested Strike before the attack roll, consumes that swing's single rider allowance, and resolves on that strike's hit;
 - `standalone`: retains its explicitly authored Action, Bonus Action, or Reaction and never consumes a Manifested Strike rider slot;
-- `passive`: continuously modifies a resource or feature without a rider declaration;
-- `mixed`: one entity owns multiple surfaces with separately declared delivery lifecycles.
+- `passive`: continuously modifies a resource or feature without a rider declaration.
 
 Targeting topology is one of:
 
@@ -27,8 +26,9 @@ Targeting topology is one of:
 - `discrete_multi`: multiple individually selected, linked, slot-budgeted, or eligible creatures without area geometry;
 - `area`: explicit Sphere or Cylinder geometry and origin;
 - `self`: the user, their movement, or their defense;
-- `none`: no target selector;
-- `mixed`: tiers or surfaces intentionally use more than one topology.
+- `none`: no target selector.
+
+`mixed` appears only as an entity-level prose summary in the inventory table when one entity owns multiple surfaces or tiers with different values. It is not a schema or runtime delivery or topology value; every surface has exactly one delivery, and every modeled tier or untiered surface has exactly one topology.
 
 Activation remains independent from both axes.
 
@@ -40,7 +40,7 @@ Activation remains independent from both axes.
 4. Phase Step changes from `self` to `area` at Tier 2 while retaining one standalone Bonus Action lifecycle. Improved Phase Step is standalone with an explicit endpoint Sphere.
 5. Empathic Sense owns a passive/no-target surface and a standalone/discrete-multi Active Scan surface.
 6. Concrete discipline damage types and ordinary saves are authored on the feature mechanics. Universal signature-save features own a bounded discipline-to-save mapping.
-7. Improved Phase Step's damage type is genuinely runtime-dependent because its text follows the current Manifested Strike damage type; it is not a statically knowable discipline alias.
+7. Improved Phase Step preserves the v14.3 machine authority's explicit force damage while its unchanged player-facing prose still says Manifested Strike damage type. Issue #136 owns the approved later prose correction and fixed Strength-save mechanics; neither change belongs in this representation migration.
 
 ## Complete ability inventory
 
@@ -70,7 +70,7 @@ Activation remains independent from both axes.
 | `advanced_mind_lock` | Mind Lock | 15 | `rider` | `single` | Before roll; resolves on hit | Struck target; Intelligence save | Tier 2 replaces Incapacitated with Stunned while retaining Blinded. |
 | `advanced_gravitic_press` | Gravitic Press | 15 | `standalone` | `area` | Action; Concentration | Persistent 15-foot-radius, 20-foot-high Cylinder within 60 feet; Strength save | No-save area effects and save-gated effects remain separate. |
 | `advanced_barrier` | Barrier | 15 | `standalone` | `self` | Bonus Action; Concentration | Self mode selection; no save | Mode count, duration, and replacement procedure remain unchanged. |
-| `advanced_improved_phase_step` | Improved Phase Step | 15 | `standalone` | `area` | Bonus Action | Endpoint 5-foot Sphere; up to three other creatures; feature-local discipline save mapping | Damage follows current Manifested Strike type; user remains unaffected. |
+| `advanced_improved_phase_step` | Improved Phase Step | 15 | `standalone` | `area` | Bonus Action | Endpoint 5-foot Sphere; up to three other creatures; force damage; feature-local discipline save mapping | Machine authority remains force despite the known prose discrepancy; user remains unaffected. |
 | `advanced_overload_mastery_ii` | Overload Mastery II | 18 | `passive` | `none` | Passive | No target | Exactly one additional rest-based use remains intact. |
 | `advanced_inner_reserve` | Inner Reserve | 15 | `passive` | `none` | Passive | No target | Maximum Psi increase remains +4 and non-repeatable. |
 | `absolute_zero` | Absolute Zero | 20 | `standalone` | `single` | Action | One target within 60 feet; Constitution save | Tier 2 Speed 0 still applies on success; Stunned remains failed-save-only. |
@@ -80,4 +80,4 @@ Activation remains independent from both axes.
 
 ## Implementation result
 
-The canonical schema and semantic validator enforce the two axes, the shared rider slot, selector-specific targeting requirements, concrete discipline facts, and bounded universal mappings. Calculator and harness views remain deterministic projections from entity-owned mechanics. Mechanical ambiguities and simplifications remain follow-up work under #135; this inventory authorizes no playable changes.
+The canonical schema and semantic validator enforce the two axes, the shared rider slot, selector-specific targeting requirements, concrete discipline facts, and bounded universal mappings. Calculator and harness views remain deterministic projections from entity-owned mechanics. Mechanical ambiguities and simplifications remain follow-up work under #135 and #136; this inventory authorizes no playable changes.

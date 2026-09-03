@@ -122,12 +122,7 @@
         {"type":"object","additionalProperties":false,"required":["type","discipline","heading","title","setup","activation","rolls_or_saves","damage","effects","result"],"properties":{"type":{"const":"example_play_section"},"discipline":{"enum":["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]},"heading":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"title":{"type":"array","items":{"$ref":"#/$defs/inline"},"minItems":1},"setup":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"activation":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"rolls_or_saves":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"damage":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"effects":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1},"result":{"type":"array","items":{"$ref":"#/$defs/examplePhaseBlock"},"minItems":1}}}
       ]
     },
-    "mechanicsDamageType": {
-      "oneOf": [
-        {"enum":["cold","fire","force","lightning","psychic"]},
-        {"type":"object","additionalProperties":false,"required":["kind"],"properties":{"kind":{"const":"manifested_strike_damage_type"}}}
-      ]
-    },
+    "mechanicsDamageType": {"enum":["cold","fire","force","lightning","psychic"]},
     "disciplineSaveMapping": {
       "type":"object","additionalProperties":false,"required":["kind","by_discipline"],
       "properties":{"kind":{"const":"discipline_mapping"},"by_discipline":{"type":"object","additionalProperties":false,"required":["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"],"properties":{"cryokinesis":{"const":"constitution"},"pyrokinesis":{"const":"dexterity"},"psychokinesis":{"const":"strength"},"electrokinesis":{"const":"charisma"}}}}

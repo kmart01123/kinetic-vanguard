@@ -84,8 +84,7 @@ export type ConcreteSaveAbility="strength"|"constitution"|"dexterity"|"intellige
 export type DisciplineSaveMapping={kind:"discipline_mapping";by_discipline:{cryokinesis:"constitution";pyrokinesis:"dexterity";psychokinesis:"strength";electrokinesis:"charisma"}};
 export type MechanicsSaveAbility=ConcreteSaveAbility|DisciplineSaveMapping;
 export type ConcreteDamageType="cold"|"fire"|"force"|"lightning"|"psychic";
-export type ManifestedStrikeDamageType={kind:"manifested_strike_damage_type"};
-export type MechanicsDamageType=ConcreteDamageType|ManifestedStrikeDamageType;
+export type MechanicsDamageType=ConcreteDamageType;
 export type MechanicsValue=
   | {kind:"fixed";value:number}
   | {kind:"dice";count:number;sides:number}
@@ -281,7 +280,7 @@ export interface HarnessControlTier {
 export interface HarnessFeatureRule {
   entity_id:string;
   discipline_ids:HarnessDisciplineId[];
-  damage_type:HarnessDamageType;
+  damage_type?:HarnessDamageType;
   ignore_resistance_tiers?:Array<0|1|2>;
   replaces_mastery?:boolean;
   requires_additional_target?:boolean;
