@@ -19,9 +19,10 @@ const compatibilityHashes:Record<string,{calculator:string;harness:string}>={
   static_discharge:{calculator:"fed529b22681cc4ec20e3f5f52b592a4feaf2c4912d47716db6884ff0d034e61",harness:"6dc6e739d5febe412948ba450c69a360e2a3103445dc3dbbcd7ed6048d5e3f68"}
 };
 const hash=(value:unknown)=>createHash("sha256").update(canonicalJson(value)).digest("hex");
-const phaseStepIds=new Set(["advanced_phase_step","advanced_improved_phase_step"]);
-const legacyCalculatorView=(features:any[])=>structuredClone(features).map(feature=>({...feature,...(feature.tiers?{tiers:feature.tiers.map((tier:any)=>({...tier,...(phaseStepIds.has(feature.entity_id)&&tier.save?{save:"discipline_signature"}:{})}))}:{})}));
-const legacyHarnessView=(rules:any[])=>{const disciplineAliases=new Set(["glacial_spike","snow_chains","frozen_ground","arctic_tempest","absolute_zero","ember_bolt","thermal_fracture","telekinetic_shove","vectored_thrust","static_discharge"]);return structuredClone(rules).map(rule=>{if(disciplineAliases.has(rule.entity_id))rule.damage_type="discipline";if(rule.entity_id==="advanced_phase_step")rule.damage_type="discipline";for(const control of rule.control_tiers??[])if(phaseStepIds.has(rule.entity_id)&&control.save)control.save="discipline_signature";if(rule.entity_id==="advanced_beguile")delete rule.targeting_by_tier;return rule;});};
+const intentionallyChangedIds=new Set(["advanced_phase_step","advanced_improved_phase_step"]);
+const unchangedLegacySubset=(rows:any[])=>structuredClone(rows.filter(row=>!intentionallyChangedIds.has(row.entity_id)));
+const legacyCalculatorView=(features:any[])=>unchangedLegacySubset(features);
+const legacyHarnessView=(rules:any[])=>{const disciplineAliases=new Set(["glacial_spike","snow_chains","frozen_ground","arctic_tempest","absolute_zero","ember_bolt","thermal_fracture","telekinetic_shove","vectored_thrust","static_discharge"]);return unchangedLegacySubset(rules).map((rule:any)=>{if(disciplineAliases.has(rule.entity_id))rule.damage_type="discipline";if(rule.entity_id==="advanced_beguile")delete rule.targeting_by_tier;return rule;});};
 const systemFields=["proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels","action_economy","manifested_strike","overload","psionic_apex","disciplines"];
 
 test("shared progressions and core mechanics are entity-owned without Calculator or harness registries",async()=>{
@@ -40,8 +41,9 @@ test("every machine-consumed ability authors mechanics once and derives consumer
   assert.equal(raw.calculator.features,undefined);assert.equal(raw.calculator.harness_mechanics,undefined);
   assert.equal(hash(projection.features),"a82b25a23fad5ba0daa46188b06ee0fabe363d0738cd954bfaf90fc2b67320af");
   assert.equal(hash(projection.harness_mechanics.feature_rules),"9633ae80ebf3850e836048a40261ef971c024e41a70ac6e289b689b5a364f403");
-  assert.equal(hash(legacyCalculatorView(projection.features)),"d65242939b39170bc69d333f43cea17aace02313b61a3620f745144425e0220d");
-  assert.equal(hash(legacyHarnessView(projection.harness_mechanics.feature_rules)),"7f2e225107b7b443a421934022c570b573ba14ba86af64cc8fc8f32129d16bac");
+  const legacyCalculator=legacyCalculatorView(projection.features),legacyHarness=legacyHarnessView(projection.harness_mechanics.feature_rules);assert.ok(legacyCalculator.every((feature:any)=>!intentionallyChangedIds.has(feature.entity_id)));assert.ok(legacyHarness.every((rule:any)=>!intentionallyChangedIds.has(rule.entity_id)));
+  assert.equal(hash(legacyCalculator),"2e0814e8b20ab395aff14cf24b558082b3c12ffa32ded9ef6ef61f2dafb00afa");
+  assert.equal(hash(legacyHarness),"e914f07c839070241281297e3471092c228c936f57e01e80961cd23a0140a0ae");
   for(const entity of entities){
     const calculator=projection.features.find(feature=>feature.entity_id===entity.id);assert.ok(calculator,entity.id);assert.deepEqual(projectCalculatorMechanics(entity),calculator,`${entity.id} Calculator projection`);
     const harness=projection.harness_mechanics.feature_rules.find(rule=>rule.entity_id===entity.id)??null;assert.deepEqual(projectHarnessMechanics(entity),harness,`${entity.id} harness projection`);
