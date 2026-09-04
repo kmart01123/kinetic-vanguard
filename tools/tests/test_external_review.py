@@ -598,6 +598,15 @@ class ReviewBridgeTests(unittest.TestCase):
                 ),
                 "structured findings",
             ),
+            (
+                "non-final result",
+                execution(
+                    "grok",
+                    verdict="FINDINGS",
+                    body="The review is still underway.",
+                ),
+                "non-final review output",
+            ),
         )
         for label, failure, error in cases:
             with self.subTest(case=label):
@@ -875,64 +884,150 @@ class ReviewBridgeTests(unittest.TestCase):
                     (provider,), {provider: result}, error
                 )
 
-    def test_non_final_review_output_is_rejected_without_retry(self) -> None:
+    def test_pr_137_review_bootstrap_regression_is_rejected_without_posting(self) -> None:
+        invalid = execution(
+            "grok",
+            verdict="FINDINGS",
+            body="Review status update.",
+            findings=(
+                bridge.ReviewFinding(
+                    "LOW",
+                    "Review bootstrap",
+                    "Placeholder while the full prompt and repository files are inspected.",
+                ),
+            ),
+        )
+        github, _repository, adapters = self.assert_review_rejected(
+            ("grok",), {"grok": invalid}, "non-final review output"
+        )
+        self.assertEqual(github.comments, [])
+        self.assertEqual(len(adapters["grok"].prompts), 1)
+
+    def test_non_final_output_is_rejected_in_body_title_and_detail(self) -> None:
         cases = (
             (
-                "The exact-head review has not produced final evidence.",
-                "  REVIEW -- in progress! ",
+                "body",
+                "claude",
+                "The review is still underway.",
+                "Material finding",
+                "The implementation needs a focused correction.",
+            ),
+            (
+                "title",
+                "grok",
+                "One issue was identified.",
+                "  ANALYSIS -- in progress! ",
                 "Results will follow.",
             ),
             (
-                "Placeholder while the exact-head review is completed.",
-                "Awaiting completion",
-                "The provider has not finished.",
-            ),
-            (
-                "The review request is being processed from the detached head.",
+                "detail",
+                "claude",
+                "Review status update.",
                 "Pending result",
-                "Substantive findings will follow.",
+                "Placeholder while the full prompt and repository files are inspected.",
             ),
             (
-                "No final evidence is available.",
-                "Placeholder",
+                "body awaiting completion",
+                "grok",
                 "Awaiting review completion.",
+                "Material finding",
+                "The implementation needs a focused correction.",
+            ),
+            (
+                "detail placeholder pending inspection",
+                "claude",
+                "Review status update.",
+                "Pending result",
+                "Placeholder pending inspection.",
             ),
         )
-        for body, title, detail in cases:
-            with self.subTest(body=body):
+        for location, provider, body, title, detail in cases:
+            with self.subTest(location=location, provider=provider):
                 invalid = execution(
-                    "grok",
+                    provider,
                     verdict="FINDINGS",
                     body=body,
                     findings=(bridge.ReviewFinding("LOW", title, detail),),
                 )
                 _github, _repository, adapters = self.assert_review_rejected(
-                    ("grok",), {"grok": invalid}, "non-final review output"
+                    (provider,), {provider: invalid}, "non-final review output"
                 )
-                self.assertEqual(len(adapters["grok"].prompts), 1)
+                self.assertEqual(len(adapters[provider].prompts), 1)
 
-    def test_legitimate_future_work_finding_is_not_a_placeholder(self) -> None:
-        github = FakeGitHub([metadata(), metadata()])
-        legitimate = execution(
-            "grok",
-            verdict="FINDINGS",
-            body="The implementation is complete; one bounded hardening remains.",
-            findings=(
-                bridge.ReviewFinding(
-                    "LOW",
-                    "Future cache-key hardening",
-                    "A future change should include the platform in the cache key.",
+    def test_final_reviews_with_process_vocabulary_remain_valid(self) -> None:
+        cases = (
+            ("pass", execution("grok", body="No material findings.")),
+            (
+                "placeholder product behavior",
+                execution(
+                    "grok",
+                    verdict="FINDINGS",
+                    body="The empty-title state has a visible rendering defect.",
+                    findings=(
+                        bridge.ReviewFinding(
+                            "MEDIUM",
+                            "Placeholder token leaks into the published UI",
+                            "The published UI still exposes the placeholder token "
+                            "when the title is empty.",
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "bounded future work",
+                execution(
+                    "grok",
+                    verdict="FINDINGS",
+                    body="The implementation is complete; one bounded hardening remains.",
+                    findings=(
+                        bridge.ReviewFinding(
+                            "LOW",
+                            "Future cache-key hardening",
+                            "A future change should include the platform in the cache key.",
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "pending product behavior",
+                execution(
+                    "grok",
+                    verdict="FINDINGS",
+                    body="The final review identified a terminal-state defect.",
+                    findings=(
+                        bridge.ReviewFinding(
+                            "MEDIUM",
+                            "Export remains pending after cancellation",
+                            "The product leaves the export pending after its worker "
+                            "acknowledges cancellation.",
+                        ),
+                    ),
+                ),
+            ),
+            (
+                "review code is the subject",
+                execution(
+                    "grok",
+                    verdict="FINDINGS",
+                    body="The completed review found a state-handling defect.",
+                    findings=(
+                        bridge.ReviewFinding(
+                            "MEDIUM",
+                            "Inspection state is discarded by the review parser",
+                            "The inspection code overwrites the terminal state before "
+                            "the review record is persisted.",
+                        ),
+                    ),
                 ),
             ),
         )
-        posted = bridge.ReviewBridge(
-            github,
-            FakeRepository(),
-            {"grok": FakeAdapter(legitimate)},
-            emit=lambda _message: None,
-        ).review(PR_NUMBER, ("grok",), "Review.")
-        self.assertEqual(len(posted), 1)
-        self.assertEqual(len(github.comments), 1)
+        for label, legitimate in cases:
+            with self.subTest(case=label):
+                posted, github, _repository = self.run_bridge(
+                    ("grok",), {"grok": legitimate}
+                )
+                self.assertEqual(len(posted), 1)
+                self.assertEqual(len(github.comments), 1)
 
     def test_dirty_worktree_after_valid_result_blocks_posting(self) -> None:
         github = FakeGitHub([metadata()])

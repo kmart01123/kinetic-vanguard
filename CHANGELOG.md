@@ -4,6 +4,7 @@
 
 ### Changed
 
+- Made the external-review bridge reject provider output that explicitly describes its own review as bootstrap, unfinished, or still in progress while preserving concise final results and substantive findings that discuss similar product concepts.
 - Completed the behavior-preserving rider-first representation migration for every machine-consumed ability: delivery and targeting topology are independent, all riders share one Manifested Strike rider slot, known selectors replace opaque topology, and canonical mechanics author concrete D&D damage/save facts. All 30 Calculator entries and 27 harness feature rules derive from those neutral per-entity primitives; benchmark scenario and scoring policy remain outside canonical rules mechanics.
 - Standardized the Phase Step family on fixed Strength saving throws, and made Improved Phase Step explicitly deal force damage at every tier regardless of Discipline.
 - Consolidated the ten shared progression and core-mechanics fields under their canonical rules entities: level bands, Overload access and action economy, Manifested Strike and Holdout math, Discipline masteries, and Psionic Apex.
