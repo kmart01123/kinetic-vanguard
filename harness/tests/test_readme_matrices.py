@@ -296,9 +296,7 @@ def _full_authoritative_rows() -> tuple[
                 )
                 resolved = dict(control)
                 if resolved.get("save"):
-                    resolved["save"] = _resolve_feature_save(
-                        resolved["save"], form.discipline_id
-                    )
+                    resolved["save"] = _resolve_feature_save(resolved["save"])
                 recipe = _kv_rider_delivery_recipe(
                     resolved,
                     feature.get("damage_delivery") == "on_hit_rider"

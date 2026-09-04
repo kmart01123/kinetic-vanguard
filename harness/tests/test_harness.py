@@ -59,9 +59,9 @@ class AuthorityProjectionTests(unittest.TestCase):
 
     def test_real_root_authority_and_complete_stable_id_inventory(self)->None:
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
-        self.assertEqual(self.model.projection["projection_version"],"1.3.0")
-        self.assertEqual(self.model.rules_version,"14.3.0")
-        self.assertEqual(self.model.projection["schema_version"],"2.7.0")
+        self.assertEqual(self.model.projection["projection_version"],"1.4.0")
+        self.assertEqual(self.model.rules_version,"14.4.0")
+        self.assertEqual(self.model.projection["schema_version"],"2.8.0")
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":1,"action_surge_allows_additional_standalone_psionic_action":False})
         self.assertEqual(self.model.holdout_formula(17)["kind"],"halve_total_rounded_down")
         self.assertEqual(self.model.holdout_formula(18),{"minimum_level":18,"maximum_level":20,"kind":"dice_plus_psionic_ability_modifier","count":1,"sides":6})
@@ -1668,7 +1668,7 @@ class ComparatorReferenceEvidenceTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             root=Path(directory);plain=run_control(DEFAULT_AUTHORITY,root/"plain",{7},1,write_headline=True,profile="headline",write_shadow=False);reference=run_control(DEFAULT_AUTHORITY,root/"reference",{7},1,write_headline=True,profile="headline",write_shadow=True)
             self.assertEqual(plain["paths"]["csv"].read_bytes(),reference["paths"]["csv"].read_bytes())
-            for name in ("kv-14-3-0-control-detail.csv","kv-14-3-0-control-selection-audit.csv"):
+            for name in ("kv-14-4-0-control-detail.csv","kv-14-4-0-control-selection-audit.csv"):
                 self.assertEqual((root/"plain"/name).read_bytes(),(root/"reference"/name).read_bytes())
 
 
@@ -1678,8 +1678,8 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             root=Path(directory);damage=run_damage(DEFAULT_AUTHORITY,root,{7},1,profile="headline")
             self.assertEqual(damage["detail_rows"],12);self.assertEqual(damage["matrix_rows"],24)
             self.assertEqual(set(damage["paths"]),{"csv","markdown","html"})
-            self.assertTrue(all("14-3-0" in path.name and path.is_file() for path in damage["paths"].values()))
-            with (root/"kv-14-3-0-damage-detail.csv").open(encoding="utf-8") as stream:
+            self.assertTrue(all("14-4-0" in path.name and path.is_file() for path in damage["paths"].values()))
+            with (root/"kv-14-4-0-damage-detail.csv").open(encoding="utf-8") as stream:
                 damage_row=next(csv.DictReader(stream))
             self.assertEqual(damage_row["Target Profile"],"headline")
             self.assertAlmostEqual(float(damage_row["Eldritch Knight Primary DPR"]),18.816666666666663,places=12)
@@ -1696,8 +1696,8 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             workers_damage=run_damage(DEFAULT_AUTHORITY,workers_root,{7},1,write_headline=False,workers=2,profile="headline")
             self.assertEqual(workers_damage["paths"],{})
             self.assertEqual(
-                (root/"kv-14-3-0-damage-detail.csv").read_bytes(),
-                (workers_root/"kv-14-3-0-damage-detail.csv").read_bytes(),
+                (root/"kv-14-4-0-damage-detail.csv").read_bytes(),
+                (workers_root/"kv-14-4-0-damage-detail.csv").read_bytes(),
             )
 
     def test_control_smoke_writes_current_detail_selection_and_matrix_outputs(self)->None:
@@ -1706,13 +1706,13 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             self.assertEqual(control["matrix_rows"],4);self.assertEqual(set(control["paths"]),{"csv","markdown","html"})
             self.assertEqual(control["shadow_rows"],0);self.assertIsNone(control["shadow_path"])
             self.assertEqual(list(root.glob("*shadow*")),[])
-            with (root/"kv-14-3-0-control-selection-audit.csv").open(encoding="utf-8") as stream:
+            with (root/"kv-14-4-0-control-selection-audit.csv").open(encoding="utf-8") as stream:
                 audit_rows=list(csv.DictReader(stream))
             self.assertTrue(audit_rows);self.assertTrue(all(row["Selected Scenario"] for row in audit_rows))
             self.assertTrue(all(row["Target Profile"]=="headline" for row in audit_rows))
             self.assertTrue(all(row["Selection Basis"]=="Control Value" for row in audit_rows))
             self.assertTrue(all(row["Whole-package control stick %"] for row in audit_rows))
-            with (root/"kv-14-3-0-control-detail.csv").open(encoding="utf-8") as stream:
+            with (root/"kv-14-4-0-control-detail.csv").open(encoding="utf-8") as stream:
                 control_rows=list(csv.DictReader(stream))
             keyed={(row["Build"],row["Scenario"]):row for row in control_rows}
             self.assertEqual(keyed[("battle_master","menacing_attack")]["Whole-package control stick %"],"80.859375")
@@ -1737,7 +1737,7 @@ class SmokeAndBoundaryTests(unittest.TestCase):
             with control["value_paths"]["selection_audit"].open(encoding="utf-8") as stream:
                 value_audit=list(csv.DictReader(stream))
             self.assertEqual(len(value_audit),6);self.assertTrue(all(row["Selected Scenario"] and row["Eligible"]=="True" for row in value_audit));self.assertTrue(all(row["Selection Basis"]=="Control Value" for row in value_audit));self.assertTrue(all(row["Value Disposition"] in {"priced_nonzero","legitimately_priced_zero","entirely_context_required_or_unsupported"} for row in value_audit))
-            with (root/"kv-14-3-0-control-selection-audit.csv").open(encoding="utf-8") as stream:
+            with (root/"kv-14-4-0-control-selection-audit.csv").open(encoding="utf-8") as stream:
                 reliability_audit=list(csv.DictReader(stream))
             identity=lambda row:(row["Level"],row["Target"],row["Discipline"],row["Build"],row["Selected Scenario"])
             self.assertEqual({identity(row) for row in reliability_audit},{identity(row) for row in value_audit})

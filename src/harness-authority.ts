@@ -7,7 +7,7 @@ import { summarizeDiagnostics,validateSemantics } from "./validate.js";
 import type { CalculatorLevelBand,CalculatorProjection,HarnessFeatureRule } from "./types.js";
 
 export interface HarnessProjection {
-  projection_version:"1.3.0";
+  projection_version:"1.4.0";
   authority_path:string;
   authority_sha256:string;
   rules_version:string;
@@ -33,7 +33,7 @@ export async function createHarnessProjection(authorityPath="KineticVanguard.yam
     return {...structuredClone(rule),title:entity.title,minimum_level:entity.level,psi_cost:entity.psi_cost,activation:entity.activation??"passive",damage_delivery:damage?.delivery??null,damage_tiers:structuredClone(damage?.tiers??[]),advanced_training:advancedTraining,selectable_advanced_training:advancedTraining&&entity.classifications.acquisition_mode==="selectable"};
   });
   return {
-    projection_version:"1.3.0",authority_path:resolve(authorityPath),authority_sha256:sha256(loaded.sourceBytes),rules_version:authority.rules_version,schema_version:authority.schema_version,
+    projection_version:"1.4.0",authority_path:resolve(authorityPath),authority_sha256:sha256(loaded.sourceBytes),rules_version:authority.rules_version,schema_version:authority.schema_version,
     supported_level_range:{minimum:calculator.fighter_level_minimum,maximum:calculator.fighter_level_maximum},
     progressions:{proficiency_bonus:structuredClone(calculator.proficiency_bonus_bands),psi_points:structuredClone(calculator.psi_point_bands),psionic_focus:structuredClone(calculator.psionic_focus_bands),manifested_strike_die:structuredClone(calculator.manifested_strike_die_bands),tier_minimum_levels:structuredClone(calculator.tier_minimum_levels)},
     core:{action_economy:structuredClone(harness.action_economy),manifested_strike:structuredClone(harness.manifested_strike),overload:structuredClone(harness.overload),psionic_apex:structuredClone(harness.psionic_apex)},disciplines:structuredClone(harness.disciplines),features

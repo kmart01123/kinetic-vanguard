@@ -4715,7 +4715,7 @@ entities:
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: Choose either the space you left or the space where you appear. Each creature of your choice within 5 feet of that space must make your Discipline’s signature saving throw against your Psionic saving throw Difficulty Class. On a failed save, it cannot take reactions until the start of your next turn."
+          - text: "T2 Overload: Changes from Tier 1: Choose either the space you left or the space where you appear. Each creature of your choice within 5 feet of that space must make a Strength saving throw against your Psionic saving throw Difficulty Class. On a failed save, it cannot take reactions until the start of your next turn."
             type: text
         type: paragraph
     id: advanced_phase_step
@@ -4746,13 +4746,7 @@ entities:
                 selection: creatures_of_choice
               steps:
                 - kind: saving_throw
-                  ability:
-                    kind: discipline_mapping
-                    by_discipline:
-                      cryokinesis: constitution
-                      pyrokinesis: dexterity
-                      psychokinesis: strength
-                      electrokinesis: charisma
+                  ability: strength
                   failure:
                     - kind: reaction_denial
                       package_id: control_0
@@ -5301,7 +5295,7 @@ entities:
                   type: text
               - - text: Choose up to three other creatures in the Sphere.
                   type: text
-              - - text: Each chosen creature must make your Discipline’s signature saving throw against your Psionic saving throw Difficulty Class, taking 2d10 damage of your Manifested Strike’s damage type on a failed save or half as much on a successful one.
+              - - text: Each chosen creature must make a Strength saving throw against your Psionic saving throw Difficulty Class, taking 2d10 force damage on a failed save or half as much on a successful one.
                   type: text
             style: ordered
             type: list
@@ -5365,13 +5359,7 @@ entities:
                 excludes_self: true
               steps:
                 - kind: saving_throw
-                  ability:
-                    kind: discipline_mapping
-                    by_discipline:
-                      cryokinesis: constitution
-                      pyrokinesis: dexterity
-                      psychokinesis: strength
-                      electrokinesis: charisma
+                  ability: strength
                   damage_on_success: half
                   failure:
                     - kind: damage
@@ -5392,13 +5380,7 @@ entities:
                 excludes_self: true
               steps:
                 - kind: saving_throw
-                  ability:
-                    kind: discipline_mapping
-                    by_discipline:
-                      cryokinesis: constitution
-                      pyrokinesis: dexterity
-                      psychokinesis: strength
-                      electrokinesis: charisma
+                  ability: strength
                   damage_on_success: half
                   failure:
                     - kind: damage
@@ -5419,13 +5401,7 @@ entities:
                 excludes_self: true
               steps:
                 - kind: saving_throw
-                  ability:
-                    kind: discipline_mapping
-                    by_discipline:
-                      cryokinesis: constitution
-                      pyrokinesis: dexterity
-                      psychokinesis: strength
-                      electrokinesis: charisma
+                  ability: strength
                   damage_on_success: half
                   failure:
                     - kind: damage
@@ -5602,8 +5578,8 @@ navigation:
           order: 10
           title: Advanced Training Progression
   default_category_id: common_features
-rules_version: 14.3.0
-schema_version: 2.7.0
+rules_version: 14.4.0
+schema_version: 2.8.0
 vocabularies:
   acquisition_modes:
     - id: granted

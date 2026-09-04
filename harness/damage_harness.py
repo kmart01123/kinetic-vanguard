@@ -100,9 +100,8 @@ def _rule_damage(target:Target,damage:dict[str,Any],damage_type:str,strike_die:i
     raise ValueError(f"Unsupported damage resolution: {resolution}")
 
 
-def _resolve_feature_save(value:Any,discipline_id:str)->str:
+def _resolve_feature_save(value:Any)->str:
     if isinstance(value,str):return value
-    if isinstance(value,dict) and value.get("kind")=="discipline_mapping":return str(value["by_discipline"][discipline_id])
     raise ValueError(f"Unsupported canonical feature save: {value}")
 
 
@@ -138,7 +137,7 @@ def _rider_values(model:AuthorityModel,target:Target,discipline_id:str,cluster_s
     if not isinstance(damage_type,str):raise ValueError(f"Unsupported canonical feature damage type: {damage_type}")
     save=tier_row.get("save");save_probability=None
     if save:
-        save=_resolve_feature_save(save,discipline_id)
+        save=_resolve_feature_save(save)
         save_probability=save_success_probability(target,save,model.kv_save_dc(level,psi_modifier))
     ignore=package.tier in rule.get("ignore_resistance_tiers",[]);primary=_rule_damage(target,tier_row["damage"],damage_type,strike_die,psi_modifier,save_probability,ignore)
     count=_target_count(rule,package.tier,cluster_size,pb);secondary_damage=tier_row.get("secondary_damage",tier_row["damage"]);secondary=_rule_damage(target,secondary_damage,damage_type,strike_die,psi_modifier,save_probability,ignore)
