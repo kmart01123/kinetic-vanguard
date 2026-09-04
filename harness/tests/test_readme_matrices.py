@@ -9,7 +9,7 @@ from unittest.mock import patch
 from harness import readme_matrices
 from harness.authority import AuthorityModel, DEFAULT_AUTHORITY
 from harness.comparison_report import NOTICE_COLUMNS, matrix_row
-from harness.control_harness import BATTLE_MASTER_REFERENCE_SCENARIOS,ELDRITCH_KNIGHT_REFERENCE_FAMILIES,_kv_rider_delivery_recipe
+from harness.control_harness import BATTLE_MASTER_REFERENCE_SCENARIOS,ELDRITCH_KNIGHT_REFERENCE_FAMILIES,_kv_rider_delivery_recipe,_resolve_feature_save
 from harness.control_value import (
     DEFAULT_PRIMITIVES,
     DEFAULT_SCORING,
@@ -295,10 +295,10 @@ def _full_authoritative_rows() -> tuple[
                     if int(row["tier"]) == form.tier
                 )
                 resolved = dict(control)
-                if resolved.get("save") == "discipline_signature":
-                    resolved["save"] = model.disciplines[form.discipline_id][
-                        "signature_save"
-                    ]
+                if resolved.get("save"):
+                    resolved["save"] = _resolve_feature_save(
+                        resolved["save"], form.discipline_id
+                    )
                 recipe = _kv_rider_delivery_recipe(
                     resolved,
                     feature.get("damage_delivery") == "on_hit_rider"

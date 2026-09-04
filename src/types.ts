@@ -79,6 +79,70 @@ export interface ContentBlock {
   result?: ExamplePhaseBlock[];
 }
 
+export type MechanicsDuration="instantaneous"|"until_end_current_turn"|"until_start_next_turn"|"until_end_next_turn"|"continuous"|"while_in_area"|"one_minute_concentration"|"one_hour";
+export type ConcreteSaveAbility="strength"|"constitution"|"dexterity"|"intelligence"|"charisma";
+export type DisciplineSaveMapping={kind:"discipline_mapping";by_discipline:{cryokinesis:"constitution";pyrokinesis:"dexterity";psychokinesis:"strength";electrokinesis:"charisma"}};
+export type MechanicsSaveAbility=ConcreteSaveAbility|DisciplineSaveMapping;
+export type ConcreteDamageType="cold"|"fire"|"force"|"lightning"|"psychic";
+export type MechanicsDamageType=ConcreteDamageType;
+export type MechanicsValue=
+  | {kind:"fixed";value:number}
+  | {kind:"dice";count:number;sides:number}
+  | {kind:"manifested_strike_dice";count:number}
+  | {kind:"psionic_ability_modifier";multiplier:number}
+  | {kind:"proficiency_bonus";multiplier:number}
+  | {kind:"floor_proficiency_bonus_divisor";divisor:number}
+  | {kind:"fixed_plus_proficiency_bonus_multiplier";fixed:number;multiplier:number}
+  | {kind:"dice_plus_psionic_ability_modifier";count:number;sides:number;multiplier:number}
+  | {kind:"psi_points_plus_fixed";value:number};
+export type MechanicsDelivery=
+  | {kind:"rider";rider_slot:"manifested_strike";declaration:"before_attack_roll";resolution:"manifested_strike_hit"}
+  | {kind:"standalone";activation:"action"|"bonus_action"|"reaction"}
+  | {kind:"passive"};
+export type MechanicsTargetTopology="single"|"discrete_multi"|"area"|"self"|"none";
+export type MechanicsTargeting=
+  | {topology:"none";kind:"none"}
+  | {topology:"self";kind:"self"}
+  | {topology:"single";kind:"struck_target"}
+  | {topology:"single";kind:"selected_target";range_feet?:number}
+  | {topology:"single";kind:"originating_creature_if_any"}
+  | {topology:"discrete_multi";kind:"struck_plus_additional";within_feet:number;additional_count:Extract<MechanicsValue,{kind:"fixed"|"proficiency_bonus"}>}
+  | {topology:"discrete_multi";kind:"primary_plus_additional";within_feet:number;additional_count:Extract<MechanicsValue,{kind:"fixed"|"proficiency_bonus"}>}
+  | {topology:"discrete_multi";kind:"selected_targets";range_feet:number;count:Extract<MechanicsValue,{kind:"fixed"|"proficiency_bonus"}>}
+  | {topology:"discrete_multi";kind:"weighted_target_slots";range_feet:number;slots:number;size_costs:{medium_or_smaller:number;large:number};unique_targets:true}
+  | {topology:"area";kind:"area";shape:"sphere"|"cylinder";origin:"struck_target"|"point_within_range"|"departure_or_arrival_space";radius_feet:number;height_feet?:number;placement_range_feet?:number;persistent?:boolean;selection?:"all_creatures"|"creatures_of_choice";maximum_targets?:number;excludes_self?:boolean}
+  | {topology:"discrete_multi";kind:"eligible_creatures_in_range";range_feet:number};
+export type MechanicsTargetRole="all"|"primary"|"secondary";
+export type MechanicsStep=
+  | {id?:string;kind:"damage";target?:MechanicsTargetRole;damage_type:MechanicsDamageType;value:MechanicsValue;ignores_resistance?:boolean}
+  | {id?:string;package_id?:string;application?:"while_in_area";kind:"speed_modifier";target?:MechanicsTargetRole;feet:number;duration:MechanicsDuration}
+  | {id?:string;package_id?:string;application?:"while_in_area";kind:"speed_zero";target?:MechanicsTargetRole;duration:MechanicsDuration;replaces?:string}
+  | {id?:string;package_id?:string;application?:"while_in_area";kind:"condition";target?:MechanicsTargetRole;condition:"blinded"|"charmed"|"incapacitated"|"prone"|"restrained"|"stunned";duration:MechanicsDuration;replaces?:string}
+  | {id?:string;package_id?:string;application?:"while_in_area";kind:"reaction_denial";target?:MechanicsTargetRole;duration:MechanicsDuration}
+  | {id?:string;package_id?:string;application?:"while_in_area";kind:"forced_movement";target?:MechanicsTargetRole;feet:number;success_feet?:number;duration:MechanicsDuration;directions?:Array<{mode:string;direction:"away_from_origin"|"toward_origin"}>;requires_condition?:"blinded"|"charmed"|"incapacitated"|"prone"|"restrained"|"stunned"}
+  | {kind:"saving_throw";ability:MechanicsSaveAbility;damage_on_success?:"half";independent_per_target?:boolean;resolve_even_if_damage_prevented?:boolean;maximum_size?:"tiny"|"small"|"medium"|"large"|"huge"|"gargantuan";required_creature_type?:"humanoid";repeat?:{trigger:"start_of_affected_turn";disadvantage?:boolean};failure:MechanicsStep[];success?:MechanicsStep[]}
+  | {kind:"difficult_terrain";target?:MechanicsTargetRole;duration:MechanicsDuration}
+  | {package_id?:string;application?:"while_in_area";kind:"speed_reduction";target?:MechanicsTargetRole;duration:MechanicsDuration}
+  | {package_id?:string;application?:"while_in_area";kind:"attack_modifier";target?:MechanicsTargetRole;modifier:"disadvantage";scope:"next_attack"|"all_attacks";duration:MechanicsDuration}
+  | {kind:"armor_class_modifier";value:number}
+  | {kind:"metric";metric:"fly_speed"|"damage_reduction"|"chosen_skill_bonus"|"maximum_psi_points";unit?:"feet";value:MechanicsValue}
+  | {kind:"skill_modifier";metric:"passive_insight_bonus"|"chosen_skill_bonus";value:Extract<MechanicsValue,{kind:"psionic_ability_modifier"}>;duration:"continuous"}
+  | {kind:"sense_snapshot"};
+export interface MechanicsTier {tier:0|1|2;targeting:MechanicsTargeting;steps?:MechanicsStep[];events?:Array<{triggers:Array<"enters_area_first_time_on_turn"|"starts_turn_in_area">;steps:MechanicsStep[]}>}
+export interface MechanicsSurface {
+  id:string;
+  delivery:MechanicsDelivery;
+  targeting?:MechanicsTargeting;
+  damage_type?:MechanicsDamageType;
+  recurrence?:"remaining_round_starts"|"start_of_affected_turn_after_repeat_save";
+  interactions?:{kinetic_mastery:"replace"};
+  modes?:Array<{id:string}>;
+  limits?:{uses:Extract<MechanicsValue,{kind:"floor_proficiency_bonus_divisor"}>;recovery:"short_or_long_rest"};
+  steps?:MechanicsStep[];
+  tiers?:MechanicsTier[];
+}
+export interface EntityMechanics {surfaces:MechanicsSurface[]}
+
 
 export interface Entity {
   id: string;
@@ -93,6 +157,8 @@ export interface Entity {
   requires_concentration?: boolean;
   concentration_tiers?: Array<0|1|2>;
   concentration_duration?: string;
+  mechanics?: EntityMechanics;
+  system_mechanics?: EntitySystemMechanics;
   content: ContentBlock[];
   classifications: {
     rules_area: string[];
@@ -108,7 +174,7 @@ export interface Entity {
   related_entity_ids?: string[];
 }
 
-export type CalculatorSave = "strength" | "constitution" | "dexterity" | "intelligence" | "charisma" | "discipline_signature";
+export type CalculatorSave = MechanicsSaveAbility;
 export type CalculatorDamageResolution = "always" | "failed_save" | "half_on_success";
 
 export type CalculatorDamage =
@@ -161,7 +227,7 @@ export interface CalculatorTierMinimumLevel {
 }
 
 export type HarnessDisciplineId="pyrokinesis"|"cryokinesis"|"psychokinesis"|"electrokinesis";
-export type HarnessDamageType="discipline"|"cold"|"fire"|"force"|"lightning"|"psychic";
+export type HarnessDamageType=MechanicsDamageType;
 export type HarnessSize="tiny"|"small"|"medium"|"large"|"huge"|"gargantuan";
 export type HarnessControlOutcome="attack_disadvantage"|"forced_movement"|"movement_option_denial"|"reaction_denial"|"speed_reduction"|"speed_zero";
 export type HarnessCondition="blinded"|"charmed"|"incapacitated"|"prone"|"restrained"|"stunned";
@@ -178,8 +244,8 @@ export interface HarnessMastery {
 }
 export interface HarnessDiscipline {
   id:HarnessDisciplineId;
-  damage_type:Exclude<HarnessDamageType,"discipline"|"psychic">;
-  signature_save:CalculatorSave;
+  damage_type:Exclude<ConcreteDamageType,"psychic">;
+  signature_save:ConcreteSaveAbility;
   mastery:HarnessMastery;
 }
 export interface HarnessTargeting {
@@ -203,7 +269,7 @@ export interface HarnessControlEffect {
 export interface HarnessControlTier {
   tier:0|1|2;
   application:"failed_save"|"no_save";
-  save?:CalculatorSave|"discipline_signature";
+  save?:CalculatorSave;
   hit_gated?:boolean;
   effects:HarnessControlEffect[];
   maximum_size?:HarnessSize;
@@ -214,7 +280,7 @@ export interface HarnessControlTier {
 export interface HarnessFeatureRule {
   entity_id:string;
   discipline_ids:HarnessDisciplineId[];
-  damage_type:HarnessDamageType;
+  damage_type?:HarnessDamageType;
   ignore_resistance_tiers?:Array<0|1|2>;
   replaces_mastery?:boolean;
   requires_additional_target?:boolean;
@@ -234,7 +300,21 @@ export interface HarnessMechanics {
   feature_rules:HarnessFeatureRule[];
 }
 
-export interface Calculator {
+export type SystemMechanicsField="proficiency_bonus_bands"|"psi_point_bands"|"psionic_focus_bands"|"manifested_strike_die_bands"|"tier_minimum_levels"|"action_economy"|"manifested_strike"|"overload"|"psionic_apex"|"disciplines";
+export interface EntitySystemMechanics {
+  proficiency_bonus_bands?:CalculatorLevelBand[];
+  psi_point_bands?:CalculatorLevelBand[];
+  psionic_focus_bands?:CalculatorLevelBand[];
+  manifested_strike_die_bands?:CalculatorLevelBand[];
+  tier_minimum_levels?:CalculatorTierMinimumLevel[];
+  action_economy?:HarnessMechanics["action_economy"];
+  manifested_strike?:HarnessMechanics["manifested_strike"];
+  overload?:HarnessMechanics["overload"];
+  psionic_apex?:HarnessMechanics["psionic_apex"];
+  disciplines?:HarnessDiscipline[];
+}
+
+export interface CalculatorConfig {
   default_card_id: string;
   default_fighter_level: number;
   default_psionic_ability_modifier: number;
@@ -242,6 +322,10 @@ export interface Calculator {
   fighter_level_maximum: number;
   psionic_ability_modifier_minimum: number;
   psionic_ability_modifier_maximum: number;
+  utility_cards: CalculatorUtilityCard[];
+}
+
+export interface CalculatorProjection extends CalculatorConfig {
   proficiency_bonus_bands: CalculatorLevelBand[];
   psi_point_bands: CalculatorLevelBand[];
   psionic_focus_bands: CalculatorLevelBand[];
@@ -249,7 +333,6 @@ export interface Calculator {
   tier_minimum_levels: CalculatorTierMinimumLevel[];
   harness_mechanics: HarnessMechanics;
   features: CalculatorFeature[];
-  utility_cards: CalculatorUtilityCard[];
 }
 
 export interface Topic { id: string; title: string; entity_ids: string[]; order: number }
@@ -318,7 +401,7 @@ export interface Authority {
     order: number; vocabulary: string;
   }>;
   entities: Entity[];
-  calculator: Calculator;
+  calculator: CalculatorConfig;
   navigation: { default_category_id: string; categories: Category[] };
   onboarding: Onboarding;
   audits?: Array<{id:string; assertion:string; subject_ids:string[]}>;

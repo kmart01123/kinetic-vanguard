@@ -1,0 +1,144 @@
+{
+  "format_version": 1,
+  "purpose": "Record the disposition of every historical Calculator and harness feature-mechanics field removed during migration to neutral per-entity mechanics.",
+  "dispositions": {
+    "promote": "Move the fact into neutral canonical mechanics without changing its meaning.",
+    "generalize": "Move the fact into neutral canonical mechanics under a less consumer-specific shape or name.",
+    "derive": "Remove the authored duplicate and calculate it from neutral canonical mechanics or entity metadata.",
+    "benchmark_only": "Keep the value outside canonical rules mechanics because it represents benchmark scenario or evaluation policy."
+  },
+  "groups": {
+    "calculator_feature": {
+      "source": "calculator.features[]",
+      "fields": {
+        "delivery": {"disposition": "generalize", "target": "entity.mechanics.surfaces[].delivery"},
+        "entity_id": {"disposition": "derive", "target": "containing entity.id"},
+        "metrics": {"disposition": "generalize", "target": "typed effects and value formulas"},
+        "tiers": {"disposition": "generalize", "target": "entity.mechanics.surfaces[].tiers"}
+      }
+    },
+    "calculator_tier": {
+      "source": "calculator.features[].tiers[]",
+      "fields": {
+        "damage": {"disposition": "generalize", "target": "damage step for its target selector"},
+        "save": {"disposition": "generalize", "target": "saving_throw step rather than damage metadata"},
+        "secondary_damage": {"disposition": "generalize", "target": "damage step with a secondary-target selector"},
+        "tier": {"disposition": "promote", "target": "surface tier identifier"}
+      }
+    },
+    "calculator_damage": {
+      "source": "calculator.features[].tiers[].{damage,secondary_damage}",
+      "fields": {
+        "count": {"disposition": "promote", "target": "damage value dice count"},
+        "kind": {"disposition": "generalize", "target": "typed damage value formula"},
+        "multiplier": {"disposition": "promote", "target": "damage value formula multiplier"},
+        "resolution": {"disposition": "generalize", "target": "ordered step or saving-throw branch"},
+        "sides": {"disposition": "promote", "target": "damage value die sides"},
+        "value": {"disposition": "promote", "target": "fixed damage value"}
+      }
+    },
+    "calculator_metric": {
+      "source": "calculator.features[].metrics[]",
+      "fields": {
+        "divisor": {"disposition": "promote", "target": "bounded value formula"},
+        "kind": {"disposition": "generalize", "target": "typed effect value formula"},
+        "label": {"disposition": "derive", "target": "effect kind and UI presentation registry"},
+        "multiplier": {"disposition": "promote", "target": "bounded value formula"},
+        "unit": {"disposition": "promote", "target": "typed value unit"},
+        "value": {"disposition": "promote", "target": "fixed formula component"},
+        "values": {"disposition": "generalize", "target": "tier-local effects or formulas"}
+      }
+    },
+    "calculator_metric_value": {
+      "source": "calculator.features[].metrics[].values[]",
+      "fields": {
+        "count": {"disposition": "promote", "target": "dice count"},
+        "fixed": {"disposition": "promote", "target": "fixed formula component"},
+        "multiplier": {"disposition": "promote", "target": "formula multiplier"},
+        "sides": {"disposition": "promote", "target": "die sides"},
+        "tier": {"disposition": "promote", "target": "surface tier identifier"}
+      }
+    },
+    "harness_feature_rule": {
+      "source": "calculator.harness_mechanics.feature_rules[]",
+      "fields": {
+        "armor_class_reduction_by_tier": {"disposition": "generalize", "target": "armor_class_modifier effects"},
+        "control_tiers": {"disposition": "generalize", "target": "surface tier steps"},
+        "damage_repetition": {"disposition": "generalize", "target": "canonical recurring trigger; benchmark horizon remains external"},
+        "damage_timing": {"disposition": "promote", "target": "ordered trigger/step timing"},
+        "damage_type": {"disposition": "generalize", "target": "explicit concrete damage type when the feature deals damage"},
+        "discipline_ids": {"disposition": "derive", "target": "entity rules-area applicability plus explicit universal applicability"},
+        "entity_id": {"disposition": "derive", "target": "containing entity.id"},
+        "ignore_resistance_tiers": {"disposition": "generalize", "target": "tier-local damage effect resistance handling"},
+        "replaces_mastery": {"disposition": "generalize", "target": "delivery interaction with Kinetic Mastery"},
+        "starts_persistent_zone": {"disposition": "derive", "target": "persistent area lifecycle and triggers"},
+        "targeting_by_tier": {"disposition": "generalize", "target": "independent targeting topology plus tier selector and cardinality mechanics"}
+      }
+    },
+    "harness_targeting": {
+      "source": "calculator.harness_mechanics.feature_rules[].targeting_by_tier[]",
+      "fields": {
+        "additional_targets": {"disposition": "promote", "target": "additional-target cardinality"},
+        "kind": {"disposition": "generalize", "target": "target selector and cardinality formula"},
+        "tier": {"disposition": "promote", "target": "surface tier identifier"}
+      }
+    },
+    "harness_armor_reduction": {
+      "source": "calculator.harness_mechanics.feature_rules[].armor_class_reduction_by_tier[]",
+      "fields": {
+        "tier": {"disposition": "promote", "target": "surface tier identifier"},
+        "value": {"disposition": "promote", "target": "armor_class_modifier value"}
+      }
+    },
+    "harness_control_tier": {
+      "source": "calculator.harness_mechanics.feature_rules[].control_tiers[]",
+      "fields": {
+        "application": {"disposition": "derive", "target": "ordered steps and saving-throw branches"},
+        "effects": {"disposition": "generalize", "target": "typed surface tier steps"},
+        "hit_gated": {"disposition": "derive", "target": "rider delivery resolution gate"},
+        "maximum_size": {"disposition": "generalize", "target": "target eligibility restriction"},
+        "repeat_save_disadvantage": {"disposition": "promote", "target": "repeat saving-throw roll mode"},
+        "repeat_save_trigger": {"disposition": "generalize", "target": "recurring saving-throw trigger"},
+        "required_creature_type": {"disposition": "generalize", "target": "target eligibility restriction"},
+        "save": {"disposition": "generalize", "target": "saving_throw step with a concrete ability or complete feature-local discipline mapping"},
+        "tier": {"disposition": "promote", "target": "surface tier identifier"}
+      }
+    },
+    "harness_control_effect": {
+      "source": "calculator.harness_mechanics.feature_rules[].control_tiers[].effects[]",
+      "fields": {
+        "attack_scope": {"disposition": "promote", "target": "attack-roll modifier scope"},
+        "conditions": {"disposition": "generalize", "target": "one condition effect per canonical condition"},
+        "duration": {"disposition": "promote", "target": "effect duration"},
+        "failed_save_magnitude_feet": {"disposition": "generalize", "target": "failed saving-throw branch movement value"},
+        "gate": {"disposition": "generalize", "target": "ordered step placement or explicit event trigger"},
+        "magnitude_feet": {"disposition": "promote", "target": "typed movement or Speed value"},
+        "outcomes": {"disposition": "generalize", "target": "typed effects rather than control-summary labels"},
+        "requires_condition": {"disposition": "generalize", "target": "effect dependency"},
+        "successful_save_magnitude_feet": {"disposition": "generalize", "target": "successful saving-throw branch movement value"},
+        "target_role": {"disposition": "generalize", "target": "effect target selector"}
+      }
+    }
+  },
+  "value_dispositions": {
+    "calculator.features[].delivery": {
+      "on_hit_rider": {"disposition": "generalize", "target": "delivery.kind=rider plus declaration and hit-resolution timing"},
+      "passive": {"disposition": "promote", "target": "delivery.kind=passive"},
+      "standalone": {"disposition": "generalize", "target": "delivery.kind=standalone plus exact activation"}
+    },
+    "calculator.harness_mechanics.feature_rules[].targeting_by_tier[].kind": {
+      "cluster_remainder": {"disposition": "benchmark_only", "target": "derive benchmark occupancy from canonical area geometry and benchmark cluster size"},
+      "fixed_additional": {"disposition": "generalize", "target": "additional-target selector with fixed cardinality"},
+      "proficiency_bonus_additional": {"disposition": "generalize", "target": "additional-target selector with Proficiency Bonus cardinality"}
+    },
+    "calculator.harness_mechanics.feature_rules[].control_tiers[].application": {
+      "failed_save": {"disposition": "derive", "target": "saving_throw.failure branch"},
+      "no_save": {"disposition": "derive", "target": "unconditional ordered step"}
+    },
+    "calculator.harness_mechanics.feature_rules[].control_tiers[].effects[].gate": {
+      "on_failed_save": {"disposition": "generalize", "target": "saving_throw.failure branch"},
+      "on_reach": {"disposition": "generalize", "target": "unconditional delivery step; remove harness reach terminology"},
+      "while_in_area": {"disposition": "generalize", "target": "persistent-area occupancy trigger"}
+    }
+  }
+}

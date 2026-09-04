@@ -59,9 +59,9 @@ class AuthorityProjectionTests(unittest.TestCase):
 
     def test_real_root_authority_and_complete_stable_id_inventory(self)->None:
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
-        self.assertEqual(self.model.projection["projection_version"],"1.2.0")
+        self.assertEqual(self.model.projection["projection_version"],"1.3.0")
         self.assertEqual(self.model.rules_version,"14.3.0")
-        self.assertEqual(self.model.projection["schema_version"],"2.4.0")
+        self.assertEqual(self.model.projection["schema_version"],"2.7.0")
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":1,"action_surge_allows_additional_standalone_psionic_action":False})
         self.assertEqual(self.model.holdout_formula(17)["kind"],"halve_total_rounded_down")
         self.assertEqual(self.model.holdout_formula(18),{"minimum_level":18,"maximum_level":20,"kind":"dice_plus_psionic_ability_modifier","count":1,"sides":6})
@@ -76,11 +76,11 @@ class AuthorityProjectionTests(unittest.TestCase):
 
     def test_structural_yaml_mutation_changes_projection_without_python_edit(self)->None:
         source=DEFAULT_AUTHORITY.read_text(encoding="utf-8")
-        probe="id: pyrokinesis\n        damage_type: fire"
+        probe="id: pyrokinesis\n          damage_type: fire"
         self.assertIn(probe,source)
         with tempfile.TemporaryDirectory() as directory:
             authority=Path(directory)/"KineticVanguard.yaml"
-            authority.write_text(source.replace(probe,"id: pyrokinesis\n        damage_type: cold",1),encoding="utf-8")
+            authority.write_text(source.replace(probe,"id: pyrokinesis\n          damage_type: cold",1),encoding="utf-8")
             mutated=AuthorityModel.load(authority)
         self.assertEqual(self.model.disciplines["pyrokinesis"]["damage_type"],"fire")
         self.assertEqual(mutated.disciplines["pyrokinesis"]["damage_type"],"cold")
@@ -89,7 +89,7 @@ class AuthorityProjectionTests(unittest.TestCase):
         source=DEFAULT_AUTHORITY.read_text(encoding="utf-8")
         with tempfile.TemporaryDirectory() as directory:
             authority=Path(directory)/"KineticVanguard.yaml"
-            authority.write_text(source.replace("  harness_mechanics:\n","  missing_harness_mechanics:\n",1),encoding="utf-8")
+            authority.write_text(source.replace("      action_economy:\n","      missing_action_economy:\n",1),encoding="utf-8")
             with self.assertRaises(AuthorityError):AuthorityModel.load(authority)
 
     def test_authority_unavailability_is_narrow_and_fail_closed(self)->None:
@@ -1325,7 +1325,7 @@ class CanonicalControlTests(unittest.TestCase):
                 control=next(item for item in self.model.features[entity_id]["control_tiers"] if int(item["tier"])==tier)
                 one=reach
                 if control["application"]=="failed_save":
-                    save=control["save"];save=self.model.disciplines[discipline]["signature_save"] if save=="discipline_signature" else save
+                    save=control["save"];self.assertIsInstance(save,str)
                     one=reach*(1-save_success_probability(target,save,self.model.kv_save_dc(target.level,5)))
                 self.assertGreater(row["named"],100*one)
 

@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { executeBuild } from "../src/build.js";
 import { loadAuthority } from "../src/load.js";
+import { deriveCalculatorProjection } from "../src/mechanics-selectors.js";
 import { validateSemantics } from "../src/validate.js";
 
 const ownedOnboardingIds=(value:any,result:string[]=[]):string[]=>{if(Array.isArray(value)){value.forEach(item=>ownedOnboardingIds(item,result));return result;}if(!value||typeof value!=="object")return result;for(const [key,child] of Object.entries(value)){if(key==="id"&&typeof child==="string")result.push(child);else ownedOnboardingIds(child,result);}return result;};
@@ -20,13 +21,25 @@ test("YAML authority is schema-valid, semantically valid, and complete",async()=
 
 test("rider repeatability is one fail-closed Manifested Strike contract",async()=>{
   const {authority}=await loadAuthority();
-  assert.equal(authority.calculator.harness_mechanics.manifested_strike.rider_repeatability,"per_manifested_strike");
-  assert.ok(authority.calculator.harness_mechanics.feature_rules.every(rule=>!Object.hasOwn(rule,"repeatability")));
+  const calculator=deriveCalculatorProjection(authority);
+  assert.equal(calculator.harness_mechanics.manifested_strike.rider_repeatability,"per_manifested_strike");
+  assert.ok(calculator.harness_mechanics.feature_rules.every(rule=>!Object.hasOwn(rule,"repeatability")));
   const source=await readFile("KineticVanguard.yaml","utf8"),directory=await mkdtemp(join(tmpdir(),"kv-repeatability-")),path=join(directory,"KineticVanguard.yaml");
   try{
     await writeFile(path,source.replace("rider_repeatability: per_manifested_strike","rider_repeatability: unsupported_value"));
     const invalid=await loadAuthority(path);
     assert.ok(invalid.diagnostics.some(item=>item.code==="schema.invalid"&&item.path?.includes("rider_repeatability")));
+  }finally{await rm(directory,{recursive:true,force:true});}
+});
+
+test("schema rejects non-surface delivery classes and opaque targeting topology",async()=>{
+  const source=await readFile("KineticVanguard.yaml","utf8"),directory=await mkdtemp(join(tmpdir(),"kv-orthogonal-"));
+  try{
+    for(const [name,edited] of [
+      ["combined-delivery",source.replace("kind: rider\n            rider_slot: manifested_strike","kind: area_rider\n            rider_slot: manifested_strike")],
+      ["mixed-delivery",source.replace("kind: rider\n            rider_slot: manifested_strike","kind: mixed\n            rider_slot: manifested_strike")],
+      ["opaque-targeting",source.replace("topology: single\n                kind: struck_target","topology: single_target_rider\n                kind: authored_procedure")]
+    ] as const){const path=join(directory,`${name}.yaml`);await writeFile(path,edited);const invalid=await loadAuthority(path);assert.ok(invalid.diagnostics.some(item=>item.code==="schema.invalid"&&item.path?.includes("mechanics")),name);}
   }finally{await rm(directory,{recursive:true,force:true});}
 });
 
@@ -69,13 +82,13 @@ test("prototype and release builds reflect direct YAML edits",async()=>{
 });
 
 test("calculator ownership and rider coverage derive from canonical entities",async()=>{
-  const {authority}=await loadAuthority();const entityById=new Map(authority.entities.map(entity=>[entity.id,entity]));
-  const registered=authority.calculator.features;assert.equal(new Set(registered.map(feature=>feature.entity_id)).size,registered.length);
+  const {authority}=await loadAuthority();const entityById=new Map(authority.entities.map(entity=>[entity.id,entity])),calculator=deriveCalculatorProjection(authority);
+  const registered=calculator.features;assert.equal(new Set(registered.map(feature=>feature.entity_id)).size,registered.length);
   const deckOwned=authority.entities.filter(entity=>entity.presentation_metadata.presentation_owner==="calculator_deck"||(entity.kind==="feature"&&entity.presentation_metadata.primary_rules_area!=="common_features"));
   for(const feature of registered){const entity=entityById.get(feature.entity_id);assert.ok(entity&&deckOwned.includes(entity),feature.entity_id);}
   const utilityIds=new Set(authority.calculator.utility_cards.map(card=>card.id));for(const card of authority.calculator.utility_cards){assert.ok(entityById.has(card.source_entity_id),card.id);for(const related of card.related_card_ids??[])assert.ok(utilityIds.has(related),`${card.id} -> ${related}`);}
   const authoredRiders=deckOwned.filter(entity=>entity.activation==="on_hit"&&entity.classifications.feature_role==="rider").map(entity=>entity.id).sort();
   const registeredRiders=registered.filter(feature=>feature.delivery==="on_hit_rider").map(feature=>feature.entity_id).sort();assert.deepEqual(registeredRiders,authoredRiders);
-  const missing=structuredClone(authority);missing.calculator.features=missing.calculator.features.filter(feature=>feature.entity_id!==registeredRiders[0]);assert.ok(validateSemantics(missing).some(diagnostic=>diagnostic.code==="calculator.rider_coverage"));
+  const missing=structuredClone(authority);delete missing.entities.find(entity=>entity.id===registeredRiders[0])!.mechanics;assert.ok(validateSemantics(missing).some(diagnostic=>diagnostic.code==="calculator.rider_coverage"));
   const unknownDefault=structuredClone(authority);unknownDefault.calculator.default_card_id="missing_calculator_card";assert.ok(validateSemantics(unknownDefault).some(diagnostic=>diagnostic.code==="calculator.default_card_unknown"));
 });

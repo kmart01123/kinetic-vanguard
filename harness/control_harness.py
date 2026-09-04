@@ -50,6 +50,12 @@ def _delivery_recipe(recipe_id:str,gate:str,retry_model:str,save_ability:str="",
     return {"id":recipe_id,"gate":gate,"retry_model":retry_model,"save_ability":save_ability,"additional_control_gate":additional_control_gate}
 
 
+def _resolve_feature_save(value:Any,discipline_id:str)->str:
+    if isinstance(value,str):return value
+    if isinstance(value,dict) and value.get("kind")=="discipline_mapping":return str(value["by_discipline"][discipline_id])
+    raise ValueError(f"Unsupported canonical feature save: {value}")
+
+
 def _kv_retry_resources(model:AuthorityModel,config:dict[str,Any],level:int)->dict[str,Any]:
     """Project the maintained inputs carried by KV's retry recursion."""
     progression=level_config(config,level);profile=config["kv_profile"]
@@ -409,7 +415,7 @@ def _closed_form_escape(target:Target,scenario:dict[str,Any],dc:int,application_
 
 
 def _mastery_shadow_component(mastery:dict[str,Any],discipline_id:str,application_probability:float,expected_occurrences:float|None=None)->dict[str,Any]:
-    component={"source_effect":f"mastery:{mastery['kind']}","labels":[('outcome',outcome) for outcome in mastery["control_outcomes"]],"duration":mastery.get("control_duration"),"application_probability":application_probability,"repeat_survival_probability":None,"repeat_checkpoint":None,"magnitude_feet":mastery.get("control_magnitude_feet"),"attack_scope":mastery.get("attack_scope"),"reason":f"KineticVanguard.yaml calculator.harness_mechanics.disciplines[{discipline_id}].mastery"}
+    component={"source_effect":f"mastery:{mastery['kind']}","labels":[('outcome',outcome) for outcome in mastery["control_outcomes"]],"duration":mastery.get("control_duration"),"application_probability":application_probability,"repeat_survival_probability":None,"repeat_checkpoint":None,"magnitude_feet":mastery.get("control_magnitude_feet"),"attack_scope":mastery.get("attack_scope"),"reason":f"KineticVanguard.yaml entities[common_kinetic_mastery].system_mechanics.disciplines[{discipline_id}].mastery"}
     if "forced_movement" in mastery["control_outcomes"]:component["expected_occurrences"]=expected_occurrences
     return component
 
@@ -430,7 +436,7 @@ def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipl
     profile=config["kv_profile"];psi_modifier=int(profile["psionic_ability_modifier"]);bonus=model.kv_attack_bonus(target.level,psi_modifier)+int(profile["archery_attack_bonus"])
     probabilities=attack_probabilities(bonus,target.ac);reach=probabilities[1]+probabilities[2] if control.get("hit_gated") else 1.0;failed=0.0;repeat_failed=0.0
     if control["application"]=="failed_save":
-        save=control["save"];save=model.disciplines[discipline_id]["signature_save"] if save=="discipline_signature" else save
+        save=_resolve_feature_save(control["save"],discipline_id)
         failed=1-save_success_probability(target,save,model.kv_save_dc(target.level,psi_modifier));repeat_failed=1-save_success_probability(target,save,model.kv_save_dc(target.level,psi_modifier),bool(control.get("repeat_save_disadvantage")))
     effects=[effect for effect in control["effects"] if eligible and _effect_available(target,effect,target_role)]
     def effect_probability(effect:dict[str,Any])->float:return reach*failed if effect["gate"]=="on_failed_save" else reach
@@ -448,7 +454,7 @@ def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipl
         if repeat_count and effect["gate"]=="on_failed_save":value*=repeat_failed**repeat_count
         after.append(value)
         labels=[*(('condition',condition) for condition in effect.get("conditions",[]) if condition.lower() not in target.condition_immunities),*(('outcome',outcome) for outcome in effect.get("outcomes",[]))]
-        component={"source_effect":f"{entity_id}:T{tier}:effect{effect_index}","labels":labels,"duration":effect["duration"],"application_probability":repeat(effect_probability(effect)),"repeat_survival_probability":repeat_failed if repeat_count and effect["gate"]=="on_failed_save" else None,"repeat_checkpoint":control.get("repeat_save_trigger") if repeat_count and effect["gate"]=="on_failed_save" else None,"magnitude_feet":effect.get("magnitude_feet"),"magnitude":effect.get("magnitude"),"attack_scope":effect.get("attack_scope"),"pricing_status":effect.get("pricing_status"),"overlapping_attack_impairment_sources":[mastery_attack_source] if mastery_attack_source and ('outcome','attack_disadvantage') in labels and effect.get("attack_scope")=="all_attacks" else [],"reason":f"KineticVanguard.yaml calculator.harness_mechanics.feature_rules[{entity_id}].control_tiers[T{tier}]"}
+        component={"source_effect":f"{entity_id}:T{tier}:effect{effect_index}","labels":labels,"duration":effect["duration"],"application_probability":repeat(effect_probability(effect)),"repeat_survival_probability":repeat_failed if repeat_count and effect["gate"]=="on_failed_save" else None,"repeat_checkpoint":control.get("repeat_save_trigger") if repeat_count and effect["gate"]=="on_failed_save" else None,"magnitude_feet":effect.get("magnitude_feet"),"magnitude":effect.get("magnitude"),"attack_scope":effect.get("attack_scope"),"pricing_status":effect.get("pricing_status"),"overlapping_attack_impairment_sources":[mastery_attack_source] if mastery_attack_source and ('outcome','attack_disadvantage') in labels and effect.get("attack_scope")=="all_attacks" else [],"reason":f"KineticVanguard.yaml entities[{entity_id}].mechanics (projected Tier {tier} control)"}
         if "failed_save_magnitude_feet" in effect or "successful_save_magnitude_feet" in effect:
             failed_probability=repeat(reach*failed);reached_probability=repeat(reach);success_probability=max(0.0,reached_probability-failed_probability)
             branch_labels=[item for item in labels if item[1]=="forced_movement"]
