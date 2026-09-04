@@ -50,9 +50,8 @@ def _delivery_recipe(recipe_id:str,gate:str,retry_model:str,save_ability:str="",
     return {"id":recipe_id,"gate":gate,"retry_model":retry_model,"save_ability":save_ability,"additional_control_gate":additional_control_gate}
 
 
-def _resolve_feature_save(value:Any,discipline_id:str)->str:
+def _resolve_feature_save(value:Any)->str:
     if isinstance(value,str):return value
-    if isinstance(value,dict) and value.get("kind")=="discipline_mapping":return str(value["by_discipline"][discipline_id])
     raise ValueError(f"Unsupported canonical feature save: {value}")
 
 
@@ -436,7 +435,7 @@ def _kv_scenario(model:AuthorityModel,config:dict[str,Any],target:Target,discipl
     profile=config["kv_profile"];psi_modifier=int(profile["psionic_ability_modifier"]);bonus=model.kv_attack_bonus(target.level,psi_modifier)+int(profile["archery_attack_bonus"])
     probabilities=attack_probabilities(bonus,target.ac);reach=probabilities[1]+probabilities[2] if control.get("hit_gated") else 1.0;failed=0.0;repeat_failed=0.0
     if control["application"]=="failed_save":
-        save=_resolve_feature_save(control["save"],discipline_id)
+        save=_resolve_feature_save(control["save"])
         failed=1-save_success_probability(target,save,model.kv_save_dc(target.level,psi_modifier));repeat_failed=1-save_success_probability(target,save,model.kv_save_dc(target.level,psi_modifier),bool(control.get("repeat_save_disadvantage")))
     effects=[effect for effect in control["effects"] if eligible and _effect_available(target,effect,target_role)]
     def effect_probability(effect:dict[str,Any])->float:return reach*failed if effect["gate"]=="on_failed_save" else reach

@@ -123,16 +123,7 @@
       ]
     },
     "mechanicsDamageType": {"enum":["cold","fire","force","lightning","psychic"]},
-    "disciplineSaveMapping": {
-      "type":"object","additionalProperties":false,"required":["kind","by_discipline"],
-      "properties":{"kind":{"const":"discipline_mapping"},"by_discipline":{"type":"object","additionalProperties":false,"required":["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"],"properties":{"cryokinesis":{"const":"constitution"},"pyrokinesis":{"const":"dexterity"},"psychokinesis":{"const":"strength"},"electrokinesis":{"const":"charisma"}}}}
-    },
-    "mechanicsSaveAbility": {
-      "oneOf": [
-        {"enum":["strength","constitution","dexterity","intelligence","charisma"]},
-        {"$ref":"#/$defs/disciplineSaveMapping"}
-      ]
-    },
+    "mechanicsSaveAbility": {"enum":["strength","constitution","dexterity","intelligence","charisma"]},
     "mechanicsValue": {
       "oneOf": [
         {"type":"object","additionalProperties":false,"required":["kind","value"],"properties":{"kind":{"const":"fixed"},"value":{"type":"integer","minimum":0}}},

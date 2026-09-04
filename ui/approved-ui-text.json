@@ -83,7 +83,6 @@
     {"id":"calculator_dexterity_save_label","role":"save_label","placements":["label"],"text":"Dexterity save"},
     {"id":"calculator_intelligence_save_label","role":"save_label","placements":["label"],"text":"Intelligence save"},
     {"id":"calculator_charisma_save_label","role":"save_label","placements":["label"],"text":"Charisma save"},
-    {"id":"calculator_discipline_signature_save_label","role":"save_label","placements":["label"],"text":"Discipline signature save"},
     {"id":"browse_heading","role":"section_heading","placements":["heading","aria-label"],"text":"Browse rules"},
     {"id":"topic_label","role":"control_label","placements":["label"],"text":"Topic"},
     {"id":"name_heading","role":"section_heading","placements":["heading"],"text":"Find by name"},

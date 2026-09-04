@@ -2,7 +2,7 @@
 
 ## Status and authority
 
-This is the accepted v14.4 inventory of canonical rules **v14.3.0**. It is non-normative: `KineticVanguard.yaml` remains the sole rules authority. This document records delivery, targeting topology, activation, and behavior-preservation sentinels for the representation refactor.
+This is the accepted v14.4 inventory of canonical rules **v14.4.0**. It is non-normative: `KineticVanguard.yaml` remains the sole rules authority. This document records delivery, targeting topology, activation, and behavior-preservation sentinels for the representation refactor.
 
 Delivery and targeting are orthogonal. An “area rider” in prose means `delivery = rider` plus `targeting topology = area`; it is not a distinct lifecycle. No inventory label combines the two axes, and there is no composite-rider concept.
 
@@ -39,8 +39,8 @@ Activation remains independent from both axes.
 3. Mass Levitation is `standalone + discrete_multi`. Its five weighted target slots are selection/cardinality mechanics, not an area.
 4. Phase Step changes from `self` to `area` at Tier 2 while retaining one standalone Bonus Action lifecycle. Improved Phase Step is standalone with an explicit endpoint Sphere.
 5. Empathic Sense owns a passive/no-target surface and a standalone/discrete-multi Active Scan surface.
-6. Concrete discipline damage types and ordinary saves are authored on the feature mechanics. Universal signature-save features own a bounded discipline-to-save mapping.
-7. Improved Phase Step preserves the v14.3 machine authority's explicit force damage while its unchanged player-facing prose still says Manifested Strike damage type. Issue #136 owns the approved later prose correction and fixed Strength-save mechanics; neither change belongs in this representation migration.
+6. Concrete damage types and saving throws are authored directly on feature mechanics; consumers do not infer them from Discipline metadata.
+7. The Phase Step family is a universal force/mobility family: Phase Step Tier 2 uses a fixed Strength save, and Improved Phase Step uses fixed Strength saves plus force damage at every tier.
 
 ## Complete ability inventory
 
@@ -60,7 +60,7 @@ Activation remains independent from both axes.
 | `cinder_lance` | Cinder Lance | 10 | `rider` | `single` | Before roll; resolves on hit | Struck target; no save | Tier 2 alone bypasses fire Resistance. |
 | `explosion_implosion` | Explosion/Implosion | 10 | `rider` | `area` | Before roll; resolves on hit | Hit-centered Sphere; independent Strength saves | One rider creates the whole Sphere; struck target is never moved from its center. |
 | `electron_burst` | Electron Burst | 10 | `rider` | `area` | Before roll; resolves on hit | Hit-centered Sphere; independent Charisma saves and role-specific damage | Primary/secondary damage and Tier 2 gates remain unchanged. |
-| `advanced_phase_step` | Phase Step | 10 | `standalone` | `mixed` (`self`, `area`) | Bonus Action | Self teleport; Tier 2 endpoint Sphere with feature-local discipline save mapping | Tier 2 adds the burst without changing activation or provoking Opportunity Attacks. |
+| `advanced_phase_step` | Phase Step | 10 | `standalone` | `mixed` (`self`, `area`) | Bonus Action | Self teleport; Tier 2 endpoint Sphere with fixed Strength save | Tier 2 adds the burst without changing activation or provoking Opportunity Attacks. |
 | `arctic_tempest` | Arctic Tempest | 15 | `standalone` | `discrete_multi` | Action | Up to three selected targets; independent Constitution saves | Tier 2 replaces Restrained with Stunned rather than stacking them. |
 | `flare` | Flare | 15 | `rider` | `single` | Before roll; resolves on hit | Struck target; Dexterity save gates only Blinded | Fire damage remains unconditional on the save. |
 | `telekinetic_slam` | Telekinetic Slam | 15 | `standalone` | `single` | Action | One selected target within 60 feet; Strength save | Tier 2 successful-save push and failed-save Speed 0 remain distinct. |
@@ -70,7 +70,7 @@ Activation remains independent from both axes.
 | `advanced_mind_lock` | Mind Lock | 15 | `rider` | `single` | Before roll; resolves on hit | Struck target; Intelligence save | Tier 2 replaces Incapacitated with Stunned while retaining Blinded. |
 | `advanced_gravitic_press` | Gravitic Press | 15 | `standalone` | `area` | Action; Concentration | Persistent 15-foot-radius, 20-foot-high Cylinder within 60 feet; Strength save | No-save area effects and save-gated effects remain separate. |
 | `advanced_barrier` | Barrier | 15 | `standalone` | `self` | Bonus Action; Concentration | Self mode selection; no save | Mode count, duration, and replacement procedure remain unchanged. |
-| `advanced_improved_phase_step` | Improved Phase Step | 15 | `standalone` | `area` | Bonus Action | Endpoint 5-foot Sphere; up to three other creatures; force damage; feature-local discipline save mapping | Machine authority remains force despite the known prose discrepancy; user remains unaffected. |
+| `advanced_improved_phase_step` | Improved Phase Step | 15 | `standalone` | `area` | Bonus Action | Endpoint 5-foot Sphere; up to three other creatures; fixed Strength save and force damage | Tier damage dice and half damage on a successful save remain unchanged; user remains unaffected. |
 | `advanced_overload_mastery_ii` | Overload Mastery II | 18 | `passive` | `none` | Passive | No target | Exactly one additional rest-based use remains intact. |
 | `advanced_inner_reserve` | Inner Reserve | 15 | `passive` | `none` | Passive | No target | Maximum Psi increase remains +4 and non-repeatable. |
 | `absolute_zero` | Absolute Zero | 20 | `standalone` | `single` | Action | One target within 60 feet; Constitution save | Tier 2 Speed 0 still applies on success; Stunned remains failed-save-only. |
@@ -80,4 +80,4 @@ Activation remains independent from both axes.
 
 ## Implementation result
 
-The canonical schema and semantic validator enforce the two axes, the shared rider slot, selector-specific targeting requirements, concrete discipline facts, and bounded universal mappings. Calculator and harness views remain deterministic projections from entity-owned mechanics. Mechanical ambiguities and simplifications remain follow-up work under #135 and #136; this inventory authorizes no playable changes.
+The canonical schema and semantic validator enforce the two axes, the shared rider slot, selector-specific targeting requirements, and concrete D&D facts. Calculator and harness views remain deterministic projections from entity-owned mechanics. The v14.4 Phase Step-family ruling is reflected here; unrelated mechanical ambiguities and simplifications remain follow-up work under #135.

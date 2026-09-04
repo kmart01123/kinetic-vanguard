@@ -19,9 +19,10 @@ const compatibilityHashes:Record<string,{calculator:string;harness:string}>={
   static_discharge:{calculator:"fed529b22681cc4ec20e3f5f52b592a4feaf2c4912d47716db6884ff0d034e61",harness:"6dc6e739d5febe412948ba450c69a360e2a3103445dc3dbbcd7ed6048d5e3f68"}
 };
 const hash=(value:unknown)=>createHash("sha256").update(canonicalJson(value)).digest("hex");
-const legacySave=(value:unknown)=>typeof value==="object"&&value!==null&&(value as any).kind==="discipline_mapping"?"discipline_signature":value;
-const legacyCalculatorView=(features:any[])=>structuredClone(features).map(feature=>({...feature,...(feature.tiers?{tiers:feature.tiers.map((tier:any)=>({...tier,...(tier.save?{save:legacySave(tier.save)}:{})}))}:{})}));
-const legacyHarnessView=(rules:any[])=>{const disciplineAliases=new Set(["glacial_spike","snow_chains","frozen_ground","arctic_tempest","absolute_zero","ember_bolt","thermal_fracture","telekinetic_shove","vectored_thrust","static_discharge"]);return structuredClone(rules).map(rule=>{if(disciplineAliases.has(rule.entity_id))rule.damage_type="discipline";if(rule.entity_id==="advanced_phase_step")rule.damage_type="discipline";for(const control of rule.control_tiers??[])if(control.save)control.save=legacySave(control.save);if(rule.entity_id==="advanced_beguile")delete rule.targeting_by_tier;return rule;});};
+const intentionallyChangedIds=new Set(["advanced_phase_step","advanced_improved_phase_step"]);
+const unchangedLegacySubset=(rows:any[])=>structuredClone(rows.filter(row=>!intentionallyChangedIds.has(row.entity_id)));
+const legacyCalculatorView=(features:any[])=>unchangedLegacySubset(features);
+const legacyHarnessView=(rules:any[])=>{const disciplineAliases=new Set(["glacial_spike","snow_chains","frozen_ground","arctic_tempest","absolute_zero","ember_bolt","thermal_fracture","telekinetic_shove","vectored_thrust","static_discharge"]);return unchangedLegacySubset(rules).map((rule:any)=>{if(disciplineAliases.has(rule.entity_id))rule.damage_type="discipline";if(rule.entity_id==="advanced_beguile")delete rule.targeting_by_tier;return rule;});};
 const systemFields=["proficiency_bonus_bands","psi_point_bands","psionic_focus_bands","manifested_strike_die_bands","tier_minimum_levels","action_economy","manifested_strike","overload","psionic_apex","disciplines"];
 
 test("shared progressions and core mechanics are entity-owned without Calculator or harness registries",async()=>{
@@ -38,10 +39,11 @@ test("every machine-consumed ability authors mechanics once and derives consumer
   const projection=deriveCalculatorProjection(authority),calculatorIds=projection.features.map(feature=>feature.entity_id).sort(),harnessIds=projection.harness_mechanics.feature_rules.map(rule=>rule.entity_id).sort();
   assert.equal(calculatorIds.length,30);assert.equal(harnessIds.length,27);assert.deepEqual(entities.map(entity=>entity.id).sort(),calculatorIds);
   assert.equal(raw.calculator.features,undefined);assert.equal(raw.calculator.harness_mechanics,undefined);
-  assert.equal(hash(projection.features),"8b664602328f1d33b9b0eccdf6fc6aef18e91f88c9e5d0510759ac21965880bf");
-  assert.equal(hash(projection.harness_mechanics.feature_rules),"7402812255e836eef06bd881dee59306cbbaaad1194ad6d6dbc02d32788ad3ba");
-  assert.equal(hash(legacyCalculatorView(projection.features)),"d65242939b39170bc69d333f43cea17aace02313b61a3620f745144425e0220d");
-  assert.equal(hash(legacyHarnessView(projection.harness_mechanics.feature_rules)),"7f2e225107b7b443a421934022c570b573ba14ba86af64cc8fc8f32129d16bac");
+  assert.equal(hash(projection.features),"a82b25a23fad5ba0daa46188b06ee0fabe363d0738cd954bfaf90fc2b67320af");
+  assert.equal(hash(projection.harness_mechanics.feature_rules),"9633ae80ebf3850e836048a40261ef971c024e41a70ac6e289b689b5a364f403");
+  const legacyCalculator=legacyCalculatorView(projection.features),legacyHarness=legacyHarnessView(projection.harness_mechanics.feature_rules);assert.ok(legacyCalculator.every((feature:any)=>!intentionallyChangedIds.has(feature.entity_id)));assert.ok(legacyHarness.every((rule:any)=>!intentionallyChangedIds.has(rule.entity_id)));
+  assert.equal(hash(legacyCalculator),"2e0814e8b20ab395aff14cf24b558082b3c12ffa32ded9ef6ef61f2dafb00afa");
+  assert.equal(hash(legacyHarness),"e914f07c839070241281297e3471092c228c936f57e01e80961cd23a0140a0ae");
   for(const entity of entities){
     const calculator=projection.features.find(feature=>feature.entity_id===entity.id);assert.ok(calculator,entity.id);assert.deepEqual(projectCalculatorMechanics(entity),calculator,`${entity.id} Calculator projection`);
     const harness=projection.harness_mechanics.feature_rules.find(rule=>rule.entity_id===entity.id)??null;assert.deepEqual(projectHarnessMechanics(entity),harness,`${entity.id} harness projection`);
@@ -76,13 +78,33 @@ test("canonical mechanics reject incomplete topology and single-target secondary
   expectCode("mechanics.discipline_save",candidate=>{candidate.entities.find((item:any)=>item.id==="flare").mechanics.surfaces[0].tiers[0].steps.find((step:any)=>step.kind==="saving_throw").ability="constitution";});
 });
 
-test("canonical D&D facts are concrete or explicitly feature-local",async()=>{
-  const {authority}=await loadAuthority(),mapping={kind:"discipline_mapping",by_discipline:{cryokinesis:"constitution",pyrokinesis:"dexterity",psychokinesis:"strength",electrokinesis:"charisma"}} as const;
+test("canonical D&D facts are concrete",async()=>{
+  const {authority}=await loadAuthority();
   const json=JSON.stringify(authority.entities.flatMap(entity=>entity.mechanics?[entity.mechanics]:[]));assert.doesNotMatch(json,/"damage_type":"discipline"|"ability":"discipline_signature"/);
   for(const [id,damage,save] of [["absolute_zero","cold","constitution"],["flare","fire","dexterity"],["telekinetic_slam","force","strength"],["electron_burst","lightning","charisma"]] as const){const mechanics=authority.entities.find(entity=>entity.id===id)!.mechanics!,text=JSON.stringify(mechanics);assert.match(text,new RegExp(`"damage_type":"${damage}"`),id);assert.match(text,new RegExp(`"ability":"${save}"`),id);}
-  for(const id of ["advanced_phase_step","advanced_improved_phase_step"]){const surface=authority.entities.find(entity=>entity.id===id)!.mechanics!.surfaces[0]!,saves=surface.tiers!.flatMap(tier=>(tier.steps??[]).filter((step):step is Extract<typeof step,{kind:"saving_throw"}>=>step.kind==="saving_throw").map(step=>step.ability));assert.ok(saves.length>0,id);assert.ok(saves.every(save=>JSON.stringify(save)===JSON.stringify(mapping)),id);}
-  const improved=authority.entities.find(entity=>entity.id==="advanced_improved_phase_step")!.mechanics!.surfaces[0]!;assert.equal(improved.damage_type,"force");for(const tier of improved.tiers!)for(const step of tier.steps![0]!.kind==="saving_throw"?tier.steps![0]!.failure:[])if(step.kind==="damage")assert.equal(step.damage_type,"force");
+  assert.doesNotMatch(json,/discipline_mapping/);
   assert.doesNotMatch(json,/"damage_type":\{/);
+});
+
+test("Phase Step family uses fixed Strength saves and force damage without changing its other mechanics",async()=>{
+  const [{authority},source]=await Promise.all([loadAuthority(),readFile("KineticVanguard.yaml","utf8")]),raw=YAML.parse(source) as any;
+  const entity=(id:string)=>authority.entities.find(item=>item.id===id)!,rawEntity=(id:string)=>raw.entities.find((item:any)=>item.id===id),surface=(id:string)=>entity(id).mechanics!.surfaces[0]!,saving=(tier:any)=>tier.steps?.find((step:any)=>step.kind==="saving_throw");
+  const phase=surface("advanced_phase_step"),[phase0,phase1,phase2]=phase.tiers!;
+  assert.equal(phase.delivery.kind,"standalone");assert.equal(phase.delivery.kind==="standalone"&&phase.delivery.activation,"bonus_action");
+  assert.deepEqual([phase0!.targeting,phase1!.targeting],[{topology:"self",kind:"self"},{topology:"self",kind:"self"}]);assert.equal(phase0!.steps,undefined);assert.equal(phase1!.steps,undefined);
+  assert.deepEqual(phase2!.targeting,{topology:"area",kind:"area",shape:"sphere",origin:"departure_or_arrival_space",radius_feet:5,selection:"creatures_of_choice"});
+  const phaseSave=saving(phase2);assert.equal(phaseSave.ability,"strength");assert.deepEqual(phaseSave.failure,[{kind:"reaction_denial",package_id:"control_0",duration:"until_start_next_turn"}]);assert.equal(JSON.stringify(phase).includes("damage"),false);assert.doesNotMatch(JSON.stringify(phase),/discipline_mapping/);
+
+  const improved=surface("advanced_improved_phase_step"),dice=[2,3,4];assert.equal(improved.delivery.kind,"standalone");assert.equal(improved.delivery.kind==="standalone"&&improved.delivery.activation,"bonus_action");assert.equal(improved.damage_type,"force");
+  improved.tiers!.forEach((tier,index)=>{assert.deepEqual(tier.targeting,{topology:"area",kind:"area",shape:"sphere",origin:"departure_or_arrival_space",radius_feet:5,selection:"creatures_of_choice",maximum_targets:3,excludes_self:true});const save=saving(tier);assert.equal(save.ability,"strength");assert.equal(save.damage_on_success,"half");const damage=save.failure.find((step:any)=>step.kind==="damage");assert.deepEqual(damage,{kind:"damage",damage_type:"force",value:{kind:"dice",count:dice[index],sides:10}});if(tier.tier===2)assert.deepEqual(save.failure.at(-1),{kind:"reaction_denial",package_id:"control_0",duration:"until_start_next_turn"});else assert.equal(save.failure.some((step:any)=>step.kind==="reaction_denial"),false);});
+  assert.doesNotMatch(JSON.stringify(improved),/discipline_mapping/);
+
+  const phaseText=JSON.stringify(rawEntity("advanced_phase_step").content),improvedText=JSON.stringify(rawEntity("advanced_improved_phase_step").content);assert.match(phaseText,/T0 Base: Teleport up to 15 feet.*does not provoke Opportunity Attacks/);assert.match(phaseText,/T1 Overload: Changes from Tier 0: The teleport range increases to 30 feet/);assert.match(phaseText,/Strength saving throw against your Psionic saving throw Difficulty Class/);assert.match(improvedText,/Teleport up to 30 feet to an unoccupied space you can see/);assert.match(improvedText,/Choose either the space you left or the space where you appear as the origin of a 5-foot-radius Sphere/);assert.match(improvedText,/Choose up to three other creatures in the Sphere/);assert.match(improvedText,/Strength saving throw against your Psionic saving throw Difficulty Class, taking 2d10 force damage on a failed save or half as much on a successful one/);assert.match(improvedText,/does not provoke Opportunity Attacks, and you are unaffected by the burst/);assert.doesNotMatch(`${phaseText}${improvedText}`,/Discipline.s signature saving throw|Manifested Strike.s damage type/);
+
+  const projection=deriveCalculatorProjection(authority),calculator=(id:string)=>projection.features.find(item=>item.entity_id===id)!,harness=(id:string)=>projection.harness_mechanics.feature_rules.find(item=>item.entity_id===id)!;
+  assert.deepEqual(calculator("advanced_phase_step").tiers!.map(tier=>tier.save),[undefined,undefined,"strength"]);assert.deepEqual(calculator("advanced_improved_phase_step").tiers!.map(tier=>[tier.save,tier.damage]),[["strength",{kind:"dice",resolution:"half_on_success",count:2,sides:10}],["strength",{kind:"dice",resolution:"half_on_success",count:3,sides:10}],["strength",{kind:"dice",resolution:"half_on_success",count:4,sides:10}]]);
+  assert.deepEqual(harness("advanced_phase_step").control_tiers?.map(tier=>[tier.tier,tier.save,tier.effects]),[[2,"strength",[{gate:"on_failed_save",outcomes:["reaction_denial"],duration:"until_start_next_turn"}]]]);assert.equal(harness("advanced_improved_phase_step").damage_type,"force");assert.deepEqual(harness("advanced_improved_phase_step").control_tiers?.map(tier=>[tier.tier,tier.save]),[[2,"strength"]]);
+  for(const discipline of ["cryokinesis","pyrokinesis","psychokinesis","electrokinesis"]){assert.equal(harness("advanced_phase_step").control_tiers?.[0]?.save,"strength",discipline);assert.equal(harness("advanced_improved_phase_step").damage_type,"force",discipline);assert.equal(harness("advanced_improved_phase_step").control_tiers?.[0]?.save,"strength",discipline);}
 });
 
 test("Branching Bolt neutral targeting preserves the released 15-foot arc",async()=>{

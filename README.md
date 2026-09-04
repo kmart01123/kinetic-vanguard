@@ -7,7 +7,7 @@ Kinetic Vanguard is a schema-first, deterministic rules publication for a Fighte
 ## Release status
 
 - Published rules: **[v14.3.0](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v14.3.0)**
-- Current development prototype: **None**
+- Current development prototype: **[v14.4.0](https://kmart01123.github.io/kinetic-vanguard/)** — **NON-RELEASE development build**
 - Canonical rules authority: `KineticVanguard.yaml`
 
 Published releases use frozen `release/X.Y.Z` branches and annotated `vX.Y.Z` tags.
@@ -20,6 +20,8 @@ Version 14.1.0 restores maintained damage and control benchmark harness source. 
 ## Balance benchmark snapshot
 
 **Published snapshot** — canonical rules **v14.3.0**.
+
+The current v14.4.0 development line contains Phase Step-family rule changes that do not affect the maintained headline benchmark inputs; this remains the published v14.3.0 snapshot.
 
 Target profile: `headline`. The maintained headline benchmark uses 47 creature profiles from SRD 5.2.1 at levels 7, 11, 15, and 20. These are exact analytical full-roster results, with creatures weighted equally within their level.
 

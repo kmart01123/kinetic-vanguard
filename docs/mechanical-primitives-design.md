@@ -109,7 +109,7 @@ Bounded selector kinds beneath that topology retain the details needed by curren
 
 Discipline-specific feature mechanics author their concrete damage type and ordinary save directly: Cryokinesis uses cold/Constitution, Pyrokinesis fire/Dexterity, Psychokinesis force/Strength, and Electrokinesis lightning/Charisma. Consumers do not consult discipline metadata to reconstruct those facts.
 
-Universal features that use the selected Discipline's save contain the complete four-discipline mapping in their own saving-throw step. Improved Phase Step records `force` because the v14.3 machine authority uses force even though its player-facing prose says Manifested Strike damage type. This representation migration preserves the machine contract; issue #136 owns the approved later correction to explicit force prose and fixed Strength saves for the Phase Step family.
+Universal feature mechanics author their concrete D&D facts directly as well. The Phase Step family is self-contained: Phase Step Tier 2 uses a Strength save, while Improved Phase Step uses Strength saves and force damage at every tier. Consumers do not consult Discipline metadata to resolve either feature.
 
 ### Values
 
@@ -245,6 +245,6 @@ The schema 2.7.0 migration completes the ability migration, shared-system author
 8. **Complete:** remove the Calculator and harness projection registries; membership and ordering now derive from canonical entity order.
 9. **Complete:** remove loader materialization and legacy-equivalence validation, and advance the harness projection contract for canonical ordering.
 
-Authority schema 2.7.0 removes the obsolete consumer registries without changing playable rules, so `rules_version` remains 14.3.0. Harness projection 1.3.0 preserves the existing fields and values while adopting canonical entity order. Player-facing content remains canonical for complete wording and procedures, and utility abilities with no Calculator or harness consumer remain authoritative there; the migration does not invent machine data or benchmark policy for facts no code consumes.
+Authority schema 2.7.0 removed the obsolete consumer registries without changing playable rules, so that migration retained `rules_version` 14.3.0. The subsequent Phase Step-family rules change begins `rules_version` 14.4.0, removes the globally unused discipline-save mapping in schema 2.8.0, and advances the harness projection contract to 1.4.0. Player-facing content remains canonical for complete wording and procedures, and utility abilities with no Calculator or harness consumer remain authoritative there; the migration does not invent machine data or benchmark policy for facts no code consumes.
 
-At every step, canonical rules wording and numerical outcomes remain unchanged. Full damage/control benchmark regeneration is required only if mechanics, methodology, comparator data, roster data, or evaluator behavior changes; structural equivalence should be established with focused sentinel and projection tests first.
+At every representation-migration step, canonical rules wording and numerical outcomes remained unchanged. Full damage/control benchmark regeneration is required only if a changed mechanic is consumed by a maintained benchmark path, or if methodology, comparator data, roster data, or evaluator behavior changes; structural equivalence should be established with focused sentinel and projection tests first.

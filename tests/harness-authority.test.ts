@@ -8,7 +8,7 @@ import { validateSemantics } from "../src/validate.js";
 
 test("harness projection reads the real authority and joins mechanics by stable entity ID",async()=>{
   const projection=await createHarnessProjection();
-  assert.equal(projection.projection_version,"1.3.0");
+  assert.equal(projection.projection_version,"1.4.0");
   assert.match(projection.authority_path,/\/KineticVanguard\.yaml$/);
   assert.ok(Number.isInteger(projection.core.action_economy.standalone_psionic_action_limit_per_turn));
   assert.equal(projection.core.manifested_strike.rider_repeatability,"per_manifested_strike");
@@ -20,8 +20,9 @@ test("harness projection reads the real authority and joins mechanics by stable 
   assert.ok(projection.disciplines.every(item=>item.id&&item.damage_type&&item.signature_save&&item.mastery));
   assert.ok(projection.features.some(item=>item.damage_tiers.length&&item.control_tiers?.length));
   assert.equal(projection.features.find(item=>item.entity_id==="glacial_spike")?.damage_type,"cold");
-  assert.deepEqual(projection.features.find(item=>item.entity_id==="advanced_phase_step")?.control_tiers?.[0]?.save,{kind:"discipline_mapping",by_discipline:{cryokinesis:"constitution",pyrokinesis:"dexterity",psychokinesis:"strength",electrokinesis:"charisma"}});
+  assert.equal(projection.features.find(item=>item.entity_id==="advanced_phase_step")?.control_tiers?.[0]?.save,"strength");
   assert.equal(projection.features.find(item=>item.entity_id==="advanced_improved_phase_step")?.damage_type,"force");
+  assert.equal(projection.features.find(item=>item.entity_id==="advanced_improved_phase_step")?.control_tiers?.[0]?.save,"strength");
 });
 
 test("harness semantic mutations fail with focused diagnostics",async()=>{

@@ -81,8 +81,7 @@ export interface ContentBlock {
 
 export type MechanicsDuration="instantaneous"|"until_end_current_turn"|"until_start_next_turn"|"until_end_next_turn"|"continuous"|"while_in_area"|"one_minute_concentration"|"one_hour";
 export type ConcreteSaveAbility="strength"|"constitution"|"dexterity"|"intelligence"|"charisma";
-export type DisciplineSaveMapping={kind:"discipline_mapping";by_discipline:{cryokinesis:"constitution";pyrokinesis:"dexterity";psychokinesis:"strength";electrokinesis:"charisma"}};
-export type MechanicsSaveAbility=ConcreteSaveAbility|DisciplineSaveMapping;
+export type MechanicsSaveAbility=ConcreteSaveAbility;
 export type ConcreteDamageType="cold"|"fire"|"force"|"lightning"|"psychic";
 export type MechanicsDamageType=ConcreteDamageType;
 export type MechanicsValue=

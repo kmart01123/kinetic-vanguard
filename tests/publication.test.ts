@@ -10,14 +10,14 @@ const defaultReferenceFragment="#category=common_features&topic=common_features_
 
 test("prototype is self-contained, offline, and unmistakably non-release",async()=>{
   const result=await executeBuild("prototype");const html=await readFile(result.htmlPath,"utf8");
-  assert.match(html,/NON-RELEASE PROTOTYPE/);assert.match(html,/"release_status":"prototype"/);assert.match(html,/<div class="versions"><span>Rules version: 14\.3\.0<\/span><\/div>/);
+  assert.match(html,/NON-RELEASE PROTOTYPE/);assert.match(html,/"release_status":"prototype"/);assert.match(html,/<div class="versions"><span>Rules version: 14\.4\.0<\/span><\/div>/);
   assert.doesNotMatch(html,/<(?:script|link|img)[^>]+(?:src|href)=["']https?:/i);assert.doesNotMatch(html,/(?:fetch|XMLHttpRequest|localStorage|sessionStorage|indexedDB|serviceWorker)/);
   assert.doesNotMatch(html,/<input[^>]+type=["'](?:text|search|number)["']/i);assert.doesNotMatch(html,/<textarea|contenteditable|aria-autocomplete/i);
   assert.doesNotMatch(html,/Application version|application_version|0\.1\.0/);
   const provenanceSource=html.match(/<script type="application\/json" id="publication-provenance">([^<]+)<\/script>/)?.[1];assert.ok(provenanceSource);
   const provenance=JSON.parse(provenanceSource);
   assert.deepEqual(Object.keys(provenance).sort(),["authority_sha256","release_status","rules_version","schema_version"]);
-  assert.equal(provenance.rules_version,"14.3.0");
+  assert.equal(provenance.rules_version,"14.4.0");
 });
 
 test("rendered rules use Tn shorthand headings and preserve cumulative tier order",async()=>{
@@ -342,7 +342,8 @@ test("Feature Deck computes the newly projected values and authored save metadat
   detail=clickDeckCard(document,"flare");assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Dexterity save · Tiers 0–2");
   detail=clickDeckCard(document,"advanced_mind_lock");assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Intelligence save · Tiers 0–2");
   detail=clickDeckCard(document,"advanced_deflection_screen");assert.match(normalizedDeckText(detail),/Damage reduction: 7d8 \+ 5/u);assert.match(normalizedDeckText(detail),/7d8 \+ \(1 × Psionic Ability Modifier 5\) = 7d8 \+ 5/u);assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Strength save · Tier 2");
-  detail=clickDeckCard(document,"advanced_improved_phase_step");assert.match(normalizedDeckText(detail),/Damage: 4d10 on a failed save/u);assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Discipline signature save · Tiers 0–2");
+  detail=clickDeckCard(document,"advanced_phase_step");assert.match(normalizedDeckText(detail),/Each creature of your choice within 5 feet.*Strength saving throw.*cannot take reactions until the start of your next turn/u);assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Strength save · Tier 2");
+  detail=clickDeckCard(document,"advanced_improved_phase_step");assert.match(normalizedDeckText(detail),/Strength saving throw.*2d10 force damage on a failed save or half as much on a successful one/u);assert.match(normalizedDeckText(detail),/Damage: 4d10 on a failed save/u);assert.equal(detail.querySelector<HTMLElement>(".calculator__save")?.textContent,"Strength save · Tiers 0–2");
   detail=clickDeckCard(document,"advanced_inner_reserve");assert.match(normalizedDeckText(detail),/Maximum Psi Points with Inner Reserve: 20/u);assert.match(normalizedDeckText(detail),/Base Psi Points \(16\) \+ 4 = 20/u);
   changeDeckSelect(dom,level,"9");changeDeckSelect(dom,modifier,"3");detail=root.querySelector<HTMLElement>("#calculator-feature-results")!;assert.match(normalizedDeckText(detail),/Maximum Psi Points with Inner Reserve: 13/u);
   await settleOnboarding();dom.window.close();
