@@ -940,6 +940,13 @@ class ReviewBridgeTests(unittest.TestCase):
                 "Pending result",
                 "Placeholder pending inspection.",
             ),
+            (
+                "detail active analysis",
+                "grok",
+                "Review status update.",
+                "Pending result",
+                "Still analyzing the exact-head changes.",
+            ),
         )
         for location, provider, body, title, detail in cases:
             with self.subTest(location=location, provider=provider):
