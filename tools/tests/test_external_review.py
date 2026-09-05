@@ -1036,6 +1036,68 @@ class ReviewBridgeTests(unittest.TestCase):
                 self.assertEqual(len(posted), 1)
                 self.assertEqual(len(github.comments), 1)
 
+    def test_final_analysis_and_inspection_findings_validate_and_post(self) -> None:
+        cases = (
+            (
+                "Inspection never terminates after cancellation",
+                "The inspection is underway after cancellation and never reaches a terminal state.",
+            ),
+            (
+                "Worker analysis outlives the completed request",
+                "Analysis is ongoing in the worker after the request has already completed.",
+            ),
+        )
+        for provider in ("claude", "grok"):
+            for title, detail in cases:
+                for location in ("body", "title", "detail"):
+                    with self.subTest(provider=provider, case=title, location=location):
+                        legitimate = execution(
+                            provider,
+                            verdict="FINDINGS",
+                            body=detail if location == "body" else "A lifecycle defect remains.",
+                            findings=(
+                                bridge.ReviewFinding(
+                                    "MEDIUM",
+                                    detail if location == "title" else title,
+                                    detail if location == "detail" else
+                                    "The worker does not observe cancellation before its next iteration.",
+                                ),
+                            ),
+                        )
+                        posted, github, _repository = self.run_bridge(
+                            (provider,), {provider: legitimate}
+                        )
+                        self.assertEqual(len(posted), 1)
+                        self.assertEqual(len(github.comments), 1)
+                        self.assertIn("**FINDINGS**", github.comments[0])
+                        self.assertIn(detail, github.comments[0])
+
+    def test_standalone_progress_status_is_rejected_in_every_field(self) -> None:
+        for status in (
+            "Review in progress",
+            "The inspection is underway.",
+            "  ANALYSIS -- is ongoing! ",
+        ):
+            for location in ("body", "title", "detail"):
+                with self.subTest(status=status, location=location):
+                    invalid = execution(
+                        "grok",
+                        verdict="FINDINGS",
+                        body=status if location == "body" else "Review status update.",
+                        findings=(
+                            bridge.ReviewFinding(
+                                "LOW",
+                                status if location == "title" else "Pending result",
+                                status if location == "detail" else "Results will follow.",
+                            ),
+                        ),
+                    )
+                    self.assert_review_rejected(
+                        ("claude", "grok"),
+                        {"claude": execution("claude"), "grok": invalid},
+                        "non-final review output",
+                    )
+
     def test_dirty_worktree_after_valid_result_blocks_posting(self) -> None:
         github = FakeGitHub([metadata()])
         repository = FakeRepository(clean_error_for="Claude")

@@ -54,8 +54,13 @@ NON_FINAL_REVIEW_TITLES = frozenset(
 NON_FINAL_REVIEW_PATTERNS = (
     re.compile(r"\b(?:the )?review(?: request)? is being processed\b"),
     re.compile(
-        r"\b(?:review|analysis|inspection)(?: (?:is|remains))?"
+        r"\breview(?: (?:is|remains))?"
         r"(?: still)? (?:in progress|underway|ongoing)\b"
+    ),
+    # Generic process terms are status sentinels only when they fill the field.
+    re.compile(
+        r"^(?:the )?(?:analysis|inspection)(?: (?:is|remains))?"
+        r"(?: still)? (?:in progress|underway|ongoing)$"
     ),
     re.compile(r"\bstill (?:reviewing|inspecting|analyzing)\b"),
     re.compile(
