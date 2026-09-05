@@ -43,8 +43,34 @@ GROK_SANDBOX_FAILURE_PATTERN = re.compile(
     r"(?:sandbox could not be applied|failed to apply sandbox|unknown sandbox profile)",
     re.IGNORECASE,
 )
+NON_FINAL_REVIEW_TITLES = frozenset(
+    (
+        "review bootstrap",
+        "review in progress",
+        "analysis in progress",
+        "inspection in progress",
+    )
+)
 NON_FINAL_REVIEW_PATTERNS = (
     re.compile(r"\b(?:the )?review(?: request)? is being processed\b"),
+    re.compile(
+        r"\breview(?: (?:is|remains))?"
+        r"(?: still)? (?:in progress|underway|ongoing)\b"
+    ),
+    # Generic process terms are status sentinels only when they fill the field.
+    re.compile(
+        r"^(?:the )?(?:analysis|inspection)(?: (?:is|remains))?"
+        r"(?: still)? (?:in progress|underway|ongoing)$"
+    ),
+    re.compile(r"\bstill (?:reviewing|inspecting|analyzing)\b"),
+    re.compile(
+        r"\b(?:awaiting|pending) (?:the )?"
+        r"(?:review|analysis|inspection) completion\b"
+    ),
+    re.compile(
+        r"\b(?:awaiting|pending) (?:the )?completion of (?:the )?"
+        r"(?:review|analysis|inspection)\b"
+    ),
     re.compile(
         r"\bplaceholder(?: \w+){0,3} (?:while|until)"
         r"(?: \w+){0,8} review(?: \w+){0,3}"
@@ -53,6 +79,21 @@ NON_FINAL_REVIEW_PATTERNS = (
     re.compile(
         r"\bplaceholder(?: \w+){0,3} (?:awaiting|pending)"
         r"(?: \w+){0,4} (?:review )?completion\b"
+    ),
+    re.compile(
+        r"^(?:review )?placeholder(?: (?:result|response|output))?"
+        r" (?:awaiting|pending) (?:the )?"
+        r"(?:review|analysis|inspection)(?: completion)?$"
+    ),
+    re.compile(
+        r"\bplaceholder\b(?: [a-z0-9]+){0,5} (?:while|until)"
+        r"(?: [a-z0-9]+){0,12}? (?:is|are) (?:being )?"
+        r"(?:reviewed|inspected|analyzed)\b"
+    ),
+    re.compile(
+        r"\bplaceholder\b(?: [a-z0-9]+){0,5} (?:while|until)"
+        r"(?: [a-z0-9]+){0,5}"
+        r" (?:reviews|reviewing|inspects|inspecting|analyzes|analyzing)\b"
     ),
 )
 BROAD_GROK_AUTH_DIRECTORIES = frozenset(
@@ -1472,7 +1513,8 @@ def validate_execution(
     ]
     finality_texts = (
         result.body_markdown,
-        *(f"{finding.title}\n{finding.detail}" for finding in result.findings),
+        *(finding.title for finding in result.findings),
+        *(finding.detail for finding in result.findings),
     )
     normalized_review_texts = [
         re.sub(
@@ -1482,7 +1524,7 @@ def validate_execution(
         ).strip()
         for text in finality_texts
     ]
-    if "review in progress" in normalized_titles or any(
+    if NON_FINAL_REVIEW_TITLES.intersection(normalized_titles) or any(
         pattern.search(text)
         for text in normalized_review_texts
         for pattern in NON_FINAL_REVIEW_PATTERNS
