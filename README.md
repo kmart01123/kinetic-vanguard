@@ -48,7 +48,7 @@ Control Value and Control Reliability require more context than the front-door d
 
 <!-- END GENERATED BALANCE MATRICES -->
 
-The [v15 surgical damage integration](docs/surgical-damage-integration.md) records the adopted late-game changes. The [Branching Bolt integration](docs/branching-bolt-integration.md) adds declared 3/4/5 rider-die pools from Fighter 7, requiring the primary plus at least two distinct secondary creatures hostile to you. Every allocated die lands on the original strike’s hit, with no additional attack rolls.
+The [earlier v15 surgical damage integration](docs/surgical-damage-integration.md) records the retained Absolute Zero and Telekinetic Shove changes and the superseded two-die Focused Bolt option. The [current Branching Bolt integration](docs/branching-bolt-integration.md) replaces that option with declared 3/4/5 rider-die pools from Fighter 7, requiring the primary plus at least two distinct secondary creatures hostile to you. Every allocated die lands on the original strike’s hit, with no additional attack rolls.
 
 ## Publication interface
 

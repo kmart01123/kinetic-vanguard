@@ -19,15 +19,15 @@ def independent_allocations(budget,cluster,minimum=3):
 
 
 def oracle_case(case):
-    studied_enabled,prowess_enabled,apex_enabled=case
+    cluster,studied_enabled,prowess_enabled,apex_enabled=case
     model=AuthorityModel.load()
     target=replace(load_targets(levels={20})[0],ac=20,damage_resistances=frozenset(),damage_immunities=frozenset(),damage_vulnerabilities=frozenset())
     packages=[d.Package(None,0,0,0)]
     for tier,row in enumerate(model.features['branching_bolt']['damage_tiers']):
-        packages.extend(d.Package('branching_bolt',tier,2,tier*6,allocation=a) for a in allocations(row['damage_allocation'],3))
-    values={p:d._rider_values(model,target,'electrokinesis',3,20,6,5,12,p) for p in packages}
+        packages.extend(d.Package('branching_bolt',tier,2,tier*6,allocation=a) for a in allocations(row['damage_allocation'],cluster))
+    values={p:d._rider_values(model,target,'electrokinesis',cluster,20,6,5,12,p) for p in packages}
     planner=d._KVDamagePlanner(model,target,tuple(packages),values,(('normal',(0,11.5,18)),),((),()),11,2,(1,1),studied_enabled,prowess_enabled,4,24,model.projection['core']['overload']['mastery'],0,None,13.5 if apex_enabled else None)
-    choices=[(None,(),0,0)]+[(tier,a,2,tier*6) for tier in range(3) for a in independent_allocations(tier+3,3)]
+    choices=[(None,(),0,0)]+[(tier,a,2,tier*6) for tier in range(3) for a in independent_allocations(tier+3,cluster)]
     def best(rows):return max(rows,key=lambda row:(row[1],row[0]))
     @lru_cache(None)
     def solve(turn,attacks,t2,studied,prowess,psi,blood,apex):
@@ -74,8 +74,9 @@ class DamageAllocationTests(unittest.TestCase):
                 self.assertEqual(set(allocations(row['damage_allocation'],cluster)),expected)
 
     def test_independent_multiturn_oracles_with_eight_workers(self):
+        cases=list(itertools.product((3,4,5),(False,True),(False,True),(False,True)))
         with ProcessPoolExecutor(max_workers=8) as pool:
-            self.assertEqual(len(list(pool.map(oracle_case,itertools.product([False,True],repeat=3)))),8)
+            self.assertEqual(list(pool.map(oracle_case,cases)),cases)
 
     def test_landed_packets_apply_defenses_once_per_target(self):
         for tier,row in enumerate(self.model.features['branching_bolt']['damage_tiers']):
