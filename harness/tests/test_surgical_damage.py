@@ -38,34 +38,23 @@ class SurgicalDamageTests(unittest.TestCase):
         for tier in range(3):
             for level,damage in [(17,2),(18,4),(20,4)]:self.assertPairAlmostEqual(self.rider('telekinetic_shove',tier,level),(damage,damage))
 
-    def test_focused_bolt_is_one_target_at_every_tier_even_in_a_cluster(self):
-        for tier in range(3):
-            for cluster in [1,3,6]:
-                self.assertPairAlmostEqual(self.rider('branching_bolt',tier,18,cluster,'focused'),(13,13))
-                self.assertPairAlmostEqual(self.rider('branching_bolt',tier,20,cluster),(6.5,6.5*min(cluster,tier+2)))
-            with self.assertRaisesRegex(ValueError,'Unavailable'):self.rider('branching_bolt',tier,17,6,'focused')
-        with self.assertRaisesRegex(ValueError,'Unavailable'):self.rider('branching_bolt',mode='unknown')
-
-    def test_focused_bolt_preserves_native_defenses_and_tier_two_resistance_rule(self):
-        resistant=replace(self.target,damage_resistances=frozenset({'lightning'}))
-        self.assertPairAlmostEqual(self.rider('branching_bolt',mode='focused',target=resistant),(6.25,6.25))
-        self.assertPairAlmostEqual(self.rider('branching_bolt',2,mode='focused',target=resistant),(13,13))
-        immune=replace(self.target,damage_immunities=frozenset({'lightning'}))
-        self.assertPairAlmostEqual(self.rider('branching_bolt',2,mode='focused',target=immune),(0,0))
-
-    def test_planner_offers_both_modes_with_identical_costs_in_single_and_multi_target_encounters(self):
-        for level in [15,20]:
-            for cluster in [1,3,6]:
+    def test_branching_requires_allocation_and_preserves_costs_from_grant(self):
+        with self.assertRaisesRegex(ValueError,'allocation'):self.rider('branching_bolt')
+        for level in [7,10,15,20]:
+            for cluster in [1,2,3,6]:
                 with patch('harness.damage_harness._KVDamagePlanner') as planner:
                     planner.return_value.solve.return_value=SimpleNamespace(primary=0,aggregate=0)
                     planner.return_value.selection.return_value=''
-                    _kv_dpr_for_schedule(self.model,load_config(),replace(self.target,level=level),'electrokinesis',cluster,(1,1,1))
-                    packages=planner.call_args.args[2]
-                ordinary=[p for p in packages if p.entity_id=='branching_bolt' and p.mode is None]
-                focused=[p for p in packages if p.entity_id=='branching_bolt' and p.mode=='focused']
-                self.assertEqual(len(ordinary),3)
-                self.assertEqual(len(focused),3 if level==20 else 0)
-                for package in focused:
-                    base=next(p for p in ordinary if p.tier==package.tier)
-                    self.assertEqual((package.psi,package.blood),(base.psi,base.blood))
-                    self.assertNotEqual(package,base)
+                    config=load_config()
+                    if level==10:config['fighter_progression']['10']=dict(config['fighter_progression']['7'])
+                    _kv_dpr_for_schedule(self.model,config,replace(self.target,level=level),'electrokinesis',cluster,(1,1,1))
+                    packages=[p for p in planner.call_args.args[2] if p.entity_id=='branching_bolt']
+                self.assertEqual({p.tier for p in packages},set() if cluster<3 else {0,1} if level==7 else {0,1,2})
+                for package in packages:
+                    self.assertIsNone(package.mode)
+                    self.assertEqual(sum(package.allocation),package.tier+3)
+                    self.assertLessEqual(len(package.allocation),cluster)
+                    self.assertGreaterEqual(len(package.allocation),3)
+                    self.assertEqual((package.psi,package.blood),(2,self.model.blood_tax(level,package.tier)))
+                for tier in {p.tier for p in packages}:
+                    self.assertTrue(any(p.tier==tier and p.allocation==(tier+1,1,1) for p in packages))

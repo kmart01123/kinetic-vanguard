@@ -178,6 +178,14 @@ export function validateSemantics(authority:Authority):Diagnostic[]{
     const disciplineId=entity.classifications.rules_area.find(area=>disciplineFacts[area]),expectedDiscipline=disciplineId?disciplineFacts[disciplineId]:undefined;
     for(const [surfaceIndex,surface] of (entity.mechanics?.surfaces??[]).entries()){
       const surfacePath=`/entities/${entityIndex}/mechanics/surfaces/${surfaceIndex}`;
+      if(surface.damage_allocation){
+        const allocation=surface.damage_allocation;
+        const invalid=allocation.secondary_target_eligibility!=="hostile"||surface.delivery.kind!=="rider"||surface.delivery.declaration!=="before_attack_roll"||surface.delivery.resolution!=="manifested_strike_hit"||surface.damage_options||surface.steps||!surface.tiers?.length||surface.tiers.some(tier=>{
+          const targeting=tier.targeting,step=tier.steps?.[0];
+          return tier.events||tier.steps?.length!==1||step?.kind!=="damage"||step.target==="secondary"||step.target==="primary"||step.value.kind!=="manifested_strike_dice"||step.value.count!==1||targeting.kind!=="struck_plus_additional"||targeting.additional_count.kind!=="fixed"||1+targeting.additional_count.value>5||1+targeting.additional_count.value<allocation.minimum_targets;
+        });
+        if(invalid)diagnostics.push({severity:"error",code:"mechanics.damage_allocation_surface",message:`${entity.id} allocation requires one-die direct rider tiers with fixed target capacity covering the minimum target count`,path:surfacePath});
+      }
       if(surface.damage_options){
         diagnostics.push(...duplicateDiagnostics(surface.damage_options.map(option=>option.id),"mechanics.damage_option_duplicate",`${entity.id} damage option`));
         if(surface.delivery.kind!=="rider"||!surface.tiers?.length||surface.tiers.some(tier=>tier.events||tier.steps?.length!==1||tier.steps[0]?.kind!=="damage"||tier.steps[0]?.target==="secondary"))diagnostics.push({severity:"error",code:"mechanics.damage_option_surface",message:`${entity.id} damage options require direct-damage rider tiers with no secondary packet or additional effects`,path:surfacePath});
