@@ -20,7 +20,7 @@ test("mechanical field audit covers every populated Calculator and harness sourc
   const audit=JSON.parse(auditSource) as Audit;assert.equal(audit.format_version,1);const calculator=deriveCalculatorProjection(authority);
   const calculatorFeatures=calculator.features as unknown as Record<string,unknown>[];
   const calculatorTiers=calculatorFeatures.flatMap(row=>(row.tiers??[]) as Record<string,unknown>[]);
-  const calculatorOptions=calculatorTiers.flatMap(row=>(row.damage_options??[]) as Record<string,unknown>[]);
+  const calculatorAllocations=calculatorTiers.flatMap(row=>row.damage_allocation?[row.damage_allocation as Record<string,unknown>]:[]);
   const calculatorDamage=calculatorTiers.flatMap(row=>[row.damage,row.secondary_damage].filter((value):value is Record<string,unknown>=>value!==undefined));
   const calculatorMetrics=calculatorFeatures.flatMap(row=>(row.metrics??[]) as Record<string,unknown>[]);
   const calculatorMetricValues=calculatorMetrics.flatMap(row=>(row.values??[]) as Record<string,unknown>[]);
@@ -29,7 +29,7 @@ test("mechanical field audit covers every populated Calculator and harness sourc
   const harnessArmorReduction=harnessRules.flatMap(row=>(row.armor_class_reduction_by_tier??[]) as Record<string,unknown>[]);
   const harnessControlTiers=harnessRules.flatMap(row=>(row.control_tiers??[]) as Record<string,unknown>[]);
   const harnessControlEffects=harnessControlTiers.flatMap(row=>(row.effects??[]) as Record<string,unknown>[]);
-  const groups:Record<string,Record<string,unknown>[]>={calculator_feature:calculatorFeatures,calculator_tier:calculatorTiers,calculator_damage_option:calculatorOptions,calculator_damage:calculatorDamage,calculator_metric:calculatorMetrics,calculator_metric_value:calculatorMetricValues,harness_feature_rule:harnessRules,harness_targeting:harnessTargeting,harness_armor_reduction:harnessArmorReduction,harness_control_tier:harnessControlTiers,harness_control_effect:harnessControlEffects};
+  const groups:Record<string,Record<string,unknown>[]>={calculator_feature:calculatorFeatures,calculator_tier:calculatorTiers,calculator_damage_allocation:calculatorAllocations,calculator_damage:calculatorDamage,calculator_metric:calculatorMetrics,calculator_metric_value:calculatorMetricValues,harness_feature_rule:harnessRules,harness_targeting:harnessTargeting,harness_armor_reduction:harnessArmorReduction,harness_control_tier:harnessControlTiers,harness_control_effect:harnessControlEffects};
   assert.deepEqual(Object.keys(audit.groups).sort(),Object.keys(groups).sort());
   for(const [group,rows] of Object.entries(groups)){assert.deepEqual(audited(audit,group),keys(rows),group);for(const item of Object.values(audit.groups[group]!.fields)){assert.ok(["promote","generalize","derive","benchmark_only"].includes(item.disposition));assert.ok(item.target.length>0);}}
   const valueAudits:[string,Record<string,unknown>[],string][]=[

@@ -79,7 +79,14 @@ function calculatorMetrics(surfaces:MechanicsSurface[]):CalculatorMetric[]{
 
 export function projectCalculatorMechanics(entity:Entity):CalculatorFeature|null{
   if(!entity.mechanics)return null;const surfaces=entity.mechanics.surfaces,tiers=surfaces.flatMap(surface=>(surface.tiers??[]).map(tier=>({surface,tier}))).sort((left,right)=>left.tier.tier-right.tier.tier),metrics=calculatorMetrics(surfaces);
-  return {entity_id:entity.id,delivery:calculatorDelivery(surfaces),...(metrics.length?{metrics}:{}),...(tiers.length?{tiers:tiers.map(({surface,tier})=>({...calculatorTier(tier),...(surface.damage_options?{damage_options:surface.damage_options.map(option=>({id:option.id,label:option.label,minimum_level:option.minimum_level,target_count:1 as const,damage:mechanicsDamage(option.value,"always")}))}:{})}))}:{})};
+  return {entity_id:entity.id,delivery:calculatorDelivery(surfaces),...(metrics.length?{metrics}:{}),...(tiers.length?{tiers:tiers.map(({surface,tier})=>({...calculatorTier(tier),...(surface.damage_allocation?{damage_allocation:allocationProjection(surface,tier)}:{}),...(surface.damage_options?{damage_options:surface.damage_options.map(option=>({id:option.id,label:option.label,minimum_level:option.minimum_level,target_count:1 as const,damage:mechanicsDamage(option.value,"always")}))}:{})}))}:{})};
+}
+
+function allocationProjection(surface:MechanicsSurface,tier:MechanicsTier){
+  const targeting=tier.targeting;
+  if(targeting.kind!=="struck_plus_additional"||targeting.additional_count.kind!=="fixed")throw new Error("Damage allocation requires a fixed struck-plus-additional capacity");
+  const capacity=1+targeting.additional_count.value;
+  return {...surface.damage_allocation!,dice_budget:capacity,maximum_targets:capacity};
 }
 
 function harnessDuration(duration:Extract<MechanicsStep,{kind:"speed_modifier"|"speed_zero"|"speed_reduction"|"condition"|"reaction_denial"|"attack_modifier"}>["duration"]):HarnessControlEffect["duration"]{

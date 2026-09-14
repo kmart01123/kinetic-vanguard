@@ -1,22 +1,24 @@
 # Surgical damage integration
 
-The approved changes are integrated into unreleased **v15.0.0**, with authority schema **2.13.0** and harness projection **1.9.0**.
+> Historical integration snapshot: unreleased **v15.0.0**, authority schema **2.13.0**, harness projection **1.9.0**. Absolute Zero and Telekinetic Shove retain the changes below. Branching Bolt's adopted two-die Focused Bolt option was later **superseded** by the [current crowd allocation](branching-bolt-integration.md); it is no longer playable. The benchmark numbers and validation results below describe this earlier snapshot.
 
-| Feature | Adopted behavior |
+The following changes were adopted for this snapshot. The original two-die Focused Bolt is distinct from the later [three-die focused T1 trial and its 3-Psi alternative](focused-bolt-t1-benchmark.md), which were discarded without adoption.
+
+| Feature | Behavior adopted in this snapshot |
 |---|---|
 | Absolute Zero | At Fighter 20, 6d10 + 45/55/65 cold damage at T0/T1/T2. A successful Constitution save halves the entire packet, rounding down. |
 | Telekinetic Shove | From Fighter 18, 4 additional force damage at every tier. Earlier levels retain 2. |
-| Branching Bolt | From Fighter 18, declare Focused Bolt before rolling: forgo all additional targets and deal two Manifested Strike dice of lightning rider damage to the struck target. The option is identical at every tier. |
+| Branching Bolt | **Superseded:** from Fighter 18, declare Focused Bolt before rolling: forgo all additional targets and deal two Manifested Strike dice of lightning rider damage to the struck target. The option was identical at every tier. |
 
-Pyrokinesis and the shared pre-roll 3d8 Discipline Maturation procedure are unchanged. Costs, tier availability, action economy, native damage types, and control effects are preserved. Focused Bolt remains a choice even when additional enemies are available; it cannot stack with ordinary branching on the same strike. Unused branches provide no further damage.
+In this snapshot, Pyrokinesis and the shared pre-roll 3d8 Discipline Maturation procedure were unchanged. Costs, tier availability, action economy, native damage types, and control effects were preserved. Focused Bolt was a choice even when additional enemies were available; it could not stack with ordinary branching on the same strike. Unused branches provided no further damage.
 
-The Calculator derives the new formulas and optional rider mode directly from canonical mechanics. It shows Shove's damage at the selected Fighter level and offers both normal and focused damage calculations from Fighter 18. Its established display policy rounds expected averages upward; the benchmark retains exact probability-weighted values and integer damage rounding.
+The Calculator in this snapshot derived the new formulas and optional rider mode directly from canonical mechanics. It showed Shove's damage at the selected Fighter level and offered both normal and focused damage calculations from Fighter 18. Its established display policy rounded expected averages upward; the benchmark retained exact probability-weighted values and integer damage rounding.
 
 ## Full native benchmark
 
 The full native run used **12 workers**, covered all **47 headline creature profiles** at Fighter levels **7/11/15/20** and cluster sizes **1/3/6**, and completed in 20.1 minutes. Each case reoptimized the legal action policy and Action Surge schedule. It produced **564 damage detail rows**, **96 damage matrix rows**, and all five control publication arrays.
 
-| Discipline | Previous single-target DPR | Integrated DPR | Gain | Current comparator band |
+| Discipline | Previous single-target DPR | Integrated DPR | Gain | Snapshot comparator band |
 |---|---:|---:|---:|---|
 | Pyrokinesis | 126.818 | 126.818 | +0.000 (+0.00%) | COLD (-1.31%) |
 | Cryokinesis | 87.100 | 94.934 | +7.833 (+8.99%) | COLD (-26.12%) |

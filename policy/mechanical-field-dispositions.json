@@ -21,22 +21,13 @@
       "source": "calculator.features[].tiers[]",
       "fields": {
         "damage": {"disposition": "generalize", "target": "damage step for its target selector"},
-        "damage_options": {"disposition": "derive", "target": "surface damage options inheriting rider delivery, damage type, and tier costs"},
+        "damage_allocation": {"disposition": "derive", "target": "surface allocation rule and tier target capacity"},
         "save": {"disposition": "generalize", "target": "saving_throw step rather than damage metadata"},
         "secondary_damage": {"disposition": "generalize", "target": "damage step with a secondary-target selector"},
         "tier": {"disposition": "promote", "target": "surface tier identifier"}
       }
     },
-    "calculator_damage_option": {
-      "source": "calculator.features[].tiers[].damage_options[]",
-      "fields": {
-        "id": {"disposition": "promote", "target": "canonical surface damage-option identity"},
-        "label": {"disposition": "promote", "target": "canonical surface damage-option label"},
-        "minimum_level": {"disposition": "promote", "target": "canonical option Fighter-level requirement"},
-        "target_count": {"disposition": "derive", "target": "one struck target from the canonical single-target selector"},
-        "damage": {"disposition": "derive", "target": "option value with inherited direct on-hit resolution"}
-      }
-    },
+    "calculator_damage_allocation": {"source": "calculator.features[].tiers[].damage_allocation", "fields": {"kind": {"disposition": "promote", "target": "canonical surface damage allocation rule"}, "minimum_dice_per_target": {"disposition": "promote", "target": "canonical surface damage allocation rule"}, "minimum_targets": {"disposition": "promote", "target": "canonical surface damage allocation rule"}, "secondary_target_eligibility": {"disposition": "promote", "target": "canonical hostile-secondary eligibility"}, "packet": {"disposition": "promote", "target": "canonical surface damage allocation rule"}, "dice_budget": {"disposition": "derive", "target": "fixed target capacity"}, "maximum_targets": {"disposition": "derive", "target": "fixed target capacity"}}},
     "calculator_damage": {
       "source": "calculator.features[].tiers[].{damage,secondary_damage}",
       "fields": {

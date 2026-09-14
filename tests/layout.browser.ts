@@ -469,19 +469,22 @@ test("Start Here is a contained single-column experience across engines, breakpo
   }
 });
 
-test("Focused Bolt calculations fit at the unlock level on mobile and desktop",async()=>{
+test("Branching Bolt allocations fit and respond on mobile and desktop",async()=>{
   const result=await executeBuild("prototype"),url=pathToFileURL(result.htmlPath).href+"#calculator&card=branching_bolt&level=17&modifier=5";
   for(const engine of desktopBrowsers){
     const browser=await engine.type.launch(browserLaunchOptions);
     try{
       for(const width of [390,1280]){
         const page=await browser.newPage({viewport:{width,height:900}});await page.goto(url);
-        assert.equal(await page.locator(".calculator__damage-option").count(),0);
-        await page.selectOption("#calculator-level","18");
-        assert.equal(await page.locator('[data-damage-option="focused"]').count(),3);
-        const view=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,options:[...document.querySelectorAll<HTMLElement>(".calculator__damage-option")].map(option=>({fits:option.scrollWidth<=option.clientWidth+1,text:option.textContent}))}));
+        assert.equal(await page.locator(".calculator__allocation-select").count(),3);
+        await page.selectOption("#calculator-level","7");
+        await page.locator('[data-tier="1"] .calculator__allocation-select').selectOption("1+2+1");
+        assert.match(await page.locator('[data-tier="1"] .calculator__damage-allocation').innerText(),/Secondary 1 rider:\s*2d8 without an additional roll/);
+        await page.selectOption("#calculator-level","20");
+        await page.locator('[data-tier="2"] .calculator__allocation-select').selectOption("1+3+1");
+        const view=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-document.documentElement.clientWidth,options:[...document.querySelectorAll<HTMLElement>(".calculator__damage-allocation")].map(option=>({fits:option.scrollWidth<=option.clientWidth+1,text:option.textContent}))}));
         assert.equal(view.overflow,0,`${engine.name} ${width}`);
-        for(const option of view.options){assert.ok(option.fits);assert.match(option.text??"",/Focused Bolt.*Rider damage:\s*2d12.*Total targets:\s*1/u);}
+        for(const option of view.options){assert.ok(option.fits);assert.match(option.text??"",/Declare rider dice per target/u);}
         await page.close();
       }
     }finally{await browser.close();}
