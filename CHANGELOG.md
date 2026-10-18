@@ -1,12 +1,12 @@
 # Changelog
 
-## Unreleased — v15.0.0
+## 15.0.0 — 2026-10-18
 
 ### Rules and compatibility
 
-- Retired Gravitic Press from Advanced Training and every publication/consumer surface. Existing users must choose a retained option. Removing a published rule starts the v15.0.0 major release line and carries forward the unreleased v14.4 work; published v14.3.0 remains unchanged.
+- Retired Gravitic Press from Advanced Training and every publication/consumer surface. Existing users must choose a retained option. Removing a published rule begins the v15.0.0 major release and carries forward the former v14.4 development work.
 - Give all four disciplines one shared Fighter-18 Discipline Maturation procedure: declare a separate 3d8 native-damage packet before the Manifested Strike roll and spend the use even on a miss. Each new Attack action, including Action Surge, refreshes it. The packet costs no resources, does not critical-double, and respects normal defenses. Refined Holdout remains available to every discipline.
-- Increase Absolute Zero to 6d10 + 85/95/105 cold damage at T0/T1/T2, with a successful Constitution save halving the entire packet. This modest Fighter-20-only correction preserves its strong control and normal cold immunity. The rules remain on the unreleased 15.0.0 line; unchanged schema/projection shapes remain 2.15.0/1.11.0.
+- Increase Absolute Zero to 6d10 + 85/95/105 cold damage at T0/T1/T2, with a successful Constitution save halving the entire packet. This modest Fighter-20-only correction preserves its strong control and normal cold immunity. Schema/projection shapes remain 2.15.0/1.11.0.
 - Increase Telekinetic Shove to 4 force damage at every tier from Fighter 18.
 - Make Branching Bolt a crowd rider from Fighter 7: declare 3/4/5 Manifested Strike rider dice at T0/T1/T2 across the primary and at least two distinct hostile secondaries, with at least one die per recipient. The original strike's hit delivers every packet without additional attack rolls. Costs remain unchanged and Tier 2 still requires Fighter 10. This replaces the intermediate Focused Bolt option; discarded focused and threshold experiments are not playable rules.
 - Standardize the Phase Step family on Strength saving throws and Improved Phase Step on force damage.
