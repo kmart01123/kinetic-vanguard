@@ -1,6 +1,6 @@
 # Roadmap
 
-## v15.0 development (continuing the v14.4 roadmap)
+## v15.0 release (completed; continued from the v14.4 roadmap)
 
 ### Rider-first mechanical model
 
@@ -20,7 +20,7 @@ Completed: [#135](https://github.com/kmart01123/kinetic-vanguard/issues/135).
 
 ### Gravitic Press retirement
 
-The approved retirement in [PR #141](https://github.com/kmart01123/kinetic-vanguard/pull/141) removes Gravitic Press from the Advanced Training pool, rules publication, and consumer projections. Removing this published option begins the unreleased v15.0.0 development line under the versioning policy. All retained feature mechanics remain unchanged.
+The approved retirement in [PR #141](https://github.com/kmart01123/kinetic-vanguard/pull/141) removes Gravitic Press from the Advanced Training pool, rules publication, and consumer projections. Removing this published option began the v15.0.0 development line under the versioning policy. All retained feature mechanics remain unchanged.
 
 Completed: [#133](https://github.com/kmart01123/kinetic-vanguard/issues/133).
 
@@ -32,7 +32,7 @@ The maintainer adopted 3d8 Apex for all four disciplines at Fighter 18: cold, fi
 
 Integrated follow-up: Absolute Zero uses 6d10 + 85/95/105 cold damage, and Telekinetic Shove increases to 4 force damage at every tier from Fighter 18. PR [#145](https://github.com/kmart01123/kinetic-vanguard/pull/145) is merged. Branching Bolt now allocates 3/4/5 rider dice from Fighter 7, with Tier 2 still requiring Fighter 10. Every use requires the primary plus at least two distinct hostile secondaries, with at least one die per target. Declare the allocation before the original strike; its hit delivers every packet without additional attack rolls. This supersedes the earlier Fighter-18 two-die Focused Bolt option. Canonical mechanics drive the Calculator and native harness. Pyrokinesis is unchanged, and Cryokinesis stays cold. The [current Branching Bolt integration](branching-bolt-integration.md) records the crowd rule and benchmark; the [earlier surgical integration](surgical-damage-integration.md) preserves the superseded snapshot, and the [candidate report](surgical-damage-candidates.md) retains the earlier experiments.
 
-The [final evaluation](cryo-balance-evaluation.md) records 115.736 Cryokinesis single-target DPR, unchanged crowd damage and control, and acceptance of the other three disciplines. This completes the development balance scope of [#122](https://github.com/kmart01123/kinetic-vanguard/issues/122) upon merge. The historical v14.4 target now belongs to unreleased v15.0.0; release preparation remains separate and published v14.3.0 is unchanged.
+The [final evaluation](cryo-balance-evaluation.md) records 115.736 Cryokinesis single-target DPR, unchanged crowd damage and control, and acceptance of the other three disciplines. This completed the development balance scope of [#122](https://github.com/kmart01123/kinetic-vanguard/issues/122). The historical v14.4 target shipped in [v15.0.0](https://github.com/kmart01123/kinetic-vanguard/releases/tag/v15.0.0) on 2026-10-18.
 
 ### External-review diagnostics
 
