@@ -59,9 +59,9 @@ class AuthorityProjectionTests(unittest.TestCase):
 
     def test_real_root_authority_and_complete_stable_id_inventory(self)->None:
         self.assertEqual(Path(self.model.projection["authority_path"]),DEFAULT_AUTHORITY)
-        self.assertEqual(self.model.projection["projection_version"],"1.9.0")
+        self.assertEqual(self.model.projection["projection_version"],"1.11.0")
         self.assertEqual(self.model.rules_version,"15.0.0")
-        self.assertEqual(self.model.projection["schema_version"],"2.13.0")
+        self.assertEqual(self.model.projection["schema_version"],"2.15.0")
         self.assertEqual(self.model.projection["core"]["action_economy"],{"standalone_psionic_action_limit_per_turn":None,"action_surge_allows_additional_standalone_psionic_action":True})
         self.assertEqual(self.model.holdout_formula(17)["kind"],"halve_total_rounded_down")
         self.assertEqual(self.model.holdout_formula(18),{"minimum_level":18,"maximum_level":20,"kind":"dice_plus_psionic_ability_modifier","count":1,"sides":6})
@@ -1127,9 +1127,9 @@ class DamagePlannerTests(unittest.TestCase):
     def test_observed_state_policy_matches_current_l20_sentinel(self)->None:
         target=next(item for item in load_targets(profile="headline",levels={20}) if item.name=="Ancient White Dragon")
         primary,aggregate,selection,_schedule=_kv_dpr(self.model,self.config,target,"electrokinesis",3)
-        self.assertAlmostEqual(primary,131.26829889795067,places=10)
-        self.assertAlmostEqual(aggregate,183.63078228530074,places=10)
-        self.assertIn("branching_bolt@focused:T0",selection)
+        self.assertAlmostEqual(primary,134.73042542694137,places=10)
+        self.assertAlmostEqual(aggregate,188.95691409912283,places=10)
+        self.assertIn("branching_bolt@1+1+1:T0",selection)
         self.assertIn("electron_burst:T2",selection)
         self.assertTrue(selection.endswith("|representative=locally-modal-path|policy=observed-state-adaptive"))
 

@@ -36,8 +36,8 @@ test("every machine-consumed ability authors mechanics once and derives consumer
   const projection=deriveCalculatorProjection(authority),calculatorIds=projection.features.map(feature=>feature.entity_id).sort(),harnessIds=projection.harness_mechanics.feature_rules.map(rule=>rule.entity_id).sort();
   assert.equal(calculatorIds.length,29);assert.equal(harnessIds.length,26);assert.deepEqual(entities.map(entity=>entity.id).sort(),calculatorIds);
   assert.equal(raw.calculator.features,undefined);assert.equal(raw.calculator.harness_mechanics,undefined);
-  assert.equal(hash(projection.features),"38971bbdc5088df5a8f4ea7d6cb768b3bdf2915a5988f265c83dcfd64300dbbf");
-  assert.equal(hash(projection.harness_mechanics.feature_rules),"3cbde7cabe412917d225ab4f99cb4f44204e3eb37e74a36da8b461c928fcadad");
+  assert.equal(hash(projection.features),"3ccd896784d92208c94e29161c107e7a02f9f3749eda64fdf772d1b3fa5eb804");
+  assert.equal(hash(projection.harness_mechanics.feature_rules),"64266723be0c909aabde2a5a727fb058bc1aaa2ccaeaf53afe627454621da30a");
   for(const entity of entities){
     const calculator=projection.features.find(feature=>feature.entity_id===entity.id);assert.ok(calculator,entity.id);assert.deepEqual(projectCalculatorMechanics(entity),calculator,`${entity.id} Calculator projection`);
     const harness=projection.harness_mechanics.feature_rules.find(rule=>rule.entity_id===entity.id)??null;assert.deepEqual(projectHarnessMechanics(entity,projection.harness_mechanics.overload),harness,`${entity.id} harness projection`);

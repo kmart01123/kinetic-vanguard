@@ -11,6 +11,7 @@ from functools import lru_cache
 from pathlib import Path
 from typing import Any
 
+from .damage_allocation import allocations,validate_allocation
 from .authority import AuthorityModel,DEFAULT_AUTHORITY
 from .comparison_report import NOTICE_COLUMNS,matrix_row,write_matrix
 from .ek_damage_planner import EKDamagePlanner
@@ -19,7 +20,7 @@ from .model import DEFAULT_CATALOG,DEFAULT_COMPARATORS,DEFAULT_CONFIG,DEFAULT_PR
 
 @dataclass(frozen=True)
 class Package:
-    entity_id:str|None;tier:int;psi:int;blood:int;mode:str|None=None
+    entity_id:str|None;tier:int;psi:int;blood:int;mode:str|None=None;allocation:tuple[int,...]|None=None
 
 
 @dataclass(frozen=True)
@@ -70,6 +71,7 @@ def _cluster_signature(model:AuthorityModel,config:dict[str,Any],discipline_id:s
         for tier_row in rule["damage_tiers"]:
             tier=int(tier_row["tier"])
             if level>=tier_minimum[tier]:
+                if tier_row.get("damage_allocation") and cluster_size<tier_row["damage_allocation"]["minimum_targets"]:continue
                 signature.append((str(rule["entity_id"]),tier,_target_count(rule,tier,cluster_size,pb)))
                 for option in tier_row.get("damage_options",[]):
                     if level>=int(option["minimum_level"]):signature.append((f"{rule['entity_id']}@{option['id']}",tier,min(cluster_size,int(option["target_count"]))))
@@ -141,6 +143,10 @@ def _psionic_apex_packet(model:AuthorityModel,target:Target,discipline_id:str,le
 def _rider_values(model:AuthorityModel,target:Target,discipline_id:str,cluster_size:int,level:int,pb:int,psi_modifier:int,strike_die:int,package:Package)->tuple[float,float]:
     if package.entity_id is None:return 0.0,0.0
     rule=model.features[package.entity_id];tier_row=next(item for item in rule["damage_tiers"] if int(item["tier"])==package.tier);damage_type=rule["damage_type"]
+    if "damage_allocation" in tier_row:
+        if package.mode is not None or package.allocation is None or len(package.allocation)>cluster_size:raise ValueError("Invalid rider allocation declaration")
+        return _allocation_values(model,target,package,strike_die)
+    if package.allocation is not None:raise ValueError("Rider has no allocation rule")
     count=_target_count(rule,package.tier,cluster_size,pb)
     if package.mode is not None:
         option=next((item for item in tier_row.get("damage_options",[]) if item["id"]==package.mode),None)
@@ -157,6 +163,16 @@ def _rider_values(model:AuthorityModel,target:Target,discipline_id:str,cluster_s
     ignore=package.tier in rule.get("ignore_resistance_tiers",[]);primary=_rule_damage(target,damage_at_level(tier_row["damage"]),damage_type,strike_die,psi_modifier,save_probability,ignore)
     secondary_damage=tier_row.get("secondary_damage",tier_row["damage"]);secondary=_rule_damage(target,damage_at_level(secondary_damage),damage_type,strike_die,psi_modifier,save_probability,ignore)
     return primary,primary+max(0,count-1)*secondary
+
+
+def _allocation_values(model:AuthorityModel,target:Target,package:Package,strike_die:int)->tuple[float,float]:
+    rule=model.features[package.entity_id]
+    row=next(item for item in rule["damage_tiers"] if int(item["tier"])==package.tier)
+    if package.allocation is None:raise ValueError("Rider requires a declared damage allocation")
+    # Every modeled roster recipient is hostile; mixed-allegiance encounters are not modeled.
+    validate_allocation(row["damage_allocation"],package.allocation,secondary_hostile=(True,)*(len(package.allocation)-1))
+    packets=[_rule_damage(target,{"kind":"manifested_strike_dice","count":n,"resolution":"always"},rule["damage_type"],strike_die,0,None,package.tier in rule.get("ignore_resistance_tiers",[])) for n in package.allocation]
+    return packets[0],sum(packets)
 
 
 def _fracture(rule:dict[str,Any],tier:int)->int:
@@ -284,7 +300,8 @@ class _KVDamagePlanner:
                         resolution=self._resolve_attack_roll(round_index,slots-1,attacks_left-1,tier_twos,apex_available,package_index,strike_index,outcome,prowess,ac_reduction,psi,blood,mastery_remaining,mastery_mode,zone_active,standalone_count,apex_declared)
                         grouped[resolution.choice]+=probability
                     resolved=sorted(grouped.items(),key=lambda item:(-item[1],repr(item[0])))[0][0];_,studied,apex_available,prowess,ac_reduction,_,_=resolved
-                    if package.entity_id:labels.append(f"{package.entity_id}{'@'+package.mode if package.mode else ''}:T{package.tier}")
+                    allocation_label="@"+"+".join(map(str,package.allocation)) if package.allocation else ""
+                    if package.entity_id:labels.append(f"{package.entity_id}{allocation_label}{'@'+package.mode if package.mode else ''}:T{package.tier}")
                     elif self.strike_options[strike_index][0]!="normal":labels.append(f"manifested_strike@{self.strike_options[strike_index][0]}")
                     if apex_declared:labels.append("discipline_maturation")
                 entries.append("attack("+(";".join(labels) if labels else "manifested_strike")+")");attacked=True;slots-=1
@@ -325,7 +342,11 @@ def _kv_dpr_for_schedule(model:AuthorityModel,config:dict[str,Any],target:Target
         for tier_row in rule["damage_tiers"]:
             tier=int(tier_row["tier"])
             if level>=tier_minimum[tier]:
-                packages.append(Package(rule["entity_id"],tier,int(rule["psi_cost"]),model.blood_tax(level,tier)))
+                spec=tier_row.get("damage_allocation")
+                if spec:
+                    for allocation in allocations(spec,cluster_size):
+                        packages.append(Package(rule["entity_id"],tier,int(rule["psi_cost"]),model.blood_tax(level,tier),allocation=allocation))
+                else:packages.append(Package(rule["entity_id"],tier,int(rule["psi_cost"]),model.blood_tax(level,tier)))
                 for option in tier_row.get("damage_options",[]):
                     if level>=int(option["minimum_level"]):packages.append(Package(rule["entity_id"],tier,int(rule["psi_cost"]),model.blood_tax(level,tier),option["id"]))
     package_tuple=tuple(packages);rider_values={package:_rider_values(model,target,discipline_id,cluster_size,level,pb,psi_modifier,strike_die,package) for package in package_tuple};strike_options=_strike_packet_options(model,target,discipline_id,level,psi_modifier,strike_die)

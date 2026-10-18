@@ -7,7 +7,7 @@ import {validateSemantics} from "../src/validate.js";
 test("approved v14.4 resolution rules reach both consumer projections",async()=>{
   const {authority}=await loadAuthority(),projection=deriveCalculatorProjection(authority);
   const examples=JSON.stringify(authority.entities.find(entity=>entity.id==="example_play")??authority.entities.filter(entity=>JSON.stringify(entity).includes("example_play_section")));
-  assert.match(examples,/9 \+ \(6 × 5\) = 39 damage/);assert.match(examples,/21 \+ 26 \+ 39 = 86 lightning damage/);assert.doesNotMatch(examples,/91 lightning damage/);
+  assert.match(examples,/9 \+ \(6 × 5\) = 39 damage/);assert.match(examples,/21 \+ 34 \+ 39 = 94 lightning damage/);assert.doesNotMatch(examples,/91 lightning damage/);
   assert.deepEqual(projection.harness_mechanics.action_economy,{standalone_psionic_action_limit_per_turn:null,action_surge_allows_additional_standalone_psionic_action:true});
   assert.equal(projection.harness_mechanics.overload.tier_two_damage_ignores_resistance,true);
   const burst=projection.features.find(feature=>feature.entity_id==="electron_burst")!;

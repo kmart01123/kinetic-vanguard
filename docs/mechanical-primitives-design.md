@@ -125,7 +125,7 @@ The production model uses bounded typed formulas rather than a general expressio
 - fixed plus a bounded canonical component;
 - floor of a bounded canonical component divided by a fixed divisor.
 
-Schema 2.13.0 adds `dice_plus_fixed` for Absolute Zero and `fixed_by_level` for Telekinetic Shove. A direct-damage rider surface can also author `damage_options`: level-gated alternatives that replace the rider damage and forgo every additional target. Options inherit the surface’s pre-roll declaration, on-hit resolution, native damage type, and tier costs. They apply at every tier and cannot be attached to save-gated riders or riders with additional effects. Calculator tier views and harness choices derive from this single source. Focused Branching Bolt supplies the first concrete use.
+Schema 2.13.0 adds `dice_plus_fixed` for Absolute Zero and `fixed_by_level` for Telekinetic Shove. A direct-damage rider surface can also author `damage_options`: level-gated alternatives that replace the rider damage and forgo every additional target. Options inherit the surface’s pre-roll declaration, on-hit resolution, native damage type, and tier costs. They apply at every tier and cannot be attached to save-gated riders or riders with additional effects. Calculator tier views and harness choices derive from this single source. Focused Branching Bolt was the first use; its separate option is superseded by the allocation primitive below. The generic option contract retains synthetic compatibility tests.
 
 Units remain explicit where relevant. New formula kinds require a real canonical feature need; consumers must not accept arbitrary expressions.
 
@@ -261,4 +261,11 @@ Standalone psionic Actions use available action slots, including Action Surge. T
 
 `partial_on_success` explicitly marks forced movement with both `feet` (failed save) and `success_feet` (successful save) inside the governing saving throw. The validator requires a smaller positive success magnitude and rejects disconnected save branches or conflicting gates. Telekinetic Slam T2 remains 30/10 feet and Deflection Screen T2 remains 15/5 feet; the harness projects an explicit partial-on-success gate while retaining separate numerical branch scoring.
 
-Static Discharge authors fixed additional-target counts of 1/3/5. The Calculator's existing target-count metric now handles fixed ladders as well as proficiency-based counts, including Branching Bolt's unchanged 2/3/4 totals. Electron Burst authors one all-target damage packet, with no primary/secondary damage exception.
+Static Discharge authors fixed additional-target counts of 1/3/5. The Calculator's existing target-count metric now handles fixed ladders as well as proficiency-based counts, including Branching Bolt's current 3/4/5 maximum totals. Electron Burst authors one all-target damage packet, with no primary/secondary damage exception.
+
+
+## Declared rider allocations
+
+Schema 2.15.0 defines neutral surface `damage_allocation` for direct, one-Manifested-Strike-die rider tiers with fixed struck-plus-additional capacity. The tier’s capacity derives both its allocation budget and maximum targets; it is not a second authored dice progression. `minimum_targets` defines the required number of distinct recipients including the primary, and every selected target receives at least one die. `secondary_target_eligibility: hostile` requires every secondary creature to be hostile to the user; it does not restrict the primary or require damage to penetrate immunity. `packet: per_target` combines each recipient's dice before defenses. All allocated damage resolves on the original Manifested Strike hit; there are no additional attack rolls or rider critical bonuses. The Calculator and harness receive the same derived rule in each tier; neither consumer recognizes special Branching Bolt aliases.
+
+Validation rejects incompatible delivery timing, saves, secondary-only packets, additional effects, nonfixed capacities, capacities below the required minimum, and budgets above five dice. The prior threshold/excess-attack fields are rejected. The bounded allocation enumeration removes choices with fewer than the required targets from both consumers. Benchmark cluster geometry and homogeneous target identity remain scenario policy outside canonical mechanics.

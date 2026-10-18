@@ -398,7 +398,7 @@ test("Calculator repairs card/group mismatches and restores valid history while 
 test("Calculator rounds displayed expected averages upward after the underlying damage calculation",async()=>{
   const result=await executeBuild("prototype"),html=await readFile(result.htmlPath,"utf8");const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=manifested_strike&level=5&modifier=5",beforeParse(window:any){installOnboardingBrowserShims(window);}}),document=dom.window.document,root=document.querySelector<HTMLElement>("#calculator-root")!,level=root.querySelector<HTMLSelectElement>("#calculator-level")!;
   const detail=()=>normalizedDeckText(root.querySelector<HTMLElement>("#calculator-feature-results")!);assert.match(detail(),/Damage: 1d8 \+ 5.*Expected avg damage: 10/u);changeDeckSelect(dom,level,"11");assert.match(detail(),/Damage: 1d10 \+ 5.*Expected avg damage: 11/u);changeDeckSelect(dom,level,"17");assert.match(detail(),/Damage: 1d12 \+ 5.*Expected avg damage: 12/u);
-  changeDeckSelect(dom,level,"3");let selected=clickDeckCard(document,"branching_bolt");assert.match(normalizedDeckText(selected),/Combined damage: 2d6 \+ 5.*Expected combined damage: 12/u);selected=clickDeckCard(document,"glacial_spike");assert.match(normalizedDeckText(selected),/Expected combined damage: 11/u);selected=clickDeckCard(document,"advanced_improved_phase_step");assert.match(normalizedDeckText(selected),/Expected avg damage: 22 on a failed save · 11 on a successful save/u);selected=clickDeckCard(document,"advanced_deflection_screen");assert.match(normalizedDeckText(selected),/Damage reduction: 3d8 \+ 5.*Expected avg damage: 19/u);
+  changeDeckSelect(dom,level,"3");let selected=clickDeckCard(document,"branching_bolt");assert.match(normalizedDeckText(selected),/Expected combined damage: 12.*Combined damage: 2d6 \+ 5/u);selected=clickDeckCard(document,"glacial_spike");assert.match(normalizedDeckText(selected),/Expected combined damage: 11/u);selected=clickDeckCard(document,"advanced_improved_phase_step");assert.match(normalizedDeckText(selected),/Expected avg damage: 22 on a failed save · 11 on a successful save/u);selected=clickDeckCard(document,"advanced_deflection_screen");assert.match(normalizedDeckText(selected),/Damage reduction: 3d8 \+ 5.*Expected avg damage: 19/u);
   await settleOnboarding();dom.window.close();
 });
 
@@ -433,16 +433,54 @@ test("surgical upgrades render level-aware rider choices and whole-packet save a
   for(const tier of tiers())assert.match(normalizedDeckText(tier),/Rider damage: 2Combined/u);
   changeDeckSelect(dom,level,"18");for(const tier of tiers())assert.match(normalizedDeckText(tier),/Rider damage: 4Combined/u);
   clickDeckCard(document,"branching_bolt");
-  for(const tier of tiers()){
-    assert.match(normalizedDeckText(tier.querySelector<HTMLElement>(".calculator__metrics")!),/Rider damage: 1d12/u);
-    const option=tier.querySelector<HTMLElement>('[data-damage-option="focused"]')!;
-    assert.match(normalizedDeckText(option),/Focused Bolt.*Rider damage: 2d12.*Combined damage: 3d12 \+ 5.*Total targets: 1/u);
+  for(const [index,tier] of tiers().entries()){
+    const select=tier.querySelector<HTMLSelectElement>(".calculator__allocation-select")!;
+    assert.match(normalizedDeckText(tier),/Select at least 3 distinct targets/);
+    assert.match(normalizedDeckText(tier),/Every secondary target must be hostile to you/);
+    assert.equal(select.value,`${index+1}+1+1`);assert.equal(select.options.length,[1,4,11][index]);
+    const expectedAllocations=[
+      ["1+1+1"],
+      ["2+1+1","1+2+1","1+1+2","1+1+1+1"],
+      ["3+1+1","1+3+1","1+1+3","2+2+1","2+1+2","1+2+2","2+1+1+1","1+2+1+1","1+1+2+1","1+1+1+2","1+1+1+1+1"]
+    ][index]!;
+    assert.deepEqual([...select.options].map(option=>option.value).sort(),[...expectedAllocations].sort());
+    assert.doesNotMatch(normalizedDeckText(tier),/Focused Bolt|on an extra miss|on an extra natural 20/);
+    assert.match(normalizedDeckText(tier),new RegExp(`${index+1}d12 without an additional roll`));
+    for(const allocation of expectedAllocations){
+      changeDeckSelect(dom,select,allocation);
+      const text=normalizedDeckText(tier),counts=allocation.split("+").map(Number);
+      assert.ok(text.includes(`Total targets: ${counts.length}`));
+      for(const [target,count] of counts.entries())assert.ok(text.includes(`${target===0?"Primary target":`Secondary ${target}`} rider: ${count}d12 without an additional roll`),allocation);
+    }
   }
-  changeDeckSelect(dom,level,"17");assert.equal(document.querySelectorAll(".calculator__damage-option").length,0);
+  const tier2=tiers()[2]!,select=tier2.querySelector<HTMLSelectElement>(".calculator__allocation-select")!;
+  changeDeckSelect(dom,select,"1+3+1");assert.match(normalizedDeckText(tier2),/Secondary 1 rider: 3d12 without an additional roll/);
+  changeDeckSelect(dom,select,"1+1+1+1+1");assert.match(normalizedDeckText(tier2),/Total targets: 5/);
+  changeDeckSelect(dom,level,"7");assert.equal(tiers()[2]!.dataset.available,"false");assert.match(normalizedDeckText(tiers()[0]!),/1d8 without an additional roll/);
+  changeDeckSelect(dom,level,"10");assert.equal(tiers()[2]!.dataset.available,"true");assert.match(normalizedDeckText(tiers()[2]!),/3d8 without an additional roll/);
+  changeDeckSelect(dom,level,"11");assert.match(normalizedDeckText(tiers()[2]!),/3d10 without an additional roll/);
   changeDeckSelect(dom,level,"20");clickDeckCard(document,"absolute_zero");
   for(const [index,tier] of tiers().entries()){
     assert.match(normalizedDeckText(tier),new RegExp(`Damage: 6d10 \\+ ${45+index*10} on a failed save`));
     assert.match(normalizedDeckText(tier),new RegExp(`Expected avg damage: ${78+index*10} on a failed save · ${39+index*5} on a successful save`));
   }
   dom.window.close();
+});
+
+
+test("Calculator allocation instructions follow a different projected minimum",async()=>{
+  const result=await executeBuild("prototype"),original=await readFile(result.htmlPath,"utf8");
+  const html=original.replaceAll('"minimum_targets":3','"minimum_targets":2');
+  assert.notEqual(html,original);
+  const dom=new JSDOM(html,{runScripts:"dangerously",url:"https://local.invalid/KineticVanguard.prototype.html#calculator&card=branching_bolt&level=20&modifier=5",beforeParse(window:any){installOnboardingBrowserShims(window);}});
+  try{
+    const tiers=[...dom.window.document.querySelectorAll<HTMLElement>("#calculator-feature-results .calculator__tier")];
+    assert.equal(tiers.length,3);
+    for(const tier of tiers){
+      assert.match(normalizedDeckText(tier),/Select at least 2 distinct targets/);
+      assert.doesNotMatch(normalizedDeckText(tier),/Select at least 3|\{minimum_targets\}/);
+      const select=tier.querySelector<HTMLSelectElement>(".calculator__allocation-select")!;
+      assert.ok([...select.options].some(option=>option.value.split("+").length===2));
+    }
+  }finally{dom.window.close();}
 });

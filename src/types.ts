@@ -130,6 +130,14 @@ export type MechanicsStep=
   | {kind:"skill_modifier";metric:"passive_insight_bonus"|"chosen_skill_bonus";value:Extract<MechanicsValue,{kind:"psionic_ability_modifier"}>;duration:"continuous"}
   | {kind:"sense_snapshot"};
 export interface MechanicsTier {tier:0|1|2;targeting:MechanicsTargeting;steps?:MechanicsStep[];events?:Array<{triggers:Array<"enters_area_first_time_on_turn"|"starts_turn_in_area">;steps:MechanicsStep[]}>}
+export interface MechanicsDamageAllocation {
+  kind:"exchange_targets_for_dice";
+  minimum_dice_per_target:1;
+  minimum_targets:number;
+  secondary_target_eligibility:"hostile";
+  packet:"per_target";
+}
+export interface CalculatorDamageAllocation extends MechanicsDamageAllocation {dice_budget:number;maximum_targets:number}
 export interface MechanicsSurface {
   id:string;
   delivery:MechanicsDelivery;
@@ -141,6 +149,7 @@ export interface MechanicsSurface {
   limits?:{uses:Extract<MechanicsValue,{kind:"floor_proficiency_bonus_divisor"}>;recovery:"short_or_long_rest"};
   steps?:MechanicsStep[];
   damage_options?:Array<{id:string;label:string;minimum_level:number;targeting:Extract<MechanicsTargeting,{kind:"struck_target"}>;value:MechanicsValue}>;
+  damage_allocation?:MechanicsDamageAllocation;
   tiers?:MechanicsTier[];
 }
 export interface EntityMechanics {surfaces:MechanicsSurface[]}
@@ -192,6 +201,7 @@ export interface CalculatorTier {
   tier: 0 | 1 | 2;
   damage: CalculatorDamage;
   damage_options?:Array<{id:string;label:string;minimum_level:number;target_count:1;damage:CalculatorDamage}>;
+  damage_allocation?:CalculatorDamageAllocation;
   secondary_damage?: CalculatorDamage;
   save?: CalculatorSave;
 }

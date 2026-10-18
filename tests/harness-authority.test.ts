@@ -8,7 +8,7 @@ import { validateSemantics } from "../src/validate.js";
 
 test("harness projection reads the real authority and joins mechanics by stable entity ID",async()=>{
   const projection=await createHarnessProjection();
-  assert.equal(projection.projection_version,"1.9.0");
+  assert.equal(projection.projection_version,"1.11.0");
   assert.match(projection.authority_path,/\/KineticVanguard\.yaml$/);
   assert.equal(projection.core.action_economy.standalone_psionic_action_limit_per_turn,null);
   assert.equal(projection.core.manifested_strike.rider_repeatability,"per_manifested_strike");

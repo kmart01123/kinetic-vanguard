@@ -576,7 +576,7 @@ entities:
                   type: text
               - - text: "Attack 2: "
                   type: strong
-                - text: Immediately before attack 2, you target a second primary creature, declare Branching Bolt at Tier 0, and spend 2 Psi.
+                - text: Immediately before attack 2, you target a second primary creature, declare Branching Bolt at Tier 0 with one rider die on it and one on each of two named secondary creatures within 15 feet, and spend 2 Psi.
                   type: text
               - - text: "Attack 3: "
                   type: strong
@@ -596,7 +596,7 @@ entities:
                   type: text
               - - text: "Attack 2: "
                   type: strong
-                - text: Rolls 6 and deals 6 + 4 = 10 strike damage. Branching Bolt rolls 8 for both the second primary target and one secondary target, so attack 2 deals 10 + (8 × 2) = 26 damage.
+                - text: Rolls 6 and deals 6 + 4 = 10 strike damage. Branching Bolt rolls one die separately for the second primary target and each of its two declared secondary targets, rolling 8 on each, so attack 2 deals 10 + (8 × 3) = 34 damage.
                   type: text
               - - text: "Attack 3: "
                   type: strong
@@ -605,7 +605,7 @@ entities:
             style: ordered
             type: list
           - inlines:
-              - text: The total is 21 + 26 + 39 = 86 lightning damage.
+              - text: The total is 21 + 34 + 39 = 94 lightning damage.
                 type: text
             type: paragraph
         discipline: electrokinesis
@@ -621,7 +621,7 @@ entities:
                   type: text
               - - text: "Branching Bolt: "
                   type: strong
-                - text: Branching Bolt damages its primary target and one chosen secondary target.
+                - text: Branching Bolt damages its primary target and two chosen secondary targets.
                   type: text
               - - text: "Electron Burst: "
                   type: strong
@@ -648,7 +648,7 @@ entities:
                   type: text
               - - text: "Damage: "
                   type: strong
-                - text: The five creatures have taken 86 lightning damage in total.
+                - text: The five creatures have taken 94 lightning damage in total.
                   type: text
               - - text: "Conditions: "
                   type: strong
@@ -4021,23 +4021,35 @@ entities:
         - electrokinesis
     content:
       - inlines:
-          - text: When you declare this rider, choose up to the tier’s maximum number of additional creatures. You can choose no additional creatures; unused branches are forfeited. The struck target is always included.
+          - text: "When you declare this rider before the original Manifested Strike attack roll, name the primary target, at least two distinct additional creatures hostile to you, the tier, and the exact number of rider dice assigned to each target. Each selected target, including the primary, must receive at least one die. Each additional creature must be hostile to you and within 15 feet of the primary target; friendly or neutral creatures cannot be secondary targets. Branches do not continue from secondary targets. You cannot declare this rider with fewer than three targets."
             type: text
         type: paragraph
       - inlines:
-          - text: "T0 Base: The struck target and up to one other creature of your choice within 15 feet of it each take lightning damage equal to one Manifested Strike die, with no saving throw."
+          - text: "T0 Base: Allocate three Manifested Strike rider dice among the primary target and two additional creatures, one die per target."
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: Replace the limit of one other creature with up to two other creatures within 15 feet of the struck target."
+          - text: "T1 Overload: Changes from Tier 0: Allocate four rider dice among the primary target and two or three additional creatures. You may forgo branches beyond the two required secondary targets and assign their dice to any selected target, including the primary."
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: Replace the limit of two other creatures with up to three other creatures within 15 feet of the struck target. Each additional creature can be chosen only once, and the arc does not continue from it."
+          - text: "T2 Overload: Changes from Tier 1: Allocate five rider dice among the primary target and two to four additional creatures. Tier 2 rider damage ignores lightning resistance, but not immunity."
             type: text
         type: paragraph
       - inlines:
-          - text: "Focused Bolt (Fighter level 18): When you declare this rider before the attack roll, you can forgo all additional targets. On a hit, the rider instead deals lightning damage equal to two Manifested Strike dice to the struck target. This option is the same at every tier; unused branches grant no further dice. Its Psi cost, Blood Tax, and damage defenses are unchanged."
+          - text: "If the original Manifested Strike misses, the entire rider fails; the declared Psi cost and Blood Tax remain spent. If it hits, every selected target takes its full allocated rider dice as lightning damage, with no saving throw or additional attack roll, regardless of the number of dice assigned. Allocations cannot be changed or redistributed after the original roll."
+            type: text
+        type: paragraph
+      - inlines:
+          - text: "Roll each target’s allocated rider dice as one lightning damage packet and apply that target’s damage defenses once. The original Manifested Strike damage is a separate packet. A natural 20 on the original strike doubles only its own base damage dice; it neither doubles rider dice nor grants bonus rider dice. The branches are not additional attacks or Manifested Strikes."
+            type: text
+        type: paragraph
+      - inlines:
+          - text: "The rider costs 2 Psi Points plus the normal Blood Tax for its declared tier. It occupies the normal one-rider-per-strike slot and Tier 2 use limit per Attack action. These choices are available from Fighter level 7, with Tier 2 still requiring Fighter level 10."
+            type: text
+        type: paragraph
+      - inlines:
+          - text: "Examples after the original strike hits: At Tier 0, the primary and two secondary targets each take one rider die. At Tier 2, legal allocations include three dice on the primary and one on each of two secondaries; one on the primary, three on one secondary, and one on another; or one die each on five targets. All allocated rider dice land without additional attack rolls."
             type: text
         type: paragraph
     id: branching_bolt
@@ -4052,32 +4064,14 @@ entities:
             declaration: before_attack_roll
             resolution: manifested_strike_hit
           damage_type: lightning
-          damage_options:
-            - id: focused
-              label: Focused Bolt
-              minimum_level: 18
-              targeting:
-                topology: single
-                kind: struck_target
-              value:
-                kind: manifested_strike_dice
-                count: 2
+          damage_allocation:
+            kind: exchange_targets_for_dice
+            minimum_dice_per_target: 1
+            minimum_targets: 3
+            secondary_target_eligibility: hostile
+            packet: per_target
           tiers:
             - tier: 0
-              targeting:
-                topology: discrete_multi
-                kind: struck_plus_additional
-                within_feet: 15
-                additional_count:
-                  kind: fixed
-                  value: 1
-              steps:
-                - kind: damage
-                  damage_type: lightning
-                  value:
-                    kind: manifested_strike_dice
-                    count: 1
-            - tier: 1
               targeting:
                 topology: discrete_multi
                 kind: struck_plus_additional
@@ -4091,7 +4085,7 @@ entities:
                   value:
                     kind: manifested_strike_dice
                     count: 1
-            - tier: 2
+            - tier: 1
               targeting:
                 topology: discrete_multi
                 kind: struck_plus_additional
@@ -4099,6 +4093,20 @@ entities:
                 additional_count:
                   kind: fixed
                   value: 3
+              steps:
+                - kind: damage
+                  damage_type: lightning
+                  value:
+                    kind: manifested_strike_dice
+                    count: 1
+            - tier: 2
+              targeting:
+                topology: discrete_multi
+                kind: struck_plus_additional
+                within_feet: 15
+                additional_count:
+                  kind: fixed
+                  value: 4
               steps:
                 - kind: damage
                   damage_type: lightning
@@ -5449,7 +5457,7 @@ navigation:
           title: Advanced Training Progression
   default_category_id: common_features
 rules_version: 15.0.0
-schema_version: 2.13.0
+schema_version: 2.15.0
 vocabularies:
   acquisition_modes:
     - id: granted
