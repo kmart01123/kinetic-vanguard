@@ -1,50 +1,27 @@
 # Changelog
 
-## Unreleased
+## Unreleased — v15.0.0
 
-### Removed
+### Rules and compatibility
 
-- Retired Gravitic Press from the Advanced Training pool, feature reference, navigation, Calculator, and harness projection following the maintainer's disposition in #133. Other Advanced Training choices and choice-grant levels remain unchanged. Existing users of this option must select a retained option when adopting the new rules.
+- Retired Gravitic Press from Advanced Training and every publication/consumer surface. Existing users must choose a retained option. Removing a published rule starts the v15.0.0 major release line and carries forward the unreleased v14.4 work; published v14.3.0 remains unchanged.
+- Give all four disciplines one shared Fighter-18 Discipline Maturation procedure: declare a separate 3d8 native-damage packet before the Manifested Strike roll and spend the use even on a miss. Each new Attack action, including Action Surge, refreshes it. The packet costs no resources, does not critical-double, and respects normal defenses. Refined Holdout remains available to every discipline.
+- Increase Absolute Zero to 6d10 + 85/95/105 cold damage at T0/T1/T2, with a successful Constitution save halving the entire packet. This modest Fighter-20-only correction preserves its strong control and normal cold immunity. The rules remain on the unreleased 15.0.0 line; unchanged schema/projection shapes remain 2.15.0/1.11.0.
+- Increase Telekinetic Shove to 4 force damage at every tier from Fighter 18.
+- Make Branching Bolt a crowd rider from Fighter 7: declare 3/4/5 Manifested Strike rider dice at T0/T1/T2 across the primary and at least two distinct hostile secondaries, with at least one die per recipient. The original strike's hit delivers every packet without additional attack rolls. Costs remain unchanged and Tier 2 still requires Fighter 10. This replaces the intermediate Focused Bolt option; discarded focused and threshold experiments are not playable rules.
+- Standardize the Phase Step family on Strength saving throws and Improved Phase Step on force damage.
+- Allow Action Surge to activate another eligible standalone psionic Action. Give Electron Burst identical 1d8/2d8/3d8 packets for primary and secondary targets, and Static Discharge up to 2/4/6 total targets.
+- Make Tier-2 feature/rider damage ignore Resistance across disciplines and Advanced Training, while preserving Immunity and the separate triggering strike and Blood Tax. Preserve Telekinetic Slam and Deflection Screen successful-save movement through explicit partial-success mechanics.
 
-### Compatibility
+### Canonical mechanics and publication
 
-- Began the v15.0.0 development line because removal of a published rule is a breaking change under `policy/rules-versioning.md`. This release carries forward the unreleased v14.4 mechanics work; the published v14.3.0 release remains unchanged. The retirement changes the ability inventory without changing the schema or projection shapes.
+- Consolidate machine-consumed mechanics under canonical rules entities. Delivery and targeting are independent, every rider uses one Manifested Strike rider slot, and deterministic Calculator/harness projections replace duplicate registries. Shared progression and core rules have one canonical owner; benchmark policy remains separate from game rules.
+- Synchronize Calculator output, rules publication, and native analytical evidence with the adopted rules. Historical integration and experiment reports retain their original numbers with explicit superseded status.
 
-### Changed
+### Developer tools
 
-- Replaced Branching Bolt’s Fighter-18 Focused Bolt option with freely allocated 3/4/5 rider dice from Fighter 7, retaining Tier 2’s Fighter-10 gate. Every use requires the primary plus at least two distinct secondary creatures hostile to you, with at least one die per target and a maximum of 3/4/5 total targets. Declare the complete allocation before the original strike; its miss cancels the rider and its hit delivers every allocated die without additional attack rolls or rider critical bonuses. Canonical `damage_allocation` drives the Calculator and native planner, including hostile-secondary eligibility; the Calculator reads its minimum-target instruction from the projected count. Rules remain 15.0.0; schema advances to 2.15.0 and harness projection to 1.11.0. See `docs/branching-bolt-integration.md`.
-
-- Integrated the approved surgical damage upgrades in unreleased v15.0.0: Absolute Zero now deals 6d10 + 45/55/65 cold damage by tier, with successful saves halving the whole packet; Telekinetic Shove deals 4 force damage at every tier from Fighter 18; and Branching Bolt gains a Fighter-18 Focused Bolt option that forgoes all additional targets for two Manifested Strike dice against the struck target. Pyrokinesis, shared pre-roll Discipline Maturation, costs, control, and native damage types are unchanged. Canonical `dice_plus_fixed`, `fixed_by_level`, and rider `damage_options` drive both the Calculator and native damage planner. Schema advances to 2.13.0 and harness projection to 1.9.0; the rules version remains 15.0.0. See `docs/surgical-damage-integration.md` for full benchmark and validation evidence.
-
-- Corrected Discipline Maturation for all four disciplines to require declaration before the Manifested Strike attack roll and spend the once-per-Attack-action use even on a miss. Only the declared strike can deliver the shared 3d8 native-damage packet; Action Surge grants a fresh use with its new Attack action. The damage planner now chooses declaration or deferral before outcome enumeration instead of automatically applying maturation to the first hit. This restores the intended gamble within the unreleased v15.0.0 rules line, so `rules_version` remains 15.0.0; schema advances to 2.12.0 and harness projection to 1.8.0 for explicit declaration and consumption fields. Regenerated the full 47-target damage/control benchmark with 12 workers; README now reflects the corrected declaration rule. Earlier-level damage, comparators, and control results are unchanged; see `docs/maturation-declaration-evaluation.md`.
-
-- Adopted the tested Fighter-18 3d8 cold Cryokinesis and 3d8 lightning Electrokinesis Apex packets. All four disciplines now use one shared Discipline Maturation procedure with their own damage type, once per Attack action, normal defenses, no critical doubling, and no resource cost. Existing Pyrokinesis/Psychokinesis outcomes and Refined Holdout remain unchanged. This added playable content stays within the unreleased v15.0.0 line; schema advances to 2.11.0 and projection to 1.7.0.
-
-- Added Pyrokinesis Maturation to Fighter-18 Psionic Apex: once per Attack action, a Manifested Strike hit deals a separate 3d8 fire packet to the struck creature, refreshed by a new Attack action. The packet costs no Psi or Blood Tax, does not double on a critical hit, and respects Resistance and Immunity even with a Tier-2 rider or Holdout. This new playable content joins the existing unreleased v15.0.0 line; schema advances to 2.10.0 and harness projection to 1.6.0.
-
-- Completed the approved v14.4 resolution simplification: Action Surge can activate another eligible standalone psionic Action; Electron Burst uses one 1d8/2d8/3d8 packet for every affected creature; Static Discharge targets up to 2/4/6 total creatures by tier; and Tier-2 feature/rider damage ignores Resistance across all disciplines and Advanced Training without bypassing Immunity or changing the triggering Manifested Strike or Blood Tax.
-- Expressed Telekinetic Slam and Deflection Screen successful-save movement with an explicit `partial_on_success` primitive tied to their Strength saves, preserving both existing movement outcomes. Moved resistance penetration to shared Overload authority, removed per-feature flags, and updated consumer projections and action planning. Schema advances to 2.9.0 and harness projection to 1.5.0; these approved rules changes continue the existing unreleased v14.4.0 line.
-- Corrected Grok review tool selection to native `read_file,grep` IDs while retaining scoped Read/Grep permission rules. Reject explicit CLI error or interrupted-completion metadata before accepting a review payload, and cover structured-final versus progress-text selection with offline regressions.
-
-- Closed the remaining PR #142 review findings: exclude short inferred prompt fragments from substring redaction while preserving explicit secret redaction, reject unfinished review statements after prose lead-ins while retaining quoted-fixture support, and remove the unused review-ready doctor diagnostic helper.
-
-- Fixed live CLI output truncation by capturing stdout/stderr in private temporary regular files rather than pipes; this restores the complete Claude capability surface. Excluded punctuation-only diff markers from prompt-line redaction so diagnostics preserve CLI flags and hyphenated terms while meaningful prompts and explicit secrets remain redacted.
-
-- Made external reviews independently collectible and explicitly resumable: each provider uses a separate clean checkout, validated results survive another provider's failure, and private checkpoints bind reuse to exact PR/prompt/bridge identity. Added collection-only runs, explicit INCOMPLETE outcomes, field-specific finality diagnostics, and posting receipts that prevent automatic duplication after an uncertain write. The CI gate now hands its exact approved SHA to the bridge, while per-adapter checks replace the redundant blanket doctor prerequisite. Required all-provider validation and live head/base revalidation still precede publication.
-
-- Hardened review finality checks for “not yet” and contracted negation while allowing explicitly introduced quoted test fixtures in completed reviews. Preserve diagnostic readability when wrapped prompts contain whitespace-only diff lines without weakening meaningful prompt or secret redaction.
-
-- Reject bare placeholder review fields and explicit unfinished or unperformed review statements, including the two failures observed during PR #143 review. Regressions cover both providers, all review fields, and atomic rejection without suppressing legitimate findings about incomplete product features.
-
-- Made external-review failures identify their component and stage, retain bounded redacted diagnostics, offer known authentication remediation, and report skipped providers plus posting state without changing exact-head validation, isolation, or pre-post all-provider atomicity. `doctor` now preserves safe command-failure reasons and names missing CLI flags.
-
-- Made the external-review bridge reject provider output that explicitly describes its own review as bootstrap, unfinished, or still in progress while preserving concise final results and substantive findings that discuss similar product concepts.
-- Completed the behavior-preserving rider-first representation migration for every machine-consumed ability: delivery and targeting topology are independent, all riders share one Manifested Strike rider slot, known selectors replace opaque topology, and canonical mechanics author concrete D&D damage/save facts. All 30 Calculator entries and 27 harness feature rules derive from those neutral per-entity primitives; benchmark scenario and scoring policy remain outside canonical rules mechanics.
-- Standardized the Phase Step family on fixed Strength saving throws, and made Improved Phase Step explicitly deal force damage at every tier regardless of Discipline.
-- Consolidated the ten shared progression and core-mechanics fields under their canonical rules entities: level bands, Overload access and action economy, Manifested Strike and Holdout math, Discipline masteries, and Psionic Apex.
-- Removed the Calculator and harness mechanics registries from YAML. The browser publication and Python harness adapter now build deterministic consumer views directly from entity `mechanics` and `system_mechanics`, and the loader no longer mutates the parsed authority.
-- Advanced the authority schema contract from 2.4.0 through 2.7.0 and the harness projection contract to 1.3.0 without changing `rules_version` 14.3.0 or playable mechanics. Projection arrays now follow canonical entity order.
-- Began the intentional v14.4 rules line at `rules_version: 14.4.0`, removed the now-unused discipline-save mapping contract in schema 2.8.0, and advanced the harness projection contract to 1.4.0 for fixed concrete saves.
+- Make external-review failures stage-specific and actionable, with bounded redacted diagnostics, provider-specific isolated checkouts, independent collection, private resumable checkpoints, and uncertain-post receipts.
+- Reject placeholder, unfinished, malformed, interrupted, and explicit-error provider output. Correct native Grok tool selection and file-backed CLI capture while preserving exact-head validation, provider isolation, and pre-publication checks. These implementation changes do not establish successful live completion by every provider.
 
 ## 14.3.0 — 2026-08-26
 

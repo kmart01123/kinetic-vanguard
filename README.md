@@ -36,7 +36,7 @@ The front-door damage view is the single-target benchmark: primary-target DPR at
 | 7 | COLD (-6.99%) | IDEAL | COLD (-2.61%) | COLD (-6.99%) |
 | 11 | COLD (-19.14%) | IDEAL | COLD (-0.20%) | IDEAL |
 | 15 | COLD (-15.14%) | IDEAL | IDEAL | COLD (-11.09%) |
-| 20 | COLD (-26.12%) | COLD (-1.31%) | COLD (-6.03%) | COLD (-18.04%) |
+| 20 | COLD (-9.93%) | COLD (-1.31%) | COLD (-6.03%) | COLD (-18.04%) |
 
 **Fighter 20 note:** [Why the published v14.3 snapshot is COLD at level 20](https://github.com/kmart01123/kinetic-vanguard/issues/122#issuecomment-5389467514)
 
@@ -48,7 +48,7 @@ Control Value and Control Reliability require more context than the front-door d
 
 <!-- END GENERATED BALANCE MATRICES -->
 
-The [earlier v15 surgical damage integration](docs/surgical-damage-integration.md) records the retained Absolute Zero and Telekinetic Shove changes and the superseded two-die Focused Bolt option. The [current Branching Bolt integration](docs/branching-bolt-integration.md) replaces that option with declared 3/4/5 rider-die pools from Fighter 7, requiring the primary plus at least two distinct secondary creatures hostile to you. Every allocated die lands on the original strike’s hit, with no additional attack rolls.
+The [earlier v15 surgical damage integration](docs/surgical-damage-integration.md) records the earlier Absolute Zero packet, retained Telekinetic Shove change, and superseded two-die Focused Bolt option. The [Cryokinesis damage/control evaluation](docs/cryo-balance-evaluation.md) records the modest Absolute Zero follow-up and the accepted tradeoffs for all four disciplines. The [current Branching Bolt integration](docs/branching-bolt-integration.md) replaces that option with declared 3/4/5 rider-die pools from Fighter 7, requiring the primary plus at least two distinct secondary creatures hostile to you. Every allocated die lands on the original strike’s hit, with no additional attack rolls.
 
 ## Publication interface
 

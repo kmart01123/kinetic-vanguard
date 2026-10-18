@@ -2740,15 +2740,15 @@ entities:
         - cryokinesis
     content:
       - inlines:
-          - text: "T0 Base: Choose one creature within 60 feet. The target must make a Constitution saving throw, taking 6d10 + 45 cold damage on a failed save, or half the total damage (rounded down) on a successful one. On a failed save, the target’s speed becomes 0 until the end of your next turn."
+          - text: "T0 Base: Choose one creature within 60 feet. The target must make a Constitution saving throw, taking 6d10 + 85 cold damage on a failed save, or half the total damage (rounded down) on a successful one. On a failed save, the target’s speed becomes 0 until the end of your next turn."
             type: text
         type: paragraph
       - inlines:
-          - text: "T1 Overload: Changes from Tier 0: Damage increases to 6d10 + 55. On a failed save, the target is also Restrained until the end of your next turn."
+          - text: "T1 Overload: Changes from Tier 0: Damage increases to 6d10 + 95. On a failed save, the target is also Restrained until the end of your next turn."
             type: text
         type: paragraph
       - inlines:
-          - text: "T2 Overload: Changes from Tier 1: Damage increases to 6d10 + 65. On a failed save, the Stunned condition until the end of your next turn replaces the Restrained condition from Tier 1. The target’s speed becomes 0 even on a successful save."
+          - text: "T2 Overload: Changes from Tier 1: Damage increases to 6d10 + 105. On a failed save, the Stunned condition until the end of your next turn replaces the Restrained condition from Tier 1. The target’s speed becomes 0 even on a successful save."
             type: text
         type: paragraph
     id: absolute_zero
@@ -2778,7 +2778,7 @@ entities:
                         kind: dice_plus_fixed
                         count: 6
                         sides: 10
-                        fixed: 45
+                        fixed: 85
                     - kind: speed_zero
                       package_id: control_0
                       duration: until_end_next_turn
@@ -2798,7 +2798,7 @@ entities:
                         kind: dice_plus_fixed
                         count: 6
                         sides: 10
-                        fixed: 55
+                        fixed: 95
                     - kind: speed_zero
                       package_id: control_0
                       duration: until_end_next_turn
@@ -2825,7 +2825,7 @@ entities:
                         kind: dice_plus_fixed
                         count: 6
                         sides: 10
-                        fixed: 65
+                        fixed: 105
                     - kind: condition
                       condition: stunned
                       package_id: control_1

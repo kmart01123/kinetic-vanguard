@@ -1,8 +1,10 @@
 # Absolute Zero with fewer dice
 
-**Adopted in the unreleased v15.0.0 rules:** Absolute Zero uses **6d10 + 45 / 55 / 65 cold damage** at tiers 0/1/2. Roll the same six dice at every tier, then add the tier's bonus. On a successful Constitution save, halve the combined dice-plus-bonus total, rounding down. All current costs, targeting, control effects, defenses, and Fighter-20 availability remain unchanged.
+> Historical integration snapshot: the 6d10 + 45/55/65 packet below was later increased by the [modest Cryokinesis correction](cryo-balance-evaluation.md). These historical candidate results are preserved unchanged.
 
-This replaces the earlier 14/16/18d10 proposal. The selected Telekinetic Shove and focused Branching Bolt changes remain as described in the [surgical damage candidates](surgical-damage-candidates.md). The six-die revision and both rider changes are integrated into canonical mechanics, the Calculator, and the native harness. See the [integration evaluation](surgical-damage-integration.md) for the full publication run.
+**Adopted in an earlier unreleased v15.0.0 snapshot:** Absolute Zero used **6d10 + 45 / 55 / 65 cold damage** at tiers 0/1/2. Roll the same six dice at every tier, then add the tier's bonus. On a successful Constitution save, halve the combined dice-plus-bonus total, rounding down. All current costs, targeting, control effects, defenses, and Fighter-20 availability remain unchanged.
+
+This replaces the earlier 14/16/18d10 proposal. The accompanying Telekinetic Shove and focused Branching Bolt changes are recorded in the [historical surgical damage candidates](surgical-damage-candidates.md). Branching Bolt's focused option was subsequently superseded by [crowd allocation](branching-bolt-integration.md). The six-die revision and both rider changes are integrated into canonical mechanics, the Calculator, and the native harness. See the [integration evaluation](surgical-damage-integration.md) for the full publication run.
 
 | Tier | Earlier proposal | Adopted revision | Earlier average | Revised average |
 |---|---|---|---:|---:|

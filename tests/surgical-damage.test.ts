@@ -12,7 +12,7 @@ test("surgical damage formulas and allocation choices reach both consumers from 
     const tiers=calculator.features.find(feature=>feature.entity_id===id)!.tiers!;
     assert.deepEqual(harness.features.find(feature=>feature.entity_id===id)!.damage_tiers,tiers);
     for(const tier of tiers){
-      if(id==="absolute_zero")assert.deepEqual(tier.damage,{kind:"dice_plus_fixed",count:6,sides:10,fixed:45+tier.tier*10,resolution:"half_on_success"});
+      if(id==="absolute_zero")assert.deepEqual(tier.damage,{kind:"dice_plus_fixed",count:6,sides:10,fixed:85+tier.tier*10,resolution:"half_on_success"});
       if(id==="telekinetic_shove")assert.deepEqual(tier.damage,{kind:"fixed_by_level",value:2,minimum_level:18,upgraded_value:4,resolution:"always"});
       if(id==="branching_bolt"){
         assert.deepEqual(tier.damage,{kind:"manifested_strike_dice",count:1,resolution:"always"});
