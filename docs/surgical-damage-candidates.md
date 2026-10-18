@@ -1,8 +1,8 @@
 # Surgical late-game damage candidates
 
-Status: **historical candidate evaluation**. The two rider proposals and the revised six-die Absolute Zero are now [integrated into unreleased v15.0.0](surgical-damage-integration.md). Pyrokinesis remains unchanged. This review uses the corrected pre-roll Discipline Maturation baseline, preserves that gamble, and examines Cryokinesis, Psychokinesis, and Electrokinesis separately.
+Status: **historical candidate evaluation**. The two rider proposals and the revised six-die Absolute Zero were [integrated into an earlier unreleased v15.0.0 snapshot](surgical-damage-integration.md). Branching Bolt's focused option was subsequently replaced by [crowd allocation](branching-bolt-integration.md). Pyrokinesis remains unchanged. This review uses the corrected pre-roll Discipline Maturation baseline, preserves that gamble, and examines Cryokinesis, Psychokinesis, and Electrokinesis separately.
 
-**Absolute Zero revision:** the [lower-dice evaluation](absolute-zero-low-dice.md) replaces the 14/16/18d10 proposal below with 6d10 + 45/55/65. The original large-pool results are retained here for comparison; the two rider proposals are unchanged.
+**Absolute Zero revision:** the [lower-dice evaluation](absolute-zero-low-dice.md) replaces the 14/16/18d10 proposal below with 6d10 + 45/55/65. The original large-pool results are retained here for comparison; the rider numbers below describe that historical candidate snapshot.
 
 ## Recommended shortlist
 
@@ -68,4 +68,4 @@ Baseline authority SHA-256: `63e34d17bce2dc410c8eb21ad508d9de2bacfec8ff0d11d0851
 
 Ignored evidence is retained in `artifacts/surgical-damage/`: candidate definitions, the frozen projection, `results.json` (initial sentinels), `roster-results.json` (complete shortlist), `verification.json`, and progress logs. Both passes used 12 workers. `experiment.py` reproduces the six initial alternatives; `roster.py` fills out the three-candidate shortlist; `summarize.py` verifies scope and calculates these comparisons.
 
-The current adopted rules and benchmark remain documented in [the declaration evaluation](maturation-declaration-evaluation.md). These candidates inform the open [level-20 balance review, #122](https://github.com/kmart01123/kinetic-vanguard/issues/122).
+The original baseline is documented in [the declaration evaluation](maturation-declaration-evaluation.md); it is historical, not the current adopted rules or benchmark. These historical candidates informed [level-20 balance review #122](https://github.com/kmart01123/kinetic-vanguard/issues/122); the [final Cryokinesis evaluation](cryo-balance-evaluation.md) records its disposition.

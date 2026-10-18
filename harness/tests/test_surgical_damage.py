@@ -20,7 +20,7 @@ class SurgicalDamageTests(unittest.TestCase):
         return _rider_values(self.model,target or self.target,rule['discipline_ids'][0],cluster,level,6,5,12,Package(entity,tier,rule['psi_cost'],self.model.blood_tax(level,tier),mode))
 
     def test_absolute_zero_halves_the_entire_packet_with_defenses_after_rounding(self):
-        for tier,flat in enumerate([45,55,65]):
+        for tier,flat in enumerate([85,95,105]):
             damage=self.model.features['absolute_zero']['damage_tiers'][tier]['damage']
             distribution=_raw_distribution(damage,12,5)
             self.assertEqual(min(distribution),6+flat);self.assertEqual(max(distribution),60+flat)

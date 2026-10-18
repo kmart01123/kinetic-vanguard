@@ -36,7 +36,7 @@ test("every machine-consumed ability authors mechanics once and derives consumer
   const projection=deriveCalculatorProjection(authority),calculatorIds=projection.features.map(feature=>feature.entity_id).sort(),harnessIds=projection.harness_mechanics.feature_rules.map(rule=>rule.entity_id).sort();
   assert.equal(calculatorIds.length,29);assert.equal(harnessIds.length,26);assert.deepEqual(entities.map(entity=>entity.id).sort(),calculatorIds);
   assert.equal(raw.calculator.features,undefined);assert.equal(raw.calculator.harness_mechanics,undefined);
-  assert.equal(hash(projection.features),"3ccd896784d92208c94e29161c107e7a02f9f3749eda64fdf772d1b3fa5eb804");
+  assert.equal(hash(projection.features),"df08825a8819a6ddfdea87fdce2c3ac409d6939b13cb6863a9dc941c13fc6e14");
   assert.equal(hash(projection.harness_mechanics.feature_rules),"64266723be0c909aabde2a5a727fb058bc1aaa2ccaeaf53afe627454621da30a");
   for(const entity of entities){
     const calculator=projection.features.find(feature=>feature.entity_id===entity.id);assert.ok(calculator,entity.id);assert.deepEqual(projectCalculatorMechanics(entity),calculator,`${entity.id} Calculator projection`);

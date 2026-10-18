@@ -461,8 +461,8 @@ test("surgical upgrades render level-aware rider choices and whole-packet save a
   changeDeckSelect(dom,level,"11");assert.match(normalizedDeckText(tiers()[2]!),/3d10 without an additional roll/);
   changeDeckSelect(dom,level,"20");clickDeckCard(document,"absolute_zero");
   for(const [index,tier] of tiers().entries()){
-    assert.match(normalizedDeckText(tier),new RegExp(`Damage: 6d10 \\+ ${45+index*10} on a failed save`));
-    assert.match(normalizedDeckText(tier),new RegExp(`Expected avg damage: ${78+index*10} on a failed save · ${39+index*5} on a successful save`));
+    assert.match(normalizedDeckText(tier),new RegExp(`Damage: 6d10 \\+ ${85+index*10} on a failed save`));
+    assert.match(normalizedDeckText(tier),new RegExp(`Expected avg damage: ${118+index*10} on a failed save · ${59+index*5} on a successful save`));
   }
   dom.window.close();
 });

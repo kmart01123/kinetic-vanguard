@@ -1,6 +1,6 @@
 # Surgical damage integration
 
-> Historical integration snapshot: unreleased **v15.0.0**, authority schema **2.13.0**, harness projection **1.9.0**. Absolute Zero and Telekinetic Shove retain the changes below. Branching Bolt's adopted two-die Focused Bolt option was later **superseded** by the [current crowd allocation](branching-bolt-integration.md); it is no longer playable. The benchmark numbers and validation results below describe this earlier snapshot.
+> Historical integration snapshot: unreleased **v15.0.0**, authority schema **2.13.0**, harness projection **1.9.0**. Telekinetic Shove retains the change below. Absolute Zero's flat bonuses were later increased by the [modest Cryokinesis correction](cryo-balance-evaluation.md). Branching Bolt's adopted two-die Focused Bolt option was later **superseded** by the [current crowd allocation](branching-bolt-integration.md); it is no longer playable. The benchmark numbers and validation results below describe this earlier snapshot.
 
 The following changes were adopted for this snapshot. The original two-die Focused Bolt is distinct from the later [three-die focused T1 trial and its 3-Psi alternative](focused-bolt-t1-benchmark.md), which were discarded without adoption.
 
